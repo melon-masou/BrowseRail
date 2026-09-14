@@ -1,0 +1,22 @@
+{
+  "name": "@browserail/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc -p tsconfig.json",
+    "dev": "vite --host 127.0.0.1 --port 1420",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@browserail/protocol": "workspace:*",
+    "@tauri-apps/api": "^2.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@tauri-apps/cli": "^2.11.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

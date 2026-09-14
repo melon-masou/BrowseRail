@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrowseRail settings</title>
+  </head>
+  <body>
+    <main>
+      <h1>BrowseRail</h1>
+
+      <form id="settings">
+        <label>
+          Instance label
+          <span class="input-row">
+            <input id="instance-label" required />
+            <button id="random-instance-label" type="button">Random</button>
+          </span>
+        </label>
+        <label class="check">
+          <input id="desktop-enabled" type="checkbox" />
+          Connect to Desktop Widget
+        </label>
+        <label id="desktop-url-field">
+          <span class="label-row">
+            <span>Desktop Widget address</span>
+            <output id="desktop-test-status" class="field-status" aria-live="polite"></output>
+          </span>
+          <span class="input-row">
+            <input
+              id="desktop-url"
+              type="url"
+              required
+              spellcheck="false"
+              placeholder="ws://127.0.0.1:17654"
+            />
+            <button id="test-desktop" type="button">Test</button>
+          </span>
+        </label>
+        <label>
+          Attach panels to
+          <select id="attachment-mode">
+            <option value="none">No windows</option>
+            <option value="lastFocused">Last focused window</option>
+            <option value="active">Active window</option>
+            <option value="all">All windows</option>
+          </select>
+        </label>
+        <label class="check">
+          <input id="always-on-top" type="checkbox" />
+          Always on top
+        </label>
+
+        <section>
+          <h2>Menus</h2>
+          <p class="hint">Position and size are customized from the Desktop Widget.</p>
+          <div id="menus"></div>
+          <button id="add-menu" type="button">Add menu</button>
+        </section>
+
+        <button type="submit">Save</button>
+        <output id="status"></output>
+      </form>
+    </main>
+    <script type="module" src="/src/options/index.ts"></script>
+  </body>
+</html>

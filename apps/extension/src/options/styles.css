@@ -1,0 +1,164 @@
+:root {
+  color: #172033;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #f4f6fb;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 720px;
+  margin: 48px auto;
+  padding: 0 24px;
+}
+
+form {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid #dce1eb;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 12px 32px rgb(26 35 54 / 8%);
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+input,
+select,
+button {
+  min-height: 36px;
+  border: 1px solid #cbd2df;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: white;
+  color: inherit;
+  font: inherit;
+}
+
+input:not([type="checkbox"]),
+select {
+  width: 100%;
+  max-width: 100%;
+}
+
+button {
+  cursor: pointer;
+}
+
+.check,
+.label-row,
+.input-row,
+.add-row,
+li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-row input {
+  flex: 1;
+}
+
+.check input {
+  min-height: auto;
+}
+
+[data-disabled] {
+  opacity: 0.55;
+}
+
+.field-status {
+  min-height: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.field-status:empty {
+  display: none;
+}
+
+.field-status[data-state="pending"] {
+  border-color: #cbd2df;
+  background: #f4f6fb;
+  color: #5b6475;
+}
+
+.field-status[data-state="success"] {
+  border-color: #a9d7ba;
+  background: #edf8f1;
+  color: #237a45;
+}
+
+.field-status[data-state="error"] {
+  border-color: #efb2b2;
+  background: #fff1f1;
+  color: #a52a2a;
+}
+
+.add-row select,
+li span {
+  flex: 1;
+}
+
+.hint {
+  margin: -4px 0 12px;
+  color: #687287;
+  font-size: 13px;
+}
+
+#menus {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.menu-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce1eb;
+  border-radius: 10px;
+  background: #f8f9fc;
+}
+
+.menu-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.menu-card ol {
+  margin: 0;
+}
+
+ol {
+  display: grid;
+  gap: 8px;
+  padding-left: 24px;
+}
+
+output {
+  min-height: 20px;
+  color: #237a45;
+}
