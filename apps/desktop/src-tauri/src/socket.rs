@@ -2,22 +2,23 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 
 use futures_util::{SinkExt, StreamExt};
-use tauri::Manager;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::task::JoinSet;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use uuid::Uuid;
 
-use crate::AppState;
-use crate::panel;
-use crate::protocol::{ActionResultPayload, ClientMessage, PROTOCOL_VERSION, ServerMessage};
-use crate::session::SessionRegistry;
+use crate::native::NativeCommand;
+use crate::protocol::{ClientMessage, PROTOCOL_VERSION, ServerMessage};
+use crate::state_machine::{
+    ConnectionState, ConnectionStateMachine, ServerState, ServerStateMachine,
+};
 
 pub struct SocketServer {
     listening: AtomicBool,
     last_error: Mutex<Option<String>>,
     port: AtomicU16,
+    pub state_machine: Arc<ServerStateMachine>,
     task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
 }
 
@@ -27,6 +28,7 @@ impl Default for SocketServer {
             listening: AtomicBool::new(false),
             last_error: Mutex::new(None),
             port: AtomicU16::new(0),
+            state_machine: Arc::new(ServerStateMachine::default()),
             task: Mutex::new(None),
         }
     }
@@ -48,6 +50,13 @@ impl SocketServer {
     pub fn mark_unavailable(&self, port: u16, error: String) {
         self.port.store(port, Ordering::Relaxed);
         self.listening.store(false, Ordering::Relaxed);
+        self.state_machine.transition(
+            ServerState::Failed {
+                port,
+                error: error.clone(),
+            },
+            Some("Listener error"),
+        );
         if let Ok(mut last_error) = self.last_error.lock() {
             *last_error = Some(error);
         }
@@ -55,8 +64,7 @@ impl SocketServer {
 
     pub async fn replace(
         self: &Arc<Self>,
-        app: tauri::AppHandle,
-        registry: Arc<SessionRegistry>,
+        native_sender: UnboundedSender<NativeCommand>,
         listener: TcpListener,
         port: u16,
     ) -> Result<(), String> {
@@ -66,28 +74,27 @@ impl SocketServer {
             .map_err(|_| "Socket task lock failed")?
             .take();
         if let Some(previous) = previous {
+            self.state_machine.transition(
+                ServerState::Unbound,
+                Some("Stopping previous listener"),
+            );
             previous.abort();
             let _ = previous.await;
         }
 
-        for (instance_uid, window_uids) in registry.disconnect_all() {
-            panel::hide_panels(
-                &app,
-                &app.state::<AppState>().popups,
-                &instance_uid,
-                &window_uids,
-            );
-        }
-
         let server = self.clone();
         let task = tauri::async_runtime::spawn(async move {
-            if let Err(error) = serve(app, registry, listener).await {
+            if let Err(error) = serve(native_sender, listener).await {
                 server.mark_unavailable(port, error);
             }
         });
         *self.task.lock().map_err(|_| "Socket task lock failed")? = Some(task);
         self.port.store(port, Ordering::Relaxed);
         self.listening.store(true, Ordering::Relaxed);
+        self.state_machine.transition(
+            ServerState::Listening { port },
+            Some("TCP listener started"),
+        );
         *self
             .last_error
             .lock()
@@ -111,8 +118,7 @@ pub async fn bind(port: u16) -> Result<TcpListener, String> {
 }
 
 async fn serve(
-    app: tauri::AppHandle,
-    registry: Arc<SessionRegistry>,
+    native_sender: UnboundedSender<NativeCommand>,
     listener: TcpListener,
 ) -> Result<(), String> {
     let mut connections = JoinSet::new();
@@ -120,10 +126,9 @@ async fn serve(
         tokio::select! {
             accepted = listener.accept() => {
                 let (stream, _) = accepted.map_err(|error| error.to_string())?;
-                let app = app.clone();
-                let registry = registry.clone();
+                let sender = native_sender.clone();
                 connections.spawn(async move {
-                    if let Err(error) = handle_connection(app, registry, stream).await {
+                    if let Err(error) = handle_connection(sender, stream).await {
                         eprintln!("BrowseRail socket connection failed: {error}");
                     }
                 });
@@ -134,17 +139,27 @@ async fn serve(
 }
 
 async fn handle_connection(
-    app: tauri::AppHandle,
-    registry: Arc<SessionRegistry>,
+    native_sender: UnboundedSender<NativeCommand>,
     stream: TcpStream,
 ) -> Result<(), String> {
     let connection_uid = Uuid::new_v4();
+    let mut connection_sm = ConnectionStateMachine::new();
+    connection_sm.transition(
+        ConnectionState::Connected { connection_uid },
+        Some("TCP accepted & upgrading WebSocket"),
+    );
+
     let websocket = accept_async(stream)
         .await
         .map_err(|error| error.to_string())?;
     let (mut writer, mut reader) = websocket.split();
     let (outgoing, mut outgoing_messages) = unbounded_channel::<ServerMessage>();
-    let mut registered = false;
+    let mut registered_instance: Option<String> = None;
+
+    connection_sm.transition(
+        ConnectionState::Handshaking { connection_uid },
+        Some("WebSocket upgraded, waiting for Hello"),
+    );
 
     let result = async {
         loop {
@@ -157,36 +172,56 @@ async fn handle_connection(
                             .map_err(|error| format!("Invalid client message: {error}"))?;
                         match message {
                             ClientMessage::Hello { protocol_version, instance } => {
-                                if registered || protocol_version != PROTOCOL_VERSION {
+                                if registered_instance.is_some() || protocol_version != PROTOCOL_VERSION {
                                     return Err("Invalid hello message".into());
                                 }
-                                registry.register(connection_uid, instance, outgoing.clone());
-                                registered = true;
-                                outgoing.send(ServerMessage::Ready { protocol_version: PROTOCOL_VERSION })
-                                    .map_err(|_| "Connection closed")?;
+                                let instance_uid = instance.uid.clone();
+                                registered_instance = Some(instance_uid.clone());
+                                connection_sm.transition(
+                                    ConnectionState::Ready {
+                                        connection_uid,
+                                        instance_uid,
+                                    },
+                                    Some("Hello accepted, Ready sent"),
+                                );
+                                let _ = native_sender.send(NativeCommand::ClientRegistered {
+                                    connection_uid,
+                                    instance,
+                                    outgoing: outgoing.clone(),
+                                });
                             }
                             ClientMessage::Sync { revision, attachment_mode, panels } => {
                                 let _ = attachment_mode;
-                                let outcome = registry.sync(connection_uid, revision, panels)?;
-                                if app.state::<AppState>().displays_panels() {
-                                    panel::sync_panels(
-                                        &app,
-                                        &app.state::<AppState>().popups,
-                                        &outcome.instance_uid,
-                                        &outcome.panels,
-                                        &outcome.removed_window_uids,
-                                    )?;
-                                }
+                                let Some(ref inst_uid) = registered_instance else {
+                                    return Err("Sync received before Hello".into());
+                                };
+                                connection_sm.transition(
+                                    ConnectionState::Syncing {
+                                        connection_uid,
+                                        instance_uid: inst_uid.clone(),
+                                        revision,
+                                    },
+                                    Some(&format!("Menus count: {}", panels.len())),
+                                );
+                                let _ = native_sender.send(NativeCommand::SyncPanels {
+                                    connection_uid,
+                                    revision,
+                                    panels,
+                                });
+                                connection_sm.transition(
+                                    ConnectionState::Active {
+                                        connection_uid,
+                                        instance_uid: inst_uid.clone(),
+                                    },
+                                    Some("Sync dispatched to native reactor"),
+                                );
                             }
                             ClientMessage::ActionResult { request_uid, ok, message } => {
-                                if let Some(action) = registry.resolve_action(&request_uid) {
-                                    panel::emit_action_result(
-                                        &app,
-                                        &action.instance_uid,
-                                        &action.window_uid,
-                                        &ActionResultPayload { ok, message },
-                                    );
-                                }
+                                let _ = native_sender.send(NativeCommand::ActionResult {
+                                    request_uid,
+                                    ok,
+                                    message,
+                                });
                             }
                             ClientMessage::Heartbeat => {
                                 outgoing.send(ServerMessage::Heartbeat)
@@ -206,13 +241,14 @@ async fn handle_connection(
     }
     .await;
 
-    if let Some((instance_uid, window_uids)) = registry.disconnect(connection_uid) {
-        panel::hide_panels(
-            &app,
-            &app.state::<AppState>().popups,
-            &instance_uid,
-            &window_uids,
-        );
-    }
+    connection_sm.transition(
+        ConnectionState::Disconnected {
+            connection_uid,
+            instance_uid: registered_instance.clone(),
+        },
+        Some("Connection closed"),
+    );
+
+    let _ = native_sender.send(NativeCommand::ClientDisconnected { connection_uid });
     result
 }

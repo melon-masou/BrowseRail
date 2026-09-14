@@ -38,12 +38,12 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
     url: DEFAULT_DESKTOP_URL,
   },
   panel: {
-    alwaysOnTop: false,
+    alwaysOnTop: true,
     menus: [createMenu("menu-main")],
   },
 };
 
-export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
+export function createMenu(uid: string = crypto.randomUUID(), index = 0): StoredMenu {
   return {
     items: [],
     orientation: "row",
@@ -51,7 +51,7 @@ export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
       anchor: "topLeft",
       height: 40,
       offsetX: 12,
-      offsetY: 12,
+      offsetY: 12 + index * 52,
       width: 288,
     },
     uid,
@@ -80,9 +80,30 @@ function normalizeConfig(value: unknown, defaultInstanceLabel: string): Extensio
 
   const desktopWidget = isRecord(value.desktopWidget) ? value.desktopWidget : {};
   const panel = isRecord(value.panel) ? value.panel : {};
-  const menus = Array.isArray(panel.menus)
+  const rawMenus = Array.isArray(panel.menus)
     ? panel.menus.flatMap((menu) => normalizeMenu(menu) ?? [])
     : migrateLegacyMenu(Array.isArray(panel.layout) ? panel : value);
+  const seenUids = new Set<string>();
+  const seenOffsets = new Set<string>();
+  const menus = rawMenus.map((menu, idx) => {
+    let uid = menu.uid;
+    if (seenUids.has(uid)) {
+      uid = crypto.randomUUID();
+    }
+    seenUids.add(uid);
+
+    const placement = { ...menu.placement };
+    const key = `${placement.anchor}:${placement.offsetX}:${placement.offsetY}`;
+    if (seenOffsets.has(key)) {
+      placement.offsetY += (idx + 1) * 52;
+    }
+    seenOffsets.add(`${placement.anchor}:${placement.offsetX}:${placement.offsetY}`);
+    return {
+      ...menu,
+      placement,
+      uid,
+    };
+  });
 
   return {
     attachmentMode: isAttachmentMode(value.attachmentMode)
@@ -214,4 +235,32 @@ function isStoredMenuItem(value: unknown): value is StoredMenuItem {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+export const PLACEMENTS_STORAGE_KEY = "menu_placements";
+
+export type MenuPlacementsMap = Record<string, MenuPlacement>;
+
+export async function loadMenuPlacements(): Promise<MenuPlacementsMap> {
+  const stored = await browser.storage.local.get(PLACEMENTS_STORAGE_KEY);
+  const raw = stored[PLACEMENTS_STORAGE_KEY];
+  if (!isRecord(raw)) {
+    return {};
+  }
+  const result: MenuPlacementsMap = {};
+  for (const [uid, placement] of Object.entries(raw)) {
+    const normalized = normalizePlacement(placement);
+    if (normalized) {
+      result[uid] = normalized;
+    }
+  }
+  return result;
+}
+
+export async function saveMenuPlacement(menuUid: string, placement: MenuPlacement): Promise<void> {
+  const current = await loadMenuPlacements();
+  current[menuUid] = placement;
+  await browser.storage.local.set({
+    [PLACEMENTS_STORAGE_KEY]: current,
+  });
 }

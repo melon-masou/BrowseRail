@@ -12,9 +12,9 @@ pub struct SessionRegistry {
 }
 
 struct Session {
-    connection_uid: Uuid,
+    connection_uid: Option<Uuid>,
     instance: BrowserInstance,
-    outgoing: UnboundedSender<ServerMessage>,
+    outgoing: Option<UnboundedSender<ServerMessage>>,
     panels: HashMap<String, PanelSnapshot>,
     pending: HashMap<String, String>,
     revision: u64,
@@ -39,21 +39,25 @@ impl SessionRegistry {
         outgoing: UnboundedSender<ServerMessage>,
     ) {
         let mut sessions = self.sessions.write().expect("session lock poisoned");
-        let panels = sessions
-            .remove(&instance.uid)
-            .map(|session| session.panels)
-            .unwrap_or_default();
-        sessions.insert(
-            instance.uid.clone(),
-            Session {
-                connection_uid,
-                instance,
-                outgoing,
-                panels,
-                pending: HashMap::new(),
-                revision: 0,
-            },
-        );
+        if let Some(session) = sessions.get_mut(&instance.uid) {
+            session.connection_uid = Some(connection_uid);
+            session.instance = instance;
+            session.outgoing = Some(outgoing);
+            session.pending.clear();
+            session.revision = 0;
+        } else {
+            sessions.insert(
+                instance.uid.clone(),
+                Session {
+                    connection_uid: Some(connection_uid),
+                    instance,
+                    outgoing: Some(outgoing),
+                    panels: HashMap::new(),
+                    pending: HashMap::new(),
+                    revision: 0,
+                },
+            );
+        }
     }
 
     pub fn sync(
@@ -61,15 +65,15 @@ impl SessionRegistry {
         connection_uid: Uuid,
         revision: u64,
         panels: Vec<PanelSnapshot>,
-    ) -> Result<SyncOutcome, String> {
+    ) -> Result<Option<SyncOutcome>, String> {
         let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
             .values_mut()
-            .find(|session| session.connection_uid == connection_uid)
+            .find(|session| session.connection_uid == Some(connection_uid))
             .ok_or("The connection has not registered an instance")?;
 
         if revision <= session.revision {
-            return Err("The sync revision is stale".into());
+            return Ok(None);
         }
 
         let next = panels
@@ -85,11 +89,11 @@ impl SessionRegistry {
         session.panels = next;
         session.revision = revision;
 
-        Ok(SyncOutcome {
+        Ok(Some(SyncOutcome {
             instance_uid: session.instance.uid.clone(),
             panels,
             removed_window_uids,
-        })
+        }))
     }
 
     pub fn invoke(
@@ -106,9 +110,13 @@ impl SessionRegistry {
             return Err("The bound browser window is unavailable".into());
         }
 
-        let request_uid = Uuid::new_v4().to_string();
-        session
+        let outgoing = session
             .outgoing
+            .as_ref()
+            .ok_or("The browser instance is disconnected")?;
+
+        let request_uid = Uuid::new_v4().to_string();
+        outgoing
             .send(ServerMessage::Invoke {
                 request_uid: request_uid.clone(),
                 action_uid,
@@ -171,8 +179,11 @@ impl SessionRegistry {
         let session = sessions
             .get(instance_uid)
             .ok_or("The browser instance is disconnected")?;
-        session
+        let outgoing = session
             .outgoing
+            .as_ref()
+            .ok_or("The browser instance is disconnected")?;
+        outgoing
             .send(ServerMessage::UpdateMenuPlacement {
                 menu_uid,
                 placement,
@@ -182,12 +193,13 @@ impl SessionRegistry {
 
     pub fn disconnect(&self, connection_uid: Uuid) -> Option<(String, Vec<String>)> {
         let mut sessions = self.sessions.write().ok()?;
-        let instance_uid = sessions
-            .iter()
-            .find(|(_, session)| session.connection_uid == connection_uid)
-            .map(|(uid, _)| uid.clone())?;
-        let session = sessions.remove(&instance_uid)?;
-        Some((instance_uid, session.panels.into_keys().collect()))
+        let session = sessions
+            .values_mut()
+            .find(|session| session.connection_uid == Some(connection_uid))?;
+        session.connection_uid = None;
+        session.outgoing = None;
+        session.pending.clear();
+        Some((session.instance.uid.clone(), session.panels.keys().cloned().collect()))
     }
 
     pub fn disconnect_all(&self) -> Vec<(String, Vec<String>)> {
@@ -198,6 +210,26 @@ impl SessionRegistry {
                     .drain()
                     .map(|(instance_uid, session)| {
                         (instance_uid, session.panels.into_keys().collect())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn active_instances(&self) -> Vec<String> {
+        self.sessions
+            .read()
+            .map(|sessions| {
+                sessions
+                    .values()
+                    .filter(|s| s.outgoing.is_some())
+                    .map(|s| {
+                        s.instance
+                            .label
+                            .as_deref()
+                            .filter(|l| !l.is_empty())
+                            .unwrap_or(&s.instance.uid)
+                            .to_string()
                     })
                     .collect()
             })
@@ -309,13 +341,73 @@ mod tests {
         assert!(registry.disconnect(old_connection).is_none());
         let outcome = registry
             .sync(new_connection, 1, vec![panel("window-b")])
-            .unwrap();
+            .unwrap()
+            .expect("sync outcome");
         assert_eq!(outcome.removed_window_uids, vec!["window-a"]);
         assert!(registry.panel("instance-a", "window-b").is_some());
     }
 
+    #[test]
+    fn disconnecting_then_reconnecting_keeps_panels_for_next_sync() {
+        let registry = SessionRegistry::default();
+        let old_connection = Uuid::new_v4();
+        let new_connection = Uuid::new_v4();
+        let (old_sender, _old_receiver) = unbounded_channel();
+        let (new_sender, _new_receiver) = unbounded_channel();
+
+        registry.register(old_connection, instance("instance-a"), old_sender);
+        registry
+            .sync(old_connection, 1, vec![panel("window-a")])
+            .unwrap();
+
+        let disconnected = registry.disconnect(old_connection);
+        assert_eq!(
+            disconnected,
+            Some(("instance-a".into(), vec!["window-a".into()]))
+        );
+        assert!(registry.panel("instance-a", "window-a").is_some());
+
+        registry.register(new_connection, instance("instance-a"), new_sender);
+        let outcome = registry
+            .sync(new_connection, 1, vec![panel("window-b")])
+            .unwrap()
+            .expect("sync outcome");
+        assert_eq!(outcome.removed_window_uids, vec!["window-a"]);
+        assert!(registry.panel("instance-a", "window-b").is_some());
+    }
+
+    #[test]
+    fn ignores_stale_sync_revisions() {
+        let registry = SessionRegistry::default();
+        let connection = Uuid::new_v4();
+        let (sender, _) = unbounded_channel();
+        registry.register(connection, instance("instance-a"), sender);
+        assert!(
+            registry
+                .sync(connection, 2, vec![panel("window-a")])
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            registry
+                .sync(connection, 2, vec![panel("window-a")])
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            registry
+                .sync(connection, 1, vec![panel("window-a")])
+                .unwrap()
+                .is_none()
+        );
+    }
+
     fn instance(uid: &str) -> BrowserInstance {
-        BrowserInstance { uid: uid.into() }
+        BrowserInstance {
+            uid: uid.into(),
+            browser: None,
+            label: None,
+        }
     }
 
     fn panel(window_uid: &str) -> PanelSnapshot {

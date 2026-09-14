@@ -15,8 +15,11 @@ interface BookmarkOption {
 const form = element<HTMLFormElement>("settings");
 const instanceLabel = element<HTMLInputElement>("instance-label");
 const randomInstanceLabel = element<HTMLButtonElement>("random-instance-label");
-const desktopEnabled = element<HTMLInputElement>("desktop-enabled");
+const toggleEnabledButton = element<HTMLButtonElement>("toggle-enabled-button");
 const desktopUrl = element<HTMLInputElement>("desktop-url");
+const stateCard = element<HTMLDivElement>("state-card");
+const stateBadge = element<HTMLSpanElement>("state-badge");
+const stateDetail = element<HTMLDivElement>("state-detail");
 const desktopUrlField = element<HTMLLabelElement>("desktop-url-field");
 const testDesktop = element<HTMLButtonElement>("test-desktop");
 const desktopTestStatus = element<HTMLOutputElement>("desktop-test-status");
@@ -25,6 +28,9 @@ const alwaysOnTop = element<HTMLInputElement>("always-on-top");
 const menusContainer = element<HTMLDivElement>("menus");
 const addMenu = element<HTMLButtonElement>("add-menu");
 const status = element<HTMLOutputElement>("status");
+const reconnectButton = element<HTMLButtonElement>("reconnect-button");
+
+let widgetEnabled = true;
 
 let menus: StoredMenu[] = [];
 let bookmarkOptions: BookmarkOption[] = [];
@@ -33,50 +39,129 @@ let desktopTestGeneration = 0;
 
 void initialize();
 
+browser.runtime.onMessage.addListener((message: unknown) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "desktopStateChanged" &&
+    "state" in message &&
+    typeof message.state === "string"
+  ) {
+    const detail =
+      "detail" in message && typeof message.detail === "string" ? message.detail : undefined;
+    renderDesktopState(message.state, detail);
+  }
+});
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   void persist();
 });
 
 addMenu.addEventListener("click", () => {
-  menus.push(createMenu());
+  menus.push(createMenu(undefined, menus.length));
   renderMenus();
 });
 
-desktopEnabled.addEventListener("change", () => {
+toggleEnabledButton.addEventListener("click", () => {
+  widgetEnabled = !widgetEnabled;
   updateDesktopControls();
-  if (desktopEnabled.checked) {
+  if (widgetEnabled) {
     void testDesktopAddress();
   } else {
     clearDesktopTestStatus();
   }
 });
+
 randomInstanceLabel.addEventListener("click", () => {
   instanceLabel.value = createRandomInstanceLabel();
 });
+
 testDesktop.addEventListener("click", () => void testDesktopAddress());
 desktopUrl.addEventListener("input", clearDesktopTestStatus);
 
+reconnectButton.addEventListener("click", () => {
+  void manualReconnect();
+});
+
+stateCard.addEventListener("click", (event) => {
+  if (
+    widgetEnabled &&
+    event.target !== reconnectButton &&
+    event.target !== toggleEnabledButton &&
+    stateCard.dataset.state !== "connected"
+  ) {
+    void manualReconnect();
+  }
+});
+
+async function manualReconnect(): Promise<void> {
+  renderDesktopState("connecting", "Reconnecting to Desktop Widget…");
+  try {
+    await browser.runtime.sendMessage({ type: "manualReconnect" });
+  } catch {
+    // Ignore
+  }
+}
+
+function renderDesktopState(state: string, detail?: string): void {
+  stateCard.dataset.state = state;
+  stateBadge.textContent = state;
+  stateDetail.textContent = detail || defaultDetailForState(state);
+}
+
+function defaultDetailForState(state: string): string {
+  switch (state) {
+    case "connected":
+      return "Connected and synchronized with Desktop Widget";
+    case "syncing":
+      return "Synchronizing menu layouts with Desktop Widget…";
+    case "connecting":
+      return "Attempting to connect to Desktop Widget…";
+    case "handshaking":
+      return "Verifying protocol handshake with Desktop Widget…";
+    case "reconnecting":
+      return "Connection lost, retrying…";
+    case "disabled":
+      return "Desktop connection is disabled in settings";
+    case "disconnected":
+    default:
+      return "Not connected to Desktop Widget";
+  }
+}
+
+async function refreshDesktopState(): Promise<void> {
+  try {
+    const response = (await browser.runtime.sendMessage({
+      type: "getDesktopState",
+    })) as { state?: string; detail?: string } | undefined;
+    if (response?.state) {
+      renderDesktopState(response.state, response.detail);
+    }
+  } catch {
+    // Ignore if background is unavailable
+  }
+}
+
 async function initialize(): Promise<void> {
+  void refreshDesktopState();
   const [config, tree] = await Promise.all([loadConfig(), browser.bookmarks.getTree()]);
   bookmarkOptions = flattenBookmarks(tree);
   bookmarkLabels = new Map(bookmarkOptions.map((option) => [option.id, option.label]));
 
   instanceLabel.value = config.instanceLabel;
-  desktopEnabled.checked = config.desktopWidget.enabled;
+  widgetEnabled = config.desktopWidget.enabled;
   desktopUrl.value = config.desktopWidget.url;
   attachmentMode.value = config.attachmentMode;
   alwaysOnTop.checked = config.panel.alwaysOnTop;
   menus = structuredClone(config.panel.menus);
   updateDesktopControls();
-  if (desktopEnabled.checked) {
-    void testDesktopAddress();
-  }
   renderMenus();
 }
 
 async function persist(): Promise<void> {
-  if (desktopEnabled.checked && !isLocalDesktopUrl(desktopUrl.value)) {
+  if (widgetEnabled && !isLocalDesktopUrl(desktopUrl.value)) {
     desktopUrl.setCustomValidity("Use a ws:// localhost address");
     desktopUrl.reportValidity();
     return;
@@ -87,7 +172,7 @@ async function persist(): Promise<void> {
     instanceLabel: instanceLabel.value,
     attachmentMode: attachmentMode.value as AttachmentMode,
     desktopWidget: {
-      enabled: desktopEnabled.checked,
+      enabled: widgetEnabled,
       url: desktopUrl.value,
     },
     panel: {
@@ -161,22 +246,28 @@ function renderMenus(): void {
 }
 
 function updateDesktopControls(): void {
-  desktopUrl.disabled = !desktopEnabled.checked;
-  testDesktop.disabled = !desktopEnabled.checked;
-  desktopUrlField.toggleAttribute("data-disabled", !desktopEnabled.checked);
+  toggleEnabledButton.textContent = widgetEnabled ? "Disable" : "Enable";
+  toggleEnabledButton.dataset.action = widgetEnabled ? "disable" : "enable";
+  desktopUrl.disabled = !widgetEnabled;
+  testDesktop.disabled = !widgetEnabled;
+  desktopUrlField.toggleAttribute("data-disabled", !widgetEnabled);
 }
 
 async function testDesktopAddress(): Promise<void> {
   const generation = ++desktopTestGeneration;
   const url = desktopUrl.value;
   setDesktopTestStatus("Connecting…", "pending");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (generation !== desktopTestGeneration) {
+    return;
+  }
   try {
     await probeDesktopConnection(url);
-    if (generation === desktopTestGeneration && desktopEnabled.checked && desktopUrl.value === url) {
+    if (generation === desktopTestGeneration && desktopUrl.value === url) {
       setDesktopTestStatus("Connected", "success");
     }
   } catch (error) {
-    if (generation === desktopTestGeneration && desktopEnabled.checked && desktopUrl.value === url) {
+    if (generation === desktopTestGeneration && desktopUrl.value === url) {
       setDesktopTestStatus(
         error instanceof Error ? error.message : "Connection failed",
         "error",

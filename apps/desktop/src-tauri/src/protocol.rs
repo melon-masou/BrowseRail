@@ -60,6 +60,11 @@ pub enum ServerMessage {
 #[serde(rename_all = "camelCase")]
 pub struct BrowserInstance {
     pub uid: String,
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub browser: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]

@@ -43,8 +43,19 @@ async function initializeSurface(): Promise<void> {
   let currentMenu = initial.menu;
 
   await listen<MenuSnapshot>("menu-state", ({ payload }) => {
-    currentMenu = payload;
-    if (surface === "menu" && !customizing) {
+    if (surface === "menu" && payload.uid === menuUid && !customizing) {
+      if (
+        currentMenu &&
+        currentMenu.orientation === payload.orientation &&
+        currentMenu.items.length === payload.items.length &&
+        currentMenu.items.every(
+          (item, i) => item.uid === payload.items[i]?.uid && item.label === payload.items[i]?.label,
+        )
+      ) {
+        currentMenu = payload;
+        return;
+      }
+      currentMenu = payload;
       renderMenu(payload);
     }
   });

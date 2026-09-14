@@ -11,6 +11,7 @@ use crate::protocol::{
     BrowserWindowSnapshot, BrowserWindowState, MenuAnchor, MenuPlacement, MenuSnapshot,
     PanelSnapshot,
 };
+use crate::state_machine::{log_surface_transition, SurfaceState};
 
 const POPUP_MIN_WIDTH: f64 = 180.0;
 const POPUP_MAX_WIDTH: f64 = 1_600.0;
@@ -173,30 +174,148 @@ impl PopupRegistry {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+struct AppliedGeometry {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    always_on_top: bool,
+}
+
+#[derive(Default)]
+pub struct SurfaceRegistry {
+    states: Mutex<HashMap<String, SurfaceState>>,
+    geometries: Mutex<HashMap<String, AppliedGeometry>>,
+}
+
+impl SurfaceRegistry {
+    pub fn update_geometry(
+        &self,
+        label: &str,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        always_on_top: bool,
+    ) -> bool {
+        let new_geo = AppliedGeometry {
+            x,
+            y,
+            width,
+            height,
+            always_on_top,
+        };
+        if let Ok(mut geos) = self.geometries.lock() {
+            if geos.get(label) == Some(&new_geo) {
+                return false;
+            }
+            geos.insert(label.to_string(), new_geo);
+            true
+        } else {
+            true
+        }
+    }
+
+    pub fn state(&self, label: &str) -> SurfaceState {
+        self.states
+            .lock()
+            .ok()
+            .and_then(|map| map.get(label).copied())
+            .unwrap_or(SurfaceState::Created)
+    }
+
+    pub fn set_state(&self, label: &str, next: SurfaceState, detail: Option<&str>) {
+        if let Ok(mut states) = self.states.lock() {
+            let prev = states.get(label).copied().unwrap_or(SurfaceState::Created);
+            if prev != next {
+                log_surface_transition(label, prev, next, detail);
+                states.insert(label.to_string(), next);
+            }
+        }
+    }
+
+    pub fn is_customizing(&self, label: &str) -> bool {
+        self.state(label) == SurfaceState::Customizing
+    }
+
+    pub fn set_customizing(&self, label: &str, customizing: bool) {
+        let next = if customizing {
+            SurfaceState::Customizing
+        } else {
+            SurfaceState::Visible
+        };
+        self.set_state(
+            label,
+            next,
+            Some(if customizing {
+                "Enter customize mode"
+            } else {
+                "Exit customize mode"
+            }),
+        );
+    }
+
+    pub fn is_visible(&self, label: &str) -> bool {
+        matches!(
+            self.state(label),
+            SurfaceState::Visible | SurfaceState::Customizing
+        )
+    }
+
+    pub fn mark_visible(&self, label: &str) {
+        self.set_state(label, SurfaceState::Visible, None);
+    }
+
+    pub fn mark_hidden(&self, label: &str) {
+        self.set_state(label, SurfaceState::Hidden, None);
+    }
+
+    pub fn summary(&self) -> (usize, usize, usize) {
+        if let Ok(states) = self.states.lock() {
+            let mut visible = 0;
+            let mut customizing = 0;
+            let mut hidden = 0;
+            for state in states.values() {
+                match state {
+                    SurfaceState::Visible => visible += 1,
+                    SurfaceState::Customizing => customizing += 1,
+                    SurfaceState::Hidden | SurfaceState::Created => hidden += 1,
+                }
+            }
+            (visible, customizing, hidden)
+        } else {
+            (0, 0, 0)
+        }
+    }
+}
+
 pub fn sync_panels(
     app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
     popups: &PopupRegistry,
     instance_uid: &str,
     panels: &[PanelSnapshot],
     removed_window_uids: &[String],
 ) -> Result<(), String> {
     for window_uid in removed_window_uids {
-        close_panel(app, popups, instance_uid, window_uid);
+        close_panel(app, surfaces, popups, instance_uid, window_uid);
     }
     for panel in panels {
-        sync_panel(app, popups, instance_uid, panel)?;
+        sync_panel(app, surfaces, popups, instance_uid, panel)?;
     }
     Ok(())
 }
 
 pub fn hide_panels(
     app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
     popups: &PopupRegistry,
     instance_uid: &str,
     window_uids: &[String],
 ) {
     for window_uid in window_uids {
-        hide_panel(app, popups, instance_uid, window_uid);
+        hide_panel(app, surfaces, popups, instance_uid, window_uid);
     }
 }
 
@@ -210,13 +329,14 @@ pub fn emit_action_result(
     let popup_prefix = surface_prefix("popup", instance_uid, window_uid);
     for (label, window) in app.webview_windows() {
         if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
-            let _ = window.emit("action-result", payload);
+            let _ = window.emit_to(&label, "action-result", payload);
         }
     }
 }
 
 pub fn open_popup(
     app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
     popups: &PopupRegistry,
     request: PopupRequest,
 ) -> Result<(), String> {
@@ -241,7 +361,7 @@ pub fn open_popup(
                 .title("BrowseRail menu")
                 .inner_size(popup.width, popup.height)
                 .decorations(false)
-                .focusable(true)
+                .focusable(false)
                 .resizable(false)
                 .shadow(false)
                 .skip_taskbar(true)
@@ -257,8 +377,9 @@ pub fn open_popup(
         .set_ignore_cursor_events(false)
         .map_err(|error| error.to_string())?;
     window.show().map_err(|error| error.to_string())?;
+    surfaces.mark_visible(&label);
     window
-        .emit("popup-state", &popup.surface.payload)
+        .emit_to(&label, "popup-state", &popup.surface.payload)
         .map_err(|error| error.to_string())
 }
 
@@ -282,19 +403,23 @@ pub fn resize_popup(
 
 pub fn close_popup(
     app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
     popups: &PopupRegistry,
     instance_uid: &str,
     window_uid: &str,
     menu_uid: &str,
 ) {
     popups.remove(instance_uid, window_uid, menu_uid);
-    if let Some(window) = app.get_webview_window(&popup_label(instance_uid, window_uid, menu_uid)) {
-        let _ = window.close();
+    let label = popup_label(instance_uid, window_uid, menu_uid);
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.hide();
+        surfaces.mark_hidden(&label);
     }
 }
 
 pub fn sync_menu(
     app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
     instance_uid: &str,
     panel: &PanelSnapshot,
     menu: &MenuSnapshot,
@@ -314,7 +439,7 @@ pub fn sync_menu(
                 .title("BrowseRail")
                 .inner_size(placement.width, placement.height)
                 .decorations(false)
-                .focusable(true)
+                .focusable(false)
                 .resizable(false)
                 .shadow(false)
                 .skip_taskbar(true)
@@ -325,33 +450,52 @@ pub fn sync_menu(
         }
     };
 
-    window
-        .set_always_on_top(panel.always_on_top)
-        .map_err(|error| error.to_string())?;
-    window
-        .set_ignore_cursor_events(false)
-        .map_err(|error| error.to_string())?;
-    if !window.is_resizable().map_err(|error| error.to_string())? {
+    let target_pos = menu_position(&panel.window, placement);
+    let is_customizing = surfaces.is_customizing(&label);
+    let changed = surfaces.update_geometry(
+        &label,
+        target_pos.x,
+        target_pos.y,
+        placement.width,
+        placement.height,
+        panel.always_on_top,
+    );
+
+    if changed {
         window
-            .set_size(LogicalSize::new(placement.width, placement.height))
+            .set_always_on_top(panel.always_on_top)
             .map_err(|error| error.to_string())?;
         window
-            .set_position(menu_position(&panel.window, placement))
+            .set_ignore_cursor_events(false)
             .map_err(|error| error.to_string())?;
+        if !is_customizing {
+            window
+                .set_size(LogicalSize::new(placement.width, placement.height))
+                .map_err(|error| error.to_string())?;
+            window
+                .set_position(target_pos)
+                .map_err(|error| error.to_string())?;
+        }
     }
 
+    let is_visible = surfaces.is_visible(&label);
     if panel.window.state == BrowserWindowState::Minimized {
-        window.hide().map_err(|error| error.to_string())?;
-    } else {
+        if is_visible {
+            window.hide().map_err(|error| error.to_string())?;
+            surfaces.mark_hidden(&label);
+        }
+    } else if !is_visible {
         window.show().map_err(|error| error.to_string())?;
+        surfaces.mark_visible(&label);
     }
     window
-        .emit("menu-state", menu)
+        .emit_to(&label, "menu-state", menu)
         .map_err(|error| error.to_string())
 }
 
 fn sync_panel(
     app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
     popups: &PopupRegistry,
     instance_uid: &str,
     panel: &PanelSnapshot,
@@ -364,11 +508,12 @@ fn sync_panel(
     let prefix = surface_prefix("menu", instance_uid, &panel.window.uid);
     for (label, window) in app.webview_windows() {
         if label.starts_with(&prefix) && !desired.contains(&label) {
-            let _ = window.close();
+            let _ = window.hide();
+            surfaces.mark_hidden(&label);
         }
     }
     for menu in &panel.menus {
-        sync_menu(app, instance_uid, panel, menu)?;
+        sync_menu(app, surfaces, instance_uid, panel, menu)?;
     }
 
     let popup_prefix = surface_prefix("popup", instance_uid, &panel.window.uid);
@@ -381,7 +526,8 @@ fn sync_panel(
         if let Some(menu_part) = label.strip_prefix(&popup_prefix)
             && !active_menu_uids.contains(menu_part)
         {
-            let _ = window.close();
+            let _ = window.hide();
+            surfaces.mark_hidden(&label);
         }
     }
     if let Ok(mut entries) = popups.entries.lock() {
@@ -396,24 +542,7 @@ fn sync_panel(
 
 fn close_panel(
     app: &tauri::AppHandle,
-    popups: &PopupRegistry,
-    instance_uid: &str,
-    window_uid: &str,
-) {
-    let menu_prefix = surface_prefix("menu", instance_uid, window_uid);
-    let popup_prefix = surface_prefix("popup", instance_uid, window_uid);
-    for (label, window) in app.webview_windows() {
-        if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
-            let _ = window.close();
-        }
-    }
-    if let Ok(mut entries) = popups.entries.lock() {
-        entries.retain(|label, _| !label.starts_with(&popup_prefix));
-    }
-}
-
-fn hide_panel(
-    app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
     popups: &PopupRegistry,
     instance_uid: &str,
     window_uid: &str,
@@ -423,6 +552,27 @@ fn hide_panel(
     for (label, window) in app.webview_windows() {
         if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
             let _ = window.hide();
+            surfaces.mark_hidden(&label);
+        }
+    }
+    if let Ok(mut entries) = popups.entries.lock() {
+        entries.retain(|label, _| !label.starts_with(&popup_prefix));
+    }
+}
+
+fn hide_panel(
+    app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
+    popups: &PopupRegistry,
+    instance_uid: &str,
+    window_uid: &str,
+) {
+    let menu_prefix = surface_prefix("menu", instance_uid, window_uid);
+    let popup_prefix = surface_prefix("popup", instance_uid, window_uid);
+    for (label, window) in app.webview_windows() {
+        if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
+            let _ = window.hide();
+            surfaces.mark_hidden(&label);
         }
     }
     if let Ok(mut entries) = popups.entries.lock() {
@@ -502,7 +652,7 @@ pub fn menu_label(instance_uid: &str, window_uid: &str, menu_uid: &str) -> Strin
     )
 }
 
-fn popup_label(instance_uid: &str, window_uid: &str, menu_uid: &str) -> String {
+pub(crate) fn popup_label(instance_uid: &str, window_uid: &str, menu_uid: &str) -> String {
     format!(
         "popup-{}-{}-{}",
         safe_label_part(instance_uid),
@@ -511,7 +661,7 @@ fn popup_label(instance_uid: &str, window_uid: &str, menu_uid: &str) -> String {
     )
 }
 
-fn surface_prefix(kind: &str, instance_uid: &str, window_uid: &str) -> String {
+pub(crate) fn surface_prefix(kind: &str, instance_uid: &str, window_uid: &str) -> String {
     format!(
         "{}-{}-{}-",
         kind,

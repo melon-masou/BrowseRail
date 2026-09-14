@@ -9,6 +9,21 @@
     <main>
       <h1>BrowseRail</h1>
 
+      <div id="state-card" class="state-card" data-state="disconnected">
+        <div class="state-indicator"></div>
+        <div class="state-info">
+          <div class="state-header">
+            <span class="state-title">Desktop Widget:</span>
+            <span id="state-badge" class="state-badge">Disconnected</span>
+          </div>
+          <div id="state-detail" class="state-detail">Waiting for connection…</div>
+        </div>
+        <div class="state-actions">
+          <button id="reconnect-button" class="action-btn reconnect-btn" type="button">Reconnect</button>
+          <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button">Disable</button>
+        </div>
+      </div>
+
       <form id="settings">
         <label>
           Instance label
@@ -16,10 +31,6 @@
             <input id="instance-label" required />
             <button id="random-instance-label" type="button">Random</button>
           </span>
-        </label>
-        <label class="check">
-          <input id="desktop-enabled" type="checkbox" />
-          Connect to Desktop Widget
         </label>
         <label id="desktop-url-field">
           <span class="label-row">
@@ -38,9 +49,8 @@
           </span>
         </label>
         <label>
-          Attach panels to
+          Attach menus to
           <select id="attachment-mode">
-            <option value="none">No windows</option>
             <option value="lastFocused">Last focused window</option>
             <option value="active">Active window</option>
             <option value="all">All windows</option>

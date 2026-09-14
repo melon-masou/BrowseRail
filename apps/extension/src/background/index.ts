@@ -10,16 +10,75 @@ import browser from "webextension-polyfill";
 
 import { resolveMenuItems } from "../bookmarks";
 import { browserKind, listBrowserWindows } from "../browser-adapter";
-import { loadConfig, saveConfig } from "../config";
+import { loadConfig, loadMenuPlacements, saveMenuPlacement } from "../config";
 import { loadInstanceUid } from "../instance-identity";
+import { ExtensionStateMachine, type ExtensionConnectionState } from "../state-machine";
 import { navigateBookmark } from "../tab-actions/navigate";
 
+export const connectionStateMachine = new ExtensionStateMachine("disconnected");
+
+connectionStateMachine.subscribe((next, _prev, detail) => {
+  updateActionBadge(next, detail);
+  void browser.runtime
+    .sendMessage({
+      type: "desktopStateChanged",
+      state: next,
+      detail,
+    })
+    .catch(() => {});
+});
+
+function updateActionBadge(state: ExtensionConnectionState, detail?: string): void {
+  let text = "";
+  let color = "#757575";
+  let title = `BrowseRail: ${state}`;
+  switch (state) {
+    case "connected":
+      text = "ON";
+      color = "#2e7d32";
+      title = `BrowseRail: Connected (${detail ?? "Ready"})`;
+      break;
+    case "syncing":
+      text = "SYNC";
+      color = "#1565c0";
+      title = `BrowseRail: Syncing (${detail ?? ""})`;
+      break;
+    case "connecting":
+    case "handshaking":
+      text = "…";
+      color = "#f57c00";
+      title = "BrowseRail: Connecting…";
+      break;
+    case "reconnecting":
+      text = "WAIT";
+      color = "#e65100";
+      title = `BrowseRail: Reconnecting (${detail ?? ""})`;
+      break;
+    case "disconnected":
+      text = "OFF";
+      color = "#757575";
+      title = "BrowseRail: Disconnected";
+      break;
+    case "disabled":
+      text = "";
+      title = "BrowseRail: Disabled";
+      break;
+  }
+  void browser.action.setBadgeText({ text });
+  void browser.action.setBadgeBackgroundColor({ color });
+  void browser.action.setTitle({ title });
+}
+
+updateActionBadge(connectionStateMachine.getState());
+
 const HEARTBEAT_INTERVAL_MS = 20_000;
-const RECONNECT_DELAY_MS = 2_000;
+const RECONNECT_DELAY_MS = 3_000;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 let socket: WebSocket | undefined;
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let reconnectAttempts = 0;
 let revision = 0;
 let lastFocusedWindowUid: string | undefined;
 let syncRequested = false;
@@ -51,19 +110,39 @@ browser.bookmarks.onCreated.addListener(requestSync);
 browser.bookmarks.onChanged.addListener(requestSync);
 browser.bookmarks.onMoved.addListener(requestSync);
 browser.bookmarks.onRemoved.addListener(requestSync);
+let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleReconcile(): void {
+  clearTimeout(reconcileTimer);
+  reconcileTimer = setTimeout(() => {
+    void reconcileConnection();
+  }, 50);
+}
+
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && changes.config) {
-    void reconcileConnection();
+    scheduleReconcile();
   }
 });
 browser.runtime.onMessage.addListener((message: unknown) => {
+  if (isGetStateMessage(message)) {
+    return Promise.resolve({
+      state: connectionStateMachine.getState(),
+      detail: connectionStateMachine.getDetail(),
+    });
+  }
+  if (isManualReconnectMessage(message)) {
+    manualReconnect();
+    return Promise.resolve({ ok: true });
+  }
   if (isConfigSavedMessage(message)) {
-    void reconcileConnection();
+    scheduleReconcile();
   }
 });
 browser.action.onClicked.addListener(() => void browser.runtime.openOptionsPage());
 
 async function reconcileConnection(): Promise<void> {
+  clearTimeout(reconcileTimer);
   const generation = ++connectionGeneration;
   const config = await loadConfig();
   if (generation !== connectionGeneration) {
@@ -82,10 +161,12 @@ async function reconcileConnection(): Promise<void> {
 
   if (!connectionEnabled) {
     stopConnection();
+    connectionStateMachine.transition("disabled", "Widget disabled in settings");
   } else if (connectionMatches) {
     requestSync();
   } else {
     stopConnection();
+    connectionStateMachine.transition("disconnected", "Connection parameters changed");
     await connect(generation);
   }
 }
@@ -102,6 +183,7 @@ async function connect(generation = connectionGeneration): Promise<void> {
   if (lastFocused?.id !== undefined) {
     lastFocusedWindowUid = String(lastFocused.id);
   }
+  connectionStateMachine.transition("connecting", `Connecting to ${desiredSocketUrl}`);
   const nextSocket = new WebSocket(desiredSocketUrl);
   socket = nextSocket;
 
@@ -109,6 +191,7 @@ async function connect(generation = connectionGeneration): Promise<void> {
     if (socket !== nextSocket) {
       return;
     }
+    connectionStateMachine.transition("handshaking", `WebSocket opened, sending hello (instance: ${instance.uid})`);
     send({
       type: "hello",
       protocolVersion: PROTOCOL_VERSION,
@@ -147,6 +230,8 @@ async function handleMessage(raw: unknown): Promise<void> {
   }
 
   if (value.type === "ready") {
+    reconnectAttempts = 0;
+    connectionStateMachine.transition("connected", `Handshake completed, protocol v${value.protocolVersion}`);
     requestSync();
     return;
   }
@@ -168,12 +253,7 @@ async function handleMessage(raw: unknown): Promise<void> {
   }
 
   if (value.type === "updateMenuPlacement") {
-    const config = await loadConfig();
-    const menu = config.panel.menus.find((candidate) => candidate.uid === value.menuUid);
-    if (menu) {
-      menu.placement = value.placement;
-      await saveConfig(config);
-    }
+    await saveMenuPlacement(value.menuUid, value.placement);
   }
 }
 
@@ -201,30 +281,44 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [config, windows] = await Promise.all([loadConfig(), listBrowserWindows()]);
-  const menus = await Promise.all(
-    config.panel.menus.map(async (menu) => ({
-      items: await resolveMenuItems(menu.items),
-      orientation: menu.orientation,
-      placement: menu.placement,
-      uid: menu.uid,
-    })),
-  );
-  updateLastFocusedWindow(windows);
+  if (connectionStateMachine.getState() === "connected") {
+    connectionStateMachine.transition("syncing", `Revision ${revision + 1}`);
+  }
 
-  const selected = selectWindows(config.attachmentMode, windows);
-  const panels: PanelSnapshot[] = selected.map((window) => ({
-    alwaysOnTop: config.panel.alwaysOnTop,
-    menus,
-    window,
-  }));
+  try {
+    const [config, windows, placements] = await Promise.all([
+      loadConfig(),
+      listBrowserWindows(),
+      loadMenuPlacements(),
+    ]);
+    const menus = await Promise.all(
+      config.panel.menus.map(async (menu) => ({
+        items: await resolveMenuItems(menu.items),
+        orientation: menu.orientation,
+        placement: placements[menu.uid] ?? menu.placement,
+        uid: menu.uid,
+      })),
+    );
+    updateLastFocusedWindow(windows);
 
-  send({
-    type: "sync",
-    revision: ++revision,
-    attachmentMode: config.attachmentMode,
-    panels,
-  });
+    const selected = selectWindows(config.attachmentMode, windows);
+    const panels: PanelSnapshot[] = selected.map((window) => ({
+      alwaysOnTop: config.panel.alwaysOnTop,
+      menus,
+      window,
+    }));
+
+    send({
+      type: "sync",
+      revision: ++revision,
+      attachmentMode: config.attachmentMode,
+      panels,
+    });
+  } finally {
+    if (socket?.readyState === WebSocket.OPEN && connectionStateMachine.getState() === "syncing") {
+      connectionStateMachine.transition("connected", "Sync completed");
+    }
+  }
 }
 
 function selectWindows(
@@ -271,9 +365,36 @@ function startHeartbeat(): void {
 
 function reconnect(): void {
   clearInterval(heartbeatTimer);
-  if (connectionEnabled) {
-    reconnectTimer = setTimeout(() => void connect(), RECONNECT_DELAY_MS);
+  if (!connectionEnabled) {
+    connectionStateMachine.transition("disabled", "Widget disabled in settings");
+    return;
   }
+
+  reconnectAttempts += 1;
+  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+    connectionStateMachine.transition(
+      "disconnected",
+      `Failed to connect after ${MAX_RECONNECT_ATTEMPTS} attempts. Click Reconnect to retry.`,
+    );
+    return;
+  }
+
+  connectionStateMachine.transition(
+    "reconnecting",
+    `Retry attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in 3s…`,
+  );
+  reconnectTimer = setTimeout(() => void connect(), RECONNECT_DELAY_MS);
+}
+
+function manualReconnect(): void {
+  reconnectAttempts = 0;
+  clearTimeout(reconnectTimer);
+  clearInterval(heartbeatTimer);
+  const currentSocket = socket;
+  socket = undefined;
+  currentSocket?.close();
+  connectionStateMachine.transition("connecting", `Manual reconnect initiated`);
+  void connect();
 }
 
 function stopConnection(): void {
@@ -282,8 +403,21 @@ function stopConnection(): void {
   const currentSocket = socket;
   socket = undefined;
   currentSocket?.close();
+  if (connectionEnabled) {
+    connectionStateMachine.transition("disconnected", "Connection stopped");
+  } else {
+    connectionStateMachine.transition("disabled", "Connection disabled");
+  }
 }
 
 function isConfigSavedMessage(value: unknown): value is { type: "configSaved" } {
   return typeof value === "object" && value !== null && "type" in value && value.type === "configSaved";
+}
+
+function isGetStateMessage(value: unknown): value is { type: "getDesktopState" } {
+  return typeof value === "object" && value !== null && "type" in value && value.type === "getDesktopState";
+}
+
+function isManualReconnectMessage(value: unknown): value is { type: "manualReconnect" } {
+  return typeof value === "object" && value !== null && "type" in value && value.type === "manualReconnect";
 }
