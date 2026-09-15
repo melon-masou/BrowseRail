@@ -1,4 +1,4 @@
-import type { AttachmentMode, MenuOrientation, MenuPlacement } from "@browserail/protocol";
+import type { AttachmentMode, MenuFontSize, MenuOrientation, MenuPlacement } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "./desktop-connection";
@@ -12,6 +12,7 @@ export interface StoredMenuItem {
 }
 
 export interface StoredMenu {
+  fontSize?: MenuFontSize;
   items: StoredMenuItem[];
   orientation: MenuOrientation;
   uid: string;
@@ -42,19 +43,89 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
 
 export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
   return {
+    fontSize: "medium",
     items: [],
     orientation: "row",
     uid,
   };
 }
 
-export function defaultMenuPlacement(index = 0): MenuPlacement {
+export const DEFAULT_ITEM_WIDTH = 84;
+export const DEFAULT_ITEM_HEIGHT = 36;
+export const MENU_GAP = 4;
+
+export function getItemDimensions(fontSize: MenuFontSize = "medium"): { itemWidth: number; itemHeight: number } {
+  switch (fontSize) {
+    case "small":
+      return { itemWidth: 72, itemHeight: 30 };
+    case "large":
+      return { itemWidth: 96, itemHeight: 42 };
+    case "medium":
+    default:
+      return { itemWidth: DEFAULT_ITEM_WIDTH, itemHeight: DEFAULT_ITEM_HEIGHT };
+  }
+}
+
+export function defaultMenuPlacement(
+  index = 0,
+  orientation: MenuOrientation = "row",
+  itemCount = 1,
+  fontSize: MenuFontSize = "medium",
+): MenuPlacement {
+  const { itemWidth, itemHeight } = getItemDimensions(fontSize);
+  const count = Math.max(1, itemCount);
+  const width = orientation === "row" ? count * itemWidth + (count - 1) * MENU_GAP : itemWidth;
+  const height = orientation === "column" ? count * itemHeight + (count - 1) * MENU_GAP : itemHeight;
+
   return {
     anchor: "topLeft",
-    height: 40,
+    fontSize,
+    height,
+    itemHeight,
+    itemWidth,
     offsetX: 12,
-    offsetY: 12 + index * 52,
-    width: 288,
+    offsetY: 12 + index * (height + 12),
+    width,
+  };
+}
+
+export function resolveMenuPlacement(
+  storedPlacement: MenuPlacement | undefined,
+  index = 0,
+  orientation: MenuOrientation = "row",
+  itemCount = 1,
+  fontSize: MenuFontSize = "medium",
+): MenuPlacement {
+  const count = Math.max(1, itemCount);
+  const defaultDim = getItemDimensions(fontSize);
+
+  if (!storedPlacement) {
+    return defaultMenuPlacement(index, orientation, count, fontSize);
+  }
+
+  let itemWidth = storedPlacement.itemWidth ?? defaultDim.itemWidth;
+  let itemHeight = storedPlacement.itemHeight ?? defaultDim.itemHeight;
+
+  if (storedPlacement.fontSize && storedPlacement.fontSize !== fontSize) {
+    itemHeight = defaultDim.itemHeight;
+    const oldDefaultDim = getItemDimensions(storedPlacement.fontSize);
+    if (storedPlacement.itemWidth === oldDefaultDim.itemWidth) {
+      itemWidth = defaultDim.itemWidth;
+    }
+  }
+
+  const width = orientation === "row" ? count * itemWidth + (count - 1) * MENU_GAP : itemWidth;
+  const height = orientation === "column" ? count * itemHeight + (count - 1) * MENU_GAP : itemHeight;
+
+  return {
+    anchor: storedPlacement.anchor,
+    fontSize,
+    height,
+    itemHeight,
+    itemWidth,
+    offsetX: storedPlacement.offsetX,
+    offsetY: storedPlacement.offsetY,
+    width,
   };
 }
 
@@ -149,7 +220,11 @@ function normalizeMenu(value: unknown): StoredMenu | undefined {
   if (!isRecord(value) || typeof value.uid !== "string" || !value.uid) {
     return undefined;
   }
+  const fontSize = value.fontSize === "small" || value.fontSize === "large" || value.fontSize === "medium"
+    ? value.fontSize
+    : undefined;
   return {
+    ...(fontSize ? { fontSize } : {}),
     items: Array.isArray(value.items) ? value.items.filter(isStoredMenuItem) : [],
     orientation: value.orientation === "column" ? "column" : "row",
     uid: value.uid,
@@ -160,12 +235,24 @@ function normalizePlacement(value: unknown): MenuPlacement | undefined {
   if (!isRecord(value) || !isAnchor(value.anchor)) {
     return undefined;
   }
+  const itemWidth = typeof value.itemWidth === "number" && Number.isFinite(value.itemWidth)
+    ? boundedNumber(value.itemWidth, 24, 400, DEFAULT_ITEM_WIDTH)
+    : undefined;
+  const itemHeight = typeof value.itemHeight === "number" && Number.isFinite(value.itemHeight)
+    ? boundedNumber(value.itemHeight, 20, 200, DEFAULT_ITEM_HEIGHT)
+    : undefined;
+  const fontSize = value.fontSize === "small" || value.fontSize === "large" || value.fontSize === "medium"
+    ? value.fontSize
+    : undefined;
   return {
     anchor: value.anchor,
-    height: boundedNumber(value.height, 32, 1_200, 40),
+    ...(fontSize ? { fontSize } : {}),
+    height: boundedNumber(value.height, 24, 1_600, DEFAULT_ITEM_HEIGHT),
+    ...(itemHeight !== undefined ? { itemHeight } : {}),
+    ...(itemWidth !== undefined ? { itemWidth } : {}),
     offsetX: boundedNumber(value.offsetX, -10_000, 10_000, 12),
     offsetY: boundedNumber(value.offsetY, -10_000, 10_000, 12),
-    width: boundedNumber(value.width, 40, 1_600, 288),
+    width: boundedNumber(value.width, 36, 2_000, DEFAULT_ITEM_WIDTH),
   };
 }
 

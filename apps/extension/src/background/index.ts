@@ -11,10 +11,10 @@ import browser from "webextension-polyfill";
 import { resolveMenuItems } from "../bookmarks";
 import { browserKind, listBrowserWindows } from "../browser-adapter";
 import {
-  defaultMenuPlacement,
   loadConfig,
   loadMenuPlacements,
   loadWidgetEnabled,
+  resolveMenuPlacement,
   saveMenuPlacement,
   saveWidgetEnabled,
 } from "../config";
@@ -342,12 +342,23 @@ async function syncOnce(): Promise<void> {
     loadMenuPlacements(),
   ]);
   const menus = await Promise.all(
-    config.panel.menus.map(async (menu, index) => ({
-      items: await resolveMenuItems(menu.items),
-      orientation: menu.orientation,
-      placement: placements[menu.uid] ?? defaultMenuPlacement(index),
-      uid: menu.uid,
-    })),
+    config.panel.menus.map(async (menu, index) => {
+      const items = await resolveMenuItems(menu.items);
+      const placement = resolveMenuPlacement(
+        placements[menu.uid],
+        index,
+        menu.orientation,
+        items.length,
+        menu.fontSize,
+      );
+      return {
+        fontSize: menu.fontSize ?? "medium",
+        items,
+        orientation: menu.orientation,
+        placement,
+        uid: menu.uid,
+      };
+    }),
   );
   updateLastFocusedWindow(windows);
 

@@ -1,6 +1,9 @@
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  --menu-font-size: 13px;
+  --menu-item-height: 36px;
+  --min-column-width: 84px;
 }
 
 html,
@@ -16,38 +19,105 @@ button {
   font: inherit;
 }
 
-.menu {
-  --item-count: 1;
-  display: grid;
+.menu-surface {
+  position: relative;
   width: 100vw;
   height: 100vh;
   box-sizing: border-box;
-  gap: 4px;
+  overflow: visible;
   background: transparent;
+  pointer-events: none;
 }
 
-.menu[data-orientation="row"] {
+.menu-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  --item-count: 1;
+  display: grid;
+  gap: 4px;
+  box-sizing: border-box;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.menu-bar[data-orientation="row"] {
   grid-template-columns: repeat(var(--item-count), minmax(0, 1fr));
 }
 
-.menu[data-orientation="column"] {
+.menu-bar[data-orientation="column"] {
   grid-template-rows: repeat(var(--item-count), minmax(0, 1fr));
 }
 
 .menu-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: #f5f7fb;
   background: rgb(31 37 49 / 94%);
   box-shadow: 0 3px 12px rgb(0 0 0 / 22%);
+  font-size: var(--menu-font-size, 13px);
+  cursor: pointer;
+  user-select: none;
+}
+
+.menu-button-label {
+  flex: 1 1 auto;
+  min-width: 0;
   text-align: center;
   text-overflow: ellipsis;
+  overflow: hidden;
   white-space: nowrap;
-  cursor: pointer;
+}
+
+.menu-bar[data-orientation="row"] .menu-button,
+.customize-rail[data-orientation="row"] .menu-button {
+  container-type: inline-size;
+}
+
+@container (max-width: 72px) {
+  .menu-button {
+    padding: 0 6px;
+  }
+  .menu-button-label {
+    font-size: calc(var(--menu-font-size, 13px) - 1.5px);
+  }
+}
+
+@container (max-width: 50px) {
+  .menu-button {
+    padding: 0 3px;
+  }
+  .menu-button-label {
+    font-size: 10px;
+  }
+}
+
+.menu-button[data-folder]::after {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: #aab3c4;
+  pointer-events: none;
+  content: "▾";
+}
+
+.menu-bar[data-orientation="column"] .menu-button[data-folder]::after,
+.customize-rail[data-orientation="column"] .menu-button[data-folder]::after {
+  content: "▸";
 }
 
 .menu-button:hover,
@@ -73,11 +143,11 @@ button {
   white-space: nowrap;
 }
 
-.popup {
+.popup-container {
+  position: absolute;
+  z-index: 10;
   display: flex;
   gap: 4px;
-  width: 100vw;
-  height: 100vh;
   box-sizing: border-box;
   overflow: auto hidden;
   border: 1px solid rgb(255 255 255 / 12%);
@@ -86,78 +156,141 @@ button {
   color: #f5f7fb;
   background: rgb(24 29 39 / 98%);
   box-shadow: 0 10px 30px rgb(0 0 0 / 34%);
+  pointer-events: auto;
 }
 
 .menu-column {
   display: flex;
-  flex: 0 0 220px;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: var(--min-column-width, 84px);
+  max-width: 320px;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
+  box-sizing: border-box;
   overflow: hidden auto;
 }
 
-.popup .menu-button {
-  flex: 0 0 36px;
+.popup-container .menu-button {
+  flex: 0 0 auto;
+  height: var(--menu-item-height, 36px);
+  min-height: var(--menu-item-height, 36px);
+  width: 100%;
   border: 0;
   border-radius: 6px;
-  padding: 0 28px 0 10px;
+  padding: 0 24px 0 10px;
   background: transparent;
   box-shadow: none;
   text-align: left;
+  justify-content: flex-start;
+  font-size: var(--menu-font-size, 13px);
 }
 
-.popup .menu-button[data-folder] {
-  position: relative;
+.popup-container .menu-button .menu-button-label {
+  text-align: left;
+  flex: 1 1 auto;
 }
 
-.popup .menu-button[data-folder]::after {
+.popup-container .menu-button[data-folder]::after {
   position: absolute;
-  right: 10px;
-  content: "›";
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  line-height: 1;
   color: #aab3c4;
+  content: "▸";
 }
 
-.popup .menu-button:hover,
-.popup .menu-button:focus-visible,
-.popup .menu-button[data-expanded] {
+.popup-container .menu-button:hover,
+.popup-container .menu-button:focus-visible,
+.popup-container .menu-button[data-expanded] {
   background: #384357;
 }
 
-.customize {
+.customize-mode {
   position: relative;
-  display: block;
-  border: 1px dashed #7aa2ff;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  background: transparent;
+  gap: 6px;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.customize-rail {
+  --item-count: 1;
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 24px;
+  min-width: 0;
+  box-sizing: border-box;
+  gap: 4px;
+  background: transparent;
+  outline: 2px dashed #7aa2ff;
+  outline-offset: -1px;
   border-radius: 8px;
-  background: rgb(23 29 40 / 90%);
+  cursor: move;
+  position: relative;
+}
+
+.customize-rail[data-orientation="row"] {
+  grid-template-columns: repeat(var(--item-count), minmax(0, 1fr));
+}
+
+.customize-rail[data-orientation="column"] {
+  grid-template-rows: repeat(var(--item-count), minmax(0, 1fr));
+}
+
+.customize-rail .menu-button {
+  pointer-events: none;
 }
 
 .customize-toolbar {
-  display: grid;
-  grid-template-columns: max-content minmax(44px, 1fr) max-content max-content;
+  flex: 0 0 32px;
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
-  width: 100%;
-  height: 100%;
+  height: 32px;
   box-sizing: border-box;
-  padding: 4px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: rgb(24 29 39 / 96%);
+  border: 1px solid rgb(255 255 255 / 16%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
+  user-select: none;
+  width: fit-content;
 }
 
 .customize-control {
-  min-width: 30px;
-  min-height: 24px;
-  overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 16%);
-  border-radius: 5px;
-  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  box-sizing: border-box;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 6px;
+  padding: 0;
   color: #f5f7fb;
-  background: #303b50;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: rgb(48 59 80 / 80%);
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .customize-control:hover {
   background: #445574;
+  border-color: rgb(255 255 255 / 24%);
+}
+
+.customize-control svg {
+  display: block;
+  pointer-events: none;
 }
 
 .move-handle {

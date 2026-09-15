@@ -1,4 +1,4 @@
-import type { AttachmentMode, MenuOrientation } from "@browserail/protocol";
+import type { AttachmentMode, MenuFontSize, MenuOrientation } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import {
@@ -238,6 +238,11 @@ function renderMenus(): void {
       });
       header.append(title, removeMenu);
 
+      const configGrid = document.createElement("div");
+      configGrid.style.display = "grid";
+      configGrid.style.gridTemplateColumns = "1fr 1fr";
+      configGrid.style.gap = "12px";
+
       const orientationLabel = document.createElement("label");
       orientationLabel.textContent = "Direction";
       const orientation = document.createElement("select");
@@ -247,6 +252,22 @@ function renderMenus(): void {
         menu.orientation = orientation.value as MenuOrientation;
       });
       orientationLabel.append(orientation);
+
+      const fontSizeLabel = document.createElement("label");
+      fontSizeLabel.textContent = "Font size";
+      const fontSizeSelect = document.createElement("select");
+      fontSizeSelect.append(
+        new Option("Small (Compact)", "small"),
+        new Option("Medium (Default)", "medium"),
+        new Option("Large (Spacious)", "large"),
+      );
+      fontSizeSelect.value = menu.fontSize ?? "medium";
+      fontSizeSelect.addEventListener("change", () => {
+        menu.fontSize = fontSizeSelect.value as MenuFontSize;
+      });
+      fontSizeLabel.append(fontSizeSelect);
+
+      configGrid.append(orientationLabel, fontSizeLabel);
 
       const addRow = document.createElement("div");
       addRow.className = "add-row";
@@ -275,7 +296,7 @@ function renderMenus(): void {
         }),
       );
 
-      card.append(header, orientationLabel, addRow, items);
+      card.append(header, configGrid, addRow, items);
       return card;
     }),
   );

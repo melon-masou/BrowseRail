@@ -27,12 +27,17 @@ export interface BrowserWindowSnapshot {
   bounds: WindowBounds;
 }
 
+export type MenuFontSize = "small" | "medium" | "large";
+
 export interface MenuPlacement {
   anchor: MenuAnchor;
   height: number;
   offsetX: number;
   offsetY: number;
   width: number;
+  itemWidth?: number;
+  itemHeight?: number;
+  fontSize?: MenuFontSize;
 }
 
 export interface BookmarkEntry {
@@ -51,6 +56,7 @@ export interface FolderEntry {
 export type LayoutEntry = BookmarkEntry | FolderEntry;
 
 export interface MenuSnapshot {
+  fontSize?: MenuFontSize;
   items: LayoutEntry[];
   orientation: MenuOrientation;
   placement: MenuPlacement;

@@ -461,17 +461,16 @@ pub fn resize_popup(
     instance_uid: &str,
     window_uid: &str,
     menu_uid: &str,
-    anchor: &PopupAnchor,
+    _anchor: &PopupAnchor,
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let parent = app
+    let menu_window = app
         .get_webview_window(&menu_label(instance_uid, window_uid, menu_uid))
         .ok_or("Menu window is unavailable")?;
-    let window = app
-        .get_webview_window(&popup_label(instance_uid, window_uid, menu_uid))
-        .ok_or("Popup window is unavailable")?;
-    place_popup(&parent, &window, anchor, width, height)
+    menu_window
+        .set_size(LogicalSize::new(width, height))
+        .map_err(|error| error.to_string())
 }
 
 pub fn close_popup(

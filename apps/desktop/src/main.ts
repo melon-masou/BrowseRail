@@ -12,6 +12,13 @@ import "./styles.css";
 const root = requiredElement("app");
 const query = new URLSearchParams(location.search);
 
+window.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+}, true);
+document.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+}, true);
+
 if (query.get("view") === "host") {
   document.body.replaceChildren();
 } else if (query.get("view") === "settings") {
@@ -24,26 +31,24 @@ async function initializeSurface(): Promise<void> {
   const instanceUid = requiredQuery("instanceUid");
   const windowUid = requiredQuery("windowUid");
   const menuUid = requiredQuery("menuUid");
-  const surface = query.get("surface") === "popup" ? "popup" : "menu";
   const initial = await invoke<SurfaceState>("surface_state", {
     instanceUid,
     menuUid,
-    surface,
+    surface: "menu",
     windowUid,
   });
-  document.body.dataset.surface = surface;
-  root.addEventListener("pointerenter", () => {
-    void cancelPopupClose(instanceUid, windowUid, menuUid);
-  });
-  root.addEventListener("pointerleave", () => {
-    void schedulePopupClose(instanceUid, windowUid, menuUid);
-  });
+
+  document.body.dataset.surface = "menu";
 
   let customizing = false;
   let currentMenu = initial.menu;
 
+  // Track active popup state inside this single window
+  let activePopupEl: HTMLElement | null = null;
+  let activePopupFolderUid: string | null = null;
+
   await listen<MenuSnapshot>("menu-state", ({ payload }) => {
-    if (surface === "menu" && payload.uid === menuUid && !customizing) {
+    if (payload.uid === menuUid && !customizing) {
       if (
         currentMenu &&
         currentMenu.orientation === payload.orientation &&
@@ -56,147 +61,183 @@ async function initializeSurface(): Promise<void> {
         return;
       }
       currentMenu = payload;
-      renderMenu(payload);
+      renderSurface(payload);
     }
   });
-  await listen<PopupPayload>("popup-state", ({ payload }) => {
-    if (surface === "popup") {
-      renderPopup(payload);
-    }
-  });
+
   await listen<{ ok: boolean; message?: string }>("action-result", ({ payload }) => {
     root.toggleAttribute("data-error", !payload.ok);
     root.title = payload.ok ? "" : (payload.message ?? "Action failed");
   });
 
-  if (surface === "menu" && initial.menu) {
-    renderMenu(initial.menu);
-  } else if (surface === "popup" && initial.payload) {
-    renderPopup(initial.payload);
+  if (initial.menu) {
+    renderSurface(initial.menu);
   }
 
-  function renderMenu(menu: MenuSnapshot): void {
-    root.className = "menu";
-    root.ariaLabel = "BrowseRail menu";
-    root.dataset.orientation = menu.orientation;
-    root.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
+  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function scheduleClose(): void {
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => {
+      closePopup();
+    }, 150);
+  }
+
+  function cancelClose(): void {
+    clearTimeout(closeTimer);
+  }
+
+  function applyMenuTheme(menu: MenuSnapshot): { fontSize: string; itemHeight: number } {
+    const size = menu.fontSize ?? menu.placement.fontSize ?? "medium";
+    const fontSizePx = size === "small" ? "12px" : size === "large" ? "15px" : "13px";
+    const itemHeight = size === "small" ? 30 : size === "large" ? 42 : 36;
+    root.style.setProperty("--menu-font-size", fontSizePx);
+    root.style.setProperty("--menu-item-height", `${itemHeight}px`);
+    return { fontSize: size, itemHeight };
+  }
+
+  function renderSurface(menu: MenuSnapshot): void {
+    applyMenuTheme(menu);
+    root.className = "menu-surface";
+    root.replaceChildren();
+
+    const menuBar = document.createElement("div");
+    menuBar.className = "menu-bar";
+    menuBar.ariaLabel = "BrowseRail menu";
+    menuBar.dataset.orientation = menu.orientation;
+    menuBar.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
+    menuBar.style.width = `${menu.placement.width}px`;
+    menuBar.style.height = `${menu.placement.height}px`;
+
+    menuBar.addEventListener("pointerenter", cancelClose);
+    menuBar.addEventListener("pointerleave", (event) => {
+      if (!activePopupEl || !activePopupEl.contains(event.relatedTarget as Node | null)) {
+        scheduleClose();
+      }
+    });
+
     if (menu.items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty-menu";
       empty.textContent = "Empty menu · add items in extension";
-      root.replaceChildren(empty);
+      menuBar.replaceChildren(empty);
     } else {
-      root.replaceChildren(
-        ...menu.items.map((entry) => renderMenuEntry(entry, instanceUid, windowUid, menuUid)),
+      menuBar.replaceChildren(
+        ...menu.items.map((entry) => renderMenuEntry(entry, menuBar)),
       );
     }
-    root.onpointerdown = (event) => {
+
+    menuBar.onpointerdown = (event) => {
       if (event.button === 2) {
         event.preventDefault();
-        void invoke("begin_menu_customization")
-          .then(() => {
-            customizing = true;
-            renderCustomize(currentMenu ?? menu);
+        customizing = true;
+        closePopup(false);
+        void invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
+          instanceUid,
+          menuUid,
+          windowUid,
+        })
+          .then((info) => {
+            renderCustomize(currentMenu ?? menu, info?.toolbarPosition ?? "bottom");
           })
-          .catch(showSurfaceError);
+          .catch((err) => {
+            customizing = false;
+            showSurfaceError(err);
+          });
       }
     };
-    root.oncontextmenu = (event) => event.preventDefault();
+    menuBar.oncontextmenu = (event) => event.preventDefault();
+
+    root.appendChild(menuBar);
   }
 
-  function renderCustomize(menu: MenuSnapshot): void {
-    let anchor = menu.placement.anchor;
-    root.className = "menu customize";
-    root.replaceChildren();
-    root.dataset.orientation = menu.orientation;
-    root.onpointerdown = null;
-    root.oncontextmenu = (event) => event.preventDefault();
-
-    const toolbar = document.createElement("div");
-    toolbar.className = "customize-toolbar";
-    const anchorButton = controlButton(anchorLabel(anchor));
-    anchorButton.title = "Change anchor";
-    anchorButton.addEventListener("pointerdown", (event) => {
-      if (event.button === 0) {
-        anchor = nextAnchor(anchor);
-        anchorButton.textContent = anchorLabel(anchor);
-      }
-    });
-    const moveButton = controlButton("Move");
-    moveButton.classList.add("move-handle");
-    moveButton.addEventListener("pointerdown", () => {
-      void invoke("start_menu_drag");
-    });
-    const cancelButton = controlButton("×");
-    cancelButton.title = "Cancel";
-    cancelButton.addEventListener("pointerdown", (event) => {
-      if (event.button === 0) {
-        void cancelCustomization();
-      }
-    });
-    const saveButton = controlButton("✓");
-    saveButton.title = "Save";
-    saveButton.addEventListener("pointerdown", (event) => {
-      if (event.button === 0) {
-        void saveCustomization();
-      }
-    });
-    toolbar.append(anchorButton, moveButton, cancelButton, saveButton);
-    root.append(toolbar, resizeHandle("east"), resizeHandle("south"), resizeHandle("southEast"));
-
-    async function cancelCustomization(): Promise<void> {
-      customizing = false;
-      await invoke("cancel_menu_customization", { instanceUid, menuUid, windowUid });
-      if (currentMenu) {
-        renderMenu(currentMenu);
-      }
-    }
-
-    async function saveCustomization(): Promise<void> {
-      const placement = await invoke<MenuPlacement>("save_menu_placement", {
-        anchor,
-        instanceUid,
-        menuUid,
-        windowUid,
+  function renderMenuEntry(entry: LayoutEntry, menuBar: HTMLElement): HTMLElement {
+    const button = menuButton(entry, false);
+    if (entry.kind === "bookmark") {
+      button.addEventListener("pointerenter", () => {
+        closePopup();
       });
-      customizing = false;
-      if (currentMenu) {
-        currentMenu = { ...currentMenu, placement };
-        renderMenu(currentMenu);
-      }
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button === 0) {
+          event.preventDefault();
+          closePopup();
+          void invokeAction(instanceUid, windowUid, entry.uid);
+        }
+      });
+    } else {
+      button.addEventListener("pointerenter", () => {
+        openPopup(entry, button, menuBar);
+      });
+      button.addEventListener("focus", () => {
+        openPopup(entry, button, menuBar);
+      });
     }
+    return button;
   }
 
-  function resizeHandle(direction: "east" | "south" | "southEast"): HTMLElement {
-    const handle = document.createElement("div");
-    handle.className = `resize-handle resize-${direction}`;
-    handle.addEventListener("pointerdown", () => {
-      void invoke("start_menu_resize", { direction });
-    });
-    return handle;
-  }
+  function openPopup(entry: LayoutEntry & { kind: "folder" }, anchorButton: HTMLElement, menuBar: HTMLElement): void {
+    if (activePopupFolderUid === entry.uid && activePopupEl) {
+      return;
+    }
 
-  function renderPopup(payload: PopupPayload): void {
-    let levels: LayoutEntry[][] = [payload.entries];
+    // Mark anchor button as expanded
+    for (const btn of menuBar.querySelectorAll(".menu-button")) {
+      btn.removeAttribute("data-expanded");
+    }
+    anchorButton.toggleAttribute("data-expanded", true);
+
+    if (activePopupEl) {
+      activePopupEl.remove();
+      activePopupEl = null;
+    }
+
+    activePopupFolderUid = entry.uid;
+
+    let levels: LayoutEntry[][] = [entry.children];
     let expandedUids: string[] = [];
-    root.className = "popup";
-    root.ariaLabel = "BrowseRail bookmark menu";
 
+    const popupEl = document.createElement("div");
+    popupEl.className = "popup-container";
+    popupEl.ariaLabel = "BrowseRail bookmark menu";
+    popupEl.addEventListener("pointerenter", cancelClose);
+    popupEl.addEventListener("pointerleave", (event) => {
+      if (!menuBar.contains(event.relatedTarget as Node | null)) {
+        scheduleClose();
+      }
+    });
+    activePopupEl = popupEl;
+
+    // Position popup right next to the anchor button
+    const anchorRect = anchorButton.getBoundingClientRect();
+    const menuRect = menuBar.getBoundingClientRect();
+
+    if (currentMenu?.orientation === "column") {
+      popupEl.style.top = `${anchorRect.top}px`;
+      popupEl.style.left = `${anchorRect.right + 2}px`;
+    } else {
+      popupEl.style.top = `${anchorRect.bottom + 2}px`;
+      popupEl.style.left = `${anchorRect.left}px`;
+    }
+
+    popupEl.style.setProperty("--min-column-width", `${Math.round(anchorRect.width)}px`);
+    root.appendChild(popupEl);
+
+    const theme = applyMenuTheme(currentMenu ?? initial.menu!);
     renderLevels();
 
     function renderLevels(): void {
-      root.replaceChildren(
+      popupEl.replaceChildren(
         ...levels.map((entries, level) => {
           const column = document.createElement("div");
           column.className = "menu-column";
           column.append(
-            ...entries.map((entry) => {
-              const button = menuButton(entry, true);
-              if (entry.kind === "folder") {
-                button.toggleAttribute("data-expanded", expandedUids[level] === entry.uid);
+            ...entries.map((item) => {
+              const button = menuButton(item, true);
+              if (item.kind === "folder") {
+                button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
                 button.addEventListener("pointerenter", () => {
-                  levels = [...levels.slice(0, level + 1), entry.children];
-                  expandedUids = [...expandedUids.slice(0, level), entry.uid];
+                  levels = [...levels.slice(0, level + 1), item.children];
+                  expandedUids = [...expandedUids.slice(0, level), item.uid];
                   renderLevels();
                 });
               } else {
@@ -209,7 +250,8 @@ async function initializeSurface(): Promise<void> {
                 });
                 button.addEventListener("pointerdown", (event) => {
                   if (event.button === 0) {
-                    void invokePopupAction(entry.uid);
+                    closePopup();
+                    void invokeAction(instanceUid, windowUid, item.uid);
                   }
                 });
               }
@@ -220,64 +262,185 @@ async function initializeSurface(): Promise<void> {
         }),
       );
 
-      requestAnimationFrame(() => {
-        const width = Math.min(900, 16 + levels.length * 220 + (levels.length - 1) * 4);
-        const height = Math.min(520, Math.max(...levels.map(popupHeight)));
-        void invoke("resize_popup", {
-          height,
-          instanceUid,
-          menuUid,
-          width,
-          windowUid,
-        }).then(() => {
-          root.scrollLeft = root.scrollWidth;
-        });
+      // Measure column widths dynamically: fit-content with min-width and max-width
+      const columns = Array.from(popupEl.querySelectorAll<HTMLElement>(".menu-column"));
+      const totalColumnsWidth = columns.reduce((acc, col) => {
+        const w = col.getBoundingClientRect().width;
+        return acc + Math.ceil(w > 0 ? w : anchorRect.width);
+      }, 0);
+      const gapTotal = Math.max(0, columns.length - 1) * 4;
+      const popupWidth = Math.min(1200, 16 + totalColumnsWidth + gapTotal);
+
+      const popupHeightVal = Math.min(
+        560,
+        Math.max(...levels.map((entries) => popupColumnHeight(entries, theme.itemHeight))),
+      );
+      popupEl.style.width = `${popupWidth}px`;
+      popupEl.style.height = `${popupHeightVal}px`;
+
+      const totalWidth = currentMenu?.orientation === "column"
+        ? Math.max(menuRect.width, anchorRect.right + 2 + popupWidth)
+        : Math.max(menuRect.width, anchorRect.left + popupWidth);
+      const totalHeight = currentMenu?.orientation === "column"
+        ? Math.max(menuRect.height, anchorRect.top + popupHeightVal)
+        : Math.max(menuRect.height, anchorRect.bottom + 2 + popupHeightVal);
+
+      void invoke("resize_popup", {
+        height: totalHeight,
+        instanceUid,
+        menuUid,
+        width: totalWidth,
+        windowUid,
+      }).then(() => {
+        popupEl.scrollLeft = popupEl.scrollWidth;
       });
     }
+  }
 
-    async function invokePopupAction(actionUid: string): Promise<void> {
-      await invokeAction(instanceUid, windowUid, actionUid);
-      await invoke("close_popup", { instanceUid, menuUid, windowUid });
+  function closePopup(restoreNativeSize = true): void {
+    clearTimeout(closeTimer);
+    if (activePopupEl) {
+      activePopupEl.remove();
+      activePopupEl = null;
+    }
+    activePopupFolderUid = null;
+    for (const btn of root.querySelectorAll(".menu-button[data-expanded]")) {
+      btn.removeAttribute("data-expanded");
+    }
+
+    if (restoreNativeSize && currentMenu && !customizing) {
+      void invoke("resize_popup", {
+        height: currentMenu.placement.height,
+        instanceUid,
+        menuUid,
+        width: currentMenu.placement.width,
+        windowUid,
+      });
     }
   }
-}
 
-function renderMenuEntry(
-  entry: LayoutEntry,
-  instanceUid: string,
-  windowUid: string,
-  menuUid: string,
-): HTMLElement {
-  const button = menuButton(entry, false);
-  if (entry.kind === "bookmark") {
-    button.addEventListener("pointerenter", () => {
-      void schedulePopupClose(instanceUid, windowUid, menuUid);
-    });
-    button.addEventListener("pointerdown", (event) => {
+  function renderCustomize(menu: MenuSnapshot, toolbarPosition: "top" | "bottom" = "bottom"): void {
+    applyMenuTheme(menu);
+    let anchor = menu.placement.anchor;
+    root.className = "customize-mode";
+    root.dataset.toolbarPosition = toolbarPosition;
+    root.dataset.orientation = menu.orientation;
+    root.onpointerdown = null;
+
+    const railContainer = document.createElement("div");
+    railContainer.className = "customize-rail";
+    railContainer.dataset.orientation = menu.orientation;
+    railContainer.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
+
+    if (menu.items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty-menu";
+      empty.textContent = "Empty menu · add items in extension";
+      railContainer.replaceChildren(empty);
+    } else {
+      railContainer.replaceChildren(
+        ...menu.items.map((entry) => menuButton(entry, false)),
+      );
+    }
+
+    railContainer.addEventListener("pointerdown", (event) => {
       if (event.button === 0) {
         event.preventDefault();
-        void invokeAction(instanceUid, windowUid, entry.uid);
+        void invoke("start_menu_drag");
       }
     });
-  } else {
-    const open = async () => {
-      const bounds = button.getBoundingClientRect();
-      await invoke("open_popup", {
-        request: {
-          anchor: { height: bounds.height, x: bounds.x, y: bounds.y },
-          height: popupHeight(entry.children),
-          instanceUid,
-          menuUid,
-          payload: { entries: entry.children },
-          width: 236,
-          windowUid,
-        },
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "customize-toolbar";
+
+    const anchorButton = controlButton(createAnchorIcon(anchor));
+    anchorButton.title = `Anchor: ${anchorLabel(anchor)} (click to change)`;
+    anchorButton.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) {
+        anchor = nextAnchor(anchor);
+        anchorButton.replaceChildren(createAnchorIcon(anchor));
+        anchorButton.title = `Anchor: ${anchorLabel(anchor)} (click to change)`;
+      }
+    });
+
+    const moveButton = controlButton(createMoveIcon());
+    moveButton.title = "Drag to move";
+    moveButton.classList.add("move-handle");
+    moveButton.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) {
+        event.preventDefault();
+        void invoke("start_menu_drag");
+      }
+    });
+
+    const cancelButton = controlButton(createCancelIcon());
+    cancelButton.title = "Cancel";
+    cancelButton.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) {
+        void cancelCustomization();
+      }
+    });
+
+    const saveButton = controlButton(createSaveIcon());
+    saveButton.title = "Save placement";
+    saveButton.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) {
+        void saveCustomization();
+      }
+    });
+
+    toolbar.append(anchorButton, moveButton, cancelButton, saveButton);
+
+    if (toolbarPosition === "top") {
+      root.replaceChildren(
+        toolbar,
+        railContainer,
+        resizeHandle("east"),
+        resizeHandle("south"),
+        resizeHandle("southEast"),
+      );
+    } else {
+      root.replaceChildren(
+        railContainer,
+        toolbar,
+        resizeHandle("east"),
+        resizeHandle("south"),
+        resizeHandle("southEast"),
+      );
+    }
+
+    async function cancelCustomization(): Promise<void> {
+      customizing = false;
+      await invoke("cancel_menu_customization", { instanceUid, menuUid, windowUid });
+      if (currentMenu) {
+        renderSurface(currentMenu);
+      }
+    }
+
+    async function saveCustomization(): Promise<void> {
+      const placement = await invoke<MenuPlacement>("save_menu_placement", {
+        anchor,
+        instanceUid,
+        menuUid,
+        toolbarPosition,
+        windowUid,
       });
-    };
-    button.addEventListener("pointerenter", () => void open());
-    button.addEventListener("focus", () => void open());
+      customizing = false;
+      if (currentMenu) {
+        currentMenu = { ...currentMenu, placement };
+        renderSurface(currentMenu);
+      }
+    }
   }
-  return button;
+
+  function resizeHandle(direction: "east" | "south" | "southEast"): HTMLElement {
+    const handle = document.createElement("div");
+    handle.className = `resize-handle resize-${direction}`;
+    handle.addEventListener("pointerdown", () => {
+      void invoke("start_menu_resize", { direction });
+    });
+    return handle;
+  }
 }
 
 function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
@@ -285,8 +448,13 @@ function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
   button.type = "button";
   button.className = "menu-button";
   button.toggleAttribute("data-popup", popup);
-  button.textContent = entry.label;
   button.title = entry.label;
+
+  const labelSpan = document.createElement("span");
+  labelSpan.className = "menu-button-label";
+  labelSpan.textContent = entry.label;
+  button.append(labelSpan);
+
   if (entry.kind === "folder") {
     button.dataset.folder = "";
     button.setAttribute("aria-haspopup", "menu");
@@ -294,12 +462,127 @@ function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
   return button;
 }
 
-function controlButton(label: string): HTMLButtonElement {
+function controlButton(content: string | Element): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "customize-control";
-  button.textContent = label;
+  if (typeof content === "string") {
+    button.textContent = content;
+  } else {
+    button.append(content);
+  }
   return button;
+}
+
+function createAnchorIcon(anchor: MenuAnchor): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("fill", "none");
+
+  const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  rect.setAttribute("x", "1.5");
+  rect.setAttribute("y", "1.5");
+  rect.setAttribute("width", "13");
+  rect.setAttribute("height", "13");
+  rect.setAttribute("rx", "2.5");
+  rect.setAttribute("stroke", "currentColor");
+  rect.setAttribute("stroke-width", "1.3");
+  rect.setAttribute("stroke-opacity", "0.6");
+
+  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  let cx = "4.5";
+  let cy = "4.5";
+  switch (anchor) {
+    case "topLeft":
+      cx = "4.5";
+      cy = "4.5";
+      break;
+    case "topRight":
+      cx = "11.5";
+      cy = "4.5";
+      break;
+    case "bottomRight":
+      cx = "11.5";
+      cy = "11.5";
+      break;
+    case "bottomLeft":
+      cx = "4.5";
+      cy = "11.5";
+      break;
+  }
+  dot.setAttribute("cx", cx);
+  dot.setAttribute("cy", cy);
+  dot.setAttribute("r", "2.2");
+  dot.setAttribute("fill", "#7aa2ff");
+
+  svg.append(rect, dot);
+  return svg;
+}
+
+function createMoveIcon(): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute(
+    "d",
+    "M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20",
+  );
+  svg.append(path);
+  return svg;
+}
+
+function createSaveIcon(): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "#34d399");
+  svg.setAttribute("stroke-width", "2.5");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  polyline.setAttribute("points", "20 6 9 17 4 12");
+  svg.append(polyline);
+  return svg;
+}
+
+function createCancelIcon(): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "#f87171");
+  svg.setAttribute("stroke-width", "2.5");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+
+  const line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line1.setAttribute("x1", "18");
+  line1.setAttribute("y1", "6");
+  line1.setAttribute("x2", "6");
+  line1.setAttribute("y2", "18");
+
+  const line2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line2.setAttribute("x1", "6");
+  line2.setAttribute("y1", "6");
+  line2.setAttribute("x2", "18");
+  line2.setAttribute("y2", "18");
+
+  svg.append(line1, line2);
+  return svg;
 }
 
 function nextAnchor(anchor: MenuAnchor): MenuAnchor {
@@ -329,28 +612,8 @@ function showSurfaceError(error: unknown): void {
   root.title = String(error);
 }
 
-function popupHeight(entries: LayoutEntry[]): number {
-  return Math.min(520, Math.max(48, 16 + entries.length * 38));
-}
-
-async function cancelPopupClose(
-  instanceUid: string,
-  windowUid: string,
-  menuUid: string,
-): Promise<void> {
-  await invoke("cancel_popup_close", { instanceUid, menuUid, windowUid });
-}
-
-async function schedulePopupClose(
-  instanceUid: string,
-  windowUid: string,
-  menuUid: string,
-): Promise<void> {
-  try {
-    await invoke("schedule_popup_close", { instanceUid, menuUid, windowUid });
-  } catch {
-    // A Menu can be hovered before it has opened a Popup.
-  }
+function popupColumnHeight(entries: LayoutEntry[], itemHeight = 36): number {
+  return Math.min(560, Math.max(48, 16 + entries.length * (itemHeight + 2)));
 }
 
 async function initializeListenerSettings(): Promise<void> {
@@ -409,14 +672,9 @@ function describeListener(listener: ListenerState): string {
   return listener.error ? `Not listening: ${listener.error}` : "Not listening";
 }
 
-interface PopupPayload {
-  entries: LayoutEntry[];
-}
-
 interface SurfaceState {
-  kind: "menu" | "popup";
+  kind: "menu";
   menu?: MenuSnapshot;
-  payload?: PopupPayload;
 }
 
 interface ListenerState {

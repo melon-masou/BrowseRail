@@ -246,17 +246,100 @@ fn close_popup(
 }
 
 #[cfg(target_os = "windows")]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomizationStartInfo {
+    pub toolbar_position: String,
+}
+
+#[cfg(target_os = "windows")]
 #[tauri::command]
 fn begin_menu_customization(
     state: tauri::State<'_, AppState>,
     window: tauri::Window,
-) -> Result<(), String> {
+    instance_uid: String,
+    window_uid: String,
+    menu_uid: String,
+) -> Result<CustomizationStartInfo, String> {
+    state.surfaces.set_customizing(window.label(), true);
+    state.popups.remove(&instance_uid, &window_uid, &menu_uid);
+
+    let panel = state
+        .registry
+        .panel(&instance_uid, &window_uid)
+        .ok_or("Panel state is unavailable")?;
+    let orig_menu = panel
+        .menus
+        .iter()
+        .find(|menu| menu.uid == menu_uid)
+        .ok_or("Menu state is unavailable")?;
+
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let current_x = f64::from(position.x) / scale;
+    let current_y = f64::from(position.y) / scale;
+    let current_w = orig_menu.placement.width;
+    let current_h = orig_menu.placement.height;
+
+    let toolbar_space = 38.0;
+
+    let (space_above, space_below) = if let Ok(Some(monitor)) = window.current_monitor() {
+        let m_pos = monitor.position();
+        let m_size = monitor.size();
+        let m_top = f64::from(m_pos.y) / scale;
+        let m_bottom = m_top + f64::from(m_size.height) / scale;
+        (current_y - m_top, m_bottom - (current_y + current_h))
+    } else {
+        (current_y, 800.0)
+    };
+
+    let toolbar_position = if space_above >= toolbar_space && (space_below < toolbar_space || current_y > 150.0) {
+        "top".to_string()
+    } else if space_below >= toolbar_space {
+        "bottom".to_string()
+    } else if space_above >= space_below {
+        "top".to_string()
+    } else {
+        "bottom".to_string()
+    };
+
     let _ = state.native_sender.send(native::NativeCommand::BeginCustomization {
         label: window.label().to_string(),
     });
+
+    let items_count = orig_menu.items.len().max(1) as f64;
+    let (min_w, max_w, min_h, max_h) = match orig_menu.orientation {
+        protocol::MenuOrientation::Row => {
+            let min_w = (items_count * 24.0).max(40.0);
+            let max_w = 2000.0;
+            let min_h = 24.0 + toolbar_space;
+            let max_h = 64.0 + toolbar_space;
+            (min_w, max_w, min_h, max_h)
+        }
+        protocol::MenuOrientation::Column => {
+            let min_w = 36.0;
+            let max_w = 220.0;
+            let min_h = (items_count * 24.0) + toolbar_space;
+            let max_h = 1600.0;
+            (min_w, max_w, min_h, max_h)
+        }
+    };
+
+    let _ = window.set_min_size(Some(tauri::LogicalSize::new(min_w, min_h)));
+    let _ = window.set_max_size(Some(tauri::LogicalSize::new(max_w, max_h)));
+
+    let new_w = current_w.max(min_w);
+    let new_h = current_h + toolbar_space;
+    if toolbar_position == "top" {
+        let _ = window.set_position(tauri::LogicalPosition::new(current_x, current_y - toolbar_space));
+    }
+    let _ = window.set_size(tauri::LogicalSize::new(new_w, new_h));
+
     window
         .set_resizable(true)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    Ok(CustomizationStartInfo { toolbar_position })
 }
 
 #[cfg(target_os = "windows")]
@@ -288,22 +371,45 @@ fn save_menu_placement(
     window_uid: String,
     menu_uid: String,
     anchor: MenuAnchor,
+    toolbar_position: Option<String>,
 ) -> Result<MenuPlacement, String> {
     let panel = state
         .registry
         .panel(&instance_uid, &window_uid)
         .ok_or("Panel state is unavailable")?;
-    if !panel.menus.iter().any(|menu| menu.uid == menu_uid) {
-        return Err("Menu state is unavailable".into());
-    }
+    let orig_menu = panel
+        .menus
+        .iter()
+        .find(|menu| menu.uid == menu_uid)
+        .ok_or("Menu state is unavailable")?;
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
     let size = window.inner_size().map_err(|error| error.to_string())?;
     let x = f64::from(position.x) / scale;
-    let y = f64::from(position.y) / scale;
-    let width = f64::from(size.width) / scale;
-    let height = f64::from(size.height) / scale;
+    let mut y = f64::from(position.y) / scale;
+    let mut width = f64::from(size.width) / scale;
+    let mut height = f64::from(size.height) / scale;
+
+    let toolbar_space = 38.0;
+    if let Some(pos) = toolbar_position.as_deref() {
+        if pos == "top" {
+            y += toolbar_space;
+            height = (height - toolbar_space).max(24.0);
+        } else if pos == "bottom" {
+            height = (height - toolbar_space).max(24.0);
+        }
+    }
+
+    match orig_menu.orientation {
+        protocol::MenuOrientation::Row => {
+            height = height.clamp(24.0, 64.0);
+        }
+        protocol::MenuOrientation::Column => {
+            width = width.clamp(36.0, 220.0);
+        }
+    }
+
     let bounds = panel.window.bounds;
     let offset_x = match anchor {
         MenuAnchor::TopLeft | MenuAnchor::BottomLeft => x - bounds.x,
@@ -313,14 +419,32 @@ fn save_menu_placement(
         MenuAnchor::TopLeft | MenuAnchor::TopRight => y - bounds.y,
         MenuAnchor::BottomLeft | MenuAnchor::BottomRight => bounds.y + bounds.height - y - height,
     };
+
+    let items_count = orig_menu.items.len().max(1) as f64;
+    let (item_width, item_height) = match orig_menu.orientation {
+        protocol::MenuOrientation::Row => {
+            let iw = ((width - (items_count - 1.0) * 4.0) / items_count).max(24.0);
+            (Some(iw), Some(height))
+        }
+        protocol::MenuOrientation::Column => {
+            let ih = ((height - (items_count - 1.0) * 4.0) / items_count).max(24.0);
+            (Some(width), Some(ih))
+        }
+    };
+
     let placement = MenuPlacement {
         anchor,
         height,
         offset_x,
         offset_y,
         width,
+        item_width,
+        item_height,
+        font_size: orig_menu.placement.font_size.clone(),
     };
 
+    let _ = window.set_max_size(None::<tauri::Size>);
+    let _ = window.set_min_size(None::<tauri::Size>);
     state.surfaces.set_customizing(window.label(), false);
     let _ = state.native_sender.send(native::NativeCommand::SaveMenuPlacement {
         instance_uid,
@@ -329,6 +453,9 @@ fn save_menu_placement(
         anchor,
         placement: placement.clone(),
     });
+
+    let _ = window.set_size(tauri::LogicalSize::new(width, height));
+    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
     window
         .set_resizable(false)
         .map_err(|error| error.to_string())?;
@@ -344,12 +471,21 @@ fn cancel_menu_customization(
     window_uid: String,
     menu_uid: String,
 ) -> Result<(), String> {
+    let _ = window.set_max_size(None::<tauri::Size>);
+    let _ = window.set_min_size(None::<tauri::Size>);
     state.surfaces.set_customizing(window.label(), false);
     let _ = state.native_sender.send(native::NativeCommand::CancelCustomization {
-        instance_uid,
-        window_uid,
-        menu_uid,
+        instance_uid: instance_uid.clone(),
+        window_uid: window_uid.clone(),
+        menu_uid: menu_uid.clone(),
     });
+    if let Some(panel) = state.registry.panel(&instance_uid, &window_uid) {
+        if let Some(menu) = panel.menus.iter().find(|m| m.uid == menu_uid) {
+            let target_pos = panel::menu_position(&panel.window, &menu.placement);
+            let _ = window.set_size(tauri::LogicalSize::new(menu.placement.width, menu.placement.height));
+            let _ = window.set_position(target_pos);
+        }
+    }
     window
         .set_resizable(false)
         .map_err(|error| error.to_string())?;

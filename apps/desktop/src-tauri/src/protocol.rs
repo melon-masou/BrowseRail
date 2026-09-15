@@ -96,13 +96,15 @@ pub struct PanelSnapshot {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuSnapshot {
+    #[serde(default)]
+    pub font_size: Option<String>,
     pub items: Vec<LayoutEntry>,
     pub orientation: MenuOrientation,
     pub placement: MenuPlacement,
     pub uid: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum MenuOrientation {
     Row,
@@ -117,6 +119,12 @@ pub struct MenuPlacement {
     pub offset_x: f64,
     pub offset_y: f64,
     pub width: f64,
+    #[serde(default)]
+    pub item_width: Option<f64>,
+    #[serde(default)]
+    pub item_height: Option<f64>,
+    #[serde(default)]
+    pub font_size: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]

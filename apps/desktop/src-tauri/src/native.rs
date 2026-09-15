@@ -380,22 +380,12 @@ impl NativeReactor {
                     height,
                 } => {
                     let app = self.app.clone();
-                    let popups = self.popups.clone();
-                    if let Ok((anchor, w, h)) =
-                        popups.resize(&instance_uid, &window_uid, &menu_uid, width, height)
-                    {
-                        let _ = self.app.run_on_main_thread(move || {
-                            let _ = crate::panel::resize_popup(
-                                &app,
-                                &instance_uid,
-                                &window_uid,
-                                &menu_uid,
-                                &anchor,
-                                w,
-                                h,
-                            );
-                        });
-                    }
+                    let _ = self.app.run_on_main_thread(move || {
+                        let label = crate::panel::menu_label(&instance_uid, &window_uid, &menu_uid);
+                        if let Some(window) = app.get_webview_window(&label) {
+                            let _ = window.set_size(LogicalSize::new(width, height));
+                        }
+                    });
                 }
                 NativeCommand::SchedulePopupClose {
                     instance_uid,
