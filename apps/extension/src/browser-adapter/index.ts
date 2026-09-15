@@ -6,7 +6,27 @@ import type {
 import browser from "webextension-polyfill";
 
 export function browserKind(): BrowserKind {
-  return browser.runtime.getURL("").startsWith("moz-extension:") ? "firefox" : "chrome";
+  if (browser.runtime.getURL("").startsWith("moz-extension:")) {
+    return "firefox";
+  }
+
+  const userAgent = navigator.userAgent;
+  if (/\bEdg\//.test(userAgent)) {
+    return "edge";
+  }
+  if (/\bOPR\//.test(userAgent)) {
+    return "opera";
+  }
+  if (/\bVivaldi\//.test(userAgent)) {
+    return "vivaldi";
+  }
+  if (
+    "brave" in navigator &&
+    typeof (navigator as Navigator & { brave?: unknown }).brave === "object"
+  ) {
+    return "brave";
+  }
+  return "chrome";
 }
 
 export async function listBrowserWindows(): Promise<BrowserWindowSnapshot[]> {
@@ -44,4 +64,3 @@ function normalizeWindowState(state: browser.Windows.WindowState | undefined): B
     ? state
     : "normal";
 }
-

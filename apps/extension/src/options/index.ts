@@ -1,7 +1,14 @@
 import type { AttachmentMode, MenuOrientation } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
-import { createMenu, loadConfig, saveConfig, type StoredMenu } from "../config";
+import {
+  createMenu,
+  loadConfig,
+  loadWidgetEnabled,
+  saveConfig,
+  saveWidgetEnabled,
+  type StoredMenu,
+} from "../config";
 import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
 
@@ -20,7 +27,6 @@ const desktopUrl = element<HTMLInputElement>("desktop-url");
 const stateCard = element<HTMLDivElement>("state-card");
 const stateBadge = element<HTMLSpanElement>("state-badge");
 const stateDetail = element<HTMLDivElement>("state-detail");
-const desktopUrlField = element<HTMLLabelElement>("desktop-url-field");
 const testDesktop = element<HTMLButtonElement>("test-desktop");
 const desktopTestStatus = element<HTMLOutputElement>("desktop-test-status");
 const attachmentMode = element<HTMLSelectElement>("attachment-mode");
@@ -29,6 +35,8 @@ const menusContainer = element<HTMLDivElement>("menus");
 const addMenu = element<HTMLButtonElement>("add-menu");
 const status = element<HTMLOutputElement>("status");
 const reconnectButton = element<HTMLButtonElement>("reconnect-button");
+const resyncButton = element<HTMLButtonElement>("resync-button");
+const resyncStatus = element<HTMLOutputElement>("resync-status");
 
 let widgetEnabled = true;
 
@@ -60,18 +68,20 @@ form.addEventListener("submit", (event) => {
 });
 
 addMenu.addEventListener("click", () => {
-  menus.push(createMenu(undefined, menus.length));
+  menus.push(createMenu());
   renderMenus();
 });
 
 toggleEnabledButton.addEventListener("click", () => {
   widgetEnabled = !widgetEnabled;
   updateDesktopControls();
-  if (widgetEnabled) {
-    void testDesktopAddress();
+  if (!widgetEnabled) {
+    renderDesktopState("disabled", "Connection disabled");
   } else {
-    clearDesktopTestStatus();
+    renderDesktopState("connecting", "Connecting to Desktop Widget…");
   }
+  void saveWidgetEnabled(widgetEnabled);
+  void browser.runtime.sendMessage({ type: "setWidgetEnabled", enabled: widgetEnabled });
 });
 
 randomInstanceLabel.addEventListener("click", () => {
@@ -84,11 +94,13 @@ desktopUrl.addEventListener("input", clearDesktopTestStatus);
 reconnectButton.addEventListener("click", () => {
   void manualReconnect();
 });
+resyncButton.addEventListener("click", () => void resyncDesktopWindows());
 
 stateCard.addEventListener("click", (event) => {
   if (
     widgetEnabled &&
     event.target !== reconnectButton &&
+    event.target !== resyncButton &&
     event.target !== toggleEnabledButton &&
     stateCard.dataset.state !== "connected"
   ) {
@@ -105,10 +117,31 @@ async function manualReconnect(): Promise<void> {
   }
 }
 
+async function resyncDesktopWindows(): Promise<void> {
+  resyncButton.disabled = true;
+  resyncButton.textContent = "Resyncing…";
+  resyncStatus.dataset.state = "pending";
+  resyncStatus.value = "Closing and rebuilding windows…";
+  try {
+    const result = (await browser.runtime.sendMessage({ type: "resyncWindows" })) as
+      | { ok?: boolean; message?: string }
+      | undefined;
+    resyncStatus.dataset.state = result?.ok ? "success" : "error";
+    resyncStatus.value = result?.message ?? "Resync failed";
+  } catch {
+    resyncStatus.dataset.state = "error";
+    resyncStatus.value = "Background is unavailable";
+  } finally {
+    resyncButton.textContent = "Resync";
+    resyncButton.disabled = stateCard.dataset.state !== "connected";
+  }
+}
+
 function renderDesktopState(state: string, detail?: string): void {
   stateCard.dataset.state = state;
   stateBadge.textContent = state;
   stateDetail.textContent = detail || defaultDetailForState(state);
+  resyncButton.disabled = state !== "connected";
 }
 
 function defaultDetailForState(state: string): string {
@@ -146,12 +179,16 @@ async function refreshDesktopState(): Promise<void> {
 
 async function initialize(): Promise<void> {
   void refreshDesktopState();
-  const [config, tree] = await Promise.all([loadConfig(), browser.bookmarks.getTree()]);
+  const [config, enabled, tree] = await Promise.all([
+    loadConfig(),
+    loadWidgetEnabled(),
+    browser.bookmarks.getTree(),
+  ]);
   bookmarkOptions = flattenBookmarks(tree);
   bookmarkLabels = new Map(bookmarkOptions.map((option) => [option.id, option.label]));
 
   instanceLabel.value = config.instanceLabel;
-  widgetEnabled = config.desktopWidget.enabled;
+  widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
   attachmentMode.value = config.attachmentMode;
   alwaysOnTop.checked = config.panel.alwaysOnTop;
@@ -161,7 +198,7 @@ async function initialize(): Promise<void> {
 }
 
 async function persist(): Promise<void> {
-  if (widgetEnabled && !isLocalDesktopUrl(desktopUrl.value)) {
+  if (!isLocalDesktopUrl(desktopUrl.value)) {
     desktopUrl.setCustomValidity("Use a ws:// localhost address");
     desktopUrl.reportValidity();
     return;
@@ -172,7 +209,6 @@ async function persist(): Promise<void> {
     instanceLabel: instanceLabel.value,
     attachmentMode: attachmentMode.value as AttachmentMode,
     desktopWidget: {
-      enabled: widgetEnabled,
       url: desktopUrl.value,
     },
     panel: {
@@ -248,9 +284,6 @@ function renderMenus(): void {
 function updateDesktopControls(): void {
   toggleEnabledButton.textContent = widgetEnabled ? "Disable" : "Enable";
   toggleEnabledButton.dataset.action = widgetEnabled ? "disable" : "enable";
-  desktopUrl.disabled = !widgetEnabled;
-  testDesktop.disabled = !widgetEnabled;
-  desktopUrlField.toggleAttribute("data-disabled", !widgetEnabled);
 }
 
 async function testDesktopAddress(): Promise<void> {

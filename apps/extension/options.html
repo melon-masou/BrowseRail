@@ -17,8 +17,10 @@
             <span id="state-badge" class="state-badge">Disconnected</span>
           </div>
           <div id="state-detail" class="state-detail">Waiting for connection…</div>
+          <output id="resync-status" class="resync-status" aria-live="polite"></output>
         </div>
         <div class="state-actions">
+          <button id="resync-button" class="action-btn" type="button" disabled>Resync</button>
           <button id="reconnect-button" class="action-btn reconnect-btn" type="button">Reconnect</button>
           <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button">Disable</button>
         </div>
@@ -52,7 +54,6 @@
           Attach menus to
           <select id="attachment-mode">
             <option value="lastFocused">Last focused window</option>
-            <option value="active">Active window</option>
             <option value="all">All windows</option>
           </select>
         </label>

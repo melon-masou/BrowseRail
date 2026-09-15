@@ -217,6 +217,27 @@ output {
   color: #687287;
 }
 
+.resync-status {
+  min-height: 0;
+  font-size: 12px;
+}
+
+.resync-status:empty {
+  display: none;
+}
+
+.resync-status[data-state="pending"] {
+  color: #5b6475;
+}
+
+.resync-status[data-state="success"] {
+  color: #237a45;
+}
+
+.resync-status[data-state="error"] {
+  color: #a52a2a;
+}
+
 .state-card[data-state="connected"] .state-indicator {
   background: #2e7d32;
   box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.2);

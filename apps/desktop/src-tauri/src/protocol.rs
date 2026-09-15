@@ -25,6 +25,11 @@ pub enum ClientMessage {
         ok: bool,
         message: Option<String>,
     },
+    #[serde(rename = "resync")]
+    Resync {
+        #[serde(rename = "requestUid")]
+        request_uid: String,
+    },
     #[serde(rename = "heartbeat")]
     Heartbeat,
 }
@@ -52,6 +57,11 @@ pub enum ServerMessage {
         menu_uid: String,
         placement: MenuPlacement,
     },
+    #[serde(rename = "resyncComplete")]
+    ResyncComplete {
+        #[serde(rename = "requestUid")]
+        request_uid: String,
+    },
     #[serde(rename = "heartbeat")]
     Heartbeat,
 }
@@ -72,7 +82,6 @@ pub struct BrowserInstance {
 pub enum AttachmentMode {
     None,
     LastFocused,
-    Active,
     All,
 }
 

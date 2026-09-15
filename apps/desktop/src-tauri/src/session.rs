@@ -26,6 +26,12 @@ pub struct SyncOutcome {
     pub removed_window_uids: Vec<String>,
 }
 
+pub struct InstancePanelsSnapshot {
+    pub browser: Option<String>,
+    pub instance_uid: String,
+    pub panels: Vec<PanelSnapshot>,
+}
+
 pub struct ResolvedAction {
     pub instance_uid: String,
     pub window_uid: String,
@@ -163,6 +169,22 @@ impl SessionRegistry {
                             instance_uid.clone(),
                             session.panels.values().cloned().collect(),
                         )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn instance_panel_snapshots(&self) -> Vec<InstancePanelsSnapshot> {
+        self.sessions
+            .read()
+            .map(|sessions| {
+                sessions
+                    .iter()
+                    .map(|(instance_uid, session)| InstancePanelsSnapshot {
+                        browser: session.instance.browser.clone(),
+                        instance_uid: instance_uid.clone(),
+                        panels: session.panels.values().cloned().collect(),
                     })
                     .collect()
             })

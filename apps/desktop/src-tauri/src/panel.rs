@@ -6,6 +6,11 @@ use serde_json::Value;
 use tauri::{
     Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
+use windows::Win32::UI::WindowsAndMessaging::{
+    GWL_EXSTYLE, GWLP_HWNDPARENT, GetWindowLongPtrW, HWND_NOTOPMOST, HWND_TOPMOST,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SetWindowLongPtrW, SetWindowPos, WS_EX_TOPMOST,
+};
 
 use crate::protocol::{
     BrowserWindowSnapshot, BrowserWindowState, MenuAnchor, MenuPlacement, MenuSnapshot,
@@ -17,6 +22,55 @@ const POPUP_MIN_WIDTH: f64 = 180.0;
 const POPUP_MAX_WIDTH: f64 = 1_600.0;
 const POPUP_MIN_HEIGHT: f64 = 48.0;
 const POPUP_MAX_HEIGHT: f64 = 900.0;
+
+pub fn set_window_always_on_top(
+    window: &WebviewWindow,
+    always_on_top: bool,
+) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let insert_after = if always_on_top {
+        HWND_TOPMOST
+    } else {
+        HWND_NOTOPMOST
+    };
+
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            Some(insert_after),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+pub fn set_window_owner(window: &WebviewWindow, owner_hwnd: isize) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, owner_hwnd);
+        SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER | SWP_FRAMECHANGED,
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+fn is_window_always_on_top(window: &WebviewWindow) -> Result<bool, String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let extended_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    Ok(extended_style & WS_EX_TOPMOST.0 as isize != 0)
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -172,6 +226,12 @@ impl PopupRegistry {
             entries.remove(&popup_label(instance_uid, window_uid, menu_uid));
         }
     }
+
+    pub fn remove_instance(&self, instance_uid: &str) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.retain(|_, popup| popup.surface.instance_uid != instance_uid);
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -269,6 +329,15 @@ impl SurfaceRegistry {
 
     pub fn mark_hidden(&self, label: &str) {
         self.set_state(label, SurfaceState::Hidden, None);
+    }
+
+    pub fn remove_labels(&self, labels: &[String]) {
+        if let Ok(mut states) = self.states.lock() {
+            states.retain(|label, _| !labels.contains(label));
+        }
+        if let Ok(mut geometries) = self.geometries.lock() {
+            geometries.retain(|label, _| !labels.contains(label));
+        }
     }
 
     pub fn summary(&self) -> (usize, usize, usize) {
@@ -373,6 +442,10 @@ pub fn open_popup(
     };
 
     place_popup(&parent, &window, &popup.anchor, popup.width, popup.height)?;
+    let parent_hwnd = parent.hwnd().map_err(|error| error.to_string())?;
+    set_window_owner(&window, parent_hwnd.0 as isize)?;
+    let is_always_on_top = is_window_always_on_top(&parent).unwrap_or(true);
+    let _ = set_window_always_on_top(&window, is_always_on_top);
     window
         .set_ignore_cursor_events(false)
         .map_err(|error| error.to_string())?;
@@ -462,9 +535,7 @@ pub fn sync_menu(
     );
 
     if changed {
-        window
-            .set_always_on_top(panel.always_on_top)
-            .map_err(|error| error.to_string())?;
+        set_window_always_on_top(&window, panel.always_on_top)?;
         window
             .set_ignore_cursor_events(false)
             .map_err(|error| error.to_string())?;
@@ -668,6 +739,10 @@ pub(crate) fn surface_prefix(kind: &str, instance_uid: &str, window_uid: &str) -
         safe_label_part(instance_uid),
         safe_label_part(window_uid)
     )
+}
+
+pub(crate) fn instance_surface_prefix(kind: &str, instance_uid: &str) -> String {
+    format!("{}-{}-", kind, safe_label_part(instance_uid))
 }
 
 fn safe_label_part(value: &str) -> String {

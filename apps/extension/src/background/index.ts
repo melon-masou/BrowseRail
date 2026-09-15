@@ -10,7 +10,14 @@ import browser from "webextension-polyfill";
 
 import { resolveMenuItems } from "../bookmarks";
 import { browserKind, listBrowserWindows } from "../browser-adapter";
-import { loadConfig, loadMenuPlacements, saveMenuPlacement } from "../config";
+import {
+  defaultMenuPlacement,
+  loadConfig,
+  loadMenuPlacements,
+  loadWidgetEnabled,
+  saveMenuPlacement,
+  saveWidgetEnabled,
+} from "../config";
 import { loadInstanceUid } from "../instance-identity";
 import { ExtensionStateMachine, type ExtensionConnectionState } from "../state-machine";
 import { navigateBookmark } from "../tab-actions/navigate";
@@ -87,14 +94,38 @@ let connectionGeneration = 0;
 let connectionEnabled = false;
 let desiredInstanceLabel = "";
 let desiredSocketUrl = "";
+let focusLostTimer: ReturnType<typeof setTimeout> | undefined;
+const pendingResyncs = new Map<
+  string,
+  {
+    resolve: (result: { ok: boolean; message: string }) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }
+>();
 
 void reconcileConnection();
 
+browser.windows
+  .getLastFocused()
+  .then((w) => {
+    if (w && w.id !== undefined && (w.type === "normal" || w.type === undefined)) {
+      lastFocusedWindowUid = String(w.id);
+      requestSync();
+    }
+  })
+  .catch(() => {});
+
 browser.windows.onFocusChanged.addListener((windowId) => {
   if (windowId >= 0) {
+    clearTimeout(focusLostTimer);
     lastFocusedWindowUid = String(windowId);
+    requestSync();
+  } else {
+    clearTimeout(focusLostTimer);
+    focusLostTimer = setTimeout(() => {
+      requestSync();
+    }, 120);
   }
-  requestSync();
 });
 browser.windows.onCreated.addListener(requestSync);
 browser.windows.onRemoved.addListener(requestSync);
@@ -120,7 +151,7 @@ function scheduleReconcile(): void {
 }
 
 browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local" && changes.config) {
+  if (areaName === "local" && (changes.config || changes.widget_enabled)) {
     scheduleReconcile();
   }
 });
@@ -135,8 +166,21 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     manualReconnect();
     return Promise.resolve({ ok: true });
   }
+  if (isResyncWindowsMessage(message)) {
+    return rebuildDesktopWindows();
+  }
   if (isConfigSavedMessage(message)) {
     scheduleReconcile();
+  }
+  if (isSetWidgetEnabledMessage(message)) {
+    connectionEnabled = message.enabled;
+    void saveWidgetEnabled(message.enabled);
+    if (!connectionEnabled) {
+      stopConnection();
+    } else {
+      scheduleReconcile();
+    }
+    return Promise.resolve({ ok: true });
   }
 });
 browser.action.onClicked.addListener(() => void browser.runtime.openOptionsPage());
@@ -144,12 +188,12 @@ browser.action.onClicked.addListener(() => void browser.runtime.openOptionsPage(
 async function reconcileConnection(): Promise<void> {
   clearTimeout(reconcileTimer);
   const generation = ++connectionGeneration;
-  const config = await loadConfig();
+  const [config, enabled] = await Promise.all([loadConfig(), loadWidgetEnabled()]);
   if (generation !== connectionGeneration) {
     return;
   }
 
-  connectionEnabled = config.desktopWidget.enabled;
+  connectionEnabled = enabled;
   const connectionMatches =
     desiredSocketUrl === config.desktopWidget.url &&
     desiredInstanceLabel === config.instanceLabel &&
@@ -161,7 +205,6 @@ async function reconcileConnection(): Promise<void> {
 
   if (!connectionEnabled) {
     stopConnection();
-    connectionStateMachine.transition("disabled", "Widget disabled in settings");
   } else if (connectionMatches) {
     requestSync();
   } else {
@@ -236,6 +279,17 @@ async function handleMessage(raw: unknown): Promise<void> {
     return;
   }
 
+  if (value.type === "resyncComplete") {
+    const pending = pendingResyncs.get(value.requestUid);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      pendingResyncs.delete(value.requestUid);
+      requestSync();
+      pending.resolve({ ok: true, message: "Windows rebuilt" });
+    }
+    return;
+  }
+
   if (value.type === "invoke") {
     try {
       await navigateBookmark(browser, value.windowUid, value.actionUid);
@@ -254,6 +308,7 @@ async function handleMessage(raw: unknown): Promise<void> {
 
   if (value.type === "updateMenuPlacement") {
     await saveMenuPlacement(value.menuUid, value.placement);
+    requestSync();
   }
 }
 
@@ -281,44 +336,50 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  if (connectionStateMachine.getState() === "connected") {
-    connectionStateMachine.transition("syncing", `Revision ${revision + 1}`);
+  const [config, windows, placements] = await Promise.all([
+    loadConfig(),
+    listBrowserWindows(),
+    loadMenuPlacements(),
+  ]);
+  const menus = await Promise.all(
+    config.panel.menus.map(async (menu, index) => ({
+      items: await resolveMenuItems(menu.items),
+      orientation: menu.orientation,
+      placement: placements[menu.uid] ?? defaultMenuPlacement(index),
+      uid: menu.uid,
+    })),
+  );
+  updateLastFocusedWindow(windows);
+
+  const selected = selectWindows(config.attachmentMode, windows);
+  const panels: PanelSnapshot[] = selected.map((window) => ({
+    alwaysOnTop: config.panel.alwaysOnTop,
+    menus,
+    window,
+  }));
+
+  send({
+    type: "sync",
+    revision: ++revision,
+    attachmentMode: config.attachmentMode,
+    panels,
+  });
+}
+
+function rebuildDesktopWindows(): Promise<{ ok: boolean; message: string }> {
+  if (socket?.readyState !== WebSocket.OPEN) {
+    return Promise.resolve({ ok: false, message: "Desktop is not connected" });
   }
 
-  try {
-    const [config, windows, placements] = await Promise.all([
-      loadConfig(),
-      listBrowserWindows(),
-      loadMenuPlacements(),
-    ]);
-    const menus = await Promise.all(
-      config.panel.menus.map(async (menu) => ({
-        items: await resolveMenuItems(menu.items),
-        orientation: menu.orientation,
-        placement: placements[menu.uid] ?? menu.placement,
-        uid: menu.uid,
-      })),
-    );
-    updateLastFocusedWindow(windows);
-
-    const selected = selectWindows(config.attachmentMode, windows);
-    const panels: PanelSnapshot[] = selected.map((window) => ({
-      alwaysOnTop: config.panel.alwaysOnTop,
-      menus,
-      window,
-    }));
-
-    send({
-      type: "sync",
-      revision: ++revision,
-      attachmentMode: config.attachmentMode,
-      panels,
-    });
-  } finally {
-    if (socket?.readyState === WebSocket.OPEN && connectionStateMachine.getState() === "syncing") {
-      connectionStateMachine.transition("connected", "Sync completed");
-    }
-  }
+  const requestUid = crypto.randomUUID();
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      pendingResyncs.delete(requestUid);
+      resolve({ ok: false, message: "Resync timed out" });
+    }, 5_000);
+    pendingResyncs.set(requestUid, { resolve, timeout });
+    send({ type: "resync", requestUid });
+  });
 }
 
 function selectWindows(
@@ -328,10 +389,6 @@ function selectWindows(
   switch (mode) {
     case "none":
       return [];
-    case "active":
-      return windows.some((window) => window.focused)
-        ? windows.filter((window) => window.focused)
-        : windows.filter((window) => window.uid === lastFocusedWindowUid);
     case "all":
       return windows;
     case "lastFocused":
@@ -402,7 +459,13 @@ function stopConnection(): void {
   clearTimeout(reconnectTimer);
   const currentSocket = socket;
   socket = undefined;
-  currentSocket?.close();
+  if (currentSocket) {
+    try {
+      currentSocket.close(1000, "Disabled");
+    } catch {
+      // Ignore
+    }
+  }
   if (connectionEnabled) {
     connectionStateMachine.transition("disconnected", "Connection stopped");
   } else {
@@ -420,4 +483,21 @@ function isGetStateMessage(value: unknown): value is { type: "getDesktopState" }
 
 function isManualReconnectMessage(value: unknown): value is { type: "manualReconnect" } {
   return typeof value === "object" && value !== null && "type" in value && value.type === "manualReconnect";
+}
+
+function isResyncWindowsMessage(value: unknown): value is { type: "resyncWindows" } {
+  return typeof value === "object" && value !== null && "type" in value && value.type === "resyncWindows";
+}
+
+function isSetWidgetEnabledMessage(
+  value: unknown,
+): value is { type: "setWidgetEnabled"; enabled: boolean } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "setWidgetEnabled" &&
+    "enabled" in value &&
+    typeof (value as { enabled: unknown }).enabled === "boolean"
+  );
 }

@@ -167,67 +167,84 @@ async fn handle_connection(
                 incoming = reader.next() => {
                     let Some(incoming) = incoming else { break };
                     let incoming = incoming.map_err(|error| error.to_string())?;
-                    if let Message::Text(text) = incoming {
-                        let message = serde_json::from_str::<ClientMessage>(&text)
-                            .map_err(|error| format!("Invalid client message: {error}"))?;
-                        match message {
-                            ClientMessage::Hello { protocol_version, instance } => {
-                                if registered_instance.is_some() || protocol_version != PROTOCOL_VERSION {
-                                    return Err("Invalid hello message".into());
+                    match incoming {
+                        Message::Close(_) => {
+                            let _ = writer.send(Message::Close(None)).await;
+                            break;
+                        }
+                        Message::Text(text) => {
+                            let message = serde_json::from_str::<ClientMessage>(&text)
+                                .map_err(|error| format!("Invalid client message: {error}"))?;
+                            match message {
+                                ClientMessage::Hello { protocol_version, instance } => {
+                                    if registered_instance.is_some() || protocol_version != PROTOCOL_VERSION {
+                                        return Err("Invalid hello message".into());
+                                    }
+                                    let instance_uid = instance.uid.clone();
+                                    registered_instance = Some(instance_uid.clone());
+                                    connection_sm.transition(
+                                        ConnectionState::Ready {
+                                            connection_uid,
+                                            instance_uid,
+                                        },
+                                        Some("Hello accepted, Ready sent"),
+                                    );
+                                    let _ = native_sender.send(NativeCommand::ClientRegistered {
+                                        connection_uid,
+                                        instance,
+                                        outgoing: outgoing.clone(),
+                                    });
                                 }
-                                let instance_uid = instance.uid.clone();
-                                registered_instance = Some(instance_uid.clone());
-                                connection_sm.transition(
-                                    ConnectionState::Ready {
+                                ClientMessage::Sync { revision, attachment_mode, panels } => {
+                                    let _ = attachment_mode;
+                                    let Some(ref inst_uid) = registered_instance else {
+                                        return Err("Sync received before Hello".into());
+                                    };
+                                    connection_sm.transition(
+                                        ConnectionState::Syncing {
+                                            connection_uid,
+                                            instance_uid: inst_uid.clone(),
+                                            revision,
+                                        },
+                                        Some(&format!("Menus count: {}", panels.len())),
+                                    );
+                                    let _ = native_sender.send(NativeCommand::SyncPanels {
                                         connection_uid,
-                                        instance_uid,
-                                    },
-                                    Some("Hello accepted, Ready sent"),
-                                );
-                                let _ = native_sender.send(NativeCommand::ClientRegistered {
-                                    connection_uid,
-                                    instance,
-                                    outgoing: outgoing.clone(),
-                                });
-                            }
-                            ClientMessage::Sync { revision, attachment_mode, panels } => {
-                                let _ = attachment_mode;
-                                let Some(ref inst_uid) = registered_instance else {
-                                    return Err("Sync received before Hello".into());
-                                };
-                                connection_sm.transition(
-                                    ConnectionState::Syncing {
-                                        connection_uid,
-                                        instance_uid: inst_uid.clone(),
                                         revision,
-                                    },
-                                    Some(&format!("Menus count: {}", panels.len())),
-                                );
-                                let _ = native_sender.send(NativeCommand::SyncPanels {
-                                    connection_uid,
-                                    revision,
-                                    panels,
-                                });
-                                connection_sm.transition(
-                                    ConnectionState::Active {
-                                        connection_uid,
-                                        instance_uid: inst_uid.clone(),
-                                    },
-                                    Some("Sync dispatched to native reactor"),
-                                );
-                            }
-                            ClientMessage::ActionResult { request_uid, ok, message } => {
-                                let _ = native_sender.send(NativeCommand::ActionResult {
-                                    request_uid,
-                                    ok,
-                                    message,
-                                });
-                            }
-                            ClientMessage::Heartbeat => {
-                                outgoing.send(ServerMessage::Heartbeat)
-                                    .map_err(|_| "Connection closed")?;
+                                        panels,
+                                    });
+                                    connection_sm.transition(
+                                        ConnectionState::Active {
+                                            connection_uid,
+                                            instance_uid: inst_uid.clone(),
+                                        },
+                                        Some("Sync dispatched to native reactor"),
+                                    );
+                                }
+                                ClientMessage::ActionResult { request_uid, ok, message } => {
+                                    let _ = native_sender.send(NativeCommand::ActionResult {
+                                        request_uid,
+                                        ok,
+                                        message,
+                                    });
+                                }
+                                ClientMessage::Resync { request_uid } => {
+                                    let Some(ref instance_uid) = registered_instance else {
+                                        return Err("Resync received before Hello".into());
+                                    };
+                                    let _ = native_sender.send(NativeCommand::RebuildInstanceSurfaces {
+                                        instance_uid: instance_uid.clone(),
+                                        request_uid,
+                                        outgoing: outgoing.clone(),
+                                    });
+                                }
+                                ClientMessage::Heartbeat => {
+                                    outgoing.send(ServerMessage::Heartbeat)
+                                        .map_err(|_| "Connection closed")?;
+                                }
                             }
                         }
+                        _ => {}
                     }
                 }
                 outgoing = outgoing_messages.recv() => {

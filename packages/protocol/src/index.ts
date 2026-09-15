@@ -1,8 +1,8 @@
 export const PROTOCOL_VERSION = 1 as const;
 export const SOCKET_URL = "ws://127.0.0.1:17654" as const;
 
-export type BrowserKind = "chrome" | "firefox";
-export type AttachmentMode = "none" | "lastFocused" | "active" | "all";
+export type BrowserKind = "brave" | "chrome" | "edge" | "firefox" | "opera" | "vivaldi";
+export type AttachmentMode = "none" | "lastFocused" | "all";
 export type MenuAnchor = "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
 export type MenuOrientation = "row" | "column";
 export type BrowserWindowState = "normal" | "minimized" | "maximized" | "fullscreen";
@@ -81,6 +81,7 @@ export type ClientMessage =
       ok: boolean;
       message?: string;
     }
+  | { type: "resync"; requestUid: string }
   | { type: "heartbeat" };
 
 export type ServerMessage =
@@ -96,6 +97,7 @@ export type ServerMessage =
       menuUid: string;
       placement: MenuPlacement;
     }
+  | { type: "resyncComplete"; requestUid: string }
   | { type: "heartbeat" };
 
 export function isServerMessage(value: unknown): value is ServerMessage {
@@ -114,6 +116,8 @@ export function isServerMessage(value: unknown): value is ServerMessage {
       );
     case "updateMenuPlacement":
       return typeof value.menuUid === "string" && isMenuPlacement(value.placement);
+    case "resyncComplete":
+      return typeof value.requestUid === "string";
     case "heartbeat":
       return true;
     default:

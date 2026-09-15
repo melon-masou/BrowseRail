@@ -14,14 +14,12 @@ export interface StoredMenuItem {
 export interface StoredMenu {
   items: StoredMenuItem[];
   orientation: MenuOrientation;
-  placement: MenuPlacement;
   uid: string;
 }
 
 export interface ExtensionConfig {
   attachmentMode: AttachmentMode;
   desktopWidget: {
-    enabled: boolean;
     url: string;
   };
   instanceLabel: string;
@@ -34,7 +32,6 @@ export interface ExtensionConfig {
 const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   attachmentMode: "lastFocused",
   desktopWidget: {
-    enabled: true,
     url: DEFAULT_DESKTOP_URL,
   },
   panel: {
@@ -43,18 +40,21 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   },
 };
 
-export function createMenu(uid: string = crypto.randomUUID(), index = 0): StoredMenu {
+export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
   return {
     items: [],
     orientation: "row",
-    placement: {
-      anchor: "topLeft",
-      height: 40,
-      offsetX: 12,
-      offsetY: 12 + index * 52,
-      width: 288,
-    },
     uid,
+  };
+}
+
+export function defaultMenuPlacement(index = 0): MenuPlacement {
+  return {
+    anchor: "topLeft",
+    height: 40,
+    offsetX: 12,
+    offsetY: 12 + index * 52,
+    width: 288,
   };
 }
 
@@ -84,36 +84,26 @@ function normalizeConfig(value: unknown, defaultInstanceLabel: string): Extensio
     ? panel.menus.flatMap((menu) => normalizeMenu(menu) ?? [])
     : migrateLegacyMenu(Array.isArray(panel.layout) ? panel : value);
   const seenUids = new Set<string>();
-  const seenOffsets = new Set<string>();
-  const menus = rawMenus.map((menu, idx) => {
+  const menus = rawMenus.map((menu) => {
     let uid = menu.uid;
     if (seenUids.has(uid)) {
       uid = crypto.randomUUID();
     }
     seenUids.add(uid);
-
-    const placement = { ...menu.placement };
-    const key = `${placement.anchor}:${placement.offsetX}:${placement.offsetY}`;
-    if (seenOffsets.has(key)) {
-      placement.offsetY += (idx + 1) * 52;
-    }
-    seenOffsets.add(`${placement.anchor}:${placement.offsetX}:${placement.offsetY}`);
     return {
       ...menu,
-      placement,
       uid,
     };
   });
 
   return {
-    attachmentMode: isAttachmentMode(value.attachmentMode)
-      ? value.attachmentMode
-      : DEFAULT_CONFIG.attachmentMode,
+    attachmentMode:
+      value.attachmentMode === "active"
+        ? "lastFocused"
+        : isAttachmentMode(value.attachmentMode)
+          ? value.attachmentMode
+          : DEFAULT_CONFIG.attachmentMode,
     desktopWidget: {
-      enabled:
-        typeof desktopWidget.enabled === "boolean"
-          ? desktopWidget.enabled
-          : DEFAULT_CONFIG.desktopWidget.enabled,
       url:
         typeof desktopWidget.url === "string" && isLocalDesktopUrl(desktopWidget.url)
           ? desktopWidget.url
@@ -148,16 +138,6 @@ function migrateLegacyMenu(panel: Record<string, unknown>): StoredMenu[] {
     typeof cell.bookmarkId === "string" ? [{ bookmarkId: cell.bookmarkId }] : [],
   );
   menu.orientation = "row";
-  menu.placement.anchor = legacyAnchor(panel.corner);
-  const margin = boundedNumber(panel.margin, -10_000, 10_000, 12);
-  menu.placement.offsetX = margin;
-  menu.placement.offsetY = margin;
-
-  const configuredColumns = boundedNumber(panel.columns, 1, 20, 4);
-  const columns = Math.max(1, Math.min(configuredColumns, menu.items.length || 1));
-  const rows = Math.max(1, Math.ceil(menu.items.length / columns));
-  menu.placement.width = Math.min(1_600, Math.max(80, columns * 72 + (columns - 1) * 4));
-  menu.placement.height = Math.min(1_200, Math.max(40, rows * 40 + (rows - 1) * 4));
   return [menu];
 }
 
@@ -165,34 +145,13 @@ function numericValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function legacyAnchor(value: unknown): MenuPlacement["anchor"] {
-  switch (value) {
-    case "topRight":
-    case "top-right":
-      return "topRight";
-    case "bottomLeft":
-    case "bottom-left":
-      return "bottomLeft";
-    case "bottomRight":
-    case "bottom-right":
-      return "bottomRight";
-    default:
-      return "topLeft";
-  }
-}
-
 function normalizeMenu(value: unknown): StoredMenu | undefined {
   if (!isRecord(value) || typeof value.uid !== "string" || !value.uid) {
-    return undefined;
-  }
-  const placement = normalizePlacement(value.placement);
-  if (!placement) {
     return undefined;
   }
   return {
     items: Array.isArray(value.items) ? value.items.filter(isStoredMenuItem) : [],
     orientation: value.orientation === "column" ? "column" : "row",
-    placement,
     uid: value.uid,
   };
 }
@@ -222,7 +181,7 @@ function boundedNumber(
 }
 
 function isAttachmentMode(value: unknown): value is AttachmentMode {
-  return value === "none" || value === "lastFocused" || value === "active" || value === "all";
+  return value === "none" || value === "lastFocused" || value === "all";
 }
 
 function isAnchor(value: unknown): value is MenuPlacement["anchor"] {
@@ -262,5 +221,26 @@ export async function saveMenuPlacement(menuUid: string, placement: MenuPlacemen
   current[menuUid] = placement;
   await browser.storage.local.set({
     [PLACEMENTS_STORAGE_KEY]: current,
+  });
+}
+
+export const WIDGET_ENABLED_STORAGE_KEY = "widget_enabled";
+
+export async function loadWidgetEnabled(): Promise<boolean> {
+  const stored = await browser.storage.local.get([WIDGET_ENABLED_STORAGE_KEY, "config"]);
+  const raw = stored[WIDGET_ENABLED_STORAGE_KEY];
+  if (typeof raw === "boolean") {
+    return raw;
+  }
+  const config = stored.config;
+  if (isRecord(config) && isRecord(config.desktopWidget) && typeof config.desktopWidget.enabled === "boolean") {
+    return config.desktopWidget.enabled;
+  }
+  return true;
+}
+
+export async function saveWidgetEnabled(enabled: boolean): Promise<void> {
+  await browser.storage.local.set({
+    [WIDGET_ENABLED_STORAGE_KEY]: enabled,
   });
 }
