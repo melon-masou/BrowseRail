@@ -132,13 +132,22 @@ async function initializeSurface(): Promise<void> {
         event.preventDefault();
         customizing = true;
         closePopup(false);
+        const menuToCustomize = currentMenu ?? menu;
+        const toolbar = renderCustomize(menuToCustomize);
+        const toolbarSpace = customizationToolbarSpace(toolbar);
+        const customizeWidth = toolbar.parentElement?.getBoundingClientRect().width
+          ?? menuToCustomize.placement.width;
         void invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
+          customizeWidth,
           instanceUid,
           menuUid,
+          toolbarSpace,
           windowUid,
         })
           .then((info) => {
-            renderCustomize(currentMenu ?? menu, info?.toolbarPosition ?? "bottom");
+            if (info?.toolbarPosition === "top") {
+              renderCustomize(menuToCustomize, "top");
+            }
           })
           .catch((err) => {
             customizing = false;
@@ -319,9 +328,21 @@ async function initializeSurface(): Promise<void> {
     }
   }
 
-  function renderCustomize(menu: MenuSnapshot, toolbarPosition: "top" | "bottom" = "bottom"): void {
+  function customizationToolbarSpace(toolbar: HTMLElement): number {
+    const container = toolbar.parentElement ?? root;
+    const rowGap = Number.parseFloat(getComputedStyle(container).rowGap);
+    const gap = Number.isFinite(rowGap) ? rowGap : 0;
+    return Math.ceil(toolbar.getBoundingClientRect().height + gap);
+  }
+
+  function renderCustomize(
+    menu: MenuSnapshot,
+    toolbarPosition: "top" | "bottom" = "bottom",
+  ): HTMLElement {
     applyMenuTheme(menu);
     let anchor = menu.placement.anchor;
+    let targetWidth = menu.placement.width;
+    let targetHeight = menu.placement.height;
     root.className = "customize-mode";
     root.dataset.toolbarPosition = toolbarPosition;
     root.dataset.orientation = menu.orientation;
@@ -352,6 +373,9 @@ async function initializeSurface(): Promise<void> {
 
     const toolbar = document.createElement("div");
     toolbar.className = "customize-toolbar";
+
+    const content = document.createElement("div");
+    content.className = "customize-content";
 
     const anchorButton = controlButton(createAnchorIcon(anchor));
     anchorButton.title = `Anchor: ${anchorLabel(anchor)} (click to change)`;
@@ -391,23 +415,93 @@ async function initializeSurface(): Promise<void> {
 
     toolbar.append(anchorButton, moveButton, cancelButton, saveButton);
 
-    if (toolbarPosition === "top") {
-      root.replaceChildren(
-        toolbar,
-        railContainer,
-        resizeHandle("east"),
-        resizeHandle("south"),
-        resizeHandle("southEast"),
-      );
-    } else {
-      root.replaceChildren(
-        railContainer,
-        toolbar,
-        resizeHandle("east"),
-        resizeHandle("south"),
-        resizeHandle("southEast"),
-      );
+    const clampWidth = (width: number): number => menu.orientation === "column"
+      ? Math.min(220, Math.max(26, width))
+      : Math.min(2_000, Math.max(26, width));
+    const clampHeight = (height: number): number => menu.orientation === "row"
+      ? Math.min(64, Math.max(26, height))
+      : Math.min(1_600, Math.max(26, height));
+
+    function applyTargetSize(): void {
+      const toolbarWidth = Math.ceil(toolbar.scrollWidth);
+      content.style.width = `${Math.max(targetWidth, toolbarWidth)}px`;
+      railContainer.style.width = `${targetWidth}px`;
+      railContainer.style.height = `${targetHeight}px`;
     }
+
+    function growNativeCanvasIfNeeded(): void {
+      const requiredWidth = Math.ceil(content.getBoundingClientRect().width);
+      const requiredHeight = Math.ceil(
+        targetHeight + customizationToolbarSpace(toolbar),
+      );
+      const width = Math.max(window.innerWidth, requiredWidth);
+      const height = Math.max(window.innerHeight, requiredHeight);
+      if (width > window.innerWidth || height > window.innerHeight) {
+        void invoke("resize_popup", {
+          height,
+          instanceUid,
+          menuUid,
+          width,
+          windowUid,
+        });
+      }
+    }
+
+    function resizeHandle(direction: "east" | "south" | "southEast"): HTMLElement {
+      const handle = document.createElement("div");
+      handle.className = `resize-handle resize-${direction}`;
+      handle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+
+        const startX = event.screenX;
+        const startY = event.screenY;
+        const startWidth = targetWidth;
+        const startHeight = targetHeight;
+        handle.setPointerCapture(event.pointerId);
+
+        const move = (moveEvent: PointerEvent): void => {
+          if (direction === "east" || direction === "southEast") {
+            targetWidth = clampWidth(startWidth + moveEvent.screenX - startX);
+          }
+          if (direction === "south" || direction === "southEast") {
+            targetHeight = clampHeight(startHeight + moveEvent.screenY - startY);
+          }
+          applyTargetSize();
+          growNativeCanvasIfNeeded();
+        };
+        const stop = (stopEvent: PointerEvent): void => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", stop);
+          handle.removeEventListener("pointercancel", stop);
+          if (handle.hasPointerCapture(stopEvent.pointerId)) {
+            handle.releasePointerCapture(stopEvent.pointerId);
+          }
+        };
+
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", stop);
+        handle.addEventListener("pointercancel", stop);
+      });
+      return handle;
+    }
+
+    railContainer.append(
+      resizeHandle("east"),
+      resizeHandle("south"),
+      resizeHandle("southEast"),
+    );
+
+    if (toolbarPosition === "top") {
+      content.replaceChildren(toolbar, railContainer);
+    } else {
+      content.replaceChildren(railContainer, toolbar);
+    }
+    root.replaceChildren(content);
+    applyTargetSize();
 
     async function cancelCustomization(): Promise<void> {
       customizing = false;
@@ -418,11 +512,15 @@ async function initializeSurface(): Promise<void> {
     }
 
     async function saveCustomization(): Promise<void> {
+      const toolbarSpace = customizationToolbarSpace(toolbar);
       const placement = await invoke<MenuPlacement>("save_menu_placement", {
         anchor,
+        height: targetHeight,
         instanceUid,
         menuUid,
         toolbarPosition,
+        toolbarSpace,
+        width: targetWidth,
         windowUid,
       });
       customizing = false;
@@ -431,15 +529,8 @@ async function initializeSurface(): Promise<void> {
         renderSurface(currentMenu);
       }
     }
-  }
 
-  function resizeHandle(direction: "east" | "south" | "southEast"): HTMLElement {
-    const handle = document.createElement("div");
-    handle.className = `resize-handle resize-${direction}`;
-    handle.addEventListener("pointerdown", () => {
-      void invoke("start_menu_resize", { direction });
-    });
-    return handle;
+    return toolbar;
   }
 }
 

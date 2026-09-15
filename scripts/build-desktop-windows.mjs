@@ -29,12 +29,13 @@ if (process.platform === "win32") {
 } else if (useWindowsCargo) {
   const winRoot = spawnSync("wslpath", ["-w", root], { encoding: "utf8" }).stdout.trim();
   const winTargetDir =
-    process.env.BROWSERAIL_WIN_TARGET_DIR || "$env:LOCALAPPDATA\\browserail\\target";
+    process.env.BROWSERAIL_WIN_TARGET_DIR || "%LOCALAPPDATA%\\browserail\\target";
+  const escapedWinTargetDir = winTargetDir.replaceAll("'", "''");
 
   console.log(`Building with Windows native cargo (target dir: ${winTargetDir})...`);
   const psScript = `
     $winRoot = '${winRoot}';
-    $targetDir = '${winTargetDir}';
+    $targetDir = [System.Environment]::ExpandEnvironmentVariables('${escapedWinTargetDir}');
     New-Item -ItemType Directory -Force -Path $targetDir | Out-Null;
     Set-Location $winRoot;
     $env:CARGO_TARGET_DIR = $targetDir;
@@ -55,7 +56,7 @@ if (process.platform === "win32") {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      `$p = '${winTargetDir}'; [System.Environment]::ExpandEnvironmentVariables($p)`,
+      `$p = '${escapedWinTargetDir}'; [System.Environment]::ExpandEnvironmentVariables($p)`,
     ],
     { encoding: "utf8" },
   ).stdout.trim();

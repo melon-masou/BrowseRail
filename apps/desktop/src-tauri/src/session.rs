@@ -197,10 +197,19 @@ impl SessionRegistry {
         menu_uid: String,
         placement: MenuPlacement,
     ) -> Result<(), String> {
-        let sessions = self.sessions.read().map_err(|_| "Session lock failed")?;
+        let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
-            .get(instance_uid)
+            .get_mut(instance_uid)
             .ok_or("The browser instance is disconnected")?;
+
+        for panel in session.panels.values_mut() {
+            for menu in &mut panel.menus {
+                if menu.uid == menu_uid {
+                    menu.placement = placement.clone();
+                }
+            }
+        }
+
         let outgoing = session
             .outgoing
             .as_ref()

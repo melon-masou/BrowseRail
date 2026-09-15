@@ -235,11 +235,12 @@ function normalizePlacement(value: unknown): MenuPlacement | undefined {
   if (!isRecord(value) || !isAnchor(value.anchor)) {
     return undefined;
   }
+  const CUSTOMIZE_ICON_SIZE = 26;
   const itemWidth = typeof value.itemWidth === "number" && Number.isFinite(value.itemWidth)
-    ? boundedNumber(value.itemWidth, 24, 400, DEFAULT_ITEM_WIDTH)
+    ? boundedNumber(value.itemWidth, 1, 400, DEFAULT_ITEM_WIDTH)
     : undefined;
   const itemHeight = typeof value.itemHeight === "number" && Number.isFinite(value.itemHeight)
-    ? boundedNumber(value.itemHeight, 20, 200, DEFAULT_ITEM_HEIGHT)
+    ? boundedNumber(value.itemHeight, 1, 200, DEFAULT_ITEM_HEIGHT)
     : undefined;
   const fontSize = value.fontSize === "small" || value.fontSize === "large" || value.fontSize === "medium"
     ? value.fontSize
@@ -247,12 +248,12 @@ function normalizePlacement(value: unknown): MenuPlacement | undefined {
   return {
     anchor: value.anchor,
     ...(fontSize ? { fontSize } : {}),
-    height: boundedNumber(value.height, 24, 1_600, DEFAULT_ITEM_HEIGHT),
+    height: boundedNumber(value.height, CUSTOMIZE_ICON_SIZE, 1_600, DEFAULT_ITEM_HEIGHT),
     ...(itemHeight !== undefined ? { itemHeight } : {}),
     ...(itemWidth !== undefined ? { itemWidth } : {}),
     offsetX: boundedNumber(value.offsetX, -10_000, 10_000, 12),
     offsetY: boundedNumber(value.offsetY, -10_000, 10_000, 12),
-    width: boundedNumber(value.width, 36, 2_000, DEFAULT_ITEM_WIDTH),
+    width: boundedNumber(value.width, CUSTOMIZE_ICON_SIZE, 2_000, DEFAULT_ITEM_WIDTH),
   };
 }
 

@@ -34,8 +34,6 @@ use tauri::tray::TrayIconBuilder;
 #[cfg(target_os = "windows")]
 use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
 #[cfg(target_os = "windows")]
-use tauri_runtime::ResizeDirection;
-#[cfg(target_os = "windows")]
 use tokio::sync::mpsc::UnboundedSender;
 
 #[cfg(target_os = "windows")]
@@ -253,6 +251,12 @@ pub struct CustomizationStartInfo {
 }
 
 #[cfg(target_os = "windows")]
+const CUSTOMIZE_ICON_SIZE: f64 = 26.0;
+
+#[cfg(target_os = "windows")]
+const MENU_ITEM_GAP: f64 = 4.0;
+
+#[cfg(target_os = "windows")]
 #[tauri::command]
 fn begin_menu_customization(
     state: tauri::State<'_, AppState>,
@@ -260,8 +264,9 @@ fn begin_menu_customization(
     instance_uid: String,
     window_uid: String,
     menu_uid: String,
+    toolbar_space: f64,
+    customize_width: f64,
 ) -> Result<CustomizationStartInfo, String> {
-    state.surfaces.set_customizing(window.label(), true);
     state.popups.remove(&instance_uid, &window_uid, &menu_uid);
 
     let panel = state
@@ -280,8 +285,13 @@ fn begin_menu_customization(
     let current_y = f64::from(position.y) / scale;
     let current_w = orig_menu.placement.width;
     let current_h = orig_menu.placement.height;
-
-    let toolbar_space = 38.0;
+    if !toolbar_space.is_finite()
+        || toolbar_space < 0.0
+        || !customize_width.is_finite()
+        || customize_width < 0.0
+    {
+        return Err("Invalid customization toolbar geometry".into());
+    }
 
     let (space_above, space_below) = if let Ok(Some(monitor)) = window.current_monitor() {
         let m_pos = monitor.position();
@@ -303,41 +313,27 @@ fn begin_menu_customization(
         "bottom".to_string()
     };
 
+    state.surfaces.set_customizing(window.label(), true);
+    let configure_result = (|| -> Result<(), String> {
+        let new_h = current_h + toolbar_space;
+        if toolbar_position == "top" {
+            window
+                .set_position(tauri::LogicalPosition::new(current_x, current_y - toolbar_space))
+                .map_err(|error| error.to_string())?;
+        }
+        window
+            .set_size(tauri::LogicalSize::new(current_w.max(customize_width), new_h))
+            .map_err(|error| error.to_string())
+    })();
+
+    if let Err(error) = configure_result {
+        state.surfaces.set_customizing(window.label(), false);
+        return Err(error);
+    }
+
     let _ = state.native_sender.send(native::NativeCommand::BeginCustomization {
         label: window.label().to_string(),
     });
-
-    let items_count = orig_menu.items.len().max(1) as f64;
-    let (min_w, max_w, min_h, max_h) = match orig_menu.orientation {
-        protocol::MenuOrientation::Row => {
-            let min_w = (items_count * 24.0).max(40.0);
-            let max_w = 2000.0;
-            let min_h = 24.0 + toolbar_space;
-            let max_h = 64.0 + toolbar_space;
-            (min_w, max_w, min_h, max_h)
-        }
-        protocol::MenuOrientation::Column => {
-            let min_w = 36.0;
-            let max_w = 220.0;
-            let min_h = (items_count * 24.0) + toolbar_space;
-            let max_h = 1600.0;
-            (min_w, max_w, min_h, max_h)
-        }
-    };
-
-    let _ = window.set_min_size(Some(tauri::LogicalSize::new(min_w, min_h)));
-    let _ = window.set_max_size(Some(tauri::LogicalSize::new(max_w, max_h)));
-
-    let new_w = current_w.max(min_w);
-    let new_h = current_h + toolbar_space;
-    if toolbar_position == "top" {
-        let _ = window.set_position(tauri::LogicalPosition::new(current_x, current_y - toolbar_space));
-    }
-    let _ = window.set_size(tauri::LogicalSize::new(new_w, new_h));
-
-    window
-        .set_resizable(true)
-        .map_err(|error| error.to_string())?;
 
     Ok(CustomizationStartInfo { toolbar_position })
 }
@@ -350,20 +346,6 @@ fn start_menu_drag(window: tauri::Window) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn start_menu_resize(window: tauri::Window, direction: String) -> Result<(), String> {
-    let direction = match direction.as_str() {
-        "east" => ResizeDirection::East,
-        "south" => ResizeDirection::South,
-        "southEast" => ResizeDirection::SouthEast,
-        _ => return Err("Unknown resize direction".into()),
-    };
-    window
-        .start_resize_dragging(direction)
-        .map_err(|error| error.to_string())
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
 fn save_menu_placement(
     state: tauri::State<'_, AppState>,
     window: tauri::Window,
@@ -371,7 +353,10 @@ fn save_menu_placement(
     window_uid: String,
     menu_uid: String,
     anchor: MenuAnchor,
+    width: f64,
+    height: f64,
     toolbar_position: Option<String>,
+    toolbar_space: Option<f64>,
 ) -> Result<MenuPlacement, String> {
     let panel = state
         .registry
@@ -385,28 +370,29 @@ fn save_menu_placement(
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
-    let size = window.inner_size().map_err(|error| error.to_string())?;
     let x = f64::from(position.x) / scale;
     let mut y = f64::from(position.y) / scale;
-    let mut width = f64::from(size.width) / scale;
-    let mut height = f64::from(size.height) / scale;
+    if !width.is_finite() || !height.is_finite() {
+        return Err("Invalid menu size".into());
+    }
+    let mut width = width;
+    let mut height = height;
 
-    let toolbar_space = 38.0;
+    let toolbar_space = toolbar_space.unwrap_or(0.0);
     if let Some(pos) = toolbar_position.as_deref() {
         if pos == "top" {
             y += toolbar_space;
-            height = (height - toolbar_space).max(24.0);
-        } else if pos == "bottom" {
-            height = (height - toolbar_space).max(24.0);
         }
     }
 
     match orig_menu.orientation {
         protocol::MenuOrientation::Row => {
-            height = height.clamp(24.0, 64.0);
+            width = width.clamp(CUSTOMIZE_ICON_SIZE, 2000.0);
+            height = height.clamp(CUSTOMIZE_ICON_SIZE, 64.0);
         }
         protocol::MenuOrientation::Column => {
-            width = width.clamp(36.0, 220.0);
+            width = width.clamp(CUSTOMIZE_ICON_SIZE, 220.0);
+            height = height.clamp(CUSTOMIZE_ICON_SIZE, 1600.0);
         }
     }
 
@@ -423,11 +409,13 @@ fn save_menu_placement(
     let items_count = orig_menu.items.len().max(1) as f64;
     let (item_width, item_height) = match orig_menu.orientation {
         protocol::MenuOrientation::Row => {
-            let iw = ((width - (items_count - 1.0) * 4.0) / items_count).max(24.0);
+            let iw = ((width - (items_count - 1.0) * MENU_ITEM_GAP) / items_count)
+                .max(1.0);
             (Some(iw), Some(height))
         }
         protocol::MenuOrientation::Column => {
-            let ih = ((height - (items_count - 1.0) * 4.0) / items_count).max(24.0);
+            let ih = ((height - (items_count - 1.0) * MENU_ITEM_GAP) / items_count)
+                .max(1.0);
             (Some(width), Some(ih))
         }
     };
@@ -443,8 +431,13 @@ fn save_menu_placement(
         font_size: orig_menu.placement.font_size.clone(),
     };
 
-    let _ = window.set_max_size(None::<tauri::Size>);
-    let _ = window.set_min_size(None::<tauri::Size>);
+    window
+        .set_size(tauri::LogicalSize::new(width, height))
+        .map_err(|error| error.to_string())?;
+    window
+        .set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|error| error.to_string())?;
+
     state.surfaces.set_customizing(window.label(), false);
     let _ = state.native_sender.send(native::NativeCommand::SaveMenuPlacement {
         instance_uid,
@@ -453,12 +446,6 @@ fn save_menu_placement(
         anchor,
         placement: placement.clone(),
     });
-
-    let _ = window.set_size(tauri::LogicalSize::new(width, height));
-    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
-    window
-        .set_resizable(false)
-        .map_err(|error| error.to_string())?;
     Ok(placement)
 }
 
@@ -471,24 +458,23 @@ fn cancel_menu_customization(
     window_uid: String,
     menu_uid: String,
 ) -> Result<(), String> {
-    let _ = window.set_max_size(None::<tauri::Size>);
-    let _ = window.set_min_size(None::<tauri::Size>);
-    state.surfaces.set_customizing(window.label(), false);
-    let _ = state.native_sender.send(native::NativeCommand::CancelCustomization {
-        instance_uid: instance_uid.clone(),
-        window_uid: window_uid.clone(),
-        menu_uid: menu_uid.clone(),
-    });
     if let Some(panel) = state.registry.panel(&instance_uid, &window_uid) {
         if let Some(menu) = panel.menus.iter().find(|m| m.uid == menu_uid) {
             let target_pos = panel::menu_position(&panel.window, &menu.placement);
-            let _ = window.set_size(tauri::LogicalSize::new(menu.placement.width, menu.placement.height));
-            let _ = window.set_position(target_pos);
+            window
+                .set_size(tauri::LogicalSize::new(menu.placement.width, menu.placement.height))
+                .map_err(|error| error.to_string())?;
+            window
+                .set_position(target_pos)
+                .map_err(|error| error.to_string())?;
         }
     }
-    window
-        .set_resizable(false)
-        .map_err(|error| error.to_string())?;
+    state.surfaces.set_customizing(window.label(), false);
+    let _ = state.native_sender.send(native::NativeCommand::CancelCustomization {
+        instance_uid,
+        window_uid,
+        menu_uid,
+    });
     Ok(())
 }
 
@@ -675,7 +661,6 @@ pub fn run() {
             close_popup,
             begin_menu_customization,
             start_menu_drag,
-            start_menu_resize,
             save_menu_placement,
             cancel_menu_customization
         ])

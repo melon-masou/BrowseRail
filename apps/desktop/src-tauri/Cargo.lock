@@ -187,7 +187,6 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
- "tauri-runtime",
  "tokio",
  "tokio-tungstenite",
  "urlencoding",
