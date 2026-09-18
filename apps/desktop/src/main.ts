@@ -1,4 +1,5 @@
 import type {
+  ExpandDirection,
   LayoutEntry,
   MenuAnchor,
   MenuPlacement,
@@ -311,17 +312,13 @@ async function initializeSurface(): Promise<void> {
     });
     activePopupEl = popupEl;
 
-    // Position popup right next to the anchor button
+    const direction: ExpandDirection =
+      entry.expandDirection ||
+      currentMenu?.expandDirection ||
+      (currentMenu?.orientation === "column" ? "right" : "down");
+
     const anchorRect = anchorButton.getBoundingClientRect();
     const menuRect = menuBar.getBoundingClientRect();
-
-    if (currentMenu?.orientation === "column") {
-      popupEl.style.top = `${anchorRect.top}px`;
-      popupEl.style.left = `${anchorRect.right + 2}px`;
-    } else {
-      popupEl.style.top = `${anchorRect.bottom + 2}px`;
-      popupEl.style.left = `${anchorRect.left}px`;
-    }
 
     root.appendChild(popupEl);
 
@@ -411,17 +408,45 @@ async function initializeSurface(): Promise<void> {
       popupEl.style.width = `${popupWidth}px`;
       popupEl.style.height = `${popupHeightVal}px`;
 
-      const totalWidth = currentMenu?.orientation === "column"
-        ? Math.max(menuRect.width, anchorRect.right + 2 + popupWidth)
-        : Math.max(menuRect.width, anchorRect.left + popupWidth);
-      const totalHeight = currentMenu?.orientation === "column"
-        ? Math.max(menuRect.height, anchorRect.top + popupHeightVal)
-        : Math.max(menuRect.height, anchorRect.bottom + 2 + popupHeightVal);
+      let offsetX = 0;
+      let offsetY = 0;
+      let totalWidth = menuRect.width;
+      let totalHeight = menuRect.height;
+
+      if (direction === "up") {
+        offsetY = popupHeightVal + 2;
+        menuBar.style.transform = `translateY(${offsetY}px)`;
+        popupEl.style.top = "0px";
+        popupEl.style.left = `${anchorRect.left}px`;
+        totalWidth = Math.max(menuRect.width, anchorRect.left + popupWidth);
+        totalHeight = menuRect.height + offsetY;
+      } else if (direction === "left") {
+        offsetX = popupWidth + 2;
+        menuBar.style.transform = `translateX(${offsetX}px)`;
+        popupEl.style.left = "0px";
+        popupEl.style.top = `${anchorRect.top}px`;
+        totalWidth = menuRect.width + offsetX;
+        totalHeight = Math.max(menuRect.height, anchorRect.top + popupHeightVal);
+      } else if (direction === "right") {
+        menuBar.style.transform = "";
+        popupEl.style.top = `${anchorRect.top}px`;
+        popupEl.style.left = `${anchorRect.right + 2}px`;
+        totalWidth = Math.max(menuRect.width, anchorRect.right + 2 + popupWidth);
+        totalHeight = Math.max(menuRect.height, anchorRect.top + popupHeightVal);
+      } else {
+        menuBar.style.transform = "";
+        popupEl.style.top = `${anchorRect.bottom + 2}px`;
+        popupEl.style.left = `${anchorRect.left}px`;
+        totalWidth = Math.max(menuRect.width, anchorRect.left + popupWidth);
+        totalHeight = Math.max(menuRect.height, anchorRect.bottom + 2 + popupHeightVal);
+      }
 
       void invoke("resize_popup", {
         height: totalHeight,
         instanceUid,
         menuUid,
+        offsetX,
+        offsetY,
         width: totalWidth,
         windowUid,
       });
@@ -435,6 +460,10 @@ async function initializeSurface(): Promise<void> {
       activePopupEl = null;
     }
     activePopupFolderUid = null;
+    const menuBarEl = root.querySelector<HTMLElement>(".menu-bar");
+    if (menuBarEl) {
+      menuBarEl.style.transform = "";
+    }
     for (const btn of root.querySelectorAll(".menu-button[data-expanded]")) {
       btn.removeAttribute("data-expanded");
     }
@@ -444,6 +473,8 @@ async function initializeSurface(): Promise<void> {
         height: currentMenu.placement.height,
         instanceUid,
         menuUid,
+        offsetX: 0,
+        offsetY: 0,
         width: currentMenu.placement.width,
         windowUid,
       });
@@ -686,7 +717,7 @@ function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
 
   const labelSpan = document.createElement("span");
   labelSpan.className = "menu-button-label";
-  const displayText = entry.rename || entry.emoji;
+  const displayText = entry.rename;
   if (displayText) {
     if (popup) {
       labelSpan.textContent = displayText === entry.label ? entry.label : `${displayText} (${entry.label})`;
@@ -912,6 +943,9 @@ async function initializeListenerSettings(): Promise<void> {
   const langSection = document.createElement("div");
   langSection.className = "settings-section";
 
+  const langRow = document.createElement("div");
+  langRow.className = "settings-language-row";
+
   const langLabel = document.createElement("label");
   langLabel.className = "settings-label";
   langLabel.textContent = t("language.label");
@@ -928,7 +962,8 @@ async function initializeListenerSettings(): Promise<void> {
   langSelect.addEventListener("change", () => {
     saveLanguage(langSelect.value as Lang);
   });
-  langSection.append(langLabel, langSelect);
+  langRow.append(langLabel, langSelect);
+  langSection.append(langRow);
 
   const statusCard = document.createElement("div");
   statusCard.className = "settings-status-card";

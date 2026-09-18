@@ -202,7 +202,6 @@ describe("rename and emoji support", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0].rename).toBe("GH");
-    expect(entries[0].emoji).toBe("GH");
     expect(entries[0].label).toBe("Very Long GitHub Bookmark Title");
   });
 
@@ -221,7 +220,6 @@ describe("rename and emoji support", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0].rename).toBe("🐙");
-    expect(entries[0].emoji).toBe("🐙");
     expect(entries[0].label).toBe("GitHub");
   });
 
@@ -240,7 +238,6 @@ describe("rename and emoji support", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0].rename).toBe("🐙");
-    expect(entries[0].emoji).toBe("🐙");
     expect(entries[0].label).toBe("GitHub");
   });
 
@@ -258,7 +255,7 @@ describe("rename and emoji support", () => {
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].emoji).toBe("🚀");
+    expect(entries[0].rename).toBe("🚀");
   });
 });
 
@@ -332,6 +329,41 @@ describe("tabMode configuration", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0].uid).toBe("bookmark:bm-item-newtab?tab=newTab");
+  });
+});
+
+describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
+  it("normalizes a portable item with path and type without requiring bookmarkId or url", async () => {
+    const { normalizeStoredMenuItem } = await import("./config");
+    const item = normalizeStoredMenuItem({
+      type: "flattenFolder",
+      path: ["Bookmarks Toolbar", "Dev"],
+      rename: "Devs",
+      color: "#2563eb",
+      tabMode: "newTab",
+      url: "https://should-be-omitted.com",
+    });
+
+    expect(item).toBeDefined();
+    expect(item?.type).toBe("flattenFolder");
+    expect(item?.path).toEqual(["Bookmarks Toolbar", "Dev"]);
+    expect(item?.rename).toBe("Devs");
+    expect(item?.color).toBe("#2563eb");
+    expect(item?.tabMode).toBe("newTab");
+    expect((item as any)?.url).toBeUndefined();
+  });
+
+  it("preserves future custom types and migrates legacy emoji to rename", async () => {
+    const { normalizeStoredMenuItem } = await import("./config");
+    const item = normalizeStoredMenuItem({
+      type: "customPluginType",
+      path: ["Tools"],
+      emoji: "🛠️",
+    });
+
+    expect(item).toBeDefined();
+    expect(item?.type).toBe("customPluginType");
+    expect(item?.rename).toBe("🛠️");
   });
 });
 

@@ -593,7 +593,7 @@ mod tests {
 
     fn panel(window_uid: &str) -> PanelSnapshot {
         PanelSnapshot {
-            always_on_top: false,
+            on_top_mode: crate::protocol::OnTopMode::AboveBrowser,
             menus: vec![],
             window: BrowserWindowSnapshot {
                 uid: window_uid.into(),

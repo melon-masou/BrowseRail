@@ -1,4 +1,4 @@
-import type { LayoutEntry } from "@browserail/protocol";
+import type { ExpandDirection, LayoutEntry } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import type { StoredMenuItem, TabMode } from "./config";
@@ -128,6 +128,7 @@ export async function resolveMenuItems(
   items: StoredMenuItem[],
   menuTabMode?: TabMode,
   menuColor?: string,
+  menuExpandDirection?: ExpandDirection,
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = null;
   const entryGroups = await Promise.all(
@@ -169,7 +170,7 @@ export async function resolveMenuItems(
             kind: "bookmark",
             uid: actionUid("bookmark", child.id, effectiveTabMode),
             label: rawTitle,
-            ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
+            ...(detectedEmoji ? { rename: detectedEmoji } : {}),
             ...(effectiveColor ? { color: effectiveColor } : {}),
           };
           return entry;
@@ -177,14 +178,19 @@ export async function resolveMenuItems(
       }
 
       const effectiveHover = expandOnHover !== undefined ? expandOnHover : true;
-      const entry = toLayoutEntry(node, effectiveHover, effectiveTabMode, effectiveColor);
+      const entry = toLayoutEntry(
+        node,
+        effectiveHover,
+        effectiveTabMode,
+        effectiveColor,
+        menuExpandDirection,
+      );
       if (effectiveColor) {
         entry.color = effectiveColor;
       }
       const effectiveRename = rename || emoji;
       if (effectiveRename) {
         entry.rename = effectiveRename;
-        entry.emoji = effectiveRename;
       }
       return [entry];
     }),
@@ -198,6 +204,7 @@ function toLayoutEntry(
   expandOnHover?: boolean,
   tabMode?: TabMode,
   defaultColor?: string,
+  expandDirection?: ExpandDirection,
 ): LayoutEntry {
   const title = node.title || (node.url !== undefined ? node.url : "Bookmarks");
   const detectedEmoji = extractLeadingEmoji(title);
@@ -207,7 +214,7 @@ function toLayoutEntry(
       kind: "bookmark",
       uid: actionUid("bookmark", node.id, tabMode),
       label: node.title || node.url,
-      ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
+      ...(detectedEmoji ? { rename: detectedEmoji } : {}),
       ...(defaultColor ? { color: defaultColor } : {}),
     };
   }
@@ -216,9 +223,12 @@ function toLayoutEntry(
     kind: "folder",
     uid: actionUid("folder", node.id),
     label: node.title || "Bookmarks",
-    children: (node.children ?? []).map((child) => toLayoutEntry(child, expandOnHover, tabMode, defaultColor)),
-    ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
+    children: (node.children ?? []).map((child) =>
+      toLayoutEntry(child, expandOnHover, tabMode, defaultColor, expandDirection),
+    ),
+    ...(detectedEmoji ? { rename: detectedEmoji } : {}),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
+    ...(expandDirection !== undefined ? { expandDirection } : {}),
   };
 }
 

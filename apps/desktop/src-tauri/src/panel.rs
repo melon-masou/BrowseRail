@@ -284,12 +284,12 @@ impl PopupRegistry {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct AppliedGeometry {
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    always_on_top: bool,
+pub struct AppliedGeometry {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub always_on_top: bool,
 }
 
 #[derive(Default)]
@@ -299,6 +299,9 @@ pub struct SurfaceRegistry {
 }
 
 impl SurfaceRegistry {
+    pub fn geometry(&self, label: &str) -> Option<AppliedGeometry> {
+        self.geometries.lock().ok()?.get(label).copied()
+    }
     pub fn update_geometry(
         &self,
         label: &str,

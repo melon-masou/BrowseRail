@@ -56,7 +56,7 @@ jobs:
         run: |
           $v = "${{ steps.version.outputs.version }}"
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          Copy-Item build/desktop/BrowseRail.exe "release-assets/BrowseRail-$v.exe"
+          Compress-Archive -Path build/desktop/BrowseRail.exe -DestinationPath "release-assets/BrowseRail-$v.zip"
           Compress-Archive -Path build/extension/chrome/* -DestinationPath "release-assets/BrowseRail-chrome-$v.zip"
           Compress-Archive -Path build/extension/firefox/* -DestinationPath "release-assets/BrowseRail-firefox-$v.zip"
 
@@ -68,6 +68,6 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: BrowseRail ${{ steps.version.outputs.version }}
           files: |
-            release-assets/BrowseRail-${{ steps.version.outputs.version }}.exe
+            release-assets/BrowseRail-${{ steps.version.outputs.version }}.zip
             release-assets/BrowseRail-chrome-${{ steps.version.outputs.version }}.zip
             release-assets/BrowseRail-firefox-${{ steps.version.outputs.version }}.zip

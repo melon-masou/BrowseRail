@@ -44,9 +44,11 @@ export interface BookmarkEntry {
   uid: string;
   label: string;
   color?: string;
-  emoji?: string;
   rename?: string;
 }
+
+export type OnTopMode = "aboveBrowser" | "alwaysOnTop";
+export type ExpandDirection = "down" | "up" | "right" | "left";
 
 export interface FolderEntry {
   kind: "folder";
@@ -55,24 +57,27 @@ export interface FolderEntry {
   color?: string;
   children: LayoutEntry[];
   expandOnHover?: boolean;
-  emoji?: string;
+  expandDirection?: ExpandDirection;
   rename?: string;
 }
 
 export type LayoutEntry = BookmarkEntry | FolderEntry;
 
 export interface MenuSnapshot {
+  attachmentMode?: AttachmentMode;
+  color?: string;
+  expandDirection?: ExpandDirection;
   fontSize?: MenuFontSize;
   gap?: number;
-  color?: string;
   items: LayoutEntry[];
+  onTopMode?: OnTopMode;
   orientation: MenuOrientation;
   placement: MenuPlacement;
   uid: string;
 }
 
 export interface PanelSnapshot {
-  alwaysOnTop: boolean;
+  onTopMode?: OnTopMode;
   menus: MenuSnapshot[];
   window: BrowserWindowSnapshot;
 }

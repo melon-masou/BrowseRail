@@ -14,7 +14,7 @@ pub enum ClientMessage {
     #[serde(rename = "sync")]
     Sync {
         revision: u64,
-        #[serde(rename = "attachmentMode")]
+        #[serde(default, rename = "attachmentMode")]
         attachment_mode: AttachmentMode,
         panels: Vec<PanelSnapshot>,
     },
@@ -53,6 +53,8 @@ pub enum ClientMessage {
     },
     #[serde(rename = "heartbeat")]
     Heartbeat,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -113,18 +115,81 @@ pub struct BrowserInstance {
     pub label: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum AttachmentMode {
     None,
+    #[default]
     LastFocused,
     All,
+}
+
+impl<'de> Deserialize<'de> for AttachmentMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "none" => Ok(AttachmentMode::None),
+            "all" => Ok(AttachmentMode::All),
+            _ => Ok(AttachmentMode::LastFocused),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum OnTopMode {
+    #[default]
+    AboveBrowser,
+    AlwaysOnTop,
+}
+
+impl<'de> Deserialize<'de> for OnTopMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "alwaysOnTop" => Ok(OnTopMode::AlwaysOnTop),
+            _ => Ok(OnTopMode::AboveBrowser),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ExpandDirection {
+    Down,
+    Up,
+    Right,
+    Left,
+}
+
+pub fn deserialize_optional_expand_direction<'de, D>(
+    deserializer: D,
+) -> Result<Option<ExpandDirection>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt.as_deref() {
+        Some("up") => Ok(Some(ExpandDirection::Up)),
+        Some("down") => Ok(Some(ExpandDirection::Down)),
+        Some("right") => Ok(Some(ExpandDirection::Right)),
+        Some("left") => Ok(Some(ExpandDirection::Left)),
+        _ => Ok(None),
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PanelSnapshot {
-    pub always_on_top: bool,
+    #[serde(default)]
+    pub on_top_mode: OnTopMode,
+    #[serde(default)]
     pub menus: Vec<MenuSnapshot>,
     pub window: BrowserWindowSnapshot,
 }
@@ -138,26 +203,53 @@ pub struct MenuSnapshot {
     pub gap: Option<f64>,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
+    pub expand_direction: Option<ExpandDirection>,
+    #[serde(default)]
     pub items: Vec<LayoutEntry>,
+    #[serde(default)]
     pub orientation: MenuOrientation,
+    #[serde(default)]
+    pub attachment_mode: AttachmentMode,
+    #[serde(default)]
+    pub on_top_mode: OnTopMode,
     pub placement: MenuPlacement,
     pub uid: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum MenuOrientation {
+    #[default]
     Row,
     Column,
+}
+
+impl<'de> Deserialize<'de> for MenuOrientation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "column" => Ok(MenuOrientation::Column),
+            _ => Ok(MenuOrientation::Row),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuPlacement {
+    #[serde(default)]
     pub anchor: MenuAnchor,
+    #[serde(default)]
     pub height: f64,
+    #[serde(default)]
     pub offset_x: f64,
+    #[serde(default)]
     pub offset_y: f64,
+    #[serde(default)]
     pub width: f64,
     #[serde(default)]
     pub item_width: Option<f64>,
@@ -169,13 +261,29 @@ pub struct MenuPlacement {
     pub gap: Option<f64>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum MenuAnchor {
+    #[default]
     TopLeft,
     TopRight,
     BottomLeft,
     BottomRight,
+}
+
+impl<'de> Deserialize<'de> for MenuAnchor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "topRight" => Ok(MenuAnchor::TopRight),
+            "bottomLeft" => Ok(MenuAnchor::BottomLeft),
+            "bottomRight" => Ok(MenuAnchor::BottomRight),
+            _ => Ok(MenuAnchor::TopLeft),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -205,8 +313,6 @@ pub enum LayoutEntry {
         #[serde(default)]
         color: Option<String>,
         #[serde(default)]
-        emoji: Option<String>,
-        #[serde(default)]
         rename: Option<String>,
     },
     Folder {
@@ -217,11 +323,13 @@ pub enum LayoutEntry {
         children: Vec<LayoutEntry>,
         #[serde(default)]
         expand_on_hover: Option<bool>,
-        #[serde(default)]
-        emoji: Option<String>,
+        #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
+        expand_direction: Option<ExpandDirection>,
         #[serde(default)]
         rename: Option<String>,
     },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -251,6 +359,67 @@ mod tests {
                 ..
             } if instance.uid == "instance-a"
         ));
+    }
+
+    #[test]
+    fn handles_unknown_message_types_gracefully() {
+        let message = serde_json::from_str::<ClientMessage>(
+            r#"{"type":"someNewFutureMessage","payload":123}"#,
+        )
+        .unwrap();
+        assert!(matches!(message, ClientMessage::Unknown));
+    }
+
+    #[test]
+    fn handles_backward_and_forward_compatibility_in_sync() {
+        // Sync payload with:
+        // - onTopMode fallback to aboveBrowser when unknown string
+        // - unknown future attachmentMode
+        // - empty string expandDirection
+        // - unknown entry kind in items
+        // - unknown menu orientation
+        let json = r#"{
+            "type": "sync",
+            "revision": 1,
+            "attachmentMode": "futureAttachmentStrategy",
+            "panels": [{
+                "onTopMode": "unknownFutureMode",
+                "menus": [{
+                    "uid": "menu-1",
+                    "orientation": "diagonalFuture",
+                    "placement": {
+                        "anchor": "centerFuture",
+                        "width": 100,
+                        "height": 40
+                    },
+                    "expandDirection": "",
+                    "items": [
+                        { "kind": "bookmark", "uid": "b1", "label": "Google" },
+                        { "kind": "customWidget", "uid": "w1", "extra": true }
+                    ]
+                }],
+                "window": {
+                    "uid": "win-1",
+                    "bounds": { "x": 0, "y": 0, "width": 800, "height": 600 }
+                }
+            }]
+        }"#;
+
+        let message = serde_json::from_str::<ClientMessage>(json).expect("should parse resiliently");
+        if let ClientMessage::Sync { attachment_mode, panels, .. } = message {
+            assert_eq!(attachment_mode, super::AttachmentMode::LastFocused);
+            assert_eq!(panels.len(), 1);
+            let panel = &panels[0];
+            assert_eq!(panel.on_top_mode, super::OnTopMode::AboveBrowser);
+            let menu = &panel.menus[0];
+            assert_eq!(menu.orientation, super::MenuOrientation::Row);
+            assert_eq!(menu.placement.anchor, super::MenuAnchor::TopLeft);
+            assert_eq!(menu.expand_direction, None);
+            assert_eq!(menu.items.len(), 2);
+            assert!(matches!(menu.items[1], super::LayoutEntry::Unknown));
+        } else {
+            panic!("Expected ClientMessage::Sync");
+        }
     }
 
     #[test]

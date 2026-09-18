@@ -9,7 +9,7 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use uuid::Uuid;
 
 use crate::native::NativeCommand;
-use crate::protocol::{ClientMessage, PROTOCOL_VERSION, ServerMessage};
+use crate::protocol::{ClientMessage, ServerMessage};
 use crate::state_machine::{
     ConnectionState, ConnectionStateMachine, ServerState, ServerStateMachine,
 };
@@ -226,17 +226,29 @@ async fn handle_connection(
                             break;
                         }
                         Message::Text(text) => {
-                            let message = serde_json::from_str::<ClientMessage>(&text)
-                                .map_err(|error| format!("Invalid client message: {error}"))?;
+                            let message = match serde_json::from_str::<ClientMessage>(&text) {
+                                Ok(msg) => msg,
+                                Err(error) => {
+                                    crate::debug::log("Socket", format!("Ignored malformed client message: {error}, text={text}"));
+                                    continue;
+                                }
+                            };
                             match message {
+                                ClientMessage::Unknown => {
+                                    crate::debug::log("Socket", format!("Ignored unknown client message: text={text}"));
+                                }
                                 ClientMessage::Hello { protocol_version, instance } => {
-                                    if registered_instance.is_some() || protocol_version != PROTOCOL_VERSION {
-                                        crate::debug::log("Socket", format!("Invalid hello: proto={protocol_version}, reg={:?}", registered_instance));
-                                        return Err("Invalid hello message".into());
+                                    if registered_instance.is_some() {
+                                        crate::debug::log("Socket", format!("Duplicate hello ignored: instance={:?}", registered_instance));
+                                        continue;
+                                    }
+                                    if protocol_version == 0 {
+                                        crate::debug::log("Socket", "Invalid hello protocol version 0");
+                                        continue;
                                     }
                                     let instance_uid = instance.uid.clone();
                                     registered_instance = Some(instance_uid.clone());
-                                    crate::debug::log("Socket", format!("Hello accepted: instance={instance_uid}, browser={:?}, label={:?}", instance.browser, instance.label));
+                                    crate::debug::log("Socket", format!("Hello accepted: proto={protocol_version}, instance={instance_uid}, browser={:?}, label={:?}", instance.browser, instance.label));
                                     connection_sm.transition(
                                         ConnectionState::Ready {
                                             connection_uid,
@@ -252,7 +264,8 @@ async fn handle_connection(
                                 }
                                 ClientMessage::Sync { revision, attachment_mode, panels } => {
                                     let Some(ref inst_uid) = registered_instance else {
-                                        return Err("Sync received before Hello".into());
+                                        crate::debug::log("Socket", "Ignored Sync received before Hello");
+                                        continue;
                                     };
                                     crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, mode={:?}, panels={}", attachment_mode, panels.len()));
                                     connection_sm.transition(
@@ -286,7 +299,8 @@ async fn handle_connection(
                                 }
                                 ClientMessage::PairWindow { request_uid, window_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
-                                        return Err("Pairing received before Hello".into());
+                                        crate::debug::log("Socket", "Ignored PairWindow received before Hello");
+                                        continue;
                                     };
                                     crate::debug::log("Socket", format!("PairWindow: inst={instance_uid}, req={request_uid}, win={window_uid}"));
                                     let _ = native_sender.send(NativeCommand::BeginWindowPairing {
@@ -299,7 +313,8 @@ async fn handle_connection(
                                 }
                                 ClientMessage::ConfirmWindowPairing { request_uid, window_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
-                                        return Err("Pairing confirmation received before Hello".into());
+                                        crate::debug::log("Socket", "Ignored ConfirmWindowPairing received before Hello");
+                                        continue;
                                     };
                                     crate::debug::log("Socket", format!("ConfirmWindowPairing: inst={instance_uid}, req={request_uid}, win={window_uid}"));
                                     let _ = native_sender.send(NativeCommand::ConfirmWindowPairing {
@@ -318,7 +333,8 @@ async fn handle_connection(
                                 }
                                 ClientMessage::Resync { request_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
-                                        return Err("Resync received before Hello".into());
+                                        crate::debug::log("Socket", "Ignored Resync received before Hello");
+                                        continue;
                                     };
                                     crate::debug::log("Socket", format!("Resync: inst={instance_uid}, req={request_uid}"));
                                     let _ = native_sender.send(NativeCommand::RebuildInstanceSurfaces {

@@ -89,6 +89,8 @@ pub enum NativeCommand {
         menu_uid: String,
         width: f64,
         height: f64,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
     },
     SchedulePopupClose {
         instance_uid: String,
@@ -457,11 +459,19 @@ impl NativeReactor {
                     menu_uid,
                     width,
                     height,
+                    offset_x,
+                    offset_y,
                 } => {
                     let app = self.app.clone();
+                    let surfaces = self.surfaces.clone();
                     let _ = self.app.run_on_main_thread(move || {
                         let label = crate::panel::menu_label(&instance_uid, &window_uid, &menu_uid);
                         if let Some(window) = app.get_webview_window(&label) {
+                            if let Some(geo) = surfaces.geometry(&label) {
+                                let dx = offset_x.unwrap_or(0.0);
+                                let dy = offset_y.unwrap_or(0.0);
+                                let _ = window.set_position(tauri::LogicalPosition::new(geo.x - dx, geo.y - dy));
+                            }
                             let _ = window.set_size(LogicalSize::new(width, height));
                         }
                     });
@@ -908,25 +918,12 @@ impl NativeReactor {
                 }
             }
 
-            let is_focused = match attachment_mode {
-                AttachmentMode::None => false,
-                AttachmentMode::All => true,
-                AttachmentMode::LastFocused => panel.window.focused,
-            };
-            let should_be_visible = display && is_focused;
-            crate::debug::log(
-                "Native:SyncOutcome",
-                format!(
-                    "panel win={}: should_be_visible={should_be_visible} (focused={}, owner={owner_hwnd}, fg={foreground_hwnd}, mode={attachment_mode:?})",
-                    panel.window.uid, panel.window.focused
-                ),
-            );
-
             for menu in &panel.menus {
                 let label = menu_label(&instance_uid, &panel.window.uid, &menu.uid);
                 let target_pos = menu_position(&panel.window, &menu.placement);
                 let is_customizing = self.surfaces.is_customizing(&label);
-                let effective_always_on_top = panel.always_on_top;
+                let effective_always_on_top =
+                    menu.on_top_mode == crate::protocol::OnTopMode::AlwaysOnTop;
                 let geometry_changed = self.surfaces.update_geometry(
                     &label,
                     target_pos.x,
@@ -942,13 +939,22 @@ impl NativeReactor {
                     urlencoding::encode(&menu.uid),
                 );
 
+                let owner = Some(owner_hwnd);
+
+                let is_focused = match menu.attachment_mode {
+                    AttachmentMode::None => false,
+                    AttachmentMode::All => true,
+                    AttachmentMode::LastFocused => panel.window.focused,
+                };
+                let should_be_visible = display && is_focused;
+
                 sync_items.push(MenuSyncItem {
                     label,
                     url,
                     target_pos,
                     placement: menu.placement.clone(),
                     always_on_top: effective_always_on_top,
-                    owner_hwnd: Some(owner_hwnd),
+                    owner_hwnd: owner,
                     should_be_visible,
                     is_customizing,
                     geometry_changed,
@@ -1169,16 +1175,17 @@ impl NativeReactor {
                 let owner_hwnd = browser_window_handles
                     .get(&(snapshot.instance_uid.clone(), panel.window.uid.clone()))
                     .copied();
-                let always_on_top = panel.always_on_top;
-                let is_focused = match snapshot.attachment_mode {
-                    AttachmentMode::None => false,
-                    AttachmentMode::All => true,
-                    AttachmentMode::LastFocused => panel.window.focused,
-                };
-                let should_be_visible = display
-                    && owner_hwnd.is_some()
-                    && is_focused;
                 for menu in panel.menus {
+                    let always_on_top =
+                        menu.on_top_mode == crate::protocol::OnTopMode::AlwaysOnTop;
+                    let is_focused = match menu.attachment_mode {
+                        AttachmentMode::None => false,
+                        AttachmentMode::All => true,
+                        AttachmentMode::LastFocused => panel.window.focused,
+                    };
+                    let should_be_visible = display
+                        && owner_hwnd.is_some()
+                        && is_focused;
                     let menu_label =
                         menu_label(&snapshot.instance_uid, &panel.window.uid, &menu.uid);
                     let popup_label =

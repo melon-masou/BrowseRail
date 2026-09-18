@@ -196,6 +196,8 @@ fn resize_popup(
     menu_uid: String,
     width: f64,
     height: f64,
+    offset_x: Option<f64>,
+    offset_y: Option<f64>,
 ) -> Result<(), String> {
     let _ = state
         .native_sender
@@ -205,6 +207,8 @@ fn resize_popup(
             menu_uid,
             width,
             height,
+            offset_x,
+            offset_y,
         });
     Ok(())
 }

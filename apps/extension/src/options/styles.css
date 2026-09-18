@@ -42,6 +42,48 @@ main {
   color: #172033;
 }
 
+.language-picker {
+  margin-left: auto;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  width: auto !important;
+}
+
+.language-picker span {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  line-height: 1;
+}
+
+.language-picker select {
+  width: auto !important;
+  max-width: none !important;
+  min-width: 80px !important;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.language-picker select:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+}
+
 form {
   display: grid;
   gap: 18px;
@@ -387,6 +429,41 @@ output {
   background: #dcf2e3;
 }
 
+/* Menus section header with global settings button */
+.menus-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.menus-section-header h2 {
+  margin: 0;
+}
+
+.global-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.global-settings-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
 /* Header actions in menu card */
 .menu-header-actions {
   display: flex;
@@ -394,7 +471,47 @@ output {
   gap: 8px;
 }
 
-/* Menus toolbar (Add menu, Preview, Export, Import) */
+/* Unified button style for Menu Card Header: Settings, Remove Menu, Add Item */
+.menu-header-btn {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  min-height: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.menu-header-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.menu-header-btn.menu-add-item-btn {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  font-weight: 600;
+}
+
+.menu-header-btn.menu-add-item-btn:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+/* Menus toolbar (Add menu, Export, Import) */
 .menus-toolbar {
   display: flex;
   align-items: center;
@@ -461,29 +578,6 @@ output {
   background: #f1f5f9;
   border-color: #94a3b8;
   color: #0f172a;
-}
-
-/* Window Behavior row below Menus */
-.window-behavior-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 24px;
-  flex-wrap: wrap;
-  padding-top: 14px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.window-behavior-row .attachment-mode-label {
-  flex: 1;
-  min-width: 220px;
-}
-
-.window-behavior-row .always-on-top-check {
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
 }
 
 /* Form action buttons */
@@ -869,43 +963,87 @@ output {
 .color-popover-picker-row {
   display: flex;
   align-items: center;
-  padding-top: 4px;
+  gap: 8px;
+  padding-top: 6px;
   border-top: 1px solid #f1f5f9;
+  box-sizing: border-box;
+  width: 100%;
 }
 
-.popover-native-input {
-  width: 100%;
-  height: 26px;
-  min-height: 26px;
-  padding: 0;
+.color-popover-picker-row input.popover-native-input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 !important;
+  margin: 0 !important;
   border: 1px solid #cbd5e1;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
   background: transparent;
+  flex: 0 0 36px !important;
+  box-sizing: border-box !important;
 }
 
-.popover-native-input::-webkit-color-swatch-wrapper {
+.color-popover-picker-row input.popover-native-input::-webkit-color-swatch-wrapper {
   padding: 1px;
 }
 
-.popover-native-input::-webkit-color-swatch {
+.color-popover-picker-row input.popover-native-input::-webkit-color-swatch {
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
-/* Menu Settings Popover (Direction, FontSize, ButtonGap) */
+.color-popover-picker-row input.popover-native-input::-moz-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.color-popover-picker-row input.popover-hex-input {
+  flex: 1 1 auto !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  box-sizing: border-box !important;
+  padding: 0 8px !important;
+  margin: 0 !important;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 500;
+  color: #1e293b;
+  background: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.color-popover-picker-row input.popover-hex-input:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+  border-color: #3b82f6;
+}
+
+/* Menu Settings Popover (Style & Behavior) */
 .menu-settings-popover {
-  position: fixed;
+  position: absolute;
   z-index: 10000;
-  width: 240px;
+  width: 320px;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  padding: 12px 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   animation: popoverFadeIn 0.12s ease-out;
 }
 
@@ -924,26 +1062,39 @@ output {
 }
 
 .menu-settings-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
 }
 
 .menu-settings-body label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #475569;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  min-width: 0;
+}
+
+.menu-settings-body label > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .menu-settings-body select,
 .menu-settings-body input {
-  min-height: 32px;
-  height: 32px;
-  font-size: 13px;
-  padding: 0 8px;
+  min-height: 28px;
+  height: 28px;
+  font-size: 12px;
+  padding: 0 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.menu-setting-full-width {
+  grid-column: 1 / -1;
 }
 
 .menu-setting-color-row {

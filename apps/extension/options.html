@@ -60,33 +60,21 @@
           </label>
         </div>
         <section class="menus-section">
-          <h2 data-i18n="section.menus">Menus</h2>
+          <div class="menus-section-header">
+            <h2 data-i18n="section.menus">Menus</h2>
+          </div>
           <div id="menus"></div>
           <div class="menus-toolbar">
             <button id="add-menu" class="menu-action-btn add-menu-btn" type="button" data-i18n="btn.addMenu">+ Add menu</button>
-            <button type="button" id="preview-btn" class="menu-action-btn preview-btn" data-i18n="btn.preview">Preview</button>
             <button type="button" id="export-btn" class="menu-action-btn export-btn" data-i18n="btn.export">Export</button>
             <button type="button" id="import-btn" class="menu-action-btn import-btn" data-i18n="btn.import">Import</button>
             <input type="file" id="import-file-input" accept=".json" style="display: none;" />
           </div>
         </section>
 
-        <div class="window-behavior-row">
-          <label class="attachment-mode-label">
-            <span data-i18n="form.attachTo">Attach menus to</span>
-            <select id="attachment-mode">
-              <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
-              <option value="all" data-i18n="form.attach.all">All windows</option>
-            </select>
-          </label>
-          <label class="check always-on-top-check">
-            <input id="always-on-top" type="checkbox" />
-            <span data-i18n="form.alwaysOnTop">Always on top</span>
-          </label>
-        </div>
-
         <div class="form-actions-row">
           <button type="submit" id="save-btn" class="save-btn" data-i18n="btn.save">Save</button>
+          <button type="button" id="preview-btn" class="preview-btn action-btn" data-i18n="btn.preview">Preview</button>
           <output id="status"></output>
         </div>
       </form>
@@ -116,21 +104,31 @@
         <div class="color-popover-presets" id="color-popover-presets"></div>
         <div class="color-popover-picker-row">
           <input type="color" id="popover-color-input" class="popover-native-input" data-i18n-title="color.customTitle" title="Custom color" />
+          <input type="text" id="popover-color-hex" class="popover-hex-input" placeholder="#3B82F6" maxlength="7" spellcheck="false" />
         </div>
       </div>
 
-      <!-- Menu Settings Popover (Direction, FontSize, ButtonGap) -->
-      <div id="menu-settings-popover" class="menu-settings-popover" style="display: none;">
+      <!-- Menu Style Popover (Direction, Folder expand direction, FontSize, Gap) -->
+      <div id="menu-style-popover" class="menu-settings-popover" style="display: none;">
         <div class="menu-settings-header">
-          <span id="menu-settings-title" class="menu-settings-title" data-i18n="menuSettings.title">Menu Settings</span>
-          <button type="button" id="menu-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+          <span id="menu-style-title" class="menu-settings-title" data-i18n="menuStyle.title">Menu Style</span>
+          <button type="button" id="menu-style-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <div class="menu-settings-body">
           <label>
             <span data-i18n="menuSettings.direction">Direction</span>
             <select id="menu-setting-orientation">
-              <option value="row" data-i18n="menuSettings.row">Row (Horizontal)</option>
-              <option value="column" data-i18n="menuSettings.column">Column (Vertical)</option>
+              <option value="row" data-i18n="menuSettings.row">Row</option>
+              <option value="column" data-i18n="menuSettings.column">Column</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="menuSettings.expandDirection">Folder expand direction</span>
+            <select id="menu-setting-expand-direction">
+              <option value="down" data-i18n="expandDirection.down">Down</option>
+              <option value="up" data-i18n="expandDirection.up">Up</option>
+              <option value="right" data-i18n="expandDirection.right">Right</option>
+              <option value="left" data-i18n="expandDirection.left">Left</option>
             </select>
           </label>
           <label>
@@ -138,8 +136,32 @@
             <input id="menu-setting-font-size" type="number" min="8" max="48" step="1" />
           </label>
           <label>
-            <span data-i18n="menuSettings.gap">Button gap (% of button size)</span>
+            <span data-i18n="menuSettings.gap">Button gap (%)</span>
             <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Menu Behavior Popover (Attach to, On-top mode, Open in) -->
+      <div id="menu-behavior-popover" class="menu-settings-popover" style="display: none;">
+        <div class="menu-settings-header">
+          <span id="menu-behavior-title" class="menu-settings-title" data-i18n="menuBehavior.title">Menu Behavior</span>
+          <button type="button" id="menu-behavior-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <div class="menu-settings-body">
+          <label>
+            <span data-i18n="form.attachTo">Attach menu to</span>
+            <select id="menu-setting-attachment-mode">
+              <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
+              <option value="all" data-i18n="form.attach.all">All windows</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="form.onTopMode">On-top mode</span>
+            <select id="menu-setting-on-top-mode">
+              <option value="aboveBrowser" data-i18n="form.onTopMode.aboveBrowser">Above browser</option>
+              <option value="alwaysOnTop" data-i18n="form.onTopMode.alwaysOnTop">Always on top</option>
+            </select>
           </label>
           <label>
             <span data-i18n="menuSettings.openIn">Open in</span>
@@ -148,10 +170,6 @@
               <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
             </select>
           </label>
-          <div class="menu-setting-color-row">
-            <span class="menu-setting-color-label" data-i18n="menuSettings.defaultColor">Default color</span>
-            <button type="button" id="menu-setting-color-swatch" class="item-color-swatch" data-i18n-title="menuSettings.defaultColorSwatchTitle" title="Menu default color"></button>
-          </div>
         </div>
       </div>
 
@@ -172,7 +190,7 @@
           <div class="item-setting-field">
             <span class="item-setting-field-title" data-i18n="itemSettings.openMode">Open mode</span>
             <select id="item-setting-tab-mode" class="item-setting-select">
-              <option value="" data-i18n="itemSettings.inherit">Inherit menu setting (default)</option>
+              <option value="" data-i18n="itemSettings.inherit">Inherit menu setting</option>
               <option value="replace" data-i18n="itemSettings.replaceTab">Replace current tab</option>
               <option value="newTab" data-i18n="itemSettings.newTab">New tab</option>
             </select>
@@ -207,7 +225,6 @@
           <div class="picker-footer">
             <div id="picker-selected-info" class="picker-selected-info"></div>
             <div class="picker-actions">
-              <button id="picker-custom-btn" class="action-btn" type="button" style="display: none;"></button>
               <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
                 <input type="checkbox" id="picker-flatten-checkbox" />
                 <span data-i18n="picker.flatten">Flatten folder</span>

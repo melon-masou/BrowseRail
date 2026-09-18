@@ -13,6 +13,14 @@ crate-type = ["lib", "cdylib", "staticlib"]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
+# Size-optimized
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -6,7 +6,6 @@
   "scripts": {
     "build": "pnpm clean:build && pnpm --filter @browserail/protocol build && pnpm --filter @browserail/extension build && pnpm build:windows",
     "build:windows": "pnpm --filter @browserail/desktop build && node scripts/build-desktop-windows.mjs",
-    "build:windows:native": "USE_WINDOWS_CARGO=1 pnpm build:windows",
     "check": "pnpm -r check",
     "clean:build": "node scripts/clean-build.mjs",
     "test": "pnpm -r test && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml",

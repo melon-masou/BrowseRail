@@ -1,4 +1,11 @@
-import type { AttachmentMode, MenuFontSize, MenuOrientation, MenuPlacement } from "@browserail/protocol";
+import type {
+  AttachmentMode,
+  ExpandDirection,
+  MenuFontSize,
+  MenuOrientation,
+  MenuPlacement,
+  OnTopMode,
+} from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "./desktop-connection";
@@ -7,7 +14,7 @@ import { instanceLabelFromUid } from "./instance-label";
 
 const STORAGE_KEY = "config";
 
-export type StoredMenuItemType = "bookmark" | "folder" | "flattenFolder";
+export type StoredMenuItemType = "bookmark" | "folder" | "flattenFolder" | (string & {});
 
 export type TabMode = "replace" | "newTab";
 
@@ -24,37 +31,27 @@ export interface StoredMenuItem {
 }
 
 export interface StoredMenu {
+  attachmentMode?: AttachmentMode;
   color?: string;
+  expandDirection?: ExpandDirection;
   fontSize?: MenuFontSize;
   gap?: number;
   items: StoredMenuItem[];
+  onTopMode?: OnTopMode;
   orientation: MenuOrientation;
   tabMode?: TabMode;
   uid: string;
 }
 
 export interface ExtensionConfig {
-  attachmentMode: AttachmentMode;
   desktopWidget: {
     url: string;
   };
   instanceLabel: string;
   panel: {
-    alwaysOnTop: boolean;
     menus: StoredMenu[];
   };
 }
-
-const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
-  attachmentMode: "lastFocused",
-  desktopWidget: {
-    url: DEFAULT_DESKTOP_URL,
-  },
-  panel: {
-    alwaysOnTop: false,
-    menus: [createMenu("menu-main")],
-  },
-};
 
 export const DEFAULT_FONT_SIZE = 13;
 
@@ -78,13 +75,24 @@ export function calculateGapPx(buttonDim: number, gapPercent: number): number {
 
 export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
   return {
+    attachmentMode: "lastFocused",
     fontSize: DEFAULT_FONT_SIZE,
     gap: DEFAULT_MENU_GAP_PERCENT,
     items: [],
+    onTopMode: "aboveBrowser",
     orientation: "row",
     uid,
   };
 }
+
+const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
+  desktopWidget: {
+    url: DEFAULT_DESKTOP_URL,
+  },
+  panel: {
+    menus: [createMenu("menu-main")],
+  },
+};
 
 export const DEFAULT_ITEM_WIDTH = 84;
 export const DEFAULT_ITEM_HEIGHT = 36;
@@ -193,8 +201,31 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
 
   const desktopWidget = isRecord(value.desktopWidget) ? value.desktopWidget : {};
   const panel = isRecord(value.panel) ? value.panel : {};
+  const legacyAttachmentMode =
+    value.attachmentMode === "active"
+      ? "lastFocused"
+      : isAttachmentMode(value.attachmentMode)
+        ? value.attachmentMode
+        : undefined;
+  const legacyOnTopMode =
+    panel.onTopMode === "alwaysOnTop" || panel.onTopMode === "aboveBrowser"
+      ? (panel.onTopMode as OnTopMode)
+      : undefined;
+
   const rawMenus = Array.isArray(panel.menus)
-    ? panel.menus.flatMap((menu) => normalizeMenu(menu) ?? [])
+    ? panel.menus.flatMap((menu) => {
+        const norm = normalizeMenu(menu);
+        if (!norm) return [];
+        if (isRecord(menu)) {
+          if (!menu.attachmentMode && legacyAttachmentMode) {
+            norm.attachmentMode = legacyAttachmentMode;
+          }
+          if (!menu.onTopMode && legacyOnTopMode) {
+            norm.onTopMode = legacyOnTopMode;
+          }
+        }
+        return [norm];
+      })
     : migrateLegacyMenu(Array.isArray(panel.layout) ? panel : value);
   const seenUids = new Set<string>();
   const menus = rawMenus.map((menu) => {
@@ -210,12 +241,6 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
   });
 
   return {
-    attachmentMode:
-      value.attachmentMode === "active"
-        ? "lastFocused"
-        : isAttachmentMode(value.attachmentMode)
-          ? value.attachmentMode
-          : DEFAULT_CONFIG.attachmentMode,
     desktopWidget: {
       url:
         typeof desktopWidget.url === "string" && isLocalDesktopUrl(desktopWidget.url)
@@ -227,11 +252,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         ? value.instanceLabel.trim()
         : defaultInstanceLabel,
     panel: {
-      alwaysOnTop:
-        typeof panel.alwaysOnTop === "boolean"
-          ? panel.alwaysOnTop
-          : DEFAULT_CONFIG.panel.alwaysOnTop,
-      menus,
+      menus: menus.length > 0 ? menus : [createMenu("menu-main")],
     },
   };
 }
@@ -276,14 +297,32 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     value.tabMode === "newTab" || value.tabMode === "replace"
       ? value.tabMode
       : undefined;
+  const expandDirection: ExpandDirection | undefined =
+    value.expandDirection === "up" ||
+    value.expandDirection === "down" ||
+    value.expandDirection === "left" ||
+    value.expandDirection === "right"
+      ? value.expandDirection
+      : undefined;
+  const attachmentMode: AttachmentMode =
+    value.attachmentMode === "all" || value.attachmentMode === "lastFocused" || value.attachmentMode === "none"
+      ? value.attachmentMode
+      : "lastFocused";
+  const onTopMode: OnTopMode =
+    value.onTopMode === "alwaysOnTop" ? "alwaysOnTop" : "aboveBrowser";
   return {
+    attachmentMode,
     ...(color !== undefined ? { color } : {}),
+    ...(expandDirection !== undefined ? { expandDirection } : {}),
     ...(fontSize !== undefined ? { fontSize } : {}),
     gap,
-    items: Array.isArray(value.items) ? value.items.filter(isStoredMenuItem) : [],
+    items: Array.isArray(value.items)
+      ? value.items.map(normalizeStoredMenuItem).filter((i): i is StoredMenuItem => i !== undefined)
+      : [],
+    onTopMode,
     orientation: value.orientation === "column" ? "column" : "row",
     ...(tabMode !== undefined ? { tabMode } : {}),
-    uid: value.uid,
+    uid,
   };
 }
 
@@ -334,21 +373,48 @@ function isAnchor(value: unknown): value is MenuPlacement["anchor"] {
   return value === "topLeft" || value === "topRight" || value === "bottomLeft" || value === "bottomRight";
 }
 
+export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefined {
+  if (!isRecord(value)) return undefined;
+  const bookmarkId = typeof value.bookmarkId === "string" ? value.bookmarkId : "";
+  const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")
+    ? value.path
+    : undefined;
+  if (!bookmarkId && (!path || path.length === 0)) {
+    return undefined;
+  }
+  const rename = typeof value.rename === "string" && value.rename
+    ? value.rename
+    : typeof (value as { emoji?: unknown }).emoji === "string" && (value as { emoji: string }).emoji
+      ? (value as { emoji: string }).emoji
+      : undefined;
+  const color = typeof value.color === "string" && value.color ? value.color : undefined;
+  const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
+  const type = typeof value.type === "string" && value.type
+    ? (value.type as StoredMenuItemType)
+    : undefined;
+  const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
+  return {
+    bookmarkId,
+    ...(path ? { path } : {}),
+    ...(type ? { type } : {}),
+    ...(rename ? { rename } : {}),
+    ...(color ? { color } : {}),
+    ...(tabMode ? { tabMode } : {}),
+    ...(expandOnHover !== undefined ? { expandOnHover } : {}),
+  };
+}
+
 function isStoredMenuItem(value: unknown): value is StoredMenuItem {
   return (
     isRecord(value) &&
-    typeof value.bookmarkId === "string" &&
+    (typeof value.bookmarkId === "string" || (Array.isArray(value.path) && value.path.length > 0)) &&
     (value.path === undefined || (Array.isArray(value.path) && value.path.every((p) => typeof p === "string"))) &&
     (value.url === undefined || typeof value.url === "string") &&
     (value.color === undefined || typeof value.color === "string") &&
-    (value.emoji === undefined || typeof value.emoji === "string") &&
-    (value.rename === undefined || typeof value.rename === "string") &&
+    (value.rename === undefined || typeof value.rename === "string" || typeof (value as { emoji?: unknown }).emoji === "string") &&
     (value.expandOnHover === undefined || typeof value.expandOnHover === "boolean") &&
     (value.tabMode === undefined || value.tabMode === "replace" || value.tabMode === "newTab") &&
-    (value.type === undefined ||
-      value.type === "bookmark" ||
-      value.type === "folder" ||
-      value.type === "flattenFolder")
+    (value.type === undefined || typeof value.type === "string")
   );
 }
 

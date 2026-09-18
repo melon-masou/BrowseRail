@@ -536,6 +536,40 @@ body[data-view="settings"] {
   cursor: not-allowed;
 }
 
+.settings-language-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-language-row .settings-label {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  margin: 0;
+}
+
+.settings-language-select {
+  width: auto;
+  min-width: 120px;
+  min-height: 32px;
+  box-sizing: border-box;
+  border: 1px solid #cbd2df;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 13px;
+  background: white;
+  color: #172033;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.settings-language-select:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+}
+
 .settings-checkbox-row {
   display: inline-flex;
   align-items: center;

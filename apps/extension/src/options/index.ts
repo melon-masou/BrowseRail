@@ -1,4 +1,10 @@
-import type { AttachmentMode, MenuFontSize, MenuOrientation } from "@browserail/protocol";
+import type {
+  AttachmentMode,
+  ExpandDirection,
+  MenuFontSize,
+  MenuOrientation,
+  OnTopMode,
+} from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import {
@@ -10,12 +16,13 @@ import {
   getItemDimensions,
   loadConfig,
   loadWidgetEnabled,
-  normalizeConfig,
   normalizeFontSize,
+  normalizeMenu,
   saveConfig,
   saveWidgetEnabled,
   type StoredMenu,
   type StoredMenuItem,
+  type StoredMenuItemType,
 } from "../config";
 import { type BookmarkNode, extractLeadingEmoji, findBookmarkNodeByPath } from "../bookmarks";
 import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
@@ -74,8 +81,6 @@ const stateBadge = element<HTMLSpanElement>("state-badge");
 const stateDetail = element<HTMLDivElement>("state-detail");
 const testDesktop = element<HTMLButtonElement>("test-desktop");
 const desktopTestStatus = element<HTMLOutputElement>("desktop-test-status");
-const attachmentMode = element<HTMLSelectElement>("attachment-mode");
-const alwaysOnTop = element<HTMLInputElement>("always-on-top");
 const menusContainer = element<HTMLDivElement>("menus");
 const addMenu = element<HTMLButtonElement>("add-menu");
 const saveBtn = element<HTMLButtonElement>("save-btn");
@@ -101,26 +106,33 @@ const pickerUpBtn = element<HTMLButtonElement>("picker-up-btn");
 const pickerBreadcrumbs = element<HTMLDivElement>("picker-breadcrumbs");
 const pickerContent = element<HTMLDivElement>("picker-content");
 const pickerSelectedInfo = element<HTMLDivElement>("picker-selected-info");
-const pickerCustomBtn = element<HTMLButtonElement>("picker-custom-btn");
 const pickerConfirmBtn = element<HTMLButtonElement>("picker-confirm-btn");
 
 // Color popover elements
 const colorPopover = element<HTMLDivElement>("color-popover");
 const colorPopoverClose = element<HTMLButtonElement>("color-popover-close");
 const popoverColorInput = element<HTMLInputElement>("popover-color-input");
+const popoverColorHex = element<HTMLInputElement>("popover-color-hex");
 const colorPopoverPresets = element<HTMLDivElement>("color-popover-presets");
 const popoverRandomBtn = element<HTMLButtonElement>("popover-random-btn");
 const popoverDefaultBtn = element<HTMLButtonElement>("popover-default-btn");
 
-// Menu settings popover elements
-const menuSettingsPopover = element<HTMLDivElement>("menu-settings-popover");
-const menuSettingsTitle = element<HTMLSpanElement>("menu-settings-title");
-const menuSettingsClose = element<HTMLButtonElement>("menu-settings-close");
+// Menu Style popover elements
+const menuStylePopover = element<HTMLDivElement>("menu-style-popover");
+const menuStyleTitle = element<HTMLSpanElement>("menu-style-title");
+const menuStyleClose = element<HTMLButtonElement>("menu-style-close");
 const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientation");
+const menuSettingExpandDirection = element<HTMLSelectElement>("menu-setting-expand-direction");
 const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
+
+// Menu Behavior popover elements
+const menuBehaviorPopover = element<HTMLDivElement>("menu-behavior-popover");
+const menuBehaviorTitle = element<HTMLSpanElement>("menu-behavior-title");
+const menuBehaviorClose = element<HTMLButtonElement>("menu-behavior-close");
+const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
+const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
 const menuSettingTabMode = element<HTMLSelectElement>("menu-setting-tab-mode");
-const menuSettingColorSwatch = element<HTMLButtonElement>("menu-setting-color-swatch");
 
 // Item settings popover elements
 const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
@@ -147,8 +159,11 @@ let desktopTestGeneration = 0;
 let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
 let activeColorSwatchElement: HTMLElement | null = null;
 
-let activeSettingsMenuIndex = -1;
-let activeSettingsBtn: HTMLElement | null = null;
+let activeStyleMenuIndex = -1;
+let activeStyleBtn: HTMLElement | null = null;
+
+let activeBehaviorMenuIndex = -1;
+let activeBehaviorBtn: HTMLElement | null = null;
 
 let activeItemSettings: { menuIndex: number; itemIndex: number } | null = null;
 let activeItemSettingsBtn: HTMLElement | null = null;
@@ -156,7 +171,7 @@ let activeItemSettingsBtn: HTMLElement | null = null;
 // Picker state
 let pickerCurrentFolderId = "0";
 let pickerSelectedId: string | null = null;
-let pickerMode: "addMenu" | "addItem" | "editItem" = "addMenu";
+let pickerMode: "addItem" | "editItem" = "addItem";
 let pickerTargetMenuIndex = -1;
 let pickerTargetItemIndex = -1;
 
@@ -216,11 +231,11 @@ desktopUrl.addEventListener("input", () => {
   clearDesktopTestStatus();
   markDirty();
 });
-attachmentMode.addEventListener("change", markDirty);
-alwaysOnTop.addEventListener("change", markDirty);
 
 addMenu.addEventListener("click", () => {
-  openBookmarkPicker("addMenu");
+  menus.push(createMenu());
+  renderMenus();
+  markDirty();
 });
 
 toggleEnabledButton.addEventListener("click", () => {
@@ -278,15 +293,6 @@ pickerUpBtn.addEventListener("click", () => {
   }
 });
 
-pickerCustomBtn.addEventListener("click", () => {
-  if (pickerMode === "addMenu") {
-    menus.push(createMenu());
-    renderMenus();
-    markDirty();
-    pickerDialog.close();
-  }
-});
-
 pickerConfirmBtn.addEventListener("click", () => {
   if (!pickerSelectedId) return;
 
@@ -295,24 +301,16 @@ pickerConfirmBtn.addEventListener("click", () => {
   const isFlatten = isFolder && pickerFlattenCheckbox.checked;
   const itemType = isFlatten ? "flattenFolder" : isFolder ? "folder" : "bookmark";
   const expandOnHover = isFolder && !isFlatten ? pickerHoverExpandCheckbox.checked : undefined;
-  const { path, url } = getItemPathAndUrl(pickerSelectedId, rawBookmarkTree);
+  const { path } = getItemPathAndUrl(pickerSelectedId, rawBookmarkTree);
 
   const newItem: StoredMenuItem = {
     bookmarkId: pickerSelectedId,
     type: itemType,
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
     ...(path ? { path } : {}),
-    ...(url ? { url } : {}),
   };
 
-  if (pickerMode === "addMenu") {
-    const newMenu = createMenu();
-    newMenu.items.push(newItem);
-    menus.push(newMenu);
-    renderMenus();
-    markDirty();
-    pickerDialog.close();
-  } else if (pickerMode === "addItem") {
+  if (pickerMode === "addItem") {
     const menu = menus[pickerTargetMenuIndex];
     if (menu) {
       menu.items.push(newItem);
@@ -337,7 +335,7 @@ pickerConfirmBtn.addEventListener("click", () => {
 });
 
 function openBookmarkPicker(
-  mode: "addMenu" | "addItem" | "editItem",
+  mode: "addItem" | "editItem",
   menuIndex = -1,
   itemIndex = -1,
 ): void {
@@ -372,19 +370,12 @@ function openBookmarkPicker(
   pickerFlattenLabel.style.display = "none";
   pickerHoverExpandLabel.style.display = "none";
 
-  if (mode === "addMenu") {
-    pickerTitle.textContent = t("picker.addMenuTitle");
-    pickerConfirmBtn.textContent = t("picker.addAsMenu");
-    pickerCustomBtn.textContent = t("picker.createEmptyMenu");
-    pickerCustomBtn.style.display = "inline-block";
-  } else if (mode === "editItem") {
+  if (mode === "editItem") {
     pickerTitle.textContent = t("picker.changeTitle");
     pickerConfirmBtn.textContent = t("picker.apply");
-    pickerCustomBtn.style.display = "none";
   } else {
     pickerTitle.textContent = t("picker.addItemTitle", { n: menuIndex + 1 });
     pickerConfirmBtn.textContent = t("picker.addToMenu");
-    pickerCustomBtn.style.display = "none";
   }
 
   renderPicker();
@@ -454,12 +445,15 @@ function enrichMenuItemPaths(
   if (nodes.length === 0) return;
   for (const item of items) {
     if (item.bookmarkId) {
-      const { path, url } = getItemPathAndUrl(item.bookmarkId, nodes);
+      const { path } = getItemPathAndUrl(item.bookmarkId, nodes);
       if (path && path.length > 0) {
         item.path = path;
       }
-      if (url) {
-        item.url = url;
+      if (!item.type) {
+        const node = findBookmarkNode(item.bookmarkId, nodes);
+        if (node) {
+          item.type = node.children !== undefined || node.url === undefined ? "folder" : "bookmark";
+        }
       }
     }
   }
@@ -752,7 +746,8 @@ async function initialize(): Promise<void> {
   initLanguagePicker();
   onLanguageChange(rerenderForLanguage);
   initColorPopover();
-  initMenuSettingsPopover();
+  initMenuStylePopover();
+  initMenuBehaviorPopover();
   initItemSettingsPopover();
   void refreshDesktopState();
   const [config, enabled, tree] = await Promise.all([
@@ -767,8 +762,6 @@ async function initialize(): Promise<void> {
   instanceLabel.value = config.instanceLabel;
   widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
-  attachmentMode.value = config.attachmentMode;
-  alwaysOnTop.checked = config.panel.alwaysOnTop;
   menus = structuredClone(config.panel.menus);
   updateDesktopControls();
   renderMenus();
@@ -788,13 +781,11 @@ async function persist(): Promise<void> {
   }
 
   await saveConfig({
-    instanceLabel: instanceLabel.value,
-    attachmentMode: attachmentMode.value as AttachmentMode,
     desktopWidget: {
       url: desktopUrl.value,
     },
+    instanceLabel: instanceLabel.value,
     panel: {
-      alwaysOnTop: alwaysOnTop.checked,
       menus,
     },
   });
@@ -811,13 +802,11 @@ async function persist(): Promise<void> {
 
 async function previewCurrentConfig(): Promise<void> {
   const previewConfig: ExtensionConfig = {
-    instanceLabel: instanceLabel.value,
-    attachmentMode: attachmentMode.value as AttachmentMode,
     desktopWidget: {
       url: desktopUrl.value,
     },
+    instanceLabel: instanceLabel.value,
     panel: {
-      alwaysOnTop: alwaysOnTop.checked,
       menus,
     },
   };
@@ -870,6 +859,16 @@ function initColorPopover(): void {
     setColor(popoverColorInput.value);
   });
 
+  popoverColorHex.addEventListener("input", () => {
+    let val = popoverColorHex.value.trim();
+    if (!val.startsWith("#")) {
+      val = "#" + val;
+    }
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+      setColor(val);
+    }
+  });
+
   popoverRandomBtn.addEventListener("click", () => {
     setColor(getRandomPaletteColor());
   });
@@ -878,6 +877,7 @@ function initColorPopover(): void {
     if (!activeColorTarget || !activeColorSwatchElement) return;
     delete activeColorTarget.color;
     popoverColorInput.value = "#3b82f6";
+    popoverColorHex.value = "";
     updateSwatchAppearance(activeColorSwatchElement, undefined);
     markDirty();
   });
@@ -906,6 +906,7 @@ function setColor(color: string): void {
   if (!activeColorTarget || !activeColorSwatchElement) return;
   activeColorTarget.color = color;
   popoverColorInput.value = color;
+  popoverColorHex.value = color.toUpperCase();
   updateSwatchAppearance(activeColorSwatchElement, color);
   markDirty();
 }
@@ -934,6 +935,7 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
 
   const currentColor = target.color || "#3b82f6";
   popoverColorInput.value = currentColor;
+  popoverColorHex.value = target.color ? target.color.toUpperCase() : "";
 
   const rect = swatchElement.getBoundingClientRect();
   const popoverWidth = 200;
@@ -955,24 +957,32 @@ function closeColorPopover(): void {
   colorPopover.style.display = "none";
   activeColorTarget = null;
   activeColorSwatchElement = null;
-  if (activeSettingsMenuIndex < 0 && !activeItemSettings) {
+  if (activeStyleMenuIndex < 0 && activeBehaviorMenuIndex < 0 && !activeItemSettings) {
     renderMenus();
   }
 }
 
-function initMenuSettingsPopover(): void {
-  menuSettingsClose.addEventListener("click", () => closeMenuSettingsPopover());
+function initMenuStylePopover(): void {
+  menuStyleClose.addEventListener("click", () => closeMenuStylePopover());
 
   menuSettingOrientation.addEventListener("change", () => {
-    const menu = menus[activeSettingsMenuIndex];
+    const menu = menus[activeStyleMenuIndex];
     if (menu) {
       menu.orientation = menuSettingOrientation.value as MenuOrientation;
       markDirty();
     }
   });
 
+  menuSettingExpandDirection.addEventListener("change", () => {
+    const menu = menus[activeStyleMenuIndex];
+    if (menu) {
+      menu.expandDirection = menuSettingExpandDirection.value as ExpandDirection;
+      markDirty();
+    }
+  });
+
   menuSettingFontSize.addEventListener("input", () => {
-    const menu = menus[activeSettingsMenuIndex];
+    const menu = menus[activeStyleMenuIndex];
     const val = parseInt(menuSettingFontSize.value, 10);
     if (menu && !isNaN(val)) {
       menu.fontSize = Math.max(8, Math.min(48, val));
@@ -981,7 +991,7 @@ function initMenuSettingsPopover(): void {
   });
 
   menuSettingGap.addEventListener("input", () => {
-    const menu = menus[activeSettingsMenuIndex];
+    const menu = menus[activeStyleMenuIndex];
     const val = parseInt(menuSettingGap.value, 10);
     if (menu && !isNaN(val)) {
       menu.gap = Math.max(0, Math.min(100, val));
@@ -989,51 +999,41 @@ function initMenuSettingsPopover(): void {
     }
   });
 
-  menuSettingTabMode.addEventListener("change", () => {
-    const menu = menus[activeSettingsMenuIndex];
-    if (menu) {
-      menu.tabMode = menuSettingTabMode.value === "newTab" ? "newTab" : "replace";
-      renderMenus();
-      markDirty();
-    }
-  });
-
-  menuSettingColorSwatch.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const menu = menus[activeSettingsMenuIndex];
-    if (menu) {
-      openColorPopover(menu, menuSettingColorSwatch);
-    }
-  });
-
   document.addEventListener("click", (e) => {
-    if (menuSettingsPopover.style.display === "none") return;
+    if (menuStylePopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
       target &&
-      !menuSettingsPopover.contains(target) &&
+      !menuStylePopover.contains(target) &&
       !colorPopover.contains(target) &&
-      activeSettingsBtn &&
-      !activeSettingsBtn.contains(target)
+      activeStyleBtn &&
+      !activeStyleBtn.contains(target)
     ) {
-      closeMenuSettingsPopover();
+      closeMenuStylePopover();
     }
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && menuSettingsPopover.style.display !== "none") {
-      closeMenuSettingsPopover();
+    if (e.key === "Escape" && menuStylePopover.style.display !== "none") {
+      closeMenuStylePopover();
     }
   });
 }
 
-function openMenuSettingsPopover(menuIndex: number, btnElement: HTMLElement): void {
-  if (activeSettingsMenuIndex === menuIndex && menuSettingsPopover.style.display !== "none") {
-    closeMenuSettingsPopover();
+function openMenuStylePopover(menuIndex: number, btnElement: HTMLElement): void {
+  if (activeStyleMenuIndex === menuIndex && menuStylePopover.style.display !== "none") {
+    closeMenuStylePopover();
     return;
   }
-  activeSettingsMenuIndex = menuIndex;
-  activeSettingsBtn = btnElement;
+  // Measure the anchor before the close calls below, which re-render the menu list
+  // and detach this button — a detached node reports a 0,0 rect (top-left popup).
+  const rect = btnElement.getBoundingClientRect();
+  closeMenuBehaviorPopover();
+  closeColorPopover();
+  closeItemSettingsPopover();
+
+  activeStyleMenuIndex = menuIndex;
+  activeStyleBtn = btnElement;
 
   const menu = menus[menuIndex];
   if (!menu) return;
@@ -1041,15 +1041,13 @@ function openMenuSettingsPopover(menuIndex: number, btnElement: HTMLElement): vo
   const fs = menu.fontSize !== undefined ? normalizeFontSize(menu.fontSize) : DEFAULT_FONT_SIZE;
   const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
 
-  menuSettingsTitle.textContent = t("menuSettings.menuTitle", { n: menuIndex + 1 });
+  menuStyleTitle.textContent = t("menuStyle.title", { n: menuIndex + 1 });
   menuSettingOrientation.value = menu.orientation;
+  menuSettingExpandDirection.value = menu.expandDirection ?? "down";
   menuSettingFontSize.value = String(fs);
   menuSettingGap.value = String(gapVal);
-  menuSettingTabMode.value = menu.tabMode ?? "replace";
-  updateSwatchAppearance(menuSettingColorSwatch, menu.color);
 
-  const rect = btnElement.getBoundingClientRect();
-  const popoverWidth = 240;
+  const popoverWidth = 320;
   let top = rect.bottom + window.scrollY + 6;
   let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
 
@@ -1058,16 +1056,110 @@ function openMenuSettingsPopover(menuIndex: number, btnElement: HTMLElement): vo
     left = window.innerWidth - popoverWidth - 10;
   }
 
-  menuSettingsPopover.style.position = "absolute";
-  menuSettingsPopover.style.top = `${top}px`;
-  menuSettingsPopover.style.left = `${left}px`;
-  menuSettingsPopover.style.display = "flex";
+  menuStylePopover.style.position = "absolute";
+  menuStylePopover.style.top = `${top}px`;
+  menuStylePopover.style.left = `${left}px`;
+  menuStylePopover.style.display = "flex";
 }
 
-function closeMenuSettingsPopover(): void {
-  menuSettingsPopover.style.display = "none";
-  activeSettingsMenuIndex = -1;
-  activeSettingsBtn = null;
+function closeMenuStylePopover(): void {
+  menuStylePopover.style.display = "none";
+  activeStyleMenuIndex = -1;
+  activeStyleBtn = null;
+  renderMenus();
+}
+
+function initMenuBehaviorPopover(): void {
+  menuBehaviorClose.addEventListener("click", () => closeMenuBehaviorPopover());
+
+  menuSettingAttachmentMode.addEventListener("change", () => {
+    const menu = menus[activeBehaviorMenuIndex];
+    if (menu) {
+      menu.attachmentMode = menuSettingAttachmentMode.value as AttachmentMode;
+      markDirty();
+    }
+  });
+
+  menuSettingOnTopMode.addEventListener("change", () => {
+    const menu = menus[activeBehaviorMenuIndex];
+    if (menu) {
+      menu.onTopMode = menuSettingOnTopMode.value as OnTopMode;
+      markDirty();
+    }
+  });
+
+  menuSettingTabMode.addEventListener("change", () => {
+    const menu = menus[activeBehaviorMenuIndex];
+    if (menu) {
+      menu.tabMode = menuSettingTabMode.value === "newTab" ? "newTab" : "replace";
+      renderMenus();
+      markDirty();
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (menuBehaviorPopover.style.display === "none") return;
+    const target = e.target as Node | null;
+    if (
+      target &&
+      !menuBehaviorPopover.contains(target) &&
+      !colorPopover.contains(target) &&
+      activeBehaviorBtn &&
+      !activeBehaviorBtn.contains(target)
+    ) {
+      closeMenuBehaviorPopover();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && menuBehaviorPopover.style.display !== "none") {
+      closeMenuBehaviorPopover();
+    }
+  });
+}
+
+function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): void {
+  if (activeBehaviorMenuIndex === menuIndex && menuBehaviorPopover.style.display !== "none") {
+    closeMenuBehaviorPopover();
+    return;
+  }
+  // Measure the anchor before the close calls below, which re-render the menu list
+  // and detach this button — a detached node reports a 0,0 rect (top-left popup).
+  const rect = btnElement.getBoundingClientRect();
+  closeMenuStylePopover();
+  closeColorPopover();
+  closeItemSettingsPopover();
+
+  activeBehaviorMenuIndex = menuIndex;
+  activeBehaviorBtn = btnElement;
+
+  const menu = menus[menuIndex];
+  if (!menu) return;
+
+  menuBehaviorTitle.textContent = t("menuBehavior.title", { n: menuIndex + 1 });
+  menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
+  menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
+  menuSettingTabMode.value = menu.tabMode ?? "replace";
+
+  const popoverWidth = 320;
+  let top = rect.bottom + window.scrollY + 6;
+  let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
+
+  if (left < 10) left = 10;
+  if (left + popoverWidth > window.innerWidth - 10) {
+    left = window.innerWidth - popoverWidth - 10;
+  }
+
+  menuBehaviorPopover.style.position = "absolute";
+  menuBehaviorPopover.style.top = `${top}px`;
+  menuBehaviorPopover.style.left = `${left}px`;
+  menuBehaviorPopover.style.display = "flex";
+}
+
+function closeMenuBehaviorPopover(): void {
+  menuBehaviorPopover.style.display = "none";
+  activeBehaviorMenuIndex = -1;
+  activeBehaviorBtn = null;
   renderMenus();
 }
 
@@ -1266,17 +1358,7 @@ function renderMenus(): void {
       const headerActions = document.createElement("div");
       headerActions.className = "menu-header-actions";
 
-      const settingsBtn = document.createElement("button");
-      settingsBtn.type = "button";
-      settingsBtn.className = "action-btn menu-settings-btn";
-      settingsBtn.textContent = t("menu.settings");
-      settingsBtn.title = t("menu.settingsTitle");
-      settingsBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openMenuSettingsPopover(menuIndex, settingsBtn);
-      });
-
-      // Menu default color swatch button
+      // Menu default color swatch button (to the left of Settings)
       const menuColorSwatch = document.createElement("button");
       menuColorSwatch.type = "button";
       menuColorSwatch.className = `item-color-swatch menu-color-swatch ${!menu.color ? "has-no-color" : ""}`;
@@ -1289,9 +1371,36 @@ function renderMenus(): void {
         openColorPopover(menu, menuColorSwatch);
       });
 
-      const removeMenu = actionButton(t("menu.removeMenu"), () => {
-        if (activeSettingsMenuIndex === menuIndex) {
-          closeMenuSettingsPopover();
+      const styleBtn = document.createElement("button");
+      styleBtn.type = "button";
+      styleBtn.className = "action-btn menu-header-btn";
+      styleBtn.textContent = t("menu.style");
+      styleBtn.title = t("menu.styleTitle");
+      styleBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openMenuStylePopover(menuIndex, styleBtn);
+      });
+
+      const behaviorBtn = document.createElement("button");
+      behaviorBtn.type = "button";
+      behaviorBtn.className = "action-btn menu-header-btn";
+      behaviorBtn.textContent = t("menu.behavior");
+      behaviorBtn.title = t("menu.behaviorTitle");
+      behaviorBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openMenuBehaviorPopover(menuIndex, behaviorBtn);
+      });
+
+      const removeMenu = document.createElement("button");
+      removeMenu.type = "button";
+      removeMenu.className = "action-btn menu-header-btn";
+      removeMenu.textContent = t("menu.removeMenu");
+      removeMenu.addEventListener("click", () => {
+        if (activeStyleMenuIndex === menuIndex) {
+          closeMenuStylePopover();
+        }
+        if (activeBehaviorMenuIndex === menuIndex) {
+          closeMenuBehaviorPopover();
         }
         if (activeColorTarget === menu) {
           closeColorPopover();
@@ -1301,13 +1410,15 @@ function renderMenus(): void {
         markDirty();
       });
 
-      const addItem = actionButton(t("menu.addItem"), () => {
+      const addItem = document.createElement("button");
+      addItem.type = "button";
+      addItem.className = "action-btn menu-header-btn menu-add-item-btn";
+      addItem.textContent = t("menu.addItem");
+      addItem.addEventListener("click", () => {
         openBookmarkPicker("addItem", menuIndex);
       });
-      addItem.style.fontWeight = "600";
-      addItem.style.color = "#2563eb";
 
-      headerActions.append(settingsBtn, menuColorSwatch, removeMenu, addItem);
+      headerActions.append(menuColorSwatch, styleBtn, behaviorBtn, removeMenu, addItem);
       header.append(title, headerActions);
 
       const items = document.createElement("ol");
@@ -1339,18 +1450,6 @@ function renderMenus(): void {
           }
           titleSpan.title = rawLabel.trim();
           label.appendChild(titleSpan);
-
-          if (customRename) {
-            const renameBadge = document.createElement("span");
-            renameBadge.className = "item-tag item-tag-rename";
-            renameBadge.textContent = t("item.renameBadge", { name: customRename });
-            renameBadge.title = t("item.renameBadgeTitle", { name: customRename });
-            renameBadge.addEventListener("click", (e) => {
-              e.stopPropagation();
-              openItemSettingsPopover(menuIndex, itemIndex, renameBadge);
-            });
-            label.appendChild(renameBadge);
-          }
 
           if (item.tabMode) {
             const tabBadge = document.createElement("span");
@@ -1625,22 +1724,46 @@ function exportSettings(): void {
     enrichMenuItemPaths(menu.items, rawBookmarkTree);
   }
 
-  const exportConfig: ExtensionConfig = {
-    instanceLabel: instanceLabel.value,
-    attachmentMode: attachmentMode.value as AttachmentMode,
-    desktopWidget: {
-      url: desktopUrl.value,
-    },
-    panel: {
-      alwaysOnTop: alwaysOnTop.checked,
-      menus,
-    },
-  };
-
+  // Export only the menus, in a portable shape: each item is identified by its
+  // bookmark path and keeps its type + user settings. Browser-specific bookmarkId
+  // and the re-derivable url are omitted; so are instance label, desktop address,
+  // attachment mode, always-on-top, and language (per-install / per-environment).
   const exportData = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    config: exportConfig,
+    menus: menus.map((menu) => ({
+      uid: menu.uid,
+      orientation: menu.orientation,
+      ...(menu.fontSize !== undefined ? { fontSize: menu.fontSize } : {}),
+      ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
+      ...(menu.color ? { color: menu.color } : {}),
+      ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
+      ...(menu.attachmentMode ? { attachmentMode: menu.attachmentMode } : {}),
+      ...(menu.onTopMode ? { onTopMode: menu.onTopMode } : {}),
+      ...(menu.tabMode ? { tabMode: menu.tabMode } : {}),
+      items: menu.items.map((item) => {
+        let path = item.path;
+        if (!path || path.length === 0) {
+          if (item.bookmarkId) {
+            const { path: resolvedPath } = getItemPathAndUrl(item.bookmarkId, rawBookmarkTree);
+            path = resolvedPath;
+          }
+        }
+        const node = item.bookmarkId ? findBookmarkNode(item.bookmarkId, rawBookmarkTree) : undefined;
+        const isFolder = node ? (node.children !== undefined || node.url === undefined) : false;
+        const itemType: string = item.type ?? (isFolder ? "folder" : "bookmark");
+
+        return {
+          type: itemType,
+          ...(path && path.length > 0 ? { path } : {}),
+          ...(item.rename ? { rename: item.rename } : {}),
+          ...(item.color ? { color: item.color } : {}),
+          ...(item.expandDirection ? { expandDirection: item.expandDirection } : {}),
+          ...(item.expandOnHover !== undefined ? { expandOnHover: item.expandOnHover } : {}),
+          ...(item.tabMode ? { tabMode: item.tabMode } : {}),
+        };
+      }),
+    })),
   };
 
   const jsonStr = JSON.stringify(exportData, null, 2);
@@ -1650,7 +1773,7 @@ function exportSettings(): void {
   const now = new Date();
   const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
   a.href = downloadUrl;
-  a.download = `browserail-settings-${dateStr}.json`;
+  a.download = `browserail-menus-${dateStr}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1669,51 +1792,94 @@ async function importSettings(file: File): Promise<void> {
   try {
     const text = await file.text();
     const parsed = JSON.parse(text) as unknown;
-    if (typeof parsed !== "object" || parsed === null) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("menus" in parsed) ||
+      !Array.isArray((parsed as { menus: unknown }).menus)
+    ) {
       status.value = t("import.invalidJson");
       return;
     }
 
-    const configSource =
-      "config" in parsed && typeof (parsed as { config: unknown }).config === "object"
-        ? (parsed as { config: unknown }).config
-        : parsed;
+    const menusSource = (parsed as { menus: unknown[] }).menus;
 
-    const normalized = normalizeConfig(configSource, instanceLabel.value);
+    // Rebuild each item from its portable fields: match the bookmark by path to
+    // recover the browser-specific bookmarkId; omit url; keep type + settings.
+    const importedMenus: StoredMenu[] = [];
+    for (const rawMenu of menusSource) {
+      if (typeof rawMenu !== "object" || rawMenu === null) continue;
+      const menuRecord = rawMenu as Record<string, unknown>;
+      const rawItems = Array.isArray(menuRecord.items) ? menuRecord.items : [];
 
-    // Cross-browser bookmark matching by path & URL
-    if (rawBookmarkTree.length > 0) {
-      for (const menu of normalized.panel.menus) {
-        for (const item of menu.items) {
-          let matched: BookmarkNode | undefined;
-          if (item.path && item.path.length > 0) {
-            matched = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], item.path, item.url);
-          } else if (item.url) {
-            matched = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], [], item.url);
-          }
+      const items: StoredMenuItem[] = [];
+      for (const rawItem of rawItems) {
+        if (typeof rawItem !== "object" || rawItem === null) continue;
+        const itemRecord = rawItem as Record<string, unknown>;
+
+        const path = Array.isArray(itemRecord.path)
+          ? itemRecord.path.filter((p): p is string => typeof p === "string")
+          : [];
+        const type: StoredMenuItemType = typeof itemRecord.type === "string" && itemRecord.type
+          ? itemRecord.type
+          : "bookmark";
+
+        let bookmarkId = "";
+        let resolvedPath: string[] | undefined = path.length > 0 ? path : undefined;
+        if (rawBookmarkTree.length > 0 && path.length > 0) {
+          const matched = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], path, undefined);
           if (matched) {
-            item.bookmarkId = matched.id;
+            bookmarkId = matched.id;
             const enriched = getItemPathAndUrl(matched.id, rawBookmarkTree);
-            if (enriched.path) item.path = enriched.path;
-            if (enriched.url) item.url = enriched.url;
-          } else if (item.bookmarkId) {
-            const existing = findBookmarkNode(item.bookmarkId, rawBookmarkTree);
-            if (existing) {
-              const enriched = getItemPathAndUrl(existing.id, rawBookmarkTree);
-              if (enriched.path) item.path = enriched.path;
-              if (enriched.url) item.url = enriched.url;
-            }
+            if (enriched.path) resolvedPath = enriched.path;
           }
+        } else if (typeof itemRecord.bookmarkId === "string") {
+          bookmarkId = itemRecord.bookmarkId;
         }
+
+        const rename = typeof itemRecord.rename === "string" && itemRecord.rename
+          ? itemRecord.rename
+          : typeof itemRecord.emoji === "string" && itemRecord.emoji
+            ? itemRecord.emoji
+            : undefined;
+
+        const expandDirection =
+          itemRecord.expandDirection === "down" ||
+          itemRecord.expandDirection === "up" ||
+          itemRecord.expandDirection === "right" ||
+          itemRecord.expandDirection === "left"
+            ? (itemRecord.expandDirection as ExpandDirection)
+            : undefined;
+
+        items.push({
+          bookmarkId,
+          type,
+          ...(resolvedPath ? { path: resolvedPath } : {}),
+          ...(rename ? { rename } : {}),
+          ...(typeof itemRecord.color === "string" && itemRecord.color
+            ? { color: itemRecord.color }
+            : {}),
+          ...(expandDirection ? { expandDirection } : {}),
+          ...(typeof itemRecord.expandOnHover === "boolean"
+            ? { expandOnHover: itemRecord.expandOnHover }
+            : {}),
+          ...(itemRecord.tabMode === "newTab" || itemRecord.tabMode === "replace"
+            ? { tabMode: itemRecord.tabMode }
+            : {}),
+        });
       }
+
+      const normalizedMenu = normalizeMenu({
+        ...menuRecord,
+        uid: typeof menuRecord.uid === "string" && menuRecord.uid ? menuRecord.uid : crypto.randomUUID(),
+        items,
+      });
+      if (normalizedMenu) importedMenus.push(normalizedMenu);
     }
 
-    instanceLabel.value = normalized.instanceLabel;
-    attachmentMode.value = normalized.attachmentMode;
-    desktopUrl.value = normalized.desktopWidget.url;
-    alwaysOnTop.checked = normalized.panel.alwaysOnTop;
-    menus = normalized.panel.menus;
-    updateDesktopControls();
+    // Only the menus are imported; instance label, desktop address, attachment
+    // mode, always-on-top, and language keep their current values.
+    menus = importedMenus;
     renderMenus();
 
     await persist();

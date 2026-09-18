@@ -534,7 +534,7 @@ async function syncOnce(): Promise<void> {
   const config = previewConfigOverride ?? loadedConfig;
   const menus = await Promise.all(
     config.panel.menus.map(async (menu, index) => {
-      const items = await resolveMenuItems(menu.items, menu.tabMode, menu.color);
+      const items = await resolveMenuItems(menu.items, menu.tabMode, menu.color, menu.expandDirection);
       const placement = resolveMenuPlacement(
         placements[menu.uid],
         index,
@@ -544,10 +544,13 @@ async function syncOnce(): Promise<void> {
         menu.gap,
       );
       return {
+        attachmentMode: menu.attachmentMode ?? "lastFocused",
         fontSize: menu.fontSize ?? DEFAULT_FONT_SIZE,
         gap: placement.gap ?? 0,
         ...(menu.color ? { color: menu.color } : {}),
+        ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
         items,
+        onTopMode: menu.onTopMode ?? "aboveBrowser",
         orientation: menu.orientation,
         placement,
         uid: menu.uid,
@@ -557,7 +560,6 @@ async function syncOnce(): Promise<void> {
   updateLastFocusedWindow(windows);
 
   const panels: PanelSnapshot[] = windows.map((window) => ({
-    alwaysOnTop: config.panel.alwaysOnTop,
     menus,
     window: {
       uid: window.uid,
@@ -566,21 +568,24 @@ async function syncOnce(): Promise<void> {
     },
   }));
 
+  const hasActiveAttachment = menus.some((m) => m.attachmentMode !== "none");
+  const hasAllAttachment = menus.some((m) => m.attachmentMode === "all");
+
   extLog(
     "Sync",
-    `syncOnce: totalWindows=${windows.length}, menus=${menus.length}, attachmentMode=${config.attachmentMode}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
+    `syncOnce: totalWindows=${windows.length}, menus=${menus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
   );
 
   send({
     type: "sync",
     revision: ++revision,
-    attachmentMode: config.attachmentMode,
+    attachmentMode: hasAllAttachment ? "all" : hasActiveAttachment ? "lastFocused" : "none",
     panels,
   });
 
-  if (config.attachmentMode !== "none") {
+  if (hasActiveAttachment) {
     for (const panel of panels) {
-      if (panel.window.focused || config.attachmentMode === "all") {
+      if (panel.window.focused || hasAllAttachment) {
         requestWindowPairing(panel.window.uid);
       }
     }
