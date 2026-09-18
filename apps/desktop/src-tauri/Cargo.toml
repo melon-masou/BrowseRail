@@ -43,3 +43,7 @@ windows = { version = "0.61", features = [
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+[patch.crates-io]
+tauri-runtime-wry = { git = "https://github.com/melon-masou/tauri", rev = "9ec6d48d48ffb5cf484a7e1e3fffcaf70d7ed35d" }
+wry = { git = "https://github.com/melon-masou/wry", rev = "877bf02bc21a972ac6edc115febbcab32ade0ee0" }
