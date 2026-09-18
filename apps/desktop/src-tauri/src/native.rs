@@ -926,7 +926,11 @@ impl NativeReactor {
                 let label = menu_label(&instance_uid, &panel.window.uid, &menu.uid);
                 let target_pos = menu_position(&panel.window, &menu.placement);
                 let is_customizing = self.surfaces.is_customizing(&label);
-                let effective_always_on_top = panel.always_on_top;
+                let effective_always_on_top = if owner_hwnd > 0 {
+                    false
+                } else {
+                    panel.always_on_top
+                };
                 let geometry_changed = self.surfaces.update_geometry(
                     &label,
                     target_pos.x,
@@ -1166,10 +1170,14 @@ impl NativeReactor {
 
         for snapshot in self.registry.instance_panel_snapshots() {
             for panel in snapshot.panels {
-                let always_on_top = panel.always_on_top;
                 let owner_hwnd = browser_window_handles
                     .get(&(snapshot.instance_uid.clone(), panel.window.uid.clone()))
                     .copied();
+                let always_on_top = if owner_hwnd.is_some() {
+                    false
+                } else {
+                    panel.always_on_top
+                };
                 let is_focused = match snapshot.attachment_mode {
                     AttachmentMode::None => false,
                     AttachmentMode::All => true,

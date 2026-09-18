@@ -667,7 +667,21 @@ function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
 
   const labelSpan = document.createElement("span");
   labelSpan.className = "menu-button-label";
-  labelSpan.textContent = entry.label;
+  const displayText = entry.rename || entry.emoji;
+  if (displayText) {
+    if (popup) {
+      labelSpan.textContent = displayText === entry.label ? entry.label : `${displayText} (${entry.label})`;
+    } else {
+      labelSpan.textContent = displayText;
+      const isEmojiOnly = /^\p{Extended_Pictographic}+$/u.test(displayText.trim());
+      if (isEmojiOnly) {
+        labelSpan.classList.add("menu-button-emoji");
+        button.dataset.hasEmoji = "true";
+      }
+    }
+  } else {
+    labelSpan.textContent = entry.label;
+  }
   button.append(labelSpan);
 
   if (entry.kind === "folder") {

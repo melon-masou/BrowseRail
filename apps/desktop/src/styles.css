@@ -50,6 +50,16 @@ button {
 }
 
 .menu-button {
+  --button-padding-left: clamp(
+    1px,
+    calc(1px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.25),
+    6px
+  );
+  --button-padding-right: clamp(
+    1px,
+    calc(1px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.25),
+    6px
+  );
   position: relative;
   display: flex;
   align-items: center;
@@ -61,8 +71,15 @@ button {
   width: 100%;
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 8px;
-  padding: 0 12px;
+  border-radius: clamp(
+    2px,
+    calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.45),
+    6px
+  );
+  padding-left: var(--button-padding-left);
+  padding-right: var(--button-padding-right);
+  padding-top: 0;
+  padding-bottom: 0;
   color: #f5f7fb;
   background: rgb(31 37 49 / 94%);
   box-shadow: 0 3px 12px rgb(0 0 0 / 22%);
@@ -80,6 +97,14 @@ button {
   white-space: nowrap;
 }
 
+.menu-button[data-has-emoji="true"] .menu-button-label.menu-button-emoji {
+  font-size: calc(var(--button-font-size, var(--menu-font-size, 13px)) * 1.25);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .menu-bar .menu-button,
 .customize-rail .menu-button {
   container-type: inline-size;
@@ -88,7 +113,12 @@ button {
 @container (max-width: 72px) {
   .menu-bar .menu-button,
   .customize-rail .menu-button {
-    padding: 0 6px;
+    padding-left: min(var(--button-padding-left), 3px);
+    padding-right: min(var(--button-padding-right), 3px);
+  }
+  .menu-bar .menu-button[data-folder],
+  .customize-rail .menu-button[data-folder] {
+    padding-right: 6px;
   }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
@@ -99,31 +129,49 @@ button {
 @container (max-width: 50px) {
   .menu-bar .menu-button,
   .customize-rail .menu-button {
-    padding: 0 3px;
+    padding-left: 1px;
+    padding-right: 1px;
+  }
+  .menu-bar .menu-button[data-folder],
+  .customize-rail .menu-button[data-folder] {
+    padding-right: 5px;
   }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
-    font-size: 10px;
+    font-size: min(var(--button-font-size, var(--menu-font-size, 13px)), 10px);
   }
 }
 
 @container (max-width: 32px) {
   .menu-bar .menu-button,
   .customize-rail .menu-button {
-    padding: 0 1px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .menu-bar .menu-button[data-folder],
+  .customize-rail .menu-button[data-folder] {
+    padding-right: 4px;
   }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
-    font-size: 9px;
+    font-size: min(var(--button-font-size, var(--menu-font-size, 13px)), 9px);
   }
+}
+
+.menu-button[data-folder] {
+  padding-right: clamp(
+    6px,
+    calc(6px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.0),
+    10px
+  );
 }
 
 .menu-button[data-folder]::after {
   position: absolute;
-  right: 5px;
+  right: clamp(1px, calc(var(--button-padding-left) * 0.4), 3px);
   top: 50%;
   transform: translateY(-50%);
-  font-size: 9px;
+  font-size: clamp(6px, calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.6), 8px);
   line-height: 1;
   color: #aab3c4;
   pointer-events: none;
@@ -198,8 +246,9 @@ button {
   min-height: var(--menu-item-height, 36px);
   width: 100%;
   border: 0;
-  border-radius: 6px;
-  padding: 0 24px 0 10px;
+  border-radius: clamp(3px, calc(var(--menu-font-size, 13px) * 0.45), 6px);
+  padding: 0 clamp(12px, calc(var(--menu-font-size, 13px) * 1.8), 24px) 0
+    clamp(4px, calc(var(--menu-font-size, 13px) * 0.75), 10px);
   background: transparent;
   box-shadow: none;
   text-align: left;

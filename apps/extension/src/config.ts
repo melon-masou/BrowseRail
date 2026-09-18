@@ -14,6 +14,8 @@ export interface StoredMenuItem {
   path?: string[];
   url?: string;
   color?: string;
+  emoji?: string;
+  rename?: string;
   type?: StoredMenuItemType;
   expandOnHover?: boolean;
 }
@@ -44,7 +46,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
     url: DEFAULT_DESKTOP_URL,
   },
   panel: {
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     menus: [createMenu("menu-main")],
   },
 };
@@ -322,6 +324,8 @@ function isStoredMenuItem(value: unknown): value is StoredMenuItem {
     (value.path === undefined || (Array.isArray(value.path) && value.path.every((p) => typeof p === "string"))) &&
     (value.url === undefined || typeof value.url === "string") &&
     (value.color === undefined || typeof value.color === "string") &&
+    (value.emoji === undefined || typeof value.emoji === "string") &&
+    (value.rename === undefined || typeof value.rename === "string") &&
     (value.expandOnHover === undefined || typeof value.expandOnHover === "boolean") &&
     (value.type === undefined ||
       value.type === "bookmark" ||

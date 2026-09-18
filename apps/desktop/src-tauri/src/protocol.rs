@@ -202,6 +202,10 @@ pub enum LayoutEntry {
         label: String,
         #[serde(default)]
         color: Option<String>,
+        #[serde(default)]
+        emoji: Option<String>,
+        #[serde(default)]
+        rename: Option<String>,
     },
     Folder {
         uid: String,
@@ -211,6 +215,10 @@ pub enum LayoutEntry {
         children: Vec<LayoutEntry>,
         #[serde(default)]
         expand_on_hover: Option<bool>,
+        #[serde(default)]
+        emoji: Option<String>,
+        #[serde(default)]
+        rename: Option<String>,
     },
 }
 

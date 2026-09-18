@@ -127,7 +127,7 @@ function findBookmarkByUrl(nodes: BookmarkNode[], url: string): BookmarkNode | u
 export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = null;
   const entryGroups = await Promise.all(
-    items.map(async ({ bookmarkId, path, url, color, type, expandOnHover }) => {
+    items.map(async ({ bookmarkId, path, url, color, emoji, rename, type, expandOnHover }) => {
       let node: BookmarkNode | undefined;
       if (bookmarkId) {
         try {
@@ -156,10 +156,13 @@ export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutE
       if (type === "flattenFolder" || (!node.url && type === "flattenFolder")) {
         const bookmarkChildren = (node.children ?? []).filter((child) => child.url !== undefined);
         return bookmarkChildren.map((child) => {
+          const rawTitle = child.title || child.url || "Untitled";
+          const detectedEmoji = extractLeadingEmoji(rawTitle);
           const entry: LayoutEntry = {
             kind: "bookmark",
             uid: actionUid("bookmark", child.id),
-            label: child.title || child.url || "Untitled",
+            label: rawTitle,
+            ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
             ...(color ? { color } : {}),
           };
           return entry;
@@ -171,6 +174,11 @@ export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutE
       if (color) {
         entry.color = color;
       }
+      const effectiveRename = rename || emoji;
+      if (effectiveRename) {
+        entry.rename = effectiveRename;
+        entry.emoji = effectiveRename;
+      }
       return [entry];
     }),
   );
@@ -179,8 +187,16 @@ export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutE
 }
 
 function toLayoutEntry(node: BookmarkNode, expandOnHover?: boolean): LayoutEntry {
+  const title = node.title || (node.url !== undefined ? node.url : "Bookmarks");
+  const detectedEmoji = extractLeadingEmoji(title);
+
   if (node.url !== undefined) {
-    return { kind: "bookmark", uid: actionUid("bookmark", node.id), label: node.title || node.url };
+    return {
+      kind: "bookmark",
+      uid: actionUid("bookmark", node.id),
+      label: node.title || node.url,
+      ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
+    };
   }
 
   return {
@@ -188,10 +204,17 @@ function toLayoutEntry(node: BookmarkNode, expandOnHover?: boolean): LayoutEntry
     uid: actionUid("folder", node.id),
     label: node.title || "Bookmarks",
     children: (node.children ?? []).map((child) => toLayoutEntry(child, expandOnHover)),
+    ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
   };
 }
 
 export function actionUid(kind: "bookmark" | "folder", bookmarkId: string): string {
   return `${kind}:${encodeURIComponent(bookmarkId)}`;
+}
+
+export function extractLeadingEmoji(text: string): string | null {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u);
+  return match ? match[1] : null;
 }

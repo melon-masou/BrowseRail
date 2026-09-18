@@ -132,3 +132,80 @@ describe("findBookmarkNodeByPath", () => {
     expect(found?.id).toBe("bm-gh");
   });
 });
+
+describe("rename and emoji support", () => {
+  it("uses custom rename when configured on StoredMenuItem", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-custom-rename",
+        title: "Very Long GitHub Bookmark Title",
+        url: "https://github.com",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([
+      { bookmarkId: "bm-custom-rename", rename: "GH" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].rename).toBe("GH");
+    expect(entries[0].emoji).toBe("GH");
+    expect(entries[0].label).toBe("Very Long GitHub Bookmark Title");
+  });
+
+  it("uses custom rename with emoji on StoredMenuItem", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-custom-emoji-rename",
+        title: "GitHub",
+        url: "https://github.com",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([
+      { bookmarkId: "bm-custom-emoji-rename", rename: "🐙" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].rename).toBe("🐙");
+    expect(entries[0].emoji).toBe("🐙");
+    expect(entries[0].label).toBe("GitHub");
+  });
+
+  it("uses custom emoji when configured on StoredMenuItem for backwards compatibility", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-custom-emoji",
+        title: "GitHub",
+        url: "https://github.com",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([
+      { bookmarkId: "bm-custom-emoji", emoji: "🐙" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].rename).toBe("🐙");
+    expect(entries[0].emoji).toBe("🐙");
+    expect(entries[0].label).toBe("GitHub");
+  });
+
+  it("automatically detects leading emoji from title when no custom emoji is configured", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-title-emoji",
+        title: "🚀 Production Server",
+        url: "https://prod.example.com",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([
+      { bookmarkId: "bm-title-emoji" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].emoji).toBe("🚀");
+  });
+});
+

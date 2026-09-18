@@ -674,6 +674,13 @@ output {
   border: 1px solid #fde68a;
 }
 
+.item-tag-emoji,
+.item-tag-rename {
+  background: #fdf4ff;
+  color: #a21caf;
+  border: 1px solid #f5d0fe;
+}
+
 /* Color Popover Floating Menu */
 .color-popover {
   position: fixed;
@@ -908,6 +915,56 @@ output {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.item-setting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.item-setting-field-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.item-setting-rename-row,
+.item-setting-emoji-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.item-setting-rename-input,
+.item-setting-emoji-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.item-setting-rename-input:focus,
+.item-setting-emoji-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #ffffff;
+}
+
+.item-setting-clear-btn {
+  padding: 0 8px;
+  min-height: 28px;
+  height: 28px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .item-settings-folder-controls {
@@ -1164,4 +1221,87 @@ output {
   min-height: 15px;
   cursor: pointer;
   accent-color: #2563eb;
+}
+
+/* Diagnostics Card */
+.debug-card {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid #dce1eb;
+  background: white;
+  box-shadow: 0 4px 16px rgb(26 35 54 / 5%);
+  box-sizing: border-box;
+}
+
+.debug-card-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.debug-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a2336;
+}
+
+.debug-copy-status {
+  font-size: 13px;
+  font-weight: 500;
+  color: #2563eb;
+  transition: opacity 0.2s;
+  margin-left: 4px;
+}
+
+/* Switch toggle styling */
+.switch-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  inset: 0;
+  background-color: #cbd5e1;
+  border-radius: 24px;
+  transition: background-color 0.2s;
+}
+
+.switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.switch-toggle input:checked + .switch-slider {
+  background-color: #2563eb;
+}
+
+.switch-toggle input:checked + .switch-slider:before {
+  transform: translateX(20px);
+}
+
+.switch-toggle input:focus-visible + .switch-slider {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }

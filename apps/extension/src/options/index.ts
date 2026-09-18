@@ -17,7 +17,7 @@ import {
   type StoredMenu,
   type StoredMenuItem,
 } from "../config";
-import { type BookmarkNode, findBookmarkNodeByPath } from "../bookmarks";
+import { type BookmarkNode, extractLeadingEmoji, findBookmarkNodeByPath } from "../bookmarks";
 import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
 
@@ -115,6 +115,8 @@ const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
 const itemSettingsTitle = element<HTMLSpanElement>("item-settings-title");
 const itemSettingsClose = element<HTMLButtonElement>("item-settings-close");
 const itemSettingsFolderControls = element<HTMLDivElement>("item-settings-folder-controls");
+const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
+const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
 const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
 const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hover-expand-label");
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
@@ -978,6 +980,37 @@ function closeMenuSettingsPopover(): void {
 function initItemSettingsPopover(): void {
   itemSettingsClose.addEventListener("click", () => closeItemSettingsPopover());
 
+  itemSettingRename.addEventListener("input", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item) return;
+
+    const val = itemSettingRename.value.trim();
+    if (val) {
+      item.rename = val;
+      delete item.emoji;
+    } else {
+      delete item.rename;
+      delete item.emoji;
+    }
+    renderMenus();
+    markDirty();
+  });
+
+  itemSettingClearRename.addEventListener("click", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item) return;
+
+    itemSettingRename.value = "";
+    delete item.rename;
+    delete item.emoji;
+    renderMenus();
+    markDirty();
+  });
+
   itemSettingFlatten.addEventListener("change", () => {
     if (!activeItemSettings) return;
     const menu = menus[activeItemSettings.menuIndex];
@@ -1068,6 +1101,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
 
   const rawLabel = bookmarkLabels.get(item.bookmarkId) ?? node?.title ?? item.bookmarkId;
   itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
+  itemSettingRename.value = item.rename ?? item.emoji ?? "";
 
   if (isFolder) {
     itemSettingsFolderControls.style.display = "flex";
@@ -1165,11 +1199,31 @@ function renderMenus(): void {
 
           const rawLabel =
             bookmarkLabels.get(item.bookmarkId) ?? node?.title ?? item.bookmarkId;
+          const detectedEmoji = node?.title ? extractLeadingEmoji(node.title) : null;
+          const customRename = item.rename || item.emoji;
+          const iconPrefix = detectedEmoji || (isFolderNode ? "📁" : "🔖");
+
           const titleSpan = document.createElement("span");
           titleSpan.className = "item-title";
-          titleSpan.textContent = `${isFolderNode ? "📁" : "🔖"} ${rawLabel.trim()}`;
+          if (customRename) {
+            titleSpan.textContent = `${customRename} (${rawLabel.trim()})`;
+          } else {
+            titleSpan.textContent = `${iconPrefix} ${rawLabel.trim()}`;
+          }
           titleSpan.title = rawLabel.trim();
           label.appendChild(titleSpan);
+
+          if (customRename) {
+            const renameBadge = document.createElement("span");
+            renameBadge.className = "item-tag item-tag-rename";
+            renameBadge.textContent = `Rename: ${customRename}`;
+            renameBadge.title = `自定义重命名: ${customRename} (点击修改配置)`;
+            renameBadge.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openItemSettingsPopover(menuIndex, itemIndex, renameBadge);
+            });
+            label.appendChild(renameBadge);
+          }
 
           if (isFlatten) {
             const badge = document.createElement("span");
@@ -1548,3 +1602,103 @@ importFileInput.addEventListener("change", () => {
     void importSettings(file);
   }
 });
+
+// Debug & Diagnostics Card
+const debugLoggingToggle = document.getElementById("debug-logging-toggle") as HTMLInputElement | null;
+const copyDebugBtn = document.getElementById("copy-debug-btn") as HTMLButtonElement | null;
+const copyDebugStatus = document.getElementById("copy-debug-status") as HTMLSpanElement | null;
+
+void browser.storage.local.get("debugLoggingEnabled").then((res) => {
+  if (debugLoggingToggle) {
+    debugLoggingToggle.checked = Boolean(res.debugLoggingEnabled);
+  }
+}).catch(() => {});
+
+debugLoggingToggle?.addEventListener("change", async () => {
+  const enabled = Boolean(debugLoggingToggle.checked);
+  try {
+    await browser.storage.local.set({ debugLoggingEnabled: enabled });
+    await browser.runtime.sendMessage({ type: "setDebugLogging", enabled }).catch(() => {});
+    if (copyDebugStatus) {
+      copyDebugStatus.textContent = enabled ? "调试日志已启用" : "调试日志已关闭";
+      setTimeout(() => {
+        if (copyDebugStatus.textContent?.startsWith("调试日志")) {
+          copyDebugStatus.textContent = "";
+        }
+      }, 2500);
+    }
+  } catch (err) {
+    if (copyDebugStatus) {
+      copyDebugStatus.textContent = `设置失败: ${String(err)}`;
+    }
+  }
+});
+
+copyDebugBtn?.addEventListener("click", async () => {
+  if (copyDebugBtn) copyDebugBtn.disabled = true;
+  if (copyDebugStatus) copyDebugStatus.textContent = "正在收集调试信息...";
+
+  try {
+    const extInfo = await browser.runtime
+      .sendMessage({ type: "getDebugInfo" })
+      .catch((err) => ({ error: String(err) }));
+
+    let desktopInfo: unknown = null;
+    try {
+      const res = await fetch("http://127.0.0.1:17654/debug");
+      if (res.ok) {
+        desktopInfo = await res.json();
+      } else {
+        desktopInfo = { status: res.status, statusText: res.statusText };
+      }
+    } catch (fetchErr) {
+      desktopInfo = {
+        error: `Failed to fetch http://127.0.0.1:17654/debug: ${String(fetchErr)}`,
+      };
+    }
+
+    const combined = {
+      timestamp: new Date().toISOString(),
+      extension: extInfo,
+      desktop: desktopInfo,
+    };
+
+    const text = JSON.stringify(combined, null, 2);
+    let copied = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      } catch {
+        // fallback to textarea
+      }
+    }
+    if (!copied) {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      copied = document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+
+    if (copyDebugStatus) {
+      copyDebugStatus.textContent = copied ? "已复制 JSON 到剪贴板！" : "复制失败，请手动授予剪贴板权限";
+      setTimeout(() => {
+        if (copyDebugStatus.textContent?.startsWith("已复制")) {
+          copyDebugStatus.textContent = "";
+        }
+      }, 3000);
+    }
+  } catch (err) {
+    if (copyDebugStatus) {
+      copyDebugStatus.textContent = `获取失败: ${String(err)}`;
+    }
+  } finally {
+    if (copyDebugBtn) copyDebugBtn.disabled = false;
+  }
+});
+

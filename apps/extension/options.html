@@ -81,6 +81,19 @@
         </div>
       </form>
 
+      <!-- Diagnostics Card -->
+      <section class="card debug-card">
+        <div class="debug-card-row">
+          <h2 class="debug-card-title">Diagnostics</h2>
+          <label class="switch-toggle" title="Enable diagnostics logging">
+            <input type="checkbox" id="debug-logging-toggle" />
+            <span class="switch-slider"></span>
+          </label>
+          <button type="button" id="copy-debug-btn" class="action-btn">Copy JSON</button>
+          <span id="copy-debug-status" class="debug-copy-status"></span>
+        </div>
+      </section>
+
       <!-- Color Palette Popover -->
       <div id="color-popover" class="color-popover" style="display: none;">
         <div class="color-popover-header">
@@ -128,6 +141,13 @@
           <button type="button" id="item-settings-close" class="color-popover-close" title="Close">✕</button>
         </div>
         <div class="item-settings-body">
+          <div class="item-setting-field">
+            <span class="item-setting-field-title">重命名 (Rename)</span>
+            <div class="item-setting-rename-row">
+              <input type="text" id="item-setting-rename" class="item-setting-rename-input" placeholder="自定义名称或 Emoji (例如: 🚀, GH)" maxlength="30" />
+              <button type="button" id="item-setting-clear-rename" class="action-btn item-setting-clear-btn" title="清除重命名">✕</button>
+            </div>
+          </div>
           <div id="item-settings-folder-controls" class="item-settings-folder-controls">
             <label class="item-setting-check-label">
               <input type="checkbox" id="item-setting-flatten" />

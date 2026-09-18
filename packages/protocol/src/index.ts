@@ -44,6 +44,8 @@ export interface BookmarkEntry {
   uid: string;
   label: string;
   color?: string;
+  emoji?: string;
+  rename?: string;
 }
 
 export interface FolderEntry {
@@ -53,6 +55,8 @@ export interface FolderEntry {
   color?: string;
   children: LayoutEntry[];
   expandOnHover?: boolean;
+  emoji?: string;
+  rename?: string;
 }
 
 export type LayoutEntry = BookmarkEntry | FolderEntry;

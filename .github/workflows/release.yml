@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    branches: [release]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Compute UTC version
+        id: version
+        run: |
+          $dt = (Get-Date).ToUniversalTime()
+          $release = $dt.ToString("yyMMdd.HHmm")
+          # Chrome requires each component <= 65535, so split YY.MMDD.HHmm (integers drop the leading zeros).
+          $manifest = "{0}.{1}.{2}" -f [int]$dt.ToString("yy"), [int]$dt.ToString("MMdd"), [int]$dt.ToString("HHmm")
+          "version=$release" >> $env:GITHUB_OUTPUT
+          "manifest_version=$manifest" >> $env:GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build exe and extensions
+        run: pnpm build
+
+      - name: Stamp extension manifest version
+        run: |
+          $mv = "${{ steps.version.outputs.manifest_version }}"
+          foreach ($t in @("chrome", "firefox")) {
+            $p = "build/extension/$t/manifest.json"
+            (Get-Content $p -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$mv`"" | Set-Content -NoNewline $p
+          }
+
+      - name: Package release assets
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Copy-Item build/desktop/BrowseRail.exe "release-assets/BrowseRail-$v.exe"
+          Compress-Archive -Path build/extension/chrome/* -DestinationPath "release-assets/BrowseRail-chrome-$v.zip"
+          Compress-Archive -Path build/extension/firefox/* -DestinationPath "release-assets/BrowseRail-firefox-$v.zip"
+
+      - name: Create draft prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: true
+          tag_name: v${{ steps.version.outputs.version }}
+          name: BrowseRail ${{ steps.version.outputs.version }}
+          files: |
+            release-assets/BrowseRail-${{ steps.version.outputs.version }}.exe
+            release-assets/BrowseRail-chrome-${{ steps.version.outputs.version }}.zip
+            release-assets/BrowseRail-firefox-${{ steps.version.outputs.version }}.zip

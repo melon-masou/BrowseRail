@@ -49,12 +49,12 @@ pub fn set_window_owner(window: &WebviewWindow, owner_hwnd: isize) -> Result<(),
         SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, owner_hwnd);
         SetWindowPos(
             hwnd,
-            None,
+            Some(HWND_NOTOPMOST),
             0,
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER | SWP_FRAMECHANGED,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         )
         .map_err(|error| error.to_string())
     }
@@ -483,7 +483,7 @@ pub fn open_popup(
         let parent_hwnd = parent.hwnd().map_err(|error| error.to_string())?;
         set_window_owner(&window, parent_hwnd.0 as isize)?;
     }
-    let is_always_on_top = is_window_always_on_top(&parent).unwrap_or(true);
+    let is_always_on_top = is_window_always_on_top(&parent).unwrap_or(false);
     let _ = set_window_always_on_top(&window, is_always_on_top);
     window
         .set_ignore_cursor_events(false)

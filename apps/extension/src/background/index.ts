@@ -98,10 +98,31 @@ export interface ExtensionDebugLogEntry {
   details?: unknown;
 }
 
+let debugLoggingEnabled = false;
 const debugLogs: ExtensionDebugLogEntry[] = [];
 const MAX_DEBUG_LOGS = 250;
 
+void browser.storage.local
+  .get("debugLoggingEnabled")
+  .then((res) => {
+    debugLoggingEnabled = Boolean(res.debugLoggingEnabled);
+  })
+  .catch(() => {});
+
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.debugLoggingEnabled) {
+    debugLoggingEnabled = Boolean(changes.debugLoggingEnabled.newValue);
+    if (!debugLoggingEnabled) {
+      debugLogs.length = 0;
+    } else {
+      extLog("Debug", "Debug logging enabled");
+    }
+  }
+});
+
 function extLog(tag: string, message: string, details?: unknown): void {
+  if (!debugLoggingEnabled) return;
+
   const time = new Date().toISOString();
   const entry: ExtensionDebugLogEntry = { time, tag, message, details };
   debugLogs.push(entry);
@@ -229,6 +250,7 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     return (async () => {
       const windows = await listBrowserWindows().catch(() => []);
       return {
+        debugLoggingEnabled,
         connected: socket?.readyState === WebSocket.OPEN,
         connectionState: connectionStateMachine.getState(),
         connectionDetail: connectionStateMachine.getDetail(),
@@ -242,6 +264,22 @@ browser.runtime.onMessage.addListener((message: unknown) => {
         recentLogs: debugLogs,
       };
     })();
+  }
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    (message as { type?: string }).type === "setDebugLogging"
+  ) {
+    const enabled = Boolean((message as { enabled?: boolean }).enabled);
+    debugLoggingEnabled = enabled;
+    if (!enabled) {
+      debugLogs.length = 0;
+    } else {
+      extLog("Debug", "Debug logging enabled");
+    }
+    return browser.storage.local
+      .set({ debugLoggingEnabled: enabled })
+      .then(() => ({ ok: true, debugLoggingEnabled }));
   }
   if (isManualReconnectMessage(message)) {
     manualReconnect();
