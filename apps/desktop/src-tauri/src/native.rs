@@ -829,16 +829,49 @@ impl NativeReactor {
         );
 
         for window_uid in &outcome.removed_window_uids {
+            let owner_hwnd = self.browser_window_handles.lock().ok().and_then(|handles| {
+                handles.get(&(instance_uid.clone(), window_uid.clone())).copied()
+            });
+            let is_alive = owner_hwnd.is_some_and(is_valid_window);
+
             let menu_prefix = surface_prefix("menu", &instance_uid, window_uid);
             let popup_prefix = surface_prefix("popup", &instance_uid, window_uid);
-            for (label, _) in self.app.webview_windows() {
-                if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
-                    labels_to_destroy.push(label);
+
+            if !is_alive {
+                for (label, _) in self.app.webview_windows() {
+                    if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
+                        labels_to_destroy.push(label);
+                    }
+                }
+                self.popups.remove_window(&instance_uid, window_uid);
+                if let Ok(mut handles) = self.browser_window_handles.lock() {
+                    handles.remove(&(instance_uid.clone(), window_uid.clone()));
+                }
+            } else {
+                for (label, _) in self.app.webview_windows() {
+                    if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
+                        self.surfaces.mark_hidden(&label);
+                    }
                 }
             }
-            self.popups.remove_window(&instance_uid, window_uid);
-            if let Ok(mut handles) = self.browser_window_handles.lock() {
-                handles.remove(&(instance_uid.clone(), window_uid.clone()));
+        }
+
+        if let Ok(mut handles) = self.browser_window_handles.lock() {
+            let dead_identities = handles
+                .iter()
+                .filter(|(_, hwnd)| !is_valid_window(**hwnd))
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>();
+            for id in dead_identities {
+                handles.remove(&id);
+                let menu_prefix = surface_prefix("menu", &id.0, &id.1);
+                let popup_prefix = surface_prefix("popup", &id.0, &id.1);
+                for (label, _) in self.app.webview_windows() {
+                    if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
+                        labels_to_destroy.push(label);
+                    }
+                }
+                self.popups.remove_window(&id.0, &id.1);
             }
         }
 
@@ -873,20 +906,17 @@ impl NativeReactor {
                 }
             }
 
-            if !display || attachment_mode == AttachmentMode::None {
-                crate::debug::log(
-                    "Native:SyncOutcome",
-                    format!("panel win={}: skipped because display={display} or mode={attachment_mode:?}", panel.window.uid),
-                );
-                continue;
-            }
-
-            let should_be_visible = true;
+            let is_focused = match attachment_mode {
+                AttachmentMode::None => false,
+                AttachmentMode::All => true,
+                AttachmentMode::LastFocused => panel.window.focused,
+            };
+            let should_be_visible = display && is_focused;
             crate::debug::log(
                 "Native:SyncOutcome",
                 format!(
-                    "panel win={}: should_be_visible={should_be_visible} (owner={owner_hwnd}, fg={foreground_hwnd}, mode={attachment_mode:?})",
-                    panel.window.uid
+                    "panel win={}: should_be_visible={should_be_visible} (focused={}, owner={owner_hwnd}, fg={foreground_hwnd}, mode={attachment_mode:?})",
+                    panel.window.uid, panel.window.focused
                 ),
             );
 
@@ -953,6 +983,9 @@ impl NativeReactor {
 
             for item in sync_items {
                 let is_new = app.get_webview_window(&item.label).is_none();
+                if is_new && !item.should_be_visible {
+                    continue;
+                }
                 let window = match app.get_webview_window(&item.label) {
                     Some(w) => w,
                     None => {
@@ -1086,15 +1119,63 @@ impl NativeReactor {
         let mut desired_levels = HashMap::new();
         let mut visibility_changes = Vec::new();
         let mut popup_labels_to_hide = Vec::new();
+        let mut labels_to_destroy = Vec::new();
+        if let Ok(mut handles) = self.browser_window_handles.lock() {
+            let dead_identities = handles
+                .iter()
+                .filter(|(_, hwnd)| !is_valid_window(**hwnd))
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>();
+            for id in dead_identities {
+                handles.remove(&id);
+                let menu_prefix = surface_prefix("menu", &id.0, &id.1);
+                let popup_prefix = surface_prefix("popup", &id.0, &id.1);
+                for (label, _) in self.app.webview_windows() {
+                    if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
+                        labels_to_destroy.push(label);
+                    }
+                }
+                self.popups.remove_window(&id.0, &id.1);
+            }
+        }
+        if !labels_to_destroy.is_empty() {
+            labels_to_destroy.sort();
+            labels_to_destroy.dedup();
+            self.surfaces.remove_labels(&labels_to_destroy);
+            if let Ok(mut levels) = self.window_levels.lock() {
+                for label in &labels_to_destroy {
+                    levels.remove(label);
+                }
+            }
+            if let Ok(mut owners) = self.window_owners.lock() {
+                for label in &labels_to_destroy {
+                    owners.remove(label);
+                }
+            }
+            let app = self.app.clone();
+            let _ = self.app.run_on_main_thread(move || {
+                for label in labels_to_destroy {
+                    if let Some(w) = app.get_webview_window(&label) {
+                        let _ = w.destroy();
+                    }
+                }
+            });
+        }
+
         for snapshot in self.registry.instance_panel_snapshots() {
             for panel in snapshot.panels {
                 let always_on_top = panel.always_on_top;
                 let owner_hwnd = browser_window_handles
                     .get(&(snapshot.instance_uid.clone(), panel.window.uid.clone()))
                     .copied();
+                let is_focused = match snapshot.attachment_mode {
+                    AttachmentMode::None => false,
+                    AttachmentMode::All => true,
+                    AttachmentMode::LastFocused => panel.window.focused,
+                };
                 let should_be_visible = display
                     && owner_hwnd.is_some()
-                    && snapshot.attachment_mode != AttachmentMode::None;
+                    && is_focused;
                 for menu in panel.menus {
                     let menu_label =
                         menu_label(&snapshot.instance_uid, &panel.window.uid, &menu.uid);

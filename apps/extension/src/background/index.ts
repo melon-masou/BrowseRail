@@ -495,16 +495,19 @@ async function syncOnce(): Promise<void> {
   );
   updateLastFocusedWindow(windows);
 
-  const selected = selectWindows(config.attachmentMode, windows);
-  const panels: PanelSnapshot[] = selected.map(({ focused: _focused, ...window }) => ({
+  const panels: PanelSnapshot[] = windows.map((window) => ({
     alwaysOnTop: config.panel.alwaysOnTop,
     menus,
-    window,
+    window: {
+      uid: window.uid,
+      bounds: window.bounds,
+      focused: window.uid === lastFocusedWindowUid,
+    },
   }));
 
   extLog(
     "Sync",
-    `syncOnce: selected=${selected.length}, totalWindows=${windows.length}, menus=${menus.length}, attachmentMode=${config.attachmentMode}, rev=${revision + 1}`,
+    `syncOnce: totalWindows=${windows.length}, menus=${menus.length}, attachmentMode=${config.attachmentMode}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
   );
 
   send({
@@ -516,22 +519,10 @@ async function syncOnce(): Promise<void> {
 
   if (config.attachmentMode !== "none") {
     for (const panel of panels) {
-      requestWindowPairing(panel.window.uid);
+      if (panel.window.focused || config.attachmentMode === "all") {
+        requestWindowPairing(panel.window.uid);
+      }
     }
-  }
-}
-
-function selectWindows(
-  mode: AttachmentMode,
-  windows: BrowserWindowCandidate[],
-): BrowserWindowCandidate[] {
-  switch (mode) {
-    case "none":
-      return [];
-    case "all":
-      return windows;
-    case "lastFocused":
-      return windows.filter((window) => window.uid === lastFocusedWindowUid);
   }
 }
 

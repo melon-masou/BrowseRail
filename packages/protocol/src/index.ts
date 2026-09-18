@@ -22,6 +22,7 @@ export interface WindowBounds {
 export interface BrowserWindowSnapshot {
   uid: string;
   bounds: WindowBounds;
+  focused?: boolean;
 }
 
 export type MenuFontSize = "small" | "medium" | "large";

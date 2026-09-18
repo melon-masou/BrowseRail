@@ -177,6 +177,8 @@ pub enum MenuAnchor {
 pub struct BrowserWindowSnapshot {
     pub uid: String,
     pub bounds: WindowBounds,
+    #[serde(default)]
+    pub focused: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

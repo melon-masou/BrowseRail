@@ -603,6 +603,7 @@ mod tests {
                     width: 1200.0,
                     height: 800.0,
                 },
+                focused: true,
             },
         }
     }
