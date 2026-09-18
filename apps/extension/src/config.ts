@@ -298,10 +298,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
       ? value.tabMode
       : undefined;
   const expandDirection: ExpandDirection | undefined =
-    value.expandDirection === "up" ||
-    value.expandDirection === "down" ||
-    value.expandDirection === "left" ||
-    value.expandDirection === "right"
+    value.expandDirection === "down" || value.expandDirection === "right"
       ? value.expandDirection
       : undefined;
   const attachmentMode: AttachmentMode =

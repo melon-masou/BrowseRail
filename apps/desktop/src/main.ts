@@ -48,9 +48,42 @@ async function initializeSurface(): Promise<void> {
   let customizing = false;
   let currentMenu = initial.menu;
 
+  let lastPointerX = -1;
+  let lastPointerY = -1;
+  window.addEventListener(
+    "pointermove",
+    (event) => {
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+    },
+    { passive: true },
+  );
+  window.addEventListener(
+    "pointerout",
+    (event) => {
+      // Pointer left the window entirely (no relatedTarget). Clear the cached
+      // position so scheduleClose's stale-position check doesn't keep the popup
+      // open forever after the cursor has moved away.
+      if (!event.relatedTarget) {
+        lastPointerX = -1;
+        lastPointerY = -1;
+      }
+    },
+    { passive: true },
+  );
+
   // Track active popup state inside this single window
   let activePopupEl: HTMLElement | null = null;
   let activePopupFolderUid: string | null = null;
+  let activeAnchorButton: HTMLElement | null = null;
+  let expandingLockUntil = 0;
+
+  let nativeAllocated = {
+    height: 0,
+    offsetX: 0,
+    offsetY: 0,
+    width: 0,
+  };
 
   await listen<MenuSnapshot>("menu-state", ({ payload }) => {
     if (payload.uid === menuUid && !customizing) {
@@ -70,11 +103,30 @@ async function initializeSurface(): Promise<void> {
 
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function scheduleClose(): void {
+  function scheduleClose(delay = 200): void {
     clearTimeout(closeTimer);
     closeTimer = setTimeout(() => {
-      closePopup();
-    }, 150);
+      // If currently undergoing opening transition, cancel close attempt
+      if (Date.now() < expandingLockUntil) {
+        return;
+      }
+      // Inspect physical pointer position to verify if user is still interacting
+      if (lastPointerX >= 0 && lastPointerY >= 0) {
+        const hovered = document.elementFromPoint(lastPointerX, lastPointerY);
+        if (hovered) {
+          if (activePopupEl?.contains(hovered)) return;
+          if (activeAnchorButton?.contains(hovered)) return;
+          const menuBarEl = root.querySelector<HTMLElement>(".menu-bar");
+          if (menuBarEl?.contains(hovered)) {
+            // Check if pointer is over the currently expanded folder button
+            if (activePopupFolderUid && menuBarEl.querySelector(`.menu-button[data-expanded]`)?.contains(hovered)) {
+              return;
+            }
+          }
+        }
+      }
+      void closePopup();
+    }, delay);
   }
 
   function cancelClose(): void {
@@ -171,6 +223,9 @@ async function initializeSurface(): Promise<void> {
     menuBar.className = "menu-bar";
     menuBar.ariaLabel = t("aria.menu");
     menuBar.dataset.orientation = menu.orientation;
+    // Only down (row bar) / right (column bar) are supported — up/left were removed
+    // because moving the window origin flickers. See .cx/specs popup-expand note.
+    menuBar.dataset.expandDirection = menu.orientation === "column" ? "right" : "down";
     menuBar.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
     menuBar.style.setProperty("--menu-gap", `${gap}px`);
@@ -180,7 +235,7 @@ async function initializeSurface(): Promise<void> {
     menuBar.addEventListener("pointerenter", cancelClose);
     menuBar.addEventListener("pointerleave", (event) => {
       if (!activePopupEl || !activePopupEl.contains(event.relatedTarget as Node | null)) {
-        scheduleClose();
+        scheduleClose(200);
       }
     });
 
@@ -195,11 +250,16 @@ async function initializeSurface(): Promise<void> {
       );
     }
 
-    menuBar.onpointerdown = (event) => {
+    menuBar.onpointerdown = async (event) => {
       if (event.button === 2) {
         event.preventDefault();
+        event.stopPropagation();
+        if (customizing) return;
+
+        // If a popup is open, close it and wait for size and position to restore completely before customizing
+        await closePopup(true);
+
         customizing = true;
-        closePopup(false);
         const menuToCustomize = currentMenu ?? menu;
         const toolbar = renderCustomize(menuToCustomize);
         const toolbarSpace = customizationToolbarSpace(toolbar);
@@ -232,12 +292,14 @@ async function initializeSurface(): Promise<void> {
     const button = menuButton(entry, false);
     if (entry.kind === "bookmark") {
       button.addEventListener("pointerenter", () => {
-        closePopup();
+        if (activePopupEl) {
+          scheduleClose(150);
+        }
       });
       button.addEventListener("pointerdown", (event) => {
         if (event.button === 0) {
           event.preventDefault();
-          closePopup();
+          void closePopup();
           void invokeAction(instanceUid, windowUid, entry.uid);
         }
       });
@@ -245,22 +307,24 @@ async function initializeSurface(): Promise<void> {
       const expandOnHover = entry.expandOnHover !== false;
       if (expandOnHover) {
         button.addEventListener("pointerenter", () => {
+          cancelClose();
           openPopup(entry, button, menuBar);
         });
         button.addEventListener("focus", () => {
+          cancelClose();
           openPopup(entry, button, menuBar);
         });
       } else {
         button.addEventListener("pointerenter", () => {
-          if (activePopupFolderUid !== entry.uid) {
-            closePopup();
+          if (activePopupFolderUid !== entry.uid && activePopupEl) {
+            scheduleClose(150);
           }
         });
         button.addEventListener("pointerdown", (event) => {
           if (event.button === 0) {
             event.preventDefault();
             if (activePopupFolderUid === entry.uid && activePopupEl) {
-              closePopup();
+              void closePopup();
             } else {
               openPopup(entry, button, menuBar);
             }
@@ -275,6 +339,10 @@ async function initializeSurface(): Promise<void> {
     if (activePopupFolderUid === entry.uid && activePopupEl) {
       return;
     }
+
+    cancelClose();
+    expandingLockUntil = Date.now() + 250;
+    activeAnchorButton = anchorButton;
 
     // Mark anchor button as expanded
     for (const btn of menuBar.querySelectorAll(".menu-button")) {
@@ -295,35 +363,53 @@ async function initializeSurface(): Promise<void> {
     const menuColor = currentMenu?.color;
     const popupEl = document.createElement("div");
     popupEl.className = "popup-container";
-    if (menuColor) {
-      // The whole popup chrome (frame/padding + border), not just a 1px line,
-      // takes the menu's default color so it matches the buttons. `data-accent`
-      // scopes the accent-specific shadow/scrollbar tweaks in the stylesheet.
-      popupEl.dataset.accent = "true";
-      popupEl.style.backgroundColor = menuColor;
-      popupEl.style.borderColor = menuColor;
-    }
     popupEl.ariaLabel = t("aria.bookmarkMenu");
     popupEl.addEventListener("pointerenter", cancelClose);
     popupEl.addEventListener("pointerleave", (event) => {
       if (!menuBar.contains(event.relatedTarget as Node | null)) {
-        scheduleClose();
+        scheduleClose(200);
       }
     });
     activePopupEl = popupEl;
 
-    const direction: ExpandDirection =
-      entry.expandDirection ||
-      currentMenu?.expandDirection ||
-      (currentMenu?.orientation === "column" ? "right" : "down");
+    const direction: ExpandDirection = currentMenu?.orientation === "column" ? "right" : "down";
+    popupEl.dataset.direction = direction;
 
-    const anchorRect = anchorButton.getBoundingClientRect();
-    const menuRect = menuBar.getBoundingClientRect();
-
-    root.appendChild(popupEl);
+    // Use un-transformed layout offsets relative to menuBar, NOT viewport getBoundingClientRect!
+    // getBoundingClientRect is contaminated when menuBar has a previous translateY/X transform.
+    const btnLeft = anchorButton.offsetLeft;
+    const btnTop = anchorButton.offsetTop;
+    const btnWidth = anchorButton.offsetWidth;
+    const btnHeight = anchorButton.offsetHeight;
+    const menuWidth = currentMenu?.placement.width ?? menuBar.offsetWidth;
+    const menuHeight = currentMenu?.placement.height ?? menuBar.offsetHeight;
 
     const theme = applyMenuTheme(currentMenu ?? initial.menu!);
+
+    root.appendChild(popupEl);
     renderLevels();
+
+    function ensureNativePopupSize(targetWidth: number, targetHeight: number, offX: number, offY: number): void {
+      const neededWidth = Math.max(nativeAllocated.width, targetWidth);
+      const neededHeight = Math.max(nativeAllocated.height, targetHeight);
+      if (
+        neededWidth !== nativeAllocated.width ||
+        neededHeight !== nativeAllocated.height ||
+        offX !== nativeAllocated.offsetX ||
+        offY !== nativeAllocated.offsetY
+      ) {
+        nativeAllocated = { height: neededHeight, offsetX: offX, offsetY: offY, width: neededWidth };
+        void invoke("resize_popup", {
+          height: neededHeight,
+          instanceUid,
+          menuUid,
+          offsetX: offX,
+          offsetY: offY,
+          width: neededWidth,
+          windowUid,
+        });
+      }
+    }
 
     function renderLevels(): void {
       const columnWidths = levels.map((entries) => calculateColumnWidth(entries, theme.fontSize));
@@ -336,6 +422,11 @@ async function initializeSurface(): Promise<void> {
           column.style.width = `${colWidth}px`;
           column.style.minWidth = `${colWidth}px`;
           column.style.maxWidth = `${colWidth}px`;
+          if (menuColor) {
+            column.dataset.accent = "true";
+            column.style.backgroundColor = menuColor;
+            column.style.borderColor = menuColor;
+          }
           column.append(
             ...entries.map((item) => {
               const button = menuButton(item, true);
@@ -348,12 +439,14 @@ async function initializeSurface(): Promise<void> {
                 button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
                 if (subExpand) {
                   button.addEventListener("pointerenter", () => {
+                    cancelClose();
                     levels = [...levels.slice(0, level + 1), item.children];
                     expandedUids = [...expandedUids.slice(0, level), item.uid];
                     renderLevels();
                   });
                 } else {
                   button.addEventListener("pointerenter", () => {
+                    cancelClose();
                     if (levels.length > level + 1 && expandedUids[level] !== item.uid) {
                       levels = levels.slice(0, level + 1);
                       expandedUids = expandedUids.slice(0, level);
@@ -376,6 +469,7 @@ async function initializeSurface(): Promise<void> {
                 }
               } else {
                 button.addEventListener("pointerenter", () => {
+                  cancelClose();
                   if (levels.length > level + 1) {
                     levels = levels.slice(0, level + 1);
                     expandedUids = expandedUids.slice(0, level);
@@ -384,7 +478,7 @@ async function initializeSurface(): Promise<void> {
                 });
                 button.addEventListener("pointerdown", (event) => {
                   if (event.button === 0) {
-                    closePopup();
+                    void closePopup();
                     void invokeAction(instanceUid, windowUid, item.uid);
                   }
                 });
@@ -398,68 +492,52 @@ async function initializeSurface(): Promise<void> {
 
       const totalColumnsWidth = columnWidths.reduce((acc, w) => acc + w, 0);
       const gapTotal = Math.max(0, levels.length - 1) * 4;
-      // .popup-container has 7px padding (14px total) and 1px border (2px total), plus 2px safety buffer
-      const popupWidth = Math.min(1600, 18 + totalColumnsWidth + gapTotal);
+      const popupWidth = totalColumnsWidth + gapTotal;
+      popupEl.style.width = `${popupWidth}px`;
 
-      const popupHeightVal = Math.min(
+      const maxPopupHeight = Math.min(
         560,
         Math.max(...levels.map((entries) => popupColumnHeight(entries, theme.itemHeight))),
       );
-      popupEl.style.width = `${popupWidth}px`;
-      popupEl.style.height = `${popupHeightVal}px`;
 
-      let offsetX = 0;
-      let offsetY = 0;
-      let totalWidth = menuRect.width;
-      let totalHeight = menuRect.height;
+      let totalWidth = menuWidth;
+      let totalHeight = menuHeight;
+      const gap = 2;
 
-      if (direction === "up") {
-        offsetY = popupHeightVal + 2;
-        menuBar.style.transform = `translateY(${offsetY}px)`;
-        popupEl.style.top = "0px";
-        popupEl.style.left = `${anchorRect.left}px`;
-        totalWidth = Math.max(menuRect.width, anchorRect.left + popupWidth);
-        totalHeight = menuRect.height + offsetY;
-      } else if (direction === "left") {
-        offsetX = popupWidth + 2;
-        menuBar.style.transform = `translateX(${offsetX}px)`;
-        popupEl.style.left = "0px";
-        popupEl.style.top = `${anchorRect.top}px`;
-        totalWidth = menuRect.width + offsetX;
-        totalHeight = Math.max(menuRect.height, anchorRect.top + popupHeightVal);
-      } else if (direction === "right") {
-        menuBar.style.transform = "";
-        popupEl.style.top = `${anchorRect.top}px`;
-        popupEl.style.left = `${anchorRect.right + 2}px`;
-        totalWidth = Math.max(menuRect.width, anchorRect.right + 2 + popupWidth);
-        totalHeight = Math.max(menuRect.height, anchorRect.top + popupHeightVal);
+      // Only down / right are supported: both grow away from the window's fixed
+      // top-left origin, so the OS window never has to move (offset always 0) — it
+      // only grows. Moving the origin (the old up/left support) shifted the old
+      // framebuffer for one frame and was the source of the expansion flicker.
+      popupEl.style.flexDirection = "row";
+      popupEl.style.alignItems = "flex-start";
+      popupEl.style.bottom = "";
+      popupEl.style.right = "";
+
+      if (direction === "right") {
+        popupEl.style.top = `${btnTop}px`;
+        popupEl.style.left = `${btnLeft + btnWidth + gap}px`;
+        totalWidth = Math.max(menuWidth, btnLeft + btnWidth + gap + popupWidth);
+        totalHeight = Math.max(menuHeight, btnTop + maxPopupHeight);
       } else {
-        menuBar.style.transform = "";
-        popupEl.style.top = `${anchorRect.bottom + 2}px`;
-        popupEl.style.left = `${anchorRect.left}px`;
-        totalWidth = Math.max(menuRect.width, anchorRect.left + popupWidth);
-        totalHeight = Math.max(menuRect.height, anchorRect.bottom + 2 + popupHeightVal);
+        // down
+        popupEl.style.top = `${btnTop + btnHeight + gap}px`;
+        popupEl.style.left = `${btnLeft}px`;
+        totalWidth = Math.max(menuWidth, btnLeft + popupWidth);
+        totalHeight = Math.max(menuHeight, btnTop + btnHeight + gap + maxPopupHeight);
       }
 
-      void invoke("resize_popup", {
-        height: totalHeight,
-        instanceUid,
-        menuUid,
-        offsetX,
-        offsetY,
-        width: totalWidth,
-        windowUid,
-      });
+      ensureNativePopupSize(totalWidth, totalHeight, 0, 0);
     }
   }
 
-  function closePopup(restoreNativeSize = true): void {
+  async function closePopup(restoreNativeSize = true): Promise<void> {
     clearTimeout(closeTimer);
     if (activePopupEl) {
       activePopupEl.remove();
       activePopupEl = null;
     }
     activePopupFolderUid = null;
+    activeAnchorButton = null;
     const menuBarEl = root.querySelector<HTMLElement>(".menu-bar");
     if (menuBarEl) {
       menuBarEl.style.transform = "";
@@ -468,16 +546,24 @@ async function initializeSurface(): Promise<void> {
       btn.removeAttribute("data-expanded");
     }
 
-    if (restoreNativeSize && currentMenu && !customizing) {
-      void invoke("resize_popup", {
+    if (restoreNativeSize && currentMenu) {
+      nativeAllocated = {
         height: currentMenu.placement.height,
-        instanceUid,
-        menuUid,
         offsetX: 0,
         offsetY: 0,
         width: currentMenu.placement.width,
-        windowUid,
-      });
+      };
+      try {
+        await invoke("resize_popup", {
+          height: currentMenu.placement.height,
+          instanceUid,
+          menuUid,
+          offsetX: 0,
+          offsetY: 0,
+          width: currentMenu.placement.width,
+          windowUid,
+        });
+      } catch {}
     }
   }
 

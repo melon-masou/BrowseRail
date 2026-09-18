@@ -163,9 +163,7 @@ impl<'de> Deserialize<'de> for OnTopMode {
 #[serde(rename_all = "camelCase")]
 pub enum ExpandDirection {
     Down,
-    Up,
     Right,
-    Left,
 }
 
 pub fn deserialize_optional_expand_direction<'de, D>(
@@ -176,10 +174,8 @@ where
 {
     let opt: Option<String> = Option::deserialize(deserializer)?;
     match opt.as_deref() {
-        Some("up") => Ok(Some(ExpandDirection::Up)),
         Some("down") => Ok(Some(ExpandDirection::Down)),
         Some("right") => Ok(Some(ExpandDirection::Right)),
-        Some("left") => Ok(Some(ExpandDirection::Left)),
         _ => Ok(None),
     }
 }

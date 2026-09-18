@@ -19,7 +19,7 @@ use windows::core::PWSTR;
 
 use crate::panel::{
     PopupRegistry, PopupRequest, SurfaceRegistry, instance_surface_prefix, menu_label,
-    menu_position, popup_label, set_window_always_on_top, set_window_owner,
+    menu_position, popup_label, set_window_always_on_top, set_window_no_activate, set_window_owner,
     set_window_visible_without_activation, surface_prefix,
 };
 use crate::protocol::{
@@ -459,19 +459,15 @@ impl NativeReactor {
                     menu_uid,
                     width,
                     height,
-                    offset_x,
-                    offset_y,
+                    ..
                 } => {
                     let app = self.app.clone();
-                    let surfaces = self.surfaces.clone();
                     let _ = self.app.run_on_main_thread(move || {
                         let label = crate::panel::menu_label(&instance_uid, &window_uid, &menu_uid);
                         if let Some(window) = app.get_webview_window(&label) {
-                            if let Some(geo) = surfaces.geometry(&label) {
-                                let dx = offset_x.unwrap_or(0.0);
-                                let dy = offset_y.unwrap_or(0.0);
-                                let _ = window.set_position(tauri::LogicalPosition::new(geo.x - dx, geo.y - dy));
-                            }
+                            // Only down/right expansion: the window origin never moves, it
+                            // only grows. set_size keeps existing pixels and adds new area —
+                            // no origin move, no framebuffer shift, no flicker.
                             let _ = window.set_size(LogicalSize::new(width, height));
                         }
                     });
@@ -1032,6 +1028,7 @@ impl NativeReactor {
                 let Some(owner_hwnd) = item.owner_hwnd else {
                     continue;
                 };
+                let _ = set_window_no_activate(&window);
                 let current_owner = window_owners
                     .lock()
                     .ok()

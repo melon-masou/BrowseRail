@@ -1,16 +1,21 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{
     Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GWLP_HWNDPARENT, GetWindowLongPtrW, HWND_NOTOPMOST, HWND_TOPMOST,
+    CallNextHookEx, EnumChildWindows, GWL_EXSTYLE, GWLP_HWNDPARENT, GetWindowLongPtrW,
+    GetWindowThreadProcessId, HCBT_ACTIVATE, HWND_NOTOPMOST, HWND_TOPMOST, MA_NOACTIVATE,
     SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPos, WS_EX_TOPMOST,
+    SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPos, SetWindowsHookExW, WH_CBT, WM_MOUSEACTIVATE,
+    WM_NCDESTROY, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
 };
+use windows::core::BOOL;
 
 use crate::protocol::{BrowserWindowSnapshot, MenuAnchor, MenuPlacement};
 use crate::state_machine::{SurfaceState, log_surface_transition};
@@ -19,6 +24,71 @@ const POPUP_MIN_WIDTH: f64 = 180.0;
 const POPUP_MAX_WIDTH: f64 = 1_600.0;
 const POPUP_MIN_HEIGHT: f64 = 48.0;
 const POPUP_MAX_HEIGHT: f64 = 900.0;
+const NO_ACTIVATE_SUBCLASS_ID: usize = 1;
+static NO_ACTIVATE_HOOK_THREADS: LazyLock<Mutex<HashSet<u32>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+unsafe extern "system" fn no_activate_hook_proc(
+    code: i32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if code == HCBT_ACTIVATE as i32 {
+        let hwnd = HWND(wparam.0 as *mut core::ffi::c_void);
+        let extended_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+        if extended_style & WS_EX_NOACTIVATE.0 as isize != 0 {
+            return LRESULT(1);
+        }
+    }
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+fn ensure_no_activate_hook(hwnd: HWND) -> Result<(), String> {
+    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, None) };
+    let mut hooked_threads = NO_ACTIVATE_HOOK_THREADS
+        .lock()
+        .map_err(|_| "no-activate hook registry is unavailable".to_string())?;
+    if hooked_threads.contains(&thread_id) {
+        return Ok(());
+    }
+    unsafe {
+        let _hook = SetWindowsHookExW(WH_CBT, Some(no_activate_hook_proc), None, thread_id)
+            .map_err(|error| error.to_string())?;
+    }
+    hooked_threads.insert(thread_id);
+    Ok(())
+}
+
+unsafe extern "system" fn no_activate_window_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    subclass_id: usize,
+    _ref_data: usize,
+) -> LRESULT {
+    if message == WM_MOUSEACTIVATE {
+        return LRESULT(MA_NOACTIVATE as isize);
+    }
+    if message == WM_NCDESTROY {
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(no_activate_window_proc), subclass_id);
+        }
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+unsafe extern "system" fn install_no_activate_on_child(hwnd: HWND, _lparam: LPARAM) -> BOOL {
+    unsafe {
+        let _ = SetWindowSubclass(
+            hwnd,
+            Some(no_activate_window_proc),
+            NO_ACTIVATE_SUBCLASS_ID,
+            0,
+        );
+    }
+    BOOL(1)
+}
 
 pub fn set_window_always_on_top(window: &WebviewWindow, always_on_top: bool) -> Result<(), String> {
     let hwnd = window.hwnd().map_err(|error| error.to_string())?;
@@ -58,6 +128,36 @@ pub fn set_window_owner(window: &WebviewWindow, owner_hwnd: isize) -> Result<(),
         )
         .map_err(|error| error.to_string())
     }
+}
+
+pub fn set_window_no_activate(window: &WebviewWindow) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let extended_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    unsafe {
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_EXSTYLE,
+            extended_style | WS_EX_NOACTIVATE.0 as isize,
+        );
+        SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        )
+        .map_err(|error| error.to_string())?;
+        let _ = SetWindowSubclass(
+            hwnd,
+            Some(no_activate_window_proc),
+            NO_ACTIVATE_SUBCLASS_ID,
+            0,
+        );
+        let _ = EnumChildWindows(Some(hwnd), Some(install_no_activate_on_child), LPARAM(0));
+    }
+    ensure_no_activate_hook(hwnd)
 }
 
 pub fn clear_window_owner(window: &WebviewWindow) -> Result<(), String> {
@@ -483,6 +583,7 @@ pub fn open_popup(
 
     place_popup(&parent, &window, &popup.anchor, popup.width, popup.height)?;
     if is_new {
+        set_window_no_activate(&window)?;
         let parent_hwnd = parent.hwnd().map_err(|error| error.to_string())?;
         set_window_owner(&window, parent_hwnd.0 as isize)?;
     }

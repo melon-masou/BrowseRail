@@ -48,7 +48,7 @@ export interface BookmarkEntry {
 }
 
 export type OnTopMode = "aboveBrowser" | "alwaysOnTop";
-export type ExpandDirection = "down" | "up" | "right" | "left";
+export type ExpandDirection = "down" | "right";
 
 export interface FolderEntry {
   kind: "folder";

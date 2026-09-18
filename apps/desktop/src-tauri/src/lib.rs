@@ -302,9 +302,12 @@ fn begin_menu_customization(
         .ok_or("Menu state is unavailable")?;
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let position = window.outer_position().map_err(|error| error.to_string())?;
-    let current_x = f64::from(position.x) / scale;
-    let current_y = f64::from(position.y) / scale;
+    let (current_x, current_y) = if let Some(geo) = state.surfaces.geometry(window.label()) {
+        (geo.x, geo.y)
+    } else {
+        let position = window.outer_position().map_err(|error| error.to_string())?;
+        (f64::from(position.x) / scale, f64::from(position.y) / scale)
+    };
     let current_w = orig_menu.placement.width;
     let current_h = orig_menu.placement.height;
     if !toolbar_space.is_finite()
@@ -339,14 +342,14 @@ fn begin_menu_customization(
     state.surfaces.set_customizing(window.label(), true);
     let configure_result = (|| -> Result<(), String> {
         let new_h = current_h + toolbar_space;
-        if toolbar_position == "top" {
-            window
-                .set_position(tauri::LogicalPosition::new(
-                    current_x,
-                    current_y - toolbar_space,
-                ))
-                .map_err(|error| error.to_string())?;
-        }
+        let final_y = if toolbar_position == "top" {
+            current_y - toolbar_space
+        } else {
+            current_y
+        };
+        window
+            .set_position(tauri::LogicalPosition::new(current_x, final_y))
+            .map_err(|error| error.to_string())?;
         window
             .set_size(tauri::LogicalSize::new(
                 current_w.max(customize_width),

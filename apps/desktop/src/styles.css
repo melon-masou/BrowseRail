@@ -49,6 +49,7 @@ button {
   grid-template-rows: repeat(var(--item-count), minmax(0, 1fr));
 }
 
+
 .menu-button {
   --button-padding-left: clamp(
     1px,
@@ -178,8 +179,17 @@ button {
   content: "▾";
 }
 
+.menu-bar[data-orientation="row"] .menu-button[data-folder]::after,
+.customize-rail[data-orientation="row"] .menu-button[data-folder]::after,
+.menu-bar[data-expand-direction="down"] .menu-button[data-folder]::after,
+.customize-rail[data-expand-direction="down"] .menu-button[data-folder]::after {
+  content: "▾";
+}
+
 .menu-bar[data-orientation="column"] .menu-button[data-folder]::after,
-.customize-rail[data-orientation="column"] .menu-button[data-folder]::after {
+.customize-rail[data-orientation="column"] .menu-button[data-folder]::after,
+.menu-bar[data-expand-direction="right"] .menu-button[data-folder]::after,
+.customize-rail[data-expand-direction="right"] .menu-button[data-folder]::after {
   content: "▸";
 }
 
@@ -212,15 +222,16 @@ button {
   display: flex;
   gap: 4px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
   scrollbar-width: none;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 10px;
-  padding: 7px;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   color: #f5f7fb;
-  background: rgb(24 29 39 / 98%);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 34%);
+  background: transparent;
+  box-shadow: none;
   pointer-events: auto;
+  align-items: flex-start;
 }
 
 .popup-container::-webkit-scrollbar {
@@ -238,6 +249,14 @@ button {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
+  color: #f5f7fb;
+  background: rgb(24 29 39 / 98%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 34%);
+  max-height: 560px;
+  height: fit-content;
 }
 
 .popup-container .menu-button {
@@ -281,30 +300,27 @@ button {
 
 /* Accent popups (menu default color): softer shadow, matching scrollbar, and no
    dark drop-shadow halo on the same-color buttons. */
-.popup-container[data-accent="true"] {
+.menu-column[data-accent="true"] {
   box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
-}
-
-.popup-container[data-accent="true"] .menu-column {
   scrollbar-color: rgb(255 255 255 / 35%) transparent;
 }
 
-.popup-container[data-accent="true"] .menu-column::-webkit-scrollbar {
+.menu-column[data-accent="true"]::-webkit-scrollbar {
   width: 6px;
 }
 
-.popup-container[data-accent="true"] .menu-column::-webkit-scrollbar-track {
+.menu-column[data-accent="true"]::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.popup-container[data-accent="true"] .menu-column::-webkit-scrollbar-thumb {
+.menu-column[data-accent="true"]::-webkit-scrollbar-thumb {
   background: rgb(255 255 255 / 35%);
   border-radius: 3px;
 }
 
-.popup-container[data-accent="true"] .menu-button[data-has-custom-color="true"]:hover,
-.popup-container[data-accent="true"] .menu-button[data-has-custom-color="true"]:focus-visible,
-.popup-container[data-accent="true"] .menu-button[data-has-custom-color="true"][data-expanded] {
+.menu-column[data-accent="true"] .menu-button[data-has-custom-color="true"]:hover,
+.menu-column[data-accent="true"] .menu-button[data-has-custom-color="true"]:focus-visible,
+.menu-column[data-accent="true"] .menu-button[data-has-custom-color="true"][data-expanded] {
   box-shadow: none;
 }
 
@@ -348,7 +364,9 @@ button {
 
 .menu-button[data-has-custom-color="true"] {
   background-color: var(--button-custom-color) !important;
-  border-color: rgb(255 255 255 / 28%);
+  /* A soft dark rim reads as a natural edge on any hue; a bright white border
+     (previously 28%) looked like a jarring halo on saturated colors. */
+  border-color: rgb(0 0 0 / 18%);
 }
 
 .menu-button[data-has-custom-color="true"]:hover,

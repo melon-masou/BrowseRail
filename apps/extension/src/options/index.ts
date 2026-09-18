@@ -1845,9 +1845,7 @@ async function importSettings(file: File): Promise<void> {
 
         const expandDirection =
           itemRecord.expandDirection === "down" ||
-          itemRecord.expandDirection === "up" ||
-          itemRecord.expandDirection === "right" ||
-          itemRecord.expandDirection === "left"
+          itemRecord.expandDirection === "right"
             ? (itemRecord.expandDirection as ExpandDirection)
             : undefined;
 
