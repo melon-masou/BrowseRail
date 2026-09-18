@@ -1,9 +1,10 @@
 import type {
   BrowserKind,
   BrowserWindowSnapshot,
-  BrowserWindowState,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
+
+export type BrowserWindowCandidate = BrowserWindowSnapshot & { focused: boolean };
 
 export function browserKind(): BrowserKind {
   if (browser.runtime.getURL("").startsWith("moz-extension:")) {
@@ -29,7 +30,7 @@ export function browserKind(): BrowserKind {
   return "chrome";
 }
 
-export async function listBrowserWindows(): Promise<BrowserWindowSnapshot[]> {
+export async function listBrowserWindows(): Promise<BrowserWindowCandidate[]> {
   const windows = await browser.windows.getAll({ windowTypes: ["normal"] });
 
   return windows.flatMap((window) => {
@@ -47,7 +48,6 @@ export async function listBrowserWindows(): Promise<BrowserWindowSnapshot[]> {
       {
         uid: String(window.id),
         focused: window.focused ?? false,
-        state: normalizeWindowState(window.state),
         bounds: {
           x: window.left,
           y: window.top,
@@ -57,10 +57,4 @@ export async function listBrowserWindows(): Promise<BrowserWindowSnapshot[]> {
       },
     ];
   });
-}
-
-function normalizeWindowState(state: browser.Windows.WindowState | undefined): BrowserWindowState {
-  return state === "minimized" || state === "maximized" || state === "fullscreen"
-    ? state
-    : "normal";
 }

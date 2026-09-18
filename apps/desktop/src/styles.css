@@ -359,41 +359,197 @@ body[data-view="settings"] {
   color-scheme: light;
   color: #172033;
   background: #f4f6fb;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
 }
 
 .listener-settings {
-  display: grid;
-  gap: 12px;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  box-sizing: border-box;
 }
 
-.listener-settings h1,
-.listener-settings p {
-  margin: 0;
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.listener-settings form,
-.listener-settings label {
-  display: grid;
+.settings-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3b4861;
+}
+
+.settings-port-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.listener-settings input,
-.listener-settings button {
-  min-height: 36px;
+.settings-port-row input {
+  flex: 1 1 auto;
+  min-height: 34px;
   box-sizing: border-box;
   border: 1px solid #cbd2df;
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 0 10px;
-  color: inherit;
+  font-size: 14px;
   background: white;
-  font: inherit;
+  color: inherit;
+  font-family: inherit;
 }
 
-.listener-settings button {
+.settings-port-row input:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+}
+
+.settings-port-row button {
+  min-height: 34px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  background: #3b82f6;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  font-family: inherit;
 }
 
-.listener-settings output {
-  min-height: 20px;
+.settings-port-row button:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.settings-port-row button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #172033;
+  cursor: pointer;
+  user-select: none;
+  width: fit-content;
+}
+
+.settings-checkbox-row input {
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #3b82f6;
+}
+
+.settings-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: white;
+  border: 1px solid #dce2ee;
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.settings-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-status-dot {
+  font-size: 11px;
+  line-height: 1;
+  font-weight: bold;
+}
+
+.settings-status-dot[data-status="listening"] {
+  color: #10b981;
+}
+
+.settings-status-dot[data-status="error"] {
+  color: #ef4444;
+}
+
+.settings-status-dot[data-status="stopped"] {
+  color: #94a3b8;
+}
+
+.settings-error-box {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #991b1b;
+  word-break: break-word;
+}
+
+.settings-error-box .settings-error-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.settings-ext-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.settings-ext-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-ext-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-ext-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 5px 8px;
+  background: #f8fafc;
+  border-radius: 5px;
+  border: 1px solid #edf2f7;
+}
+
+.settings-ext-item-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.settings-ext-item-meta {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.settings-ext-empty {
+  font-size: 12px;
+  color: #94a3b8;
+  font-style: italic;
 }

@@ -5,7 +5,6 @@ export type BrowserKind = "brave" | "chrome" | "edge" | "firefox" | "opera" | "v
 export type AttachmentMode = "none" | "lastFocused" | "all";
 export type MenuAnchor = "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
 export type MenuOrientation = "row" | "column";
-export type BrowserWindowState = "normal" | "minimized" | "maximized" | "fullscreen";
 
 export interface BrowserInstance {
   uid: string;
@@ -22,8 +21,6 @@ export interface WindowBounds {
 
 export interface BrowserWindowSnapshot {
   uid: string;
-  focused: boolean;
-  state: BrowserWindowState;
   bounds: WindowBounds;
 }
 
@@ -87,6 +84,15 @@ export type ClientMessage =
       ok: boolean;
       message?: string;
     }
+  | { type: "pairWindow"; requestUid: string; windowUid: string }
+  | { type: "confirmWindowPairing"; requestUid: string; windowUid: string }
+  | {
+      type: "clientDebugLog";
+      time: string;
+      tag: string;
+      message: string;
+      details?: unknown;
+    }
   | { type: "resync"; requestUid: string }
   | { type: "heartbeat" };
 
@@ -103,6 +109,8 @@ export type ServerMessage =
       menuUid: string;
       placement: MenuPlacement;
     }
+  | { type: "verifyWindowPairing"; requestUid: string; windowUid: string }
+  | { type: "pairWindowResult"; requestUid: string; windowUid: string; ok: boolean }
   | { type: "resyncComplete"; requestUid: string }
   | { type: "heartbeat" };
 
@@ -122,6 +130,14 @@ export function isServerMessage(value: unknown): value is ServerMessage {
       );
     case "updateMenuPlacement":
       return typeof value.menuUid === "string" && isMenuPlacement(value.placement);
+    case "verifyWindowPairing":
+      return typeof value.requestUid === "string" && typeof value.windowUid === "string";
+    case "pairWindowResult":
+      return (
+        typeof value.requestUid === "string" &&
+        typeof value.windowUid === "string" &&
+        typeof value.ok === "boolean"
+      );
     case "resyncComplete":
       return typeof value.requestUid === "string";
     case "heartbeat":

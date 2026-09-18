@@ -1,3 +1,4 @@
+pub mod debug;
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub mod protocol;
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
@@ -15,9 +16,9 @@ pub mod settings;
 pub mod socket;
 
 #[cfg(target_os = "windows")]
-use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(target_os = "windows")]
 use std::sync::Arc;
+#[cfg(target_os = "windows")]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(target_os = "windows")]
 use protocol::{MenuAnchor, MenuPlacement, MenuSnapshot};
@@ -40,17 +41,6 @@ use tokio::sync::mpsc::UnboundedSender;
 pub const TRAY_ID: &str = "browserail";
 
 #[cfg(target_os = "windows")]
-pub struct TrayItems {
-    pub server_item: MenuItem<tauri::Wry>,
-    pub client_item: MenuItem<tauri::Wry>,
-    pub surfaces_item: MenuItem<tauri::Wry>,
-    pub display_panels_item: CheckMenuItem<tauri::Wry>,
-}
-
-#[cfg(target_os = "windows")]
-pub struct TrayHolder(pub Arc<std::sync::Mutex<Option<TrayItems>>>);
-
-#[cfg(target_os = "windows")]
 pub struct AppState {
     pub display_panels: Arc<AtomicBool>,
     pub popups: Arc<panel::PopupRegistry>,
@@ -58,7 +48,6 @@ pub struct AppState {
     pub socket: Arc<socket::SocketServer>,
     pub surfaces: Arc<panel::SurfaceRegistry>,
     pub native_sender: UnboundedSender<native::NativeCommand>,
-    pub tray_holder: Arc<TrayHolder>,
 }
 
 #[cfg(target_os = "windows")]
@@ -69,6 +58,8 @@ struct ListenerState {
     error: Option<String>,
     listening: bool,
     port: u16,
+    debug_enabled: bool,
+    extensions: Vec<session::ConnectedExtension>,
 }
 
 #[cfg(target_os = "windows")]
@@ -89,6 +80,8 @@ fn listener_state(state: tauri::State<'_, AppState>) -> ListenerState {
         error: status.error,
         listening: status.listening,
         port: status.port,
+        debug_enabled: crate::debug::is_debug_enabled(),
+        extensions: state.registry.active_extensions(),
     }
 }
 
@@ -98,11 +91,10 @@ async fn set_listener_port(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     port: u16,
-) -> Result<(), String> {
-    let settings = settings::DesktopSettings {
-        display_panels: state.display_panels.load(Ordering::Relaxed),
-        listener_port: port,
-    };
+) -> Result<ListenerState, String> {
+    let mut settings = settings::load(&app).unwrap_or_default();
+    settings.listener_port = port;
+    settings.display_panels = state.display_panels.load(Ordering::Relaxed);
     settings::save(&app, &settings)?;
     let listener = socket::bind(port).await?;
     state
@@ -110,7 +102,22 @@ async fn set_listener_port(
         .replace(state.native_sender.clone(), listener, port)
         .await?;
     let _ = state.native_sender.send(native::NativeCommand::UpdateTray);
-    Ok(())
+    Ok(listener_state(state))
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_debug_enabled(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<ListenerState, String> {
+    crate::debug::set_debug_enabled(enabled);
+    let mut settings = settings::load(&app).unwrap_or_default();
+    settings.debug_enabled = enabled;
+    settings.display_panels = state.display_panels.load(Ordering::Relaxed);
+    settings::save(&app, &settings)?;
+    Ok(listener_state(state))
 }
 
 #[cfg(target_os = "windows")]
@@ -121,7 +128,9 @@ fn invoke_action(
     window_uid: String,
     action_uid: String,
 ) -> Result<String, String> {
-    state.registry.invoke(&instance_uid, &window_uid, action_uid)
+    state
+        .registry
+        .invoke(&instance_uid, &window_uid, action_uid)
 }
 
 #[cfg(target_os = "windows")]
@@ -171,7 +180,9 @@ fn open_popup(
     state: tauri::State<'_, AppState>,
     request: panel::PopupRequest,
 ) -> Result<(), String> {
-    let _ = state.native_sender.send(native::NativeCommand::OpenPopup { request });
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::OpenPopup { request });
     Ok(())
 }
 
@@ -185,13 +196,15 @@ fn resize_popup(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let _ = state.native_sender.send(native::NativeCommand::ResizePopup {
-        instance_uid,
-        window_uid,
-        menu_uid,
-        width,
-        height,
-    });
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::ResizePopup {
+            instance_uid,
+            window_uid,
+            menu_uid,
+            width,
+            height,
+        });
     Ok(())
 }
 
@@ -203,11 +216,13 @@ fn cancel_popup_close(
     window_uid: String,
     menu_uid: String,
 ) -> Result<(), String> {
-    let _ = state.native_sender.send(native::NativeCommand::CancelPopupClose {
-        instance_uid,
-        window_uid,
-        menu_uid,
-    });
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::CancelPopupClose {
+            instance_uid,
+            window_uid,
+            menu_uid,
+        });
     Ok(())
 }
 
@@ -219,11 +234,13 @@ fn schedule_popup_close(
     window_uid: String,
     menu_uid: String,
 ) -> Result<(), String> {
-    let _ = state.native_sender.send(native::NativeCommand::SchedulePopupClose {
-        instance_uid,
-        window_uid,
-        menu_uid,
-    });
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::SchedulePopupClose {
+            instance_uid,
+            window_uid,
+            menu_uid,
+        });
     Ok(())
 }
 
@@ -303,26 +320,33 @@ fn begin_menu_customization(
         (current_y, 800.0)
     };
 
-    let toolbar_position = if space_above >= toolbar_space && (space_below < toolbar_space || current_y > 150.0) {
-        "top".to_string()
-    } else if space_below >= toolbar_space {
-        "bottom".to_string()
-    } else if space_above >= space_below {
-        "top".to_string()
-    } else {
-        "bottom".to_string()
-    };
+    let toolbar_position =
+        if space_above >= toolbar_space && (space_below < toolbar_space || current_y > 150.0) {
+            "top".to_string()
+        } else if space_below >= toolbar_space {
+            "bottom".to_string()
+        } else if space_above >= space_below {
+            "top".to_string()
+        } else {
+            "bottom".to_string()
+        };
 
     state.surfaces.set_customizing(window.label(), true);
     let configure_result = (|| -> Result<(), String> {
         let new_h = current_h + toolbar_space;
         if toolbar_position == "top" {
             window
-                .set_position(tauri::LogicalPosition::new(current_x, current_y - toolbar_space))
+                .set_position(tauri::LogicalPosition::new(
+                    current_x,
+                    current_y - toolbar_space,
+                ))
                 .map_err(|error| error.to_string())?;
         }
         window
-            .set_size(tauri::LogicalSize::new(current_w.max(customize_width), new_h))
+            .set_size(tauri::LogicalSize::new(
+                current_w.max(customize_width),
+                new_h,
+            ))
             .map_err(|error| error.to_string())
     })();
 
@@ -331,9 +355,11 @@ fn begin_menu_customization(
         return Err(error);
     }
 
-    let _ = state.native_sender.send(native::NativeCommand::BeginCustomization {
-        label: window.label().to_string(),
-    });
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::BeginCustomization {
+            label: window.label().to_string(),
+        });
 
     Ok(CustomizationStartInfo { toolbar_position })
 }
@@ -409,13 +435,11 @@ fn save_menu_placement(
     let items_count = orig_menu.items.len().max(1) as f64;
     let (item_width, item_height) = match orig_menu.orientation {
         protocol::MenuOrientation::Row => {
-            let iw = ((width - (items_count - 1.0) * MENU_ITEM_GAP) / items_count)
-                .max(1.0);
+            let iw = ((width - (items_count - 1.0) * MENU_ITEM_GAP) / items_count).max(1.0);
             (Some(iw), Some(height))
         }
         protocol::MenuOrientation::Column => {
-            let ih = ((height - (items_count - 1.0) * MENU_ITEM_GAP) / items_count)
-                .max(1.0);
+            let ih = ((height - (items_count - 1.0) * MENU_ITEM_GAP) / items_count).max(1.0);
             (Some(width), Some(ih))
         }
     };
@@ -439,13 +463,15 @@ fn save_menu_placement(
         .map_err(|error| error.to_string())?;
 
     state.surfaces.set_customizing(window.label(), false);
-    let _ = state.native_sender.send(native::NativeCommand::SaveMenuPlacement {
-        instance_uid,
-        window_uid,
-        menu_uid,
-        anchor,
-        placement: placement.clone(),
-    });
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::SaveMenuPlacement {
+            instance_uid,
+            window_uid,
+            menu_uid,
+            anchor,
+            placement: placement.clone(),
+        });
     Ok(placement)
 }
 
@@ -462,7 +488,10 @@ fn cancel_menu_customization(
         if let Some(menu) = panel.menus.iter().find(|m| m.uid == menu_uid) {
             let target_pos = panel::menu_position(&panel.window, &menu.placement);
             window
-                .set_size(tauri::LogicalSize::new(menu.placement.width, menu.placement.height))
+                .set_size(tauri::LogicalSize::new(
+                    menu.placement.width,
+                    menu.placement.height,
+                ))
                 .map_err(|error| error.to_string())?;
             window
                 .set_position(target_pos)
@@ -470,54 +499,82 @@ fn cancel_menu_customization(
         }
     }
     state.surfaces.set_customizing(window.label(), false);
-    let _ = state.native_sender.send(native::NativeCommand::CancelCustomization {
-        instance_uid,
-        window_uid,
-        menu_uid,
-    });
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::CancelCustomization {
+            instance_uid,
+            window_uid,
+            menu_uid,
+        });
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-fn create_tray(app: &tauri::App, initial_display: bool) -> tauri::Result<TrayItems> {
+pub fn build_tray_menu<M: Manager<tauri::Wry>>(
+    manager: &M,
+    state: &native::TrayStateSnapshot,
+) -> tauri::Result<Menu<tauri::Wry>> {
     let server_item = MenuItem::with_id(
-        app,
+        manager,
         "server_status",
-        "○ Listener: Starting…",
+        &state.server_text,
         false,
         None::<&str>,
     )?;
-    let client_item = MenuItem::with_id(
-        app,
-        "client_status",
-        "○ Extension: Disconnected",
+
+    let mut ext_items = Vec::new();
+    for (i, line) in state.extension_lines.iter().enumerate() {
+        let item = MenuItem::with_id(
+            manager,
+            format!("ext_item_{i}"),
+            line,
+            false,
+            None::<&str>,
+        )?;
+        ext_items.push(item);
+    }
+
+    let surfaces_item = MenuItem::with_id(
+        manager,
+        "surfaces_status",
+        &state.surfaces_text,
         false,
         None::<&str>,
     )?;
-    let surfaces_item =
-        MenuItem::with_id(app, "surfaces_status", "○ Menus: None", false, None::<&str>)?;
     let display = CheckMenuItem::with_id(
-        app,
+        manager,
         "display_panels",
         "Display menus",
         true,
-        initial_display,
+        state.display_panels,
         None::<&str>,
     )?;
-    let change_port = MenuItem::with_id(app, "change_port", "Change port…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let settings = MenuItem::with_id(manager, "settings", "Settings…", true, None::<&str>)?;
+    let quit = MenuItem::with_id(manager, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(
-        app,
-        &[
-            &server_item,
-            &client_item,
-            &surfaces_item,
-            &display,
-            &change_port,
-            &quit,
-        ],
-    )?;
+    let mut menu_items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
+    menu_items.push(&server_item);
+    for ext_item in &ext_items {
+        menu_items.push(ext_item);
+    }
+    menu_items.push(&surfaces_item);
+    menu_items.push(&display);
+    menu_items.push(&settings);
+    menu_items.push(&quit);
+
+    Menu::with_items(manager, &menu_items)
+}
+
+#[cfg(target_os = "windows")]
+fn create_tray(app: &tauri::App, initial_display: bool) -> tauri::Result<()> {
+    let initial_state = native::TrayStateSnapshot {
+        server_text: "○ Listener: Starting…".into(),
+        extension_lines: vec!["○ Extension: Disconnected".into()],
+        surfaces_text: "○ Menus: None".into(),
+        tooltip: "BrowseRail".into(),
+        display_panels: initial_display,
+    };
+    let menu = build_tray_menu(app, &initial_state)?;
 
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
     TrayIconBuilder::with_id(TRAY_ID)
@@ -528,20 +585,17 @@ fn create_tray(app: &tauri::App, initial_display: bool) -> tauri::Result<TrayIte
         .on_menu_event(|app, event| match event.id.as_ref() {
             "display_panels" => {
                 let state = app.state::<AppState>();
-                let _ = state.native_sender.send(native::NativeCommand::ToggleDisplayPanels);
+                let _ = state
+                    .native_sender
+                    .send(native::NativeCommand::ToggleDisplayPanels);
             }
-            "change_port" => open_listener_settings(app),
+            "settings" => open_listener_settings(app),
             "quit" => app.exit(0),
             _ => {}
         })
         .build(app)?;
 
-    Ok(TrayItems {
-        server_item,
-        client_item,
-        surfaces_item,
-        display_panels_item: display,
-    })
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -557,9 +611,10 @@ fn open_listener_settings(app: &tauri::AppHandle) {
         "listener-settings",
         WebviewUrl::App("index.html?view=settings".into()),
     )
-    .title("BrowseRail listener")
-    .inner_size(420.0, 260.0)
-    .resizable(false)
+    .title("BrowseRail Settings")
+    .inner_size(440.0, 380.0)
+    .min_inner_size(360.0, 260.0)
+    .resizable(true)
     .build();
 }
 
@@ -587,7 +642,6 @@ pub fn run() {
     let registry = Arc::new(SessionRegistry::default());
     let socket = Arc::new(socket::SocketServer::default());
     let surfaces = Arc::new(panel::SurfaceRegistry::default());
-    let tray_holder = Arc::new(TrayHolder(Arc::new(std::sync::Mutex::new(None))));
 
     let app = tauri::Builder::default()
         .setup({
@@ -596,17 +650,14 @@ pub fn run() {
             let registry = registry.clone();
             let socket = socket.clone();
             let surfaces = surfaces.clone();
-            let tray_holder = tray_holder.clone();
 
             move |app| {
                 create_lifecycle_host(app)?;
                 let settings = settings::load(app.handle()).unwrap_or_default();
                 display_panels.store(settings.display_panels, Ordering::Relaxed);
+                crate::debug::set_debug_enabled(settings.debug_enabled);
 
-                let tray_items = create_tray(app, settings.display_panels)?;
-                if let Ok(mut guard) = tray_holder.0.lock() {
-                    *guard = Some(tray_items);
-                }
+                create_tray(app, settings.display_panels)?;
 
                 let native_sender = native::NativeReactor::start(
                     app.handle().clone(),
@@ -615,7 +666,6 @@ pub fn run() {
                     registry.clone(),
                     socket.clone(),
                     surfaces.clone(),
-                    tray_holder.clone(),
                 );
 
                 app.manage(AppState {
@@ -625,7 +675,6 @@ pub fn run() {
                     socket: socket.clone(),
                     surfaces,
                     native_sender: native_sender.clone(),
-                    tray_holder,
                 });
 
                 let app_handle = app.handle().clone();
@@ -654,6 +703,7 @@ pub fn run() {
             invoke_action,
             listener_state,
             set_listener_port,
+            set_debug_enabled,
             open_popup,
             resize_popup,
             cancel_popup_close,

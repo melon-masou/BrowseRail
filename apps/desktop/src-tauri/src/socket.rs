@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use uuid::Uuid;
@@ -74,10 +74,8 @@ impl SocketServer {
             .map_err(|_| "Socket task lock failed")?
             .take();
         if let Some(previous) = previous {
-            self.state_machine.transition(
-                ServerState::Unbound,
-                Some("Stopping previous listener"),
-            );
+            self.state_machine
+                .transition(ServerState::Unbound, Some("Stopping previous listener"));
             previous.abort();
             let _ = previous.await;
         }
@@ -138,10 +136,64 @@ async fn serve(
     }
 }
 
+async fn handle_http_debug(mut stream: TcpStream) -> Result<(), String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut buf = [0u8; 2048];
+    let _ = stream.read(&mut buf).await;
+
+    if !crate::debug::is_debug_enabled() {
+        let body = "Debug interface is disabled\n";
+        let response = format!(
+            "HTTP/1.1 403 Forbidden\r\n\
+            Content-Type: text/plain; charset=utf-8\r\n\
+            Content-Length: {}\r\n\
+            Access-Control-Allow-Origin: *\r\n\
+            Connection: close\r\n\r\n\
+            {}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).await.map_err(|e| e.to_string())?;
+        stream.flush().await.map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let snapshot = crate::debug::get_debug_snapshot();
+    let json = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
+    let response = format!(
+        "HTTP/1.1 200 OK\r\n\
+        Content-Type: application/json; charset=utf-8\r\n\
+        Content-Length: {}\r\n\
+        Access-Control-Allow-Origin: *\r\n\
+        Access-Control-Allow-Methods: GET, OPTIONS\r\n\
+        Access-Control-Allow-Headers: *\r\n\
+        Connection: close\r\n\r\n\
+        {}",
+        json.len(),
+        json
+    );
+    stream.write_all(response.as_bytes()).await.map_err(|e| e.to_string())?;
+    stream.flush().await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 async fn handle_connection(
     native_sender: UnboundedSender<NativeCommand>,
     stream: TcpStream,
 ) -> Result<(), String> {
+    let mut peek_buf = [0u8; 1024];
+    let n = stream.peek(&mut peek_buf).await.map_err(|e| e.to_string())?;
+    if n > 0 {
+        let peek_str = String::from_utf8_lossy(&peek_buf[..n]);
+        let lower = peek_str.to_ascii_lowercase();
+        let is_debug_route = lower.starts_with("get /debug") || lower.starts_with("get /api/debug");
+        let is_plain_http_get = lower.starts_with("get /") && !lower.contains("upgrade: websocket");
+        if is_debug_route || is_plain_http_get {
+            return handle_http_debug(stream).await;
+        }
+    }
+
     let connection_uid = Uuid::new_v4();
     let mut connection_sm = ConnectionStateMachine::new();
     connection_sm.transition(
@@ -160,6 +212,7 @@ async fn handle_connection(
         ConnectionState::Handshaking { connection_uid },
         Some("WebSocket upgraded, waiting for Hello"),
     );
+    crate::debug::log("Socket", format!("WebSocket upgraded: {connection_uid}"));
 
     let result = async {
         loop {
@@ -178,10 +231,12 @@ async fn handle_connection(
                             match message {
                                 ClientMessage::Hello { protocol_version, instance } => {
                                     if registered_instance.is_some() || protocol_version != PROTOCOL_VERSION {
+                                        crate::debug::log("Socket", format!("Invalid hello: proto={protocol_version}, reg={:?}", registered_instance));
                                         return Err("Invalid hello message".into());
                                     }
                                     let instance_uid = instance.uid.clone();
                                     registered_instance = Some(instance_uid.clone());
+                                    crate::debug::log("Socket", format!("Hello accepted: instance={instance_uid}, browser={:?}, label={:?}", instance.browser, instance.label));
                                     connection_sm.transition(
                                         ConnectionState::Ready {
                                             connection_uid,
@@ -196,10 +251,10 @@ async fn handle_connection(
                                     });
                                 }
                                 ClientMessage::Sync { revision, attachment_mode, panels } => {
-                                    let _ = attachment_mode;
                                     let Some(ref inst_uid) = registered_instance else {
                                         return Err("Sync received before Hello".into());
                                     };
+                                    crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, mode={:?}, panels={}", attachment_mode, panels.len()));
                                     connection_sm.transition(
                                         ConnectionState::Syncing {
                                             connection_uid,
@@ -211,6 +266,7 @@ async fn handle_connection(
                                     let _ = native_sender.send(NativeCommand::SyncPanels {
                                         connection_uid,
                                         revision,
+                                        attachment_mode,
                                         panels,
                                     });
                                     connection_sm.transition(
@@ -218,7 +274,7 @@ async fn handle_connection(
                                             connection_uid,
                                             instance_uid: inst_uid.clone(),
                                         },
-                                        Some("Sync dispatched to native reactor"),
+                                        Some("Sync applied"),
                                     );
                                 }
                                 ClientMessage::ActionResult { request_uid, ok, message } => {
@@ -228,10 +284,43 @@ async fn handle_connection(
                                         message,
                                     });
                                 }
+                                ClientMessage::PairWindow { request_uid, window_uid } => {
+                                    let Some(ref instance_uid) = registered_instance else {
+                                        return Err("Pairing received before Hello".into());
+                                    };
+                                    crate::debug::log("Socket", format!("PairWindow: inst={instance_uid}, req={request_uid}, win={window_uid}"));
+                                    let _ = native_sender.send(NativeCommand::BeginWindowPairing {
+                                        connection_uid,
+                                        instance_uid: instance_uid.clone(),
+                                        request_uid,
+                                        window_uid,
+                                        outgoing: outgoing.clone(),
+                                    });
+                                }
+                                ClientMessage::ConfirmWindowPairing { request_uid, window_uid } => {
+                                    let Some(ref instance_uid) = registered_instance else {
+                                        return Err("Pairing confirmation received before Hello".into());
+                                    };
+                                    crate::debug::log("Socket", format!("ConfirmWindowPairing: inst={instance_uid}, req={request_uid}, win={window_uid}"));
+                                    let _ = native_sender.send(NativeCommand::ConfirmWindowPairing {
+                                        connection_uid,
+                                        instance_uid: instance_uid.clone(),
+                                        request_uid,
+                                        window_uid,
+                                        outgoing: outgoing.clone(),
+                                    });
+                                }
+                                ClientMessage::ClientDebugLog { time, tag, message, details } => {
+                                    let details_str = details
+                                        .map(|d| format!(" details={}", serde_json::to_string(&d).unwrap_or_default()))
+                                        .unwrap_or_default();
+                                    crate::debug::log(format!("Ext:{tag}"), format!("[{time}] {message}{details_str}"));
+                                }
                                 ClientMessage::Resync { request_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
                                         return Err("Resync received before Hello".into());
                                     };
+                                    crate::debug::log("Socket", format!("Resync: inst={instance_uid}, req={request_uid}"));
                                     let _ = native_sender.send(NativeCommand::RebuildInstanceSurfaces {
                                         instance_uid: instance_uid.clone(),
                                         request_uid,

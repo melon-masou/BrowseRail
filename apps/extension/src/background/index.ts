@@ -1,15 +1,15 @@
 import {
   isServerMessage,
   PROTOCOL_VERSION,
+  type AttachmentMode,
   type BrowserInstance,
-  type BrowserWindowSnapshot,
   type ClientMessage,
   type PanelSnapshot,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import { resolveMenuItems } from "../bookmarks";
-import { browserKind, listBrowserWindows } from "../browser-adapter";
+import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser-adapter";
 import {
   loadConfig,
   loadMenuPlacements,
@@ -87,14 +87,14 @@ let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectAttempts = 0;
 let revision = 0;
-let lastFocusedWindowUid: string | undefined;
 let syncRequested = false;
 let syncRunning = false;
 let connectionGeneration = 0;
 let connectionEnabled = false;
 let desiredInstanceLabel = "";
 let desiredSocketUrl = "";
-let focusLostTimer: ReturnType<typeof setTimeout> | undefined;
+const pairedWindowUids = new Set<string>();
+const pendingWindowPairings = new Map<string, string>();
 const pendingResyncs = new Map<
   string,
   {
@@ -103,6 +103,44 @@ const pendingResyncs = new Map<
   }
 >();
 
+export interface ExtensionDebugLogEntry {
+  time: string;
+  tag: string;
+  message: string;
+  details?: unknown;
+}
+
+const debugLogs: ExtensionDebugLogEntry[] = [];
+const MAX_DEBUG_LOGS = 250;
+
+function extLog(tag: string, message: string, details?: unknown): void {
+  const time = new Date().toISOString();
+  const entry: ExtensionDebugLogEntry = { time, tag, message, details };
+  debugLogs.push(entry);
+  if (debugLogs.length > MAX_DEBUG_LOGS) {
+    debugLogs.shift();
+  }
+  console.log(`[BrowseRail][${tag}] ${message}`, details !== undefined ? details : "");
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    try {
+      socket.send(
+        JSON.stringify({
+          type: "clientDebugLog",
+          time,
+          tag,
+          message,
+          details,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+}
+
+let lastFocusedWindowUid: string | undefined;
+
 void reconcileConnection();
 
 browser.windows
@@ -110,25 +148,34 @@ browser.windows
   .then((w) => {
     if (w && w.id !== undefined && (w.type === "normal" || w.type === undefined)) {
       lastFocusedWindowUid = String(w.id);
+      extLog("Window", `Initial lastFocusedWindowUid=${lastFocusedWindowUid}`);
       requestSync();
     }
   })
   .catch(() => {});
 
 browser.windows.onFocusChanged.addListener((windowId) => {
+  extLog("Window", `onFocusChanged: windowId=${windowId}`);
   if (windowId >= 0) {
-    clearTimeout(focusLostTimer);
     lastFocusedWindowUid = String(windowId);
     requestSync();
-  } else {
-    clearTimeout(focusLostTimer);
-    focusLostTimer = setTimeout(() => {
-      requestSync();
-    }, 120);
   }
 });
-browser.windows.onCreated.addListener(requestSync);
-browser.windows.onRemoved.addListener(requestSync);
+browser.windows.onCreated.addListener(() => {
+  extLog("Window", "onCreated");
+  requestSync();
+});
+browser.windows.onRemoved.addListener((windowId) => {
+  const windowUid = String(windowId);
+  extLog("Window", `onRemoved: windowId=${windowId}`);
+  pairedWindowUids.delete(windowUid);
+  for (const [requestUid, pendingWindowUid] of pendingWindowPairings) {
+    if (pendingWindowUid === windowUid) {
+      pendingWindowPairings.delete(requestUid);
+    }
+  }
+  requestSync();
+});
 const boundsChanged = (
   browser.windows as typeof browser.windows & {
     onBoundsChanged?: {
@@ -161,6 +208,28 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       state: connectionStateMachine.getState(),
       detail: connectionStateMachine.getDetail(),
     });
+  }
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    (message as { type?: string }).type === "getDebugInfo"
+  ) {
+    return (async () => {
+      const windows = await listBrowserWindows().catch(() => []);
+      return {
+        connected: socket?.readyState === WebSocket.OPEN,
+        connectionState: connectionStateMachine.getState(),
+        connectionDetail: connectionStateMachine.getDetail(),
+        socketUrl: desiredSocketUrl,
+        instanceLabel: desiredInstanceLabel,
+        pairedWindowUids: Array.from(pairedWindowUids),
+        pendingWindowPairings: Array.from(pendingWindowPairings.entries()).map(
+          ([requestUid, windowUid]) => ({ requestUid, windowUid }),
+        ),
+        browserWindows: windows,
+        recentLogs: debugLogs,
+      };
+    })();
   }
   if (isManualReconnectMessage(message)) {
     manualReconnect();
@@ -216,17 +285,12 @@ async function reconcileConnection(): Promise<void> {
 
 async function connect(generation = connectionGeneration): Promise<void> {
   clearTimeout(reconnectTimer);
-  const [instance, lastFocused] = await Promise.all([
-    loadInstance(desiredInstanceLabel),
-    browser.windows.getLastFocused().catch(() => undefined),
-  ]);
+  const instance = await loadInstance(desiredInstanceLabel);
   if (!connectionEnabled || generation !== connectionGeneration) {
     return;
   }
-  if (lastFocused?.id !== undefined) {
-    lastFocusedWindowUid = String(lastFocused.id);
-  }
   connectionStateMachine.transition("connecting", `Connecting to ${desiredSocketUrl}`);
+  extLog("Connect", `Connecting to ${desiredSocketUrl} (gen ${generation})`);
   const nextSocket = new WebSocket(desiredSocketUrl);
   socket = nextSocket;
 
@@ -234,7 +298,11 @@ async function connect(generation = connectionGeneration): Promise<void> {
     if (socket !== nextSocket) {
       return;
     }
-    connectionStateMachine.transition("handshaking", `WebSocket opened, sending hello (instance: ${instance.uid})`);
+    connectionStateMachine.transition(
+      "handshaking",
+      `WebSocket opened, sending hello (instance: ${instance.uid})`,
+    );
+    extLog("Connect", `WebSocket opened, sending hello (instance: ${instance.uid}, browser: ${instance.browser})`);
     send({
       type: "hello",
       protocolVersion: PROTOCOL_VERSION,
@@ -249,11 +317,15 @@ async function connect(generation = connectionGeneration): Promise<void> {
   });
   nextSocket.addEventListener("close", () => {
     if (socket === nextSocket) {
+      extLog("Connect", "WebSocket closed");
       socket = undefined;
       reconnect();
     }
   });
-  nextSocket.addEventListener("error", () => nextSocket.close());
+  nextSocket.addEventListener("error", () => {
+    extLog("Connect", "WebSocket error");
+    nextSocket.close();
+  });
 }
 
 async function handleMessage(raw: unknown): Promise<void> {
@@ -275,6 +347,7 @@ async function handleMessage(raw: unknown): Promise<void> {
   if (value.type === "ready") {
     reconnectAttempts = 0;
     connectionStateMachine.transition("connected", `Handshake completed, protocol v${value.protocolVersion}`);
+    extLog("Protocol", `Handshake completed, protocol v${value.protocolVersion}`);
     requestSync();
     return;
   }
@@ -284,6 +357,8 @@ async function handleMessage(raw: unknown): Promise<void> {
     if (pending) {
       clearTimeout(pending.timeout);
       pendingResyncs.delete(value.requestUid);
+      pairedWindowUids.clear();
+      pendingWindowPairings.clear();
       requestSync();
       pending.resolve({ ok: true, message: "Windows rebuilt" });
     }
@@ -302,6 +377,64 @@ async function handleMessage(raw: unknown): Promise<void> {
         message: error instanceof Error ? error.message : "Action failed",
       });
       requestSync();
+    }
+    return;
+  }
+
+  if (value.type === "verifyWindowPairing") {
+    const pendingWindowUid = pendingWindowPairings.get(value.requestUid);
+    extLog(
+      "Pairing",
+      `verifyWindowPairing received: req=${value.requestUid}, win=${value.windowUid}, expected=${pendingWindowUid}`,
+    );
+    if (pendingWindowUid !== value.windowUid) {
+      extLog("Pairing", "verifyWindowPairing ignored: pending mismatch");
+      return;
+    }
+    try {
+      const window = await browser.windows.get(Number(value.windowUid));
+      extLog(
+        "Pairing",
+        `browser.windows.get(${value.windowUid}) result: focused=${window.focused}, state=${window.state}, type=${window.type}`,
+      );
+      if (window.focused === true) {
+        extLog(
+          "Pairing",
+          `confirming window pairing for req=${value.requestUid}, win=${value.windowUid}`,
+        );
+        send({
+          type: "confirmWindowPairing",
+          requestUid: value.requestUid,
+          windowUid: value.windowUid,
+        });
+      } else {
+        extLog(
+          "Pairing",
+          `NOT confirming pairing: window.focused is not true (it is ${window.focused})`,
+        );
+      }
+    } catch (err) {
+      extLog("Pairing", `browser.windows.get(${value.windowUid}) threw error`, err);
+      pendingWindowPairings.delete(value.requestUid);
+    }
+    return;
+  }
+
+  if (value.type === "pairWindowResult") {
+    const pendingWindowUid = pendingWindowPairings.get(value.requestUid);
+    pendingWindowPairings.delete(value.requestUid);
+    extLog(
+      "Pairing",
+      `pairWindowResult: req=${value.requestUid}, win=${value.windowUid}, ok=${value.ok}, pendingUid=${pendingWindowUid}`,
+    );
+    if (value.ok && pendingWindowUid === value.windowUid) {
+      pairedWindowUids.add(value.windowUid);
+      extLog(
+        "Pairing",
+        `Successfully paired window ${value.windowUid}. Total paired: ${pairedWindowUids.size}`,
+      );
+    } else {
+      extLog("Pairing", `Pairing failed or mismatch for window ${value.windowUid}`);
     }
     return;
   }
@@ -363,11 +496,16 @@ async function syncOnce(): Promise<void> {
   updateLastFocusedWindow(windows);
 
   const selected = selectWindows(config.attachmentMode, windows);
-  const panels: PanelSnapshot[] = selected.map((window) => ({
+  const panels: PanelSnapshot[] = selected.map(({ focused: _focused, ...window }) => ({
     alwaysOnTop: config.panel.alwaysOnTop,
     menus,
     window,
   }));
+
+  extLog(
+    "Sync",
+    `syncOnce: selected=${selected.length}, totalWindows=${windows.length}, menus=${menus.length}, attachmentMode=${config.attachmentMode}, rev=${revision + 1}`,
+  );
 
   send({
     type: "sync",
@@ -375,6 +513,48 @@ async function syncOnce(): Promise<void> {
     attachmentMode: config.attachmentMode,
     panels,
   });
+
+  if (config.attachmentMode !== "none") {
+    for (const panel of panels) {
+      requestWindowPairing(panel.window.uid);
+    }
+  }
+}
+
+function selectWindows(
+  mode: AttachmentMode,
+  windows: BrowserWindowCandidate[],
+): BrowserWindowCandidate[] {
+  switch (mode) {
+    case "none":
+      return [];
+    case "all":
+      return windows;
+    case "lastFocused":
+      return windows.filter((window) => window.uid === lastFocusedWindowUid);
+  }
+}
+
+function updateLastFocusedWindow(windows: BrowserWindowCandidate[]): void {
+  const focused = windows.find((window) => window.focused);
+  if (focused) {
+    lastFocusedWindowUid = focused.uid;
+  } else if (!windows.some((window) => window.uid === lastFocusedWindowUid)) {
+    lastFocusedWindowUid = windows[0]?.uid;
+  }
+}
+
+function requestWindowPairing(windowUid: string): void {
+  if (pairedWindowUids.has(windowUid)) {
+    return;
+  }
+  if ([...pendingWindowPairings.values()].includes(windowUid)) {
+    return;
+  }
+  const requestUid = crypto.randomUUID();
+  pendingWindowPairings.set(requestUid, windowUid);
+  extLog("Pairing", `Requesting pairing for window ${windowUid} (req=${requestUid})`);
+  send({ type: "pairWindow", requestUid, windowUid });
 }
 
 function rebuildDesktopWindows(): Promise<{ ok: boolean; message: string }> {
@@ -391,29 +571,6 @@ function rebuildDesktopWindows(): Promise<{ ok: boolean; message: string }> {
     pendingResyncs.set(requestUid, { resolve, timeout });
     send({ type: "resync", requestUid });
   });
-}
-
-function selectWindows(
-  mode: Awaited<ReturnType<typeof loadConfig>>["attachmentMode"],
-  windows: BrowserWindowSnapshot[],
-): BrowserWindowSnapshot[] {
-  switch (mode) {
-    case "none":
-      return [];
-    case "all":
-      return windows;
-    case "lastFocused":
-      return windows.filter((window) => window.uid === lastFocusedWindowUid);
-  }
-}
-
-function updateLastFocusedWindow(windows: BrowserWindowSnapshot[]): void {
-  const focused = windows.find((window) => window.focused);
-  if (focused) {
-    lastFocusedWindowUid = focused.uid;
-  } else if (!windows.some((window) => window.uid === lastFocusedWindowUid)) {
-    lastFocusedWindowUid = windows[0]?.uid;
-  }
 }
 
 async function loadInstance(label: string): Promise<BrowserInstance> {
@@ -433,6 +590,8 @@ function startHeartbeat(): void {
 
 function reconnect(): void {
   clearInterval(heartbeatTimer);
+  pairedWindowUids.clear();
+  pendingWindowPairings.clear();
   if (!connectionEnabled) {
     connectionStateMachine.transition("disabled", "Widget disabled in settings");
     return;
@@ -468,6 +627,8 @@ function manualReconnect(): void {
 function stopConnection(): void {
   clearInterval(heartbeatTimer);
   clearTimeout(reconnectTimer);
+  pairedWindowUids.clear();
+  pendingWindowPairings.clear();
   const currentSocket = socket;
   socket = undefined;
   if (currentSocket) {

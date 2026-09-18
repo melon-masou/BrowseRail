@@ -44,7 +44,10 @@ impl ServerStateMachine {
         if let Ok(mut current) = self.state.lock() {
             if *current != next {
                 let detail_str = detail.map(|d| format!(" ({d})")).unwrap_or_default();
-                eprintln!("[BrowseRail:Tauri:Server] {} -> {}{detail_str}", *current, next);
+                eprintln!(
+                    "[BrowseRail:Tauri:Server] {} -> {}{detail_str}",
+                    *current, next
+                );
                 *current = next;
             }
         }
@@ -90,10 +93,7 @@ impl fmt::Display for ConnectionState {
             Self::Ready {
                 connection_uid,
                 instance_uid,
-            } => write!(
-                f,
-                "Ready(conn: {connection_uid}, instance: {instance_uid})"
-            ),
+            } => write!(f, "Ready(conn: {connection_uid}, instance: {instance_uid})"),
             Self::Syncing {
                 connection_uid,
                 instance_uid,
@@ -182,9 +182,7 @@ pub fn log_surface_transition(
 ) {
     if prev != next {
         let detail_str = detail.map(|d| format!(" ({d})")).unwrap_or_default();
-        eprintln!(
-            "[BrowseRail:Tauri:Surface:{label}] {prev} -> {next}{detail_str}"
-        );
+        eprintln!("[BrowseRail:Tauri:Surface:{label}] {prev} -> {next}{detail_str}");
     }
 }
 

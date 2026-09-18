@@ -72,6 +72,16 @@
         <button type="submit">Save</button>
         <output id="status"></output>
       </form>
+
+      <section class="debug-section" style="margin-top: 2rem; border-top: 1px solid #ccc; padding-top: 1rem;">
+        <h2>Debug & Diagnostics</h2>
+        <p class="hint">Inspect current window pairing, handshake status, and live event logs from both Desktop and Extension.</p>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+          <button id="refresh-debug-btn" type="button" class="action-btn">Refresh Debug Info</button>
+          <button id="copy-debug-btn" type="button" class="action-btn">Copy JSON</button>
+        </div>
+        <pre id="debug-output" style="background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 4px; max-height: 400px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all;">Click "Refresh Debug Info" to inspect.</pre>
+      </section>
     </main>
     <script type="module" src="/src/options/index.ts"></script>
   </body>

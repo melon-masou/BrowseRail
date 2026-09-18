@@ -4,37 +4,35 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use uuid::Uuid;
-use windows::Win32::Foundation::{CloseHandle, HWND, RECT};
+use windows::Win32::Foundation::{CloseHandle, HWND};
 use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-    QueryFullProcessImageNameW,
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_SYSTEM_FOREGROUND, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId,
+    EVENT_SYSTEM_FOREGROUND, GetForegroundWindow, GetWindowThreadProcessId, IsWindow,
     WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
 };
 use windows::core::PWSTR;
 
 use crate::panel::{
-    instance_surface_prefix, menu_label, menu_position, popup_label, set_window_always_on_top,
-    set_window_owner, surface_prefix, PopupRegistry, PopupRequest, SurfaceRegistry,
+    PopupRegistry, PopupRequest, SurfaceRegistry, instance_surface_prefix, menu_label,
+    menu_position, popup_label, set_window_always_on_top, set_window_owner,
+    set_window_visible_without_activation, surface_prefix,
 };
 use crate::protocol::{
-    ActionResultPayload, BrowserInstance, BrowserWindowState, MenuAnchor, MenuPlacement,
-    MenuSnapshot, PanelSnapshot, ServerMessage, WindowBounds,
+    ActionResultPayload, AttachmentMode, BrowserInstance, MenuAnchor, MenuPlacement, MenuSnapshot,
+    PanelSnapshot, ServerMessage,
 };
 use crate::session::SessionRegistry;
 use crate::socket::SocketServer;
-use crate::TrayHolder;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayStateSnapshot {
     pub server_text: String,
-    pub client_text: String,
+    pub extension_lines: Vec<String>,
     pub surfaces_text: String,
     pub tooltip: String,
     pub display_panels: bool,
@@ -52,7 +50,25 @@ pub enum NativeCommand {
     SyncPanels {
         connection_uid: Uuid,
         revision: u64,
+        attachment_mode: crate::protocol::AttachmentMode,
         panels: Vec<PanelSnapshot>,
+    },
+    BeginWindowPairing {
+        connection_uid: Uuid,
+        instance_uid: String,
+        request_uid: String,
+        window_uid: String,
+        outgoing: UnboundedSender<ServerMessage>,
+    },
+    ConfirmWindowPairing {
+        connection_uid: Uuid,
+        instance_uid: String,
+        request_uid: String,
+        window_uid: String,
+        outgoing: UnboundedSender<ServerMessage>,
+    },
+    ExpireWindowPairing {
+        request_uid: String,
     },
     ActionResult {
         request_uid: String,
@@ -128,6 +144,14 @@ struct MenuSyncItem {
     menu: MenuSnapshot,
 }
 
+struct PendingWindowPairing {
+    connection_uid: Uuid,
+    instance_uid: String,
+    window_uid: String,
+    hwnd: isize,
+    outgoing: UnboundedSender<ServerMessage>,
+}
+
 pub struct NativeReactor {
     app: AppHandle,
     display_panels: Arc<AtomicBool>,
@@ -135,19 +159,12 @@ pub struct NativeReactor {
     registry: Arc<SessionRegistry>,
     socket: Arc<SocketServer>,
     surfaces: Arc<SurfaceRegistry>,
-    tray_holder: Arc<TrayHolder>,
     native_sender: UnboundedSender<NativeCommand>,
     browser_window_handles: Arc<Mutex<HashMap<(String, String), isize>>>,
     window_levels: Arc<Mutex<HashMap<String, bool>>>,
     window_owners: Arc<Mutex<HashMap<String, isize>>>,
+    pending_window_pairings: HashMap<String, PendingWindowPairing>,
     last_tray: Option<TrayStateSnapshot>,
-}
-
-struct ForegroundBrowserWindow {
-    bounds: WindowBounds,
-    browser: &'static str,
-    hwnd: isize,
-    physical_bounds: WindowBounds,
 }
 
 static FOREGROUND_EVENT_SENDER: OnceLock<UnboundedSender<NativeCommand>> = OnceLock::new();
@@ -182,32 +199,21 @@ fn install_foreground_event_hook(app: &AppHandle, sender: UnboundedSender<Native
             )
         };
         if hook.0.is_null() {
-            eprintln!("[BrowseRail] Failed to install foreground window event hook");
+            crate::debug::log("Native:Hook", "Failed to install foreground window event hook");
         } else {
+            crate::debug::log("Native:Hook", format!("Installed foreground window event hook: {:?}", hook.0));
             let _ = FOREGROUND_EVENT_HOOK.set(hook.0 as isize);
         }
     });
 }
 
-fn foreground_browser_window() -> Option<ForegroundBrowserWindow> {
+fn foreground_browser_window() -> Option<(isize, &'static str)> {
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.0.is_null() {
         return None;
     }
-
     let browser = foreground_browser_kind(hwnd)?;
-    let mut rect = RECT::default();
-    unsafe { GetWindowRect(hwnd, &mut rect) }.ok()?;
-    let physical_bounds = rect_bounds(&rect, 1.0);
-    let dpi = unsafe { GetDpiForWindow(hwnd) };
-    let scale = if dpi > 0 { f64::from(dpi) / 96.0 } else { 1.0 };
-
-    Some(ForegroundBrowserWindow {
-        bounds: rect_bounds(&rect, scale),
-        browser,
-        hwnd: hwnd.0 as isize,
-        physical_bounds,
-    })
+    Some((hwnd.0 as isize, browser))
 }
 
 fn foreground_browser_kind(hwnd: HWND) -> Option<&'static str> {
@@ -216,7 +222,8 @@ fn foreground_browser_kind(hwnd: HWND) -> Option<&'static str> {
         return None;
     }
 
-    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) }.ok()?;
+    let process =
+        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) }.ok()?;
     let mut path = [0_u16; 1024];
     let mut length = path.len() as u32;
     let query_result = unsafe {
@@ -234,7 +241,7 @@ fn foreground_browser_kind(hwnd: HWND) -> Option<&'static str> {
         .rsplit(['\\', '/'])
         .next()?
         .to_ascii_lowercase();
-    match executable.as_str() {
+    let kind = match executable.as_str() {
         "brave.exe" => Some("brave"),
         "chrome.exe" | "chromium.exe" | "thorium.exe" => Some("chrome"),
         "msedge.exe" => Some("edge"),
@@ -242,32 +249,18 @@ fn foreground_browser_kind(hwnd: HWND) -> Option<&'static str> {
         "opera.exe" | "opera_gx.exe" => Some("opera"),
         "vivaldi.exe" => Some("vivaldi"),
         _ => None,
+    };
+    if kind.is_none() {
+        crate::debug::log(
+            "Native:FG",
+            format!("Foreground exe '{executable}' not matched to known browser (PID {process_id}, HWND {hwnd:?})"),
+        );
     }
+    kind
 }
 
-fn rect_bounds(rect: &RECT, scale: f64) -> WindowBounds {
-    WindowBounds {
-        x: f64::from(rect.left) / scale,
-        y: f64::from(rect.top) / scale,
-        width: f64::from(rect.right - rect.left) / scale,
-        height: f64::from(rect.bottom - rect.top) / scale,
-    }
-}
-
-fn bounds_distance(bounds: &WindowBounds, foreground: &ForegroundBrowserWindow) -> f64 {
-    distance_between_bounds(bounds, &foreground.bounds)
-        .min(distance_between_bounds(bounds, &foreground.physical_bounds))
-}
-
-fn distance_between_bounds(left: &WindowBounds, right: &WindowBounds) -> f64 {
-    [
-        (left.x - right.x).abs(),
-        (left.y - right.y).abs(),
-        (left.width - right.width).abs(),
-        (left.height - right.height).abs(),
-    ]
-    .into_iter()
-    .fold(0.0, f64::max)
+fn is_valid_window(hwnd: isize) -> bool {
+    unsafe { IsWindow(Some(HWND(hwnd as *mut core::ffi::c_void))).as_bool() }
 }
 
 impl NativeReactor {
@@ -278,7 +271,6 @@ impl NativeReactor {
         registry: Arc<SessionRegistry>,
         socket: Arc<SocketServer>,
         surfaces: Arc<SurfaceRegistry>,
-        tray_holder: Arc<TrayHolder>,
     ) -> UnboundedSender<NativeCommand> {
         let (sender, receiver) = unbounded_channel::<NativeCommand>();
         let mut reactor = Self {
@@ -288,13 +280,50 @@ impl NativeReactor {
             registry,
             socket,
             surfaces,
-            tray_holder,
             native_sender: sender.clone(),
             browser_window_handles: Arc::new(Mutex::new(HashMap::new())),
             window_levels: Arc::new(Mutex::new(HashMap::new())),
             window_owners: Arc::new(Mutex::new(HashMap::new())),
+            pending_window_pairings: HashMap::new(),
             last_tray: None,
         };
+
+        let debug_registry = reactor.registry.clone();
+        let debug_handles = reactor.browser_window_handles.clone();
+        let debug_levels = reactor.window_levels.clone();
+        let debug_owners = reactor.window_owners.clone();
+        let debug_surfaces = reactor.surfaces.clone();
+        crate::debug::register_state_provider(move || {
+            let active_instances = debug_registry.active_instances();
+            let paired_windows = debug_handles
+                .lock()
+                .map(|h| {
+                    h.iter()
+                        .map(|((inst, win), hwnd)| crate::debug::PairedWindowInfo {
+                            instance_uid: inst.clone(),
+                            window_uid: win.clone(),
+                            hwnd: *hwnd,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let window_levels = debug_levels
+                .lock()
+                .map(|l| l.clone())
+                .unwrap_or_default();
+            let window_owners = debug_owners
+                .lock()
+                .map(|o| o.clone())
+                .unwrap_or_default();
+            let visible_surfaces = debug_surfaces.visible_labels();
+            crate::debug::DebugStateSummary {
+                active_instances,
+                paired_windows,
+                window_levels,
+                window_owners,
+                visible_surfaces,
+            }
+        });
 
         install_foreground_event_hook(&reactor.app, sender.clone());
 
@@ -313,16 +342,24 @@ impl NativeReactor {
                     instance,
                     outgoing,
                 } => {
-                    self.registry.register(connection_uid, instance, outgoing.clone());
+                    self.registry
+                        .register(connection_uid, instance, outgoing.clone());
                     let _ = outgoing.send(ServerMessage::Ready {
                         protocol_version: crate::protocol::PROTOCOL_VERSION,
                     });
                     self.check_update_tray();
                 }
                 NativeCommand::ClientDisconnected { connection_uid } => {
+                    self.pending_window_pairings
+                        .retain(|_, pairing| pairing.connection_uid != connection_uid);
                     if let Some((instance_uid, window_uids)) =
                         self.registry.disconnect(connection_uid)
                     {
+                        if let Ok(mut handles) = self.browser_window_handles.lock() {
+                            handles.retain(|(stored_instance_uid, _), _| {
+                                stored_instance_uid != &instance_uid
+                            });
+                        }
                         self.hide_instance_windows(&instance_uid, &window_uids);
                         self.check_update_tray();
                     }
@@ -330,13 +367,55 @@ impl NativeReactor {
                 NativeCommand::SyncPanels {
                     connection_uid,
                     revision,
+                    attachment_mode,
                     panels,
                 } => {
-                    if let Ok(Some(outcome)) = self.registry.sync(connection_uid, revision, panels)
+                    if let Ok(Some(outcome)) =
+                        self.registry
+                            .sync(connection_uid, revision, attachment_mode, panels)
                     {
                         self.handle_sync_outcome(outcome);
                         self.refresh_window_levels();
                         self.check_update_tray();
+                    }
+                }
+                NativeCommand::BeginWindowPairing {
+                    connection_uid,
+                    instance_uid,
+                    request_uid,
+                    window_uid,
+                    outgoing,
+                } => {
+                    self.begin_window_pairing(
+                        connection_uid,
+                        instance_uid,
+                        request_uid,
+                        window_uid,
+                        outgoing,
+                    );
+                }
+                NativeCommand::ConfirmWindowPairing {
+                    connection_uid,
+                    instance_uid,
+                    request_uid,
+                    window_uid,
+                    outgoing,
+                } => {
+                    self.confirm_window_pairing(
+                        connection_uid,
+                        instance_uid,
+                        request_uid,
+                        window_uid,
+                        outgoing,
+                    );
+                }
+                NativeCommand::ExpireWindowPairing { request_uid } => {
+                    if let Some(pairing) = self.pending_window_pairings.remove(&request_uid) {
+                        let _ = pairing.outgoing.send(ServerMessage::PairWindowResult {
+                            request_uid,
+                            window_uid: pairing.window_uid,
+                            ok: false,
+                        });
                     }
                 }
                 NativeCommand::ActionResult {
@@ -392,9 +471,9 @@ impl NativeReactor {
                     window_uid,
                     menu_uid,
                 } => {
-                    if let Ok(generation) = self
-                        .popups
-                        .schedule_close(&instance_uid, &window_uid, &menu_uid)
+                    if let Ok(generation) =
+                        self.popups
+                            .schedule_close(&instance_uid, &window_uid, &menu_uid)
                     {
                         let sender = self.native_sender.clone();
                         tokio::spawn(async move {
@@ -451,11 +530,9 @@ impl NativeReactor {
                     anchor: _,
                     placement,
                 } => {
-                    let _ = self.registry.update_menu_placement(
-                        &instance_uid,
-                        menu_uid,
-                        placement,
-                    );
+                    let _ = self
+                        .registry
+                        .update_menu_placement(&instance_uid, menu_uid, placement);
                     self.check_update_tray();
                 }
                 NativeCommand::CancelCustomization {
@@ -468,16 +545,16 @@ impl NativeReactor {
                 NativeCommand::ToggleDisplayPanels => {
                     let next = !self.display_panels.load(Ordering::Relaxed);
                     self.display_panels.store(next, Ordering::Relaxed);
-                    let settings = crate::settings::DesktopSettings {
-                        display_panels: next,
-                        listener_port: self.socket.port(),
-                    };
+                    let mut settings = crate::settings::load(&self.app).unwrap_or_default();
+                    settings.display_panels = next;
+                    settings.listener_port = self.socket.port();
                     let _ = crate::settings::save(&self.app, &settings);
 
-                    for (instance_uid, panels) in self.registry.panel_snapshots() {
+                    for (instance_uid, attachment_mode, panels) in self.registry.panel_snapshots() {
                         if next {
                             self.handle_sync_outcome(crate::session::SyncOutcome {
                                 instance_uid,
+                                attachment_mode,
                                 panels,
                                 removed_window_uids: Vec::new(),
                             });
@@ -502,6 +579,155 @@ impl NativeReactor {
         }
     }
 
+    fn begin_window_pairing(
+        &mut self,
+        connection_uid: Uuid,
+        instance_uid: String,
+        request_uid: String,
+        window_uid: String,
+        outgoing: UnboundedSender<ServerMessage>,
+    ) {
+        let fg_opt = foreground_browser_window();
+        crate::debug::log(
+            "Pairing:Begin",
+            format!("inst={instance_uid}, req={request_uid}, win={window_uid}, fg={fg_opt:?}"),
+        );
+        let Some((foreground_hwnd, foreground_browser)) = fg_opt else {
+            crate::debug::log("Pairing:Begin", "Failed: foreground_browser_window() is None");
+            let _ = outgoing.send(ServerMessage::PairWindowResult {
+                request_uid,
+                window_uid,
+                ok: false,
+            });
+            return;
+        };
+        let reported_browser = self.registry.browser_kind(&instance_uid);
+        let browser_matches = reported_browser
+            .as_deref()
+            .is_some_and(|browser| browser_kinds_match(Some(browser), foreground_browser));
+        let has_panel = self.registry.panel(&instance_uid, &window_uid).is_some();
+        crate::debug::log(
+            "Pairing:Begin",
+            format!(
+                "reported_browser={reported_browser:?}, fg_browser={foreground_browser}, match={browser_matches}, has_panel={has_panel}"
+            ),
+        );
+        if !browser_matches || !has_panel {
+            crate::debug::log("Pairing:Begin", "Failed: browser mismatch or panel not in registry");
+            let _ = outgoing.send(ServerMessage::PairWindowResult {
+                request_uid,
+                window_uid,
+                ok: false,
+            });
+            return;
+        }
+
+        self.pending_window_pairings.insert(
+            request_uid.clone(),
+            PendingWindowPairing {
+                connection_uid,
+                instance_uid,
+                window_uid: window_uid.clone(),
+                hwnd: foreground_hwnd,
+                outgoing: outgoing.clone(),
+            },
+        );
+        crate::debug::log(
+            "Pairing:Begin",
+            format!("Sending VerifyWindowPairing: req={request_uid}, win={window_uid}"),
+        );
+        let _ = outgoing.send(ServerMessage::VerifyWindowPairing {
+            request_uid: request_uid.clone(),
+            window_uid,
+        });
+        let sender = self.native_sender.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let _ = sender.send(NativeCommand::ExpireWindowPairing { request_uid });
+        });
+    }
+
+    fn confirm_window_pairing(
+        &mut self,
+        connection_uid: Uuid,
+        instance_uid: String,
+        request_uid: String,
+        window_uid: String,
+        outgoing: UnboundedSender<ServerMessage>,
+    ) {
+        let Some(pairing) = self.pending_window_pairings.remove(&request_uid) else {
+            crate::debug::log(
+                "Pairing:Confirm",
+                format!("Failed: pending pairing for req={request_uid} not found or expired"),
+            );
+            let _ = outgoing.send(ServerMessage::PairWindowResult {
+                request_uid,
+                window_uid,
+                ok: false,
+            });
+            return;
+        };
+        let fg_current = foreground_browser_window();
+        let foreground_matches =
+            fg_current.is_some_and(|(hwnd, _)| hwnd == pairing.hwnd);
+        let request_matches = pairing.connection_uid == connection_uid
+            && pairing.instance_uid == instance_uid
+            && pairing.window_uid == window_uid;
+        let identity = (instance_uid.clone(), window_uid.clone());
+        let binding_available = self
+            .browser_window_handles
+            .lock()
+            .map(|handles| {
+                handles
+                    .get(&identity)
+                    .is_none_or(|existing| *existing == pairing.hwnd)
+                    && handles.iter().all(|(other_identity, hwnd)| {
+                        other_identity == &identity || *hwnd != pairing.hwnd
+                    })
+            })
+            .unwrap_or(false);
+        let ok = foreground_matches && request_matches && binding_available;
+        crate::debug::log(
+            "Pairing:Confirm",
+            format!(
+                "req={request_uid}, win={window_uid}, fg_now={fg_current:?}, paired_hwnd={}, fg_match={foreground_matches}, req_match={request_matches}, binding_avail={binding_available} => ok={ok}",
+                pairing.hwnd
+            ),
+        );
+
+        if ok {
+            if let Ok(mut handles) = self.browser_window_handles.lock() {
+                handles.insert(identity, pairing.hwnd);
+            }
+            if let Some((attachment_mode, panel)) =
+                self.registry.panel_context(&instance_uid, &window_uid)
+            {
+                crate::debug::log(
+                    "Pairing:Confirm",
+                    format!("Triggering sync_outcome for window {window_uid} (mode={attachment_mode:?})"),
+                );
+                self.handle_sync_outcome(crate::session::SyncOutcome {
+                    instance_uid: instance_uid.clone(),
+                    attachment_mode,
+                    panels: vec![panel],
+                    removed_window_uids: Vec::new(),
+                });
+                self.refresh_window_levels();
+            } else {
+                crate::debug::log(
+                    "Pairing:Confirm",
+                    format!("Warning: panel_context not found for window {window_uid}"),
+                );
+            }
+        }
+
+        let _ = pairing.outgoing.send(ServerMessage::PairWindowResult {
+            request_uid,
+            window_uid,
+            ok,
+        });
+    }
+
     fn hide_instance_windows(&self, instance_uid: &str, window_uids: &[String]) {
         let mut labels = Vec::new();
         for window_uid in window_uids {
@@ -521,7 +747,7 @@ impl NativeReactor {
             let _ = self.app.run_on_main_thread(move || {
                 for label in labels {
                     if let Some(window) = app.get_webview_window(&label) {
-                        let _ = window.hide();
+                        let _ = set_window_visible_without_activation(&window, false);
                     }
                 }
             });
@@ -529,11 +755,13 @@ impl NativeReactor {
     }
 
     fn rebuild_instance_surfaces(
-        &self,
+        &mut self,
         instance_uid: String,
         request_uid: String,
         outgoing: UnboundedSender<ServerMessage>,
     ) {
+        self.pending_window_pairings
+            .retain(|_, pairing| pairing.instance_uid != instance_uid);
         let menu_prefix = instance_surface_prefix("menu", &instance_uid);
         let popup_prefix = instance_surface_prefix("popup", &instance_uid);
         let mut labels = self
@@ -550,10 +778,14 @@ impl NativeReactor {
             handles.retain(|(stored_instance_uid, _), _| stored_instance_uid != &instance_uid);
         }
         if let Ok(mut levels) = self.window_levels.lock() {
-            levels.retain(|label, _| !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix));
+            levels.retain(|label, _| {
+                !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix)
+            });
         }
         if let Ok(mut owners) = self.window_owners.lock() {
-            owners.retain(|label, _| !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix));
+            owners.retain(|label, _| {
+                !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix)
+            });
         }
 
         let app = self.app.clone();
@@ -576,35 +808,58 @@ impl NativeReactor {
         let app = self.app.clone();
         let _ = self.app.run_on_main_thread(move || {
             if let Some(window) = app.get_webview_window(&label) {
-                let _ = window.hide();
+                let _ = set_window_visible_without_activation(&window, false);
             }
         });
     }
 
     fn handle_sync_outcome(&self, outcome: crate::session::SyncOutcome) {
         let display = self.display_panels.load(Ordering::Relaxed);
-        if !display {
-            return;
-        }
-
         let instance_uid = outcome.instance_uid;
-        let _ = self.foreground_panel_identity();
-        let mut labels_to_hide = Vec::new();
+        let attachment_mode = outcome.attachment_mode;
+        let foreground_hwnd = unsafe { GetForegroundWindow().0 as isize };
+        let mut labels_to_destroy = Vec::new();
 
-        // 1. Check removed windows
+        crate::debug::log(
+            "Native:SyncOutcome",
+            format!(
+                "outcome: inst={instance_uid}, panels={}, display={display}, mode={attachment_mode:?}, fg_hwnd={foreground_hwnd}",
+                outcome.panels.len()
+            ),
+        );
+
         for window_uid in &outcome.removed_window_uids {
             let menu_prefix = surface_prefix("menu", &instance_uid, window_uid);
             let popup_prefix = surface_prefix("popup", &instance_uid, window_uid);
             for (label, _) in self.app.webview_windows() {
                 if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
-                    labels_to_hide.push(label);
+                    labels_to_destroy.push(label);
                 }
+            }
+            self.popups.remove_window(&instance_uid, window_uid);
+            if let Ok(mut handles) = self.browser_window_handles.lock() {
+                handles.remove(&(instance_uid.clone(), window_uid.clone()));
             }
         }
 
-        // 2. For each panel, calculate diffs
         let mut sync_items = Vec::new();
         for panel in &outcome.panels {
+            let owner_hwnd = self.browser_window_handles.lock().ok().and_then(|handles| {
+                handles
+                    .get(&(instance_uid.clone(), panel.window.uid.clone()))
+                    .copied()
+            });
+            crate::debug::log(
+                "Native:SyncOutcome",
+                format!("panel win={}: owner_hwnd={owner_hwnd:?}", panel.window.uid),
+            );
+            let Some(owner_hwnd) = owner_hwnd else {
+                crate::debug::log(
+                    "Native:SyncOutcome",
+                    format!("panel win={}: skipped because owner_hwnd is None", panel.window.uid),
+                );
+                continue;
+            };
             let desired = panel
                 .menus
                 .iter()
@@ -614,24 +869,32 @@ impl NativeReactor {
             let prefix = surface_prefix("menu", &instance_uid, &panel.window.uid);
             for (label, _) in self.app.webview_windows() {
                 if label.starts_with(&prefix) && !desired.contains(&label) {
-                    labels_to_hide.push(label);
+                    labels_to_destroy.push(label);
                 }
             }
+
+            if !display || attachment_mode == AttachmentMode::None {
+                crate::debug::log(
+                    "Native:SyncOutcome",
+                    format!("panel win={}: skipped because display={display} or mode={attachment_mode:?}", panel.window.uid),
+                );
+                continue;
+            }
+
+            let should_be_visible = true;
+            crate::debug::log(
+                "Native:SyncOutcome",
+                format!(
+                    "panel win={}: should_be_visible={should_be_visible} (owner={owner_hwnd}, fg={foreground_hwnd}, mode={attachment_mode:?})",
+                    panel.window.uid
+                ),
+            );
 
             for menu in &panel.menus {
                 let label = menu_label(&instance_uid, &panel.window.uid, &menu.uid);
                 let target_pos = menu_position(&panel.window, &menu.placement);
                 let is_customizing = self.surfaces.is_customizing(&label);
                 let effective_always_on_top = panel.always_on_top;
-                let owner_hwnd = self
-                    .browser_window_handles
-                    .lock()
-                    .ok()
-                    .and_then(|handles| {
-                        handles
-                            .get(&(instance_uid.clone(), panel.window.uid.clone()))
-                            .copied()
-                    });
                 let geometry_changed = self.surfaces.update_geometry(
                     &label,
                     target_pos.x,
@@ -653,9 +916,8 @@ impl NativeReactor {
                     target_pos,
                     placement: menu.placement.clone(),
                     always_on_top: effective_always_on_top,
-                    owner_hwnd,
-                    should_be_visible: panel.window.state != BrowserWindowState::Minimized
-                        && (panel.always_on_top || owner_hwnd.is_some()),
+                    owner_hwnd: Some(owner_hwnd),
+                    should_be_visible,
                     is_customizing,
                     geometry_changed,
                     menu: menu.clone(),
@@ -663,23 +925,32 @@ impl NativeReactor {
             }
         }
 
-        for label in &labels_to_hide {
-            self.surfaces.mark_hidden(label);
+        labels_to_destroy.sort();
+        labels_to_destroy.dedup();
+        self.surfaces.remove_labels(&labels_to_destroy);
+        if let Ok(mut levels) = self.window_levels.lock() {
+            for label in &labels_to_destroy {
+                levels.remove(label);
+            }
+        }
+        if let Ok(mut owners) = self.window_owners.lock() {
+            for label in &labels_to_destroy {
+                owners.remove(label);
+            }
         }
 
         let app = self.app.clone();
         let surfaces = self.surfaces.clone();
+        let window_levels = self.window_levels.clone();
+        let window_owners = self.window_owners.clone();
 
-        // 3. Dispatch batch to UI Thread (Main Thread)
         let _ = self.app.run_on_main_thread(move || {
-            // Hide stale windows
-            for label in labels_to_hide {
+            for label in labels_to_destroy {
                 if let Some(window) = app.get_webview_window(&label) {
-                    let _ = window.hide();
+                    let _ = window.destroy();
                 }
             }
 
-            // Sync/Create menu windows
             for item in sync_items {
                 let is_new = app.get_webview_window(&item.label).is_none();
                 let window = match app.get_webview_window(&item.label) {
@@ -694,29 +965,84 @@ impl NativeReactor {
                         .inner_size(item.placement.width, item.placement.height)
                         .position(item.target_pos.x, item.target_pos.y)
                         .decorations(false)
+                        .focused(false)
                         .focusable(false)
                         .resizable(false)
                         .shadow(false)
                         .skip_taskbar(true)
                         .transparent(true)
                         .always_on_top(item.always_on_top)
-                        .visible(item.should_be_visible)
+                        .visible(false)
                         .build();
 
                         match built {
                             Ok(w) => w,
                             Err(e) => {
-                                eprintln!("[BrowseRail] Failed to build menu window {}: {e}", item.label);
+                                crate::debug::log(
+                                    "Native:Window",
+                                    format!("Failed to build menu window {}: {e}", item.label),
+                                );
                                 continue;
                             }
                         }
                     }
                 };
 
-                if let Some(owner_hwnd) = item.owner_hwnd {
-                    let _ = set_window_owner(&window, owner_hwnd);
+                let Some(owner_hwnd) = item.owner_hwnd else {
+                    continue;
+                };
+                let current_owner = window_owners
+                    .lock()
+                    .ok()
+                    .and_then(|owners| owners.get(&item.label).copied());
+                let owner_ready = if current_owner == Some(owner_hwnd) {
+                    true
+                } else if current_owner.is_none_or(|current| !is_valid_window(current)) {
+                    match set_window_owner(&window, owner_hwnd) {
+                        Ok(_) => {
+                            if let Ok(mut owners) = window_owners.lock() {
+                                owners.insert(item.label.clone(), owner_hwnd);
+                            }
+                            crate::debug::log(
+                                "Native:Window",
+                                format!("{}: set_window_owner to {owner_hwnd} succeeded", item.label),
+                            );
+                            true
+                        }
+                        Err(err) => {
+                            crate::debug::log(
+                                "Native:Window",
+                                format!("{}: set_window_owner to {owner_hwnd} FAILED: {err}", item.label),
+                            );
+                            false
+                        }
+                    }
+                } else {
+                    false
+                };
+                if !owner_ready {
+                    crate::debug::log(
+                        "Native:Window",
+                        format!("{}: owner not ready, skipping", item.label),
+                    );
+                    continue;
                 }
-                let _ = set_window_always_on_top(&window, item.always_on_top);
+
+                let current_level = window_levels
+                    .lock()
+                    .ok()
+                    .and_then(|levels| levels.get(&item.label).copied());
+                if is_new {
+                    if let Ok(mut levels) = window_levels.lock() {
+                        levels.insert(item.label.clone(), item.always_on_top);
+                    }
+                } else if current_level != Some(item.always_on_top)
+                    && set_window_always_on_top(&window, item.always_on_top).is_ok()
+                {
+                    if let Ok(mut levels) = window_levels.lock() {
+                        levels.insert(item.label.clone(), item.always_on_top);
+                    }
+                }
                 if is_new || item.geometry_changed {
                     let _ = window.set_ignore_cursor_events(false);
                     if !item.is_customizing {
@@ -728,18 +1054,20 @@ impl NativeReactor {
                     }
                 }
 
-                let actual_visible = window.is_visible().unwrap_or(false);
-                if !item.should_be_visible {
-                    if actual_visible {
-                        let _ = window.hide();
-                    }
-                    surfaces.mark_hidden(&item.label);
-                } else {
-                    if is_new || !actual_visible {
-                        let _ = window.show();
-                        let _ = set_window_always_on_top(&window, item.always_on_top);
-                    }
+                if item.should_be_visible && !surfaces.is_visible(&item.label) {
+                    let res = set_window_visible_without_activation(&window, true);
+                    crate::debug::log(
+                        "Native:Window",
+                        format!("{}: show window res={res:?}", item.label),
+                    );
                     surfaces.mark_visible(&item.label);
+                } else if !item.should_be_visible && surfaces.is_visible(&item.label) {
+                    let res = set_window_visible_without_activation(&window, false);
+                    crate::debug::log(
+                        "Native:Window",
+                        format!("{}: hide window res={res:?}", item.label),
+                    );
+                    surfaces.mark_hidden(&item.label);
                 }
 
                 let _ = window.emit_to(&item.label, "menu-state", &item.menu);
@@ -747,57 +1075,15 @@ impl NativeReactor {
         });
     }
 
-    fn foreground_panel_identity(&self) -> Option<(String, String)> {
-        let foreground = foreground_browser_window()?;
-        let snapshots = self.registry.instance_panel_snapshots();
-        let mut candidates = snapshots
-            .iter()
-            .filter(|snapshot| browser_kinds_match(snapshot.browser.as_deref(), foreground.browser))
-            .flat_map(|snapshot| {
-                snapshot.panels.iter().map(|panel| {
-                    (
-                        snapshot.instance_uid.clone(),
-                        panel.window.uid.clone(),
-                        panel.window.focused,
-                        bounds_distance(&panel.window.bounds, &foreground),
-                    )
-                })
-            })
-            .collect::<Vec<_>>();
-
-        candidates.sort_by(|left, right| {
-            left.3
-                .total_cmp(&right.3)
-                .then_with(|| right.2.cmp(&left.2))
-        });
-
-        let selected = candidates
-            .iter()
-            .find(|candidate| candidate.3 <= 96.0)
-            .or_else(|| candidates.iter().find(|candidate| candidate.2))?;
-        let identity = (selected.0.clone(), selected.1.clone());
-        if let Ok(mut handles) = self.browser_window_handles.lock() {
-            handles.retain(|other_identity, hwnd| {
-                other_identity == &identity || *hwnd != foreground.hwnd
-            });
-            handles.insert(identity.clone(), foreground.hwnd);
-        }
-        Some(identity)
-    }
-
     fn refresh_window_levels(&self) {
-        if !self.display_panels.load(Ordering::Relaxed) {
-            return;
-        }
-
-        let _ = self.foreground_panel_identity();
+        let display = self.display_panels.load(Ordering::Relaxed);
+        let foreground_hwnd = unsafe { GetForegroundWindow().0 as isize };
         let browser_window_handles = self
             .browser_window_handles
             .lock()
             .map(|handles| handles.clone())
             .unwrap_or_default();
         let mut desired_levels = HashMap::new();
-        let mut desired_owners = HashMap::new();
         let mut visibility_changes = Vec::new();
         let mut popup_labels_to_hide = Vec::new();
         for snapshot in self.registry.instance_panel_snapshots() {
@@ -806,8 +1092,9 @@ impl NativeReactor {
                 let owner_hwnd = browser_window_handles
                     .get(&(snapshot.instance_uid.clone(), panel.window.uid.clone()))
                     .copied();
-                let should_be_visible = panel.window.state != BrowserWindowState::Minimized
-                    && (panel.always_on_top || owner_hwnd.is_some());
+                let should_be_visible = display
+                    && owner_hwnd.is_some()
+                    && snapshot.attachment_mode != AttachmentMode::None;
                 for menu in panel.menus {
                     let menu_label =
                         menu_label(&snapshot.instance_uid, &panel.window.uid, &menu.uid);
@@ -815,11 +1102,8 @@ impl NativeReactor {
                         popup_label(&snapshot.instance_uid, &panel.window.uid, &menu.uid);
                     desired_levels.insert(menu_label.clone(), always_on_top);
                     desired_levels.insert(popup_label.clone(), always_on_top);
-                    if let Some(owner_hwnd) = owner_hwnd {
-                        desired_owners.insert(menu_label.clone(), owner_hwnd);
-                    }
                     if self.surfaces.is_visible(&menu_label) != should_be_visible {
-                        visibility_changes.push((menu_label, should_be_visible, always_on_top));
+                        visibility_changes.push((menu_label, should_be_visible));
                     }
                     if !should_be_visible && self.surfaces.is_visible(&popup_label) {
                         popup_labels_to_hide.push(popup_label);
@@ -827,6 +1111,14 @@ impl NativeReactor {
                 }
             }
         }
+
+        crate::debug::log(
+            "Native:RefreshLevels",
+            format!(
+                "display={display}, fg={foreground_hwnd}, visibility_changes={:?}",
+                visibility_changes
+            ),
+        );
 
         let changes = self
             .window_levels
@@ -838,40 +1130,14 @@ impl NativeReactor {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let owner_changes = self
-            .window_owners
-            .lock()
-            .map(|owners| {
-                desired_owners
-                    .into_iter()
-                    .filter(|(label, owner)| owners.get(label) != Some(owner))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        if changes.is_empty()
-            && owner_changes.is_empty()
-            && visibility_changes.is_empty()
-            && popup_labels_to_hide.is_empty()
-        {
+        if changes.is_empty() && visibility_changes.is_empty() && popup_labels_to_hide.is_empty() {
             return;
         }
 
         let app = self.app.clone();
         let surfaces = self.surfaces.clone();
         let window_levels = self.window_levels.clone();
-        let window_owners = self.window_owners.clone();
         let _ = self.app.run_on_main_thread(move || {
-            for (label, owner_hwnd) in owner_changes {
-                let Some(window) = app.get_webview_window(&label) else {
-                    continue;
-                };
-                if set_window_owner(&window, owner_hwnd).is_ok() {
-                    if let Ok(mut owners) = window_owners.lock() {
-                        owners.insert(label, owner_hwnd);
-                    }
-                }
-            }
-
             for (label, always_on_top) in changes {
                 let Some(window) = app.get_webview_window(&label) else {
                     continue;
@@ -883,23 +1149,22 @@ impl NativeReactor {
                 }
             }
 
-            for (label, should_be_visible, always_on_top) in visibility_changes {
+            for (label, should_be_visible) in visibility_changes {
                 let Some(window) = app.get_webview_window(&label) else {
                     continue;
                 };
                 if should_be_visible {
-                    let _ = window.show();
-                    let _ = set_window_always_on_top(&window, always_on_top);
+                    let _ = set_window_visible_without_activation(&window, true);
                     surfaces.mark_visible(&label);
                 } else {
-                    let _ = window.hide();
+                    let _ = set_window_visible_without_activation(&window, false);
                     surfaces.mark_hidden(&label);
                 }
             }
 
             for label in popup_labels_to_hide {
                 if let Some(window) = app.get_webview_window(&label) {
-                    let _ = window.hide();
+                    let _ = set_window_visible_without_activation(&window, false);
                 }
                 surfaces.mark_hidden(&label);
             }
@@ -908,44 +1173,31 @@ impl NativeReactor {
 
     fn check_update_tray(&mut self) {
         let server_text = self.format_server_status();
-        let client_text = self.format_client_status();
+        let extension_lines = self.format_extension_lines();
         let surfaces_text = self.format_surfaces_status();
         let tooltip = self.format_tray_tooltip();
         let display_panels = self.display_panels.load(Ordering::Relaxed);
 
         let next = TrayStateSnapshot {
             server_text,
-            client_text,
+            extension_lines,
             surfaces_text,
             tooltip,
             display_panels,
         };
 
-        if let Some(ref current) = self.last_tray {
-            if current.server_text == next.server_text
-                && current.client_text == next.client_text
-                && current.surfaces_text == next.surfaces_text
-                && current.tooltip == next.tooltip
-                && current.display_panels == next.display_panels
-            {
-                return;
-            }
+        if self.last_tray.as_ref() == Some(&next) {
+            return;
         }
 
         self.last_tray = Some(next.clone());
         let app = self.app.clone();
-        let tray_holder = self.tray_holder.clone();
 
         let _ = self.app.run_on_main_thread(move || {
-            if let Ok(guard) = tray_holder.0.lock() {
-                if let Some(ref items) = *guard {
-                    let _ = items.server_item.set_text(&next.server_text);
-                    let _ = items.client_item.set_text(&next.client_text);
-                    let _ = items.surfaces_item.set_text(&next.surfaces_text);
-                    let _ = items.display_panels_item.set_checked(next.display_panels);
-                }
-            }
             if let Some(tray) = app.tray_by_id(crate::TRAY_ID) {
+                if let Ok(menu) = crate::build_tray_menu(&app, &next) {
+                    let _ = tray.set_menu(Some(menu));
+                }
                 let _ = tray.set_tooltip(Some(&next.tooltip));
             }
         });
@@ -953,8 +1205,8 @@ impl NativeReactor {
 
     fn format_server_status(&self) -> String {
         let status = self.socket.status();
-        if let Some(error) = status.error {
-            format!("! Listener: Error ({error})")
+        if status.error.is_some() {
+            "! Listener: Error".to_string()
         } else if status.listening {
             format!("● Listener: 127.0.0.1:{}", status.port)
         } else {
@@ -962,12 +1214,32 @@ impl NativeReactor {
         }
     }
 
-    fn format_client_status(&self) -> String {
-        let active = self.registry.active_instances();
-        if active.is_empty() {
-            "○ Extension: Disconnected".to_string()
+    fn format_extension_lines(&self) -> Vec<String> {
+        let extensions = self.registry.active_extensions();
+        if extensions.is_empty() {
+            vec!["○ Extension: Disconnected".to_string()]
         } else {
-            format!("● Extension: Connected ({})", active.join(", "))
+            extensions
+                .into_iter()
+                .map(|ext| {
+                    let browser_name = match ext.browser.as_deref() {
+                        Some("chrome") => "Chrome",
+                        Some("edge") => "Edge",
+                        Some("brave") => "Brave",
+                        Some("firefox") => "Firefox",
+                        Some("opera") => "Opera",
+                        Some("vivaldi") => "Vivaldi",
+                        Some(b) if !b.is_empty() => b,
+                        _ => "Connected",
+                    };
+                    let label = ext
+                        .label
+                        .as_deref()
+                        .filter(|l| !l.is_empty())
+                        .unwrap_or(&ext.instance_uid);
+                    format!("● Extension: {browser_name} ({label})")
+                })
+                .collect()
         }
     }
 
@@ -990,11 +1262,11 @@ impl NativeReactor {
             crate::state_machine::ServerState::Failed { .. } => "Error".to_string(),
             crate::state_machine::ServerState::Unbound => "Stopped".to_string(),
         };
-        let active = self.registry.active_instances();
+        let active = self.registry.active_extensions();
         let client_text = if active.is_empty() {
-            "Ext: Disconnected"
+            "Ext: Disconnected".to_string()
         } else {
-            "Ext: Connected"
+            format!("Ext: {} connected", active.len())
         };
         let (visible, customizing, _) = self.surfaces.summary();
         let panels_text = if customizing > 0 {
@@ -1009,8 +1281,5 @@ impl NativeReactor {
 }
 
 fn browser_kinds_match(reported: Option<&str>, foreground: &str) -> bool {
-    let Some(reported) = reported else {
-        return false;
-    };
-    reported == foreground || (reported != "firefox" && foreground != "firefox")
+    reported == Some(foreground)
 }

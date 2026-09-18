@@ -25,6 +25,27 @@ pub enum ClientMessage {
         ok: bool,
         message: Option<String>,
     },
+    #[serde(rename = "pairWindow")]
+    PairWindow {
+        #[serde(rename = "requestUid")]
+        request_uid: String,
+        #[serde(rename = "windowUid")]
+        window_uid: String,
+    },
+    #[serde(rename = "confirmWindowPairing")]
+    ConfirmWindowPairing {
+        #[serde(rename = "requestUid")]
+        request_uid: String,
+        #[serde(rename = "windowUid")]
+        window_uid: String,
+    },
+    #[serde(rename = "clientDebugLog")]
+    ClientDebugLog {
+        time: String,
+        tag: String,
+        message: String,
+        details: Option<serde_json::Value>,
+    },
     #[serde(rename = "resync")]
     Resync {
         #[serde(rename = "requestUid")]
@@ -57,6 +78,21 @@ pub enum ServerMessage {
         menu_uid: String,
         placement: MenuPlacement,
     },
+    #[serde(rename = "verifyWindowPairing")]
+    VerifyWindowPairing {
+        #[serde(rename = "requestUid")]
+        request_uid: String,
+        #[serde(rename = "windowUid")]
+        window_uid: String,
+    },
+    #[serde(rename = "pairWindowResult")]
+    PairWindowResult {
+        #[serde(rename = "requestUid")]
+        request_uid: String,
+        #[serde(rename = "windowUid")]
+        window_uid: String,
+        ok: bool,
+    },
     #[serde(rename = "resyncComplete")]
     ResyncComplete {
         #[serde(rename = "requestUid")]
@@ -77,7 +113,7 @@ pub struct BrowserInstance {
     pub label: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum AttachmentMode {
     None,
@@ -140,18 +176,7 @@ pub enum MenuAnchor {
 #[serde(rename_all = "camelCase")]
 pub struct BrowserWindowSnapshot {
     pub uid: String,
-    pub focused: bool,
-    pub state: BrowserWindowState,
     pub bounds: WindowBounds,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum BrowserWindowState {
-    Normal,
-    Minimized,
-    Maximized,
-    Fullscreen,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

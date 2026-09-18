@@ -6,12 +6,14 @@ use tauri::Manager;
 
 pub const DEFAULT_LISTENER_PORT: u16 = 17654;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopSettings {
     pub listener_port: u16,
     #[serde(default = "display_panels_by_default")]
     pub display_panels: bool,
+    #[serde(default)]
+    pub debug_enabled: bool,
 }
 
 impl Default for DesktopSettings {
@@ -19,6 +21,7 @@ impl Default for DesktopSettings {
         Self {
             listener_port: DEFAULT_LISTENER_PORT,
             display_panels: true,
+            debug_enabled: false,
         }
     }
 }

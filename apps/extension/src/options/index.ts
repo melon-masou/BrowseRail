@@ -369,3 +369,46 @@ function element<T extends HTMLElement>(id: string): T {
   }
   return value as T;
 }
+
+const refreshDebugBtn = document.getElementById("refresh-debug-btn") as HTMLButtonElement | null;
+const copyDebugBtn = document.getElementById("copy-debug-btn") as HTMLButtonElement | null;
+const debugOutput = document.getElementById("debug-output") as HTMLPreElement | null;
+
+async function loadDebugInfo(): Promise<void> {
+  if (!debugOutput) return;
+  debugOutput.textContent = "Loading debug info...";
+  try {
+    const extInfo = await browser.runtime
+      .sendMessage({ type: "getDebugInfo" })
+      .catch((err) => ({ error: String(err) }));
+    let desktopInfo: unknown = null;
+    try {
+      const res = await fetch("http://127.0.0.1:17654/debug");
+      if (res.ok) {
+        desktopInfo = await res.json();
+      } else {
+        desktopInfo = { status: res.status, statusText: res.statusText };
+      }
+    } catch (fetchErr) {
+      desktopInfo = {
+        error: `Failed to fetch http://127.0.0.1:17654/debug: ${String(fetchErr)}`,
+      };
+    }
+
+    const combined = {
+      timestamp: new Date().toISOString(),
+      extension: extInfo,
+      desktop: desktopInfo,
+    };
+    debugOutput.textContent = JSON.stringify(combined, null, 2);
+  } catch (err) {
+    debugOutput.textContent = `Error loading debug info: ${String(err)}`;
+  }
+}
+
+refreshDebugBtn?.addEventListener("click", () => void loadDebugInfo());
+copyDebugBtn?.addEventListener("click", () => {
+  if (debugOutput?.textContent) {
+    void navigator.clipboard.writeText(debugOutput.textContent);
+  }
+});
