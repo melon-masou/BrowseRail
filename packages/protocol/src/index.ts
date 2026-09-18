@@ -25,7 +25,7 @@ export interface BrowserWindowSnapshot {
   focused?: boolean;
 }
 
-export type MenuFontSize = "small" | "medium" | "large";
+export type MenuFontSize = number | "small" | "medium" | "large";
 
 export interface MenuPlacement {
   anchor: MenuAnchor;
@@ -36,25 +36,30 @@ export interface MenuPlacement {
   itemWidth?: number;
   itemHeight?: number;
   fontSize?: MenuFontSize;
+  gap?: number;
 }
 
 export interface BookmarkEntry {
   kind: "bookmark";
   uid: string;
   label: string;
+  color?: string;
 }
 
 export interface FolderEntry {
   kind: "folder";
   uid: string;
   label: string;
+  color?: string;
   children: LayoutEntry[];
+  expandOnHover?: boolean;
 }
 
 export type LayoutEntry = BookmarkEntry | FolderEntry;
 
 export interface MenuSnapshot {
   fontSize?: MenuFontSize;
+  gap?: number;
   items: LayoutEntry[];
   orientation: MenuOrientation;
   placement: MenuPlacement;

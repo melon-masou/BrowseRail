@@ -775,7 +775,9 @@ impl NativeReactor {
         self.surfaces.remove_labels(&labels);
         self.popups.remove_instance(&instance_uid);
         if let Ok(mut handles) = self.browser_window_handles.lock() {
-            handles.retain(|(stored_instance_uid, _), _| stored_instance_uid != &instance_uid);
+            handles.retain(|(stored_instance_uid, _), hwnd| {
+                stored_instance_uid != &instance_uid || is_valid_window(*hwnd)
+            });
         }
         if let Ok(mut levels) = self.window_levels.lock() {
             levels.retain(|label, _| {
@@ -792,7 +794,7 @@ impl NativeReactor {
         let _ = self.app.run_on_main_thread(move || {
             for label in labels {
                 if let Some(window) = app.get_webview_window(&label) {
-                    let _ = window.destroy();
+                    let _ = crate::panel::safely_destroy_window(&window);
                 }
             }
             tauri::async_runtime::spawn(async move {
@@ -977,7 +979,7 @@ impl NativeReactor {
         let _ = self.app.run_on_main_thread(move || {
             for label in labels_to_destroy {
                 if let Some(window) = app.get_webview_window(&label) {
-                    let _ = window.destroy();
+                    let _ = crate::panel::safely_destroy_window(&window);
                 }
             }
 
@@ -1156,7 +1158,7 @@ impl NativeReactor {
             let _ = self.app.run_on_main_thread(move || {
                 for label in labels_to_destroy {
                     if let Some(w) = app.get_webview_window(&label) {
-                        let _ = w.destroy();
+                        let _ = crate::panel::safely_destroy_window(&w);
                     }
                 }
             });

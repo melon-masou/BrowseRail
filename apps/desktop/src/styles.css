@@ -35,7 +35,7 @@ button {
   left: 0;
   --item-count: 1;
   display: grid;
-  gap: 4px;
+  gap: var(--menu-gap, 4px);
   box-sizing: border-box;
   background: transparent;
   pointer-events: auto;
@@ -66,7 +66,7 @@ button {
   color: #f5f7fb;
   background: rgb(31 37 49 / 94%);
   box-shadow: 0 3px 12px rgb(0 0 0 / 22%);
-  font-size: var(--menu-font-size, 13px);
+  font-size: var(--button-font-size, var(--menu-font-size, 13px));
   cursor: pointer;
   user-select: none;
 }
@@ -80,33 +80,40 @@ button {
   white-space: nowrap;
 }
 
-.menu-button {
+.menu-bar .menu-button,
+.customize-rail .menu-button {
   container-type: inline-size;
 }
 
 @container (max-width: 72px) {
-  .menu-button {
+  .menu-bar .menu-button,
+  .customize-rail .menu-button {
     padding: 0 6px;
   }
-  .menu-button-label {
-    font-size: calc(var(--menu-font-size, 13px) - 1.5px);
+  .menu-bar .menu-button .menu-button-label,
+  .customize-rail .menu-button .menu-button-label {
+    font-size: calc(var(--button-font-size, var(--menu-font-size, 13px)) - 1.5px);
   }
 }
 
 @container (max-width: 50px) {
-  .menu-button {
+  .menu-bar .menu-button,
+  .customize-rail .menu-button {
     padding: 0 3px;
   }
-  .menu-button-label {
+  .menu-bar .menu-button .menu-button-label,
+  .customize-rail .menu-button .menu-button-label {
     font-size: 10px;
   }
 }
 
 @container (max-width: 32px) {
-  .menu-button {
+  .menu-bar .menu-button,
+  .customize-rail .menu-button {
     padding: 0 1px;
   }
-  .menu-button-label {
+  .menu-bar .menu-button .menu-button-label,
+  .customize-rail .menu-button .menu-button-label {
     font-size: 9px;
   }
 }
@@ -157,7 +164,8 @@ button {
   display: flex;
   gap: 4px;
   box-sizing: border-box;
-  overflow: auto hidden;
+  overflow: hidden;
+  scrollbar-width: none;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 10px;
   padding: 7px;
@@ -167,16 +175,21 @@ button {
   pointer-events: auto;
 }
 
+.popup-container::-webkit-scrollbar {
+  display: none;
+}
+
 .menu-column {
   display: flex;
   flex: 0 0 auto;
-  width: max-content;
-  min-width: var(--min-column-width, 84px);
+  min-width: 80px;
   max-width: 320px;
   flex-direction: column;
   gap: 2px;
   box-sizing: border-box;
-  overflow: hidden auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .popup-container .menu-button {
@@ -191,12 +204,13 @@ button {
   box-shadow: none;
   text-align: left;
   justify-content: flex-start;
-  font-size: var(--menu-font-size, 13px);
+  font-size: var(--menu-font-size, 13px) !important;
 }
 
 .popup-container .menu-button .menu-button-label {
   text-align: left;
   flex: 1 1 auto;
+  font-size: var(--menu-font-size, 13px) !important;
 }
 
 .popup-container .menu-button[data-folder]::after {
@@ -244,7 +258,7 @@ button {
   min-height: 0;
   min-width: 0;
   box-sizing: border-box;
-  gap: 4px;
+  gap: var(--menu-gap, 4px);
   background: transparent;
   outline: 2px dashed #7aa2ff;
   outline-offset: -1px;
@@ -252,6 +266,18 @@ button {
   cursor: move;
   position: relative;
   overflow: hidden;
+}
+
+.menu-button[data-has-custom-color="true"] {
+  background-color: var(--button-custom-color) !important;
+  border-color: rgb(255 255 255 / 28%);
+}
+
+.menu-button[data-has-custom-color="true"]:hover,
+.menu-button[data-has-custom-color="true"]:focus-visible,
+.menu-button[data-has-custom-color="true"][data-expanded] {
+  filter: brightness(1.22);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 38%);
 }
 
 .customize-rail[data-orientation="row"] {

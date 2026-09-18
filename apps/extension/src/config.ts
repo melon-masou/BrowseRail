@@ -7,12 +7,20 @@ import { instanceLabelFromUid } from "./instance-label";
 
 const STORAGE_KEY = "config";
 
+export type StoredMenuItemType = "bookmark" | "folder" | "flattenFolder";
+
 export interface StoredMenuItem {
   bookmarkId: string;
+  path?: string[];
+  url?: string;
+  color?: string;
+  type?: StoredMenuItemType;
+  expandOnHover?: boolean;
 }
 
 export interface StoredMenu {
   fontSize?: MenuFontSize;
+  gap?: number;
   items: StoredMenuItem[];
   orientation: MenuOrientation;
   uid: string;
@@ -41,9 +49,30 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   },
 };
 
+export const DEFAULT_FONT_SIZE = 13;
+
+export function normalizeFontSize(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(8, Math.min(48, Math.round(value)));
+  }
+  if (value === "small") return 12;
+  if (value === "large") return 15;
+  if (value === "medium") return 13;
+  return DEFAULT_FONT_SIZE;
+}
+
+export const DEFAULT_MENU_GAP_PERCENT = 11; // ~11% of button size (approx 4px for 35px button)
+export const DEFAULT_MENU_GAP = DEFAULT_MENU_GAP_PERCENT;
+
+export function calculateGapPx(buttonDim: number, gapPercent: number): number {
+  if (gapPercent <= 0) return 0;
+  return Math.max(0, Math.round((buttonDim * gapPercent) / 100));
+}
+
 export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
   return {
-    fontSize: "medium",
+    fontSize: DEFAULT_FONT_SIZE,
+    gap: DEFAULT_MENU_GAP_PERCENT,
     items: [],
     orientation: "row",
     uid,
@@ -52,34 +81,33 @@ export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
 
 export const DEFAULT_ITEM_WIDTH = 84;
 export const DEFAULT_ITEM_HEIGHT = 36;
-export const MENU_GAP = 4;
+export const MENU_GAP = DEFAULT_MENU_GAP;
 
-export function getItemDimensions(fontSize: MenuFontSize = "medium"): { itemWidth: number; itemHeight: number } {
-  switch (fontSize) {
-    case "small":
-      return { itemWidth: 72, itemHeight: 30 };
-    case "large":
-      return { itemWidth: 96, itemHeight: 42 };
-    case "medium":
-    default:
-      return { itemWidth: DEFAULT_ITEM_WIDTH, itemHeight: DEFAULT_ITEM_HEIGHT };
-  }
+export function getItemDimensions(fontSize: MenuFontSize = DEFAULT_FONT_SIZE): { itemWidth: number; itemHeight: number } {
+  const fs = normalizeFontSize(fontSize);
+  const itemHeight = Math.max(26, Math.round(fs * 2.7));
+  const itemWidth = Math.max(54, Math.round(fs * 6.5));
+  return { itemWidth, itemHeight };
 }
 
 export function defaultMenuPlacement(
   index = 0,
   orientation: MenuOrientation = "row",
   itemCount = 1,
-  fontSize: MenuFontSize = "medium",
+  fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
+  gapPercent = DEFAULT_MENU_GAP_PERCENT,
 ): MenuPlacement {
   const { itemWidth, itemHeight } = getItemDimensions(fontSize);
   const count = Math.max(1, itemCount);
-  const width = orientation === "row" ? count * itemWidth + (count - 1) * MENU_GAP : itemWidth;
-  const height = orientation === "column" ? count * itemHeight + (count - 1) * MENU_GAP : itemHeight;
+  const buttonDim = itemHeight;
+  const gapPx = calculateGapPx(buttonDim, gapPercent);
+  const width = orientation === "row" ? count * itemWidth + (count - 1) * gapPx : itemWidth;
+  const height = orientation === "column" ? count * itemHeight + (count - 1) * gapPx : itemHeight;
 
   return {
     anchor: "topLeft",
-    fontSize,
+    fontSize: normalizeFontSize(fontSize),
+    gap: gapPx,
     height,
     itemHeight,
     itemWidth,
@@ -94,19 +122,25 @@ export function resolveMenuPlacement(
   index = 0,
   orientation: MenuOrientation = "row",
   itemCount = 1,
-  fontSize: MenuFontSize = "medium",
+  fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
+  gapPercent = DEFAULT_MENU_GAP_PERCENT,
 ): MenuPlacement {
   const count = Math.max(1, itemCount);
   const defaultDim = getItemDimensions(fontSize);
+  const buttonDim = defaultDim.itemHeight;
+
+  // gapPercent from menu config takes precedence!
+  const effectiveGapPercent = gapPercent !== undefined ? gapPercent : DEFAULT_MENU_GAP_PERCENT;
+  const effectiveGapPx = calculateGapPx(buttonDim, effectiveGapPercent);
 
   if (!storedPlacement) {
-    return defaultMenuPlacement(index, orientation, count, fontSize);
+    return defaultMenuPlacement(index, orientation, count, fontSize, effectiveGapPercent);
   }
 
   let itemWidth = storedPlacement.itemWidth ?? defaultDim.itemWidth;
   let itemHeight = storedPlacement.itemHeight ?? defaultDim.itemHeight;
 
-  if (storedPlacement.fontSize && storedPlacement.fontSize !== fontSize) {
+  if (storedPlacement.fontSize !== undefined && normalizeFontSize(storedPlacement.fontSize) !== normalizeFontSize(fontSize)) {
     itemHeight = defaultDim.itemHeight;
     const oldDefaultDim = getItemDimensions(storedPlacement.fontSize);
     if (storedPlacement.itemWidth === oldDefaultDim.itemWidth) {
@@ -114,12 +148,13 @@ export function resolveMenuPlacement(
     }
   }
 
-  const width = orientation === "row" ? count * itemWidth + (count - 1) * MENU_GAP : itemWidth;
-  const height = orientation === "column" ? count * itemHeight + (count - 1) * MENU_GAP : itemHeight;
+  const width = orientation === "row" ? count * itemWidth + (count - 1) * effectiveGapPx : itemWidth;
+  const height = orientation === "column" ? count * itemHeight + (count - 1) * effectiveGapPx : itemHeight;
 
   return {
     anchor: storedPlacement.anchor,
-    fontSize,
+    fontSize: normalizeFontSize(fontSize),
+    gap: effectiveGapPx,
     height,
     itemHeight,
     itemWidth,
@@ -144,7 +179,7 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
   });
 }
 
-function normalizeConfig(value: unknown, defaultInstanceLabel: string): ExtensionConfig {
+export function normalizeConfig(value: unknown, defaultInstanceLabel: string): ExtensionConfig {
   if (!isRecord(value)) {
     return { ...structuredClone(DEFAULT_CONFIG), instanceLabel: defaultInstanceLabel };
   }
@@ -220,11 +255,13 @@ function normalizeMenu(value: unknown): StoredMenu | undefined {
   if (!isRecord(value) || typeof value.uid !== "string" || !value.uid) {
     return undefined;
   }
-  const fontSize = value.fontSize === "small" || value.fontSize === "large" || value.fontSize === "medium"
-    ? value.fontSize
-    : undefined;
+  const fontSize = value.fontSize !== undefined ? normalizeFontSize(value.fontSize) : undefined;
+  const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
+    ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
+    : DEFAULT_MENU_GAP;
   return {
-    ...(fontSize ? { fontSize } : {}),
+    ...(fontSize !== undefined ? { fontSize } : {}),
+    gap,
     items: Array.isArray(value.items) ? value.items.filter(isStoredMenuItem) : [],
     orientation: value.orientation === "column" ? "column" : "row",
     uid: value.uid,
@@ -242,12 +279,14 @@ function normalizePlacement(value: unknown): MenuPlacement | undefined {
   const itemHeight = typeof value.itemHeight === "number" && Number.isFinite(value.itemHeight)
     ? boundedNumber(value.itemHeight, 1, 200, DEFAULT_ITEM_HEIGHT)
     : undefined;
-  const fontSize = value.fontSize === "small" || value.fontSize === "large" || value.fontSize === "medium"
-    ? value.fontSize
+  const fontSize = value.fontSize !== undefined ? normalizeFontSize(value.fontSize) : undefined;
+  const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
+    ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : undefined;
   return {
     anchor: value.anchor,
-    ...(fontSize ? { fontSize } : {}),
+    ...(fontSize !== undefined ? { fontSize } : {}),
+    ...(gap !== undefined ? { gap } : {}),
     height: boundedNumber(value.height, CUSTOMIZE_ICON_SIZE, 1_600, DEFAULT_ITEM_HEIGHT),
     ...(itemHeight !== undefined ? { itemHeight } : {}),
     ...(itemWidth !== undefined ? { itemWidth } : {}),
@@ -277,7 +316,18 @@ function isAnchor(value: unknown): value is MenuPlacement["anchor"] {
 }
 
 function isStoredMenuItem(value: unknown): value is StoredMenuItem {
-  return isRecord(value) && typeof value.bookmarkId === "string";
+  return (
+    isRecord(value) &&
+    typeof value.bookmarkId === "string" &&
+    (value.path === undefined || (Array.isArray(value.path) && value.path.every((p) => typeof p === "string"))) &&
+    (value.url === undefined || typeof value.url === "string") &&
+    (value.color === undefined || typeof value.color === "string") &&
+    (value.expandOnHover === undefined || typeof value.expandOnHover === "boolean") &&
+    (value.type === undefined ||
+      value.type === "bookmark" ||
+      value.type === "folder" ||
+      value.type === "flattenFolder")
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

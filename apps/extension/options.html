@@ -7,7 +7,10 @@
   </head>
   <body>
     <main>
-      <h1>BrowseRail</h1>
+      <header class="page-header">
+        <img class="page-logo" src="icons/48.png" alt="BrowseRail" width="32" height="32" />
+        <h1>BrowseRail</h1>
+      </header>
 
       <div id="state-card" class="state-card" data-state="disconnected">
         <div class="state-indicator"></div>
@@ -64,24 +67,111 @@
 
         <section>
           <h2>Menus</h2>
-          <p class="hint">Position and size are customized from the Desktop Widget.</p>
           <div id="menus"></div>
           <button id="add-menu" type="button">Add menu</button>
         </section>
 
-        <button type="submit">Save</button>
-        <output id="status"></output>
+        <div class="form-actions-row">
+          <button type="submit" id="save-btn" class="save-btn">Save</button>
+          <button type="button" id="preview-btn" class="preview-btn">Preview</button>
+          <button type="button" id="export-btn" class="action-btn export-btn">Export</button>
+          <button type="button" id="import-btn" class="action-btn import-btn">Import</button>
+          <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+          <output id="status"></output>
+        </div>
       </form>
 
-      <section class="debug-section" style="margin-top: 2rem; border-top: 1px solid #ccc; padding-top: 1rem;">
-        <h2>Debug & Diagnostics</h2>
-        <p class="hint">Inspect current window pairing, handshake status, and live event logs from both Desktop and Extension.</p>
-        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-          <button id="refresh-debug-btn" type="button" class="action-btn">Refresh Debug Info</button>
-          <button id="copy-debug-btn" type="button" class="action-btn">Copy JSON</button>
+      <!-- Color Palette Popover -->
+      <div id="color-popover" class="color-popover" style="display: none;">
+        <div class="color-popover-header">
+          <div class="color-popover-tools">
+            <button type="button" id="popover-random-btn" class="popover-mini-btn" title="随机颜色">🎲 随机</button>
+            <button type="button" id="popover-default-btn" class="popover-mini-btn" title="重置为默认">↺ 默认</button>
+          </div>
+          <button type="button" id="color-popover-close" class="color-popover-close" title="关闭">✕</button>
         </div>
-        <pre id="debug-output" style="background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 4px; max-height: 400px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all;">Click "Refresh Debug Info" to inspect.</pre>
-      </section>
+        <div class="color-popover-presets" id="color-popover-presets"></div>
+        <div class="color-popover-picker-row">
+          <input type="color" id="popover-color-input" class="popover-native-input" title="自定义颜色" />
+        </div>
+      </div>
+
+      <!-- Menu Settings Popover (Direction, FontSize, ButtonGap) -->
+      <div id="menu-settings-popover" class="menu-settings-popover" style="display: none;">
+        <div class="menu-settings-header">
+          <span id="menu-settings-title" class="menu-settings-title">Menu Settings</span>
+          <button type="button" id="menu-settings-close" class="color-popover-close" title="Close">✕</button>
+        </div>
+        <div class="menu-settings-body">
+          <label>
+            Direction
+            <select id="menu-setting-orientation">
+              <option value="row">Row (Horizontal)</option>
+              <option value="column">Column (Vertical)</option>
+            </select>
+          </label>
+          <label>
+            Font size (px)
+            <input id="menu-setting-font-size" type="number" min="8" max="48" step="1" />
+          </label>
+          <label>
+            Button gap (% of button size)
+            <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Item Settings Popover -->
+      <div id="item-settings-popover" class="item-settings-popover" style="display: none;">
+        <div class="item-settings-header">
+          <span id="item-settings-title" class="item-settings-title">Item Settings</span>
+          <button type="button" id="item-settings-close" class="color-popover-close" title="Close">✕</button>
+        </div>
+        <div class="item-settings-body">
+          <div id="item-settings-folder-controls" class="item-settings-folder-controls">
+            <label class="item-setting-check-label">
+              <input type="checkbox" id="item-setting-flatten" />
+              <span>摊平文件夹</span>
+            </label>
+            <label class="item-setting-check-label" id="item-setting-hover-expand-label">
+              <input type="checkbox" id="item-setting-hover-expand" checked />
+              <span>Hover 展开</span>
+            </label>
+          </div>
+          <div class="item-settings-actions">
+            <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn">更换书签/目录…</button>
+          </div>
+        </div>
+      </div>
+
+      <dialog id="bookmark-picker-dialog" class="picker-modal">
+        <div class="picker-modal-inner">
+          <div class="picker-header">
+            <h3 id="picker-title">Select from Bookmarks</h3>
+            <button id="picker-close-btn" class="picker-close-btn" type="button" aria-label="Close">✕</button>
+          </div>
+          <div class="picker-nav">
+            <button id="picker-up-btn" class="action-btn picker-up-btn" type="button">⬆ Up</button>
+            <div id="picker-breadcrumbs" class="picker-breadcrumbs"></div>
+          </div>
+          <div class="picker-content" id="picker-content"></div>
+          <div class="picker-footer">
+            <div id="picker-selected-info" class="picker-selected-info"></div>
+            <div class="picker-actions">
+              <button id="picker-custom-btn" class="action-btn" type="button" style="display: none;"></button>
+              <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
+                <input type="checkbox" id="picker-flatten-checkbox" />
+                <span>摊平文件夹</span>
+              </label>
+              <label id="picker-hover-expand-label" class="picker-flatten-check" style="display: none;">
+                <input type="checkbox" id="picker-hover-expand-checkbox" checked />
+                <span>Hover 展开</span>
+              </label>
+              <button id="picker-confirm-btn" type="button" class="picker-confirm-btn">Add</button>
+            </div>
+          </div>
+        </div>
+      </dialog>
     </main>
     <script type="module" src="/src/options/index.ts"></script>
   </body>

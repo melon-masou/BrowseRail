@@ -133,7 +133,9 @@ pub struct PanelSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct MenuSnapshot {
     #[serde(default)]
-    pub font_size: Option<String>,
+    pub font_size: Option<serde_json::Value>,
+    #[serde(default)]
+    pub gap: Option<f64>,
     pub items: Vec<LayoutEntry>,
     pub orientation: MenuOrientation,
     pub placement: MenuPlacement,
@@ -160,7 +162,9 @@ pub struct MenuPlacement {
     #[serde(default)]
     pub item_height: Option<f64>,
     #[serde(default)]
-    pub font_size: Option<String>,
+    pub font_size: Option<serde_json::Value>,
+    #[serde(default)]
+    pub gap: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -196,11 +200,17 @@ pub enum LayoutEntry {
     Bookmark {
         uid: String,
         label: String,
+        #[serde(default)]
+        color: Option<String>,
     },
     Folder {
         uid: String,
         label: String,
+        #[serde(default)]
+        color: Option<String>,
         children: Vec<LayoutEntry>,
+        #[serde(default)]
+        expand_on_hover: Option<bool>,
     },
 }
 

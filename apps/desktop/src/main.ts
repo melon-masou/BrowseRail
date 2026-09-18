@@ -49,17 +49,6 @@ async function initializeSurface(): Promise<void> {
 
   await listen<MenuSnapshot>("menu-state", ({ payload }) => {
     if (payload.uid === menuUid && !customizing) {
-      if (
-        currentMenu &&
-        currentMenu.orientation === payload.orientation &&
-        currentMenu.items.length === payload.items.length &&
-        currentMenu.items.every(
-          (item, i) => item.uid === payload.items[i]?.uid && item.label === payload.items[i]?.label,
-        )
-      ) {
-        currentMenu = payload;
-        return;
-      }
       currentMenu = payload;
       renderSurface(payload);
     }
@@ -87,25 +76,99 @@ async function initializeSurface(): Promise<void> {
     clearTimeout(closeTimer);
   }
 
-  function applyMenuTheme(menu: MenuSnapshot): { fontSize: string; itemHeight: number } {
-    const size = menu.fontSize ?? menu.placement.fontSize ?? "medium";
-    const fontSizePx = size === "small" ? "12px" : size === "large" ? "15px" : "13px";
-    const itemHeight = size === "small" ? 30 : size === "large" ? 42 : 36;
-    root.style.setProperty("--menu-font-size", fontSizePx);
+  let measureCanvas: HTMLCanvasElement | null = null;
+  function measureTextWidth(text: string, fontSize: number): number {
+    if (!measureCanvas) {
+      measureCanvas = document.createElement("canvas");
+    }
+    const ctx = measureCanvas.getContext("2d");
+    if (!ctx) {
+      return text.length * fontSize * 0.8;
+    }
+    ctx.font = `${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+    return ctx.measureText(text).width;
+  }
+
+  const MIN_COLUMN_WIDTH = 80;
+  const MAX_COLUMN_WIDTH = 320;
+
+  function calculateColumnWidth(entries: LayoutEntry[], fontSize: number): number {
+    if (entries.length === 0) {
+      return MIN_COLUMN_WIDTH;
+    }
+    let maxTextWidth = 0;
+    let hasFolder = false;
+    for (const entry of entries) {
+      if (entry.kind === "folder") {
+        hasFolder = true;
+      }
+      const w = measureTextWidth(entry.label, fontSize);
+      if (w > maxTextWidth) {
+        maxTextWidth = w;
+      }
+    }
+    // padding: left 10px + right 12px, plus folder indicator 18px if needed
+    const horizontalPadding = 10 + 12 + (hasFolder ? 18 : 6);
+    const neededWidth = Math.ceil(maxTextWidth + horizontalPadding);
+    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, neededWidth));
+  }
+
+  function parseFontSize(value: unknown): number {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.max(8, Math.min(48, Math.round(value)));
+    }
+    if (value === "small") return 12;
+    if (value === "large") return 15;
+    return 13;
+  }
+
+  function calculateButtonFontSize(
+    configuredSize: number,
+    orientation: MenuOrientation,
+    placement: MenuPlacement,
+    itemCount: number,
+  ): number {
+    const count = Math.max(1, itemCount);
+    const btnHeight = orientation === "row"
+      ? placement.height
+      : (placement.itemHeight ?? Math.max(16, Math.floor(placement.height / count)));
+    const btnWidth = orientation === "column"
+      ? placement.width
+      : (placement.itemWidth ?? Math.max(20, Math.floor(placement.width / count)));
+
+    const heightLimit = Math.max(8, Math.floor(btnHeight - 8));
+    const widthLimit = Math.max(8, Math.floor(btnWidth * 0.45));
+    return Math.min(configuredSize, heightLimit, widthLimit);
+  }
+
+  function applyMenuTheme(menu: MenuSnapshot): { fontSize: number; itemHeight: number } {
+    const sizeNum = parseFontSize(menu.fontSize ?? menu.placement.fontSize);
+    const itemHeight = Math.max(24, Math.round(sizeNum * 2.7));
+    root.style.setProperty("--menu-font-size", `${sizeNum}px`);
     root.style.setProperty("--menu-item-height", `${itemHeight}px`);
-    return { fontSize: size, itemHeight };
+    return { fontSize: sizeNum, itemHeight };
   }
 
   function renderSurface(menu: MenuSnapshot): void {
-    applyMenuTheme(menu);
+    const theme = applyMenuTheme(menu);
     root.className = "menu-surface";
     root.replaceChildren();
 
+    const buttonFontSize = calculateButtonFontSize(
+      theme.fontSize,
+      menu.orientation,
+      menu.placement,
+      menu.items.length,
+    );
+
+    const gap = menu.placement.gap ?? menu.gap ?? 4;
     const menuBar = document.createElement("div");
     menuBar.className = "menu-bar";
     menuBar.ariaLabel = "BrowseRail menu";
     menuBar.dataset.orientation = menu.orientation;
     menuBar.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
+    menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
+    menuBar.style.setProperty("--menu-gap", `${gap}px`);
     menuBar.style.width = `${menu.placement.width}px`;
     menuBar.style.height = `${menu.placement.height}px`;
 
@@ -174,12 +237,31 @@ async function initializeSurface(): Promise<void> {
         }
       });
     } else {
-      button.addEventListener("pointerenter", () => {
-        openPopup(entry, button, menuBar);
-      });
-      button.addEventListener("focus", () => {
-        openPopup(entry, button, menuBar);
-      });
+      const expandOnHover = entry.expandOnHover !== false;
+      if (expandOnHover) {
+        button.addEventListener("pointerenter", () => {
+          openPopup(entry, button, menuBar);
+        });
+        button.addEventListener("focus", () => {
+          openPopup(entry, button, menuBar);
+        });
+      } else {
+        button.addEventListener("pointerenter", () => {
+          if (activePopupFolderUid !== entry.uid) {
+            closePopup();
+          }
+        });
+        button.addEventListener("pointerdown", (event) => {
+          if (event.button === 0) {
+            event.preventDefault();
+            if (activePopupFolderUid === entry.uid && activePopupEl) {
+              closePopup();
+            } else {
+              openPopup(entry, button, menuBar);
+            }
+          }
+        });
+      }
     }
     return button;
   }
@@ -228,27 +310,56 @@ async function initializeSurface(): Promise<void> {
       popupEl.style.left = `${anchorRect.left}px`;
     }
 
-    popupEl.style.setProperty("--min-column-width", `${Math.round(anchorRect.width)}px`);
     root.appendChild(popupEl);
 
     const theme = applyMenuTheme(currentMenu ?? initial.menu!);
     renderLevels();
 
     function renderLevels(): void {
+      const columnWidths = levels.map((entries) => calculateColumnWidth(entries, theme.fontSize));
+
       popupEl.replaceChildren(
         ...levels.map((entries, level) => {
           const column = document.createElement("div");
           column.className = "menu-column";
+          const colWidth = columnWidths[level];
+          column.style.width = `${colWidth}px`;
+          column.style.minWidth = `${colWidth}px`;
+          column.style.maxWidth = `${colWidth}px`;
           column.append(
             ...entries.map((item) => {
               const button = menuButton(item, true);
               if (item.kind === "folder") {
+                const subExpand = item.expandOnHover !== false;
                 button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
-                button.addEventListener("pointerenter", () => {
-                  levels = [...levels.slice(0, level + 1), item.children];
-                  expandedUids = [...expandedUids.slice(0, level), item.uid];
-                  renderLevels();
-                });
+                if (subExpand) {
+                  button.addEventListener("pointerenter", () => {
+                    levels = [...levels.slice(0, level + 1), item.children];
+                    expandedUids = [...expandedUids.slice(0, level), item.uid];
+                    renderLevels();
+                  });
+                } else {
+                  button.addEventListener("pointerenter", () => {
+                    if (levels.length > level + 1 && expandedUids[level] !== item.uid) {
+                      levels = levels.slice(0, level + 1);
+                      expandedUids = expandedUids.slice(0, level);
+                      renderLevels();
+                    }
+                  });
+                  button.addEventListener("pointerdown", (event) => {
+                    if (event.button === 0) {
+                      event.preventDefault();
+                      if (expandedUids[level] === item.uid) {
+                        levels = levels.slice(0, level + 1);
+                        expandedUids = expandedUids.slice(0, level);
+                      } else {
+                        levels = [...levels.slice(0, level + 1), item.children];
+                        expandedUids = [...expandedUids.slice(0, level), item.uid];
+                      }
+                      renderLevels();
+                    }
+                  });
+                }
               } else {
                 button.addEventListener("pointerenter", () => {
                   if (levels.length > level + 1) {
@@ -271,14 +382,10 @@ async function initializeSurface(): Promise<void> {
         }),
       );
 
-      // Measure column widths dynamically: fit-content with min-width and max-width
-      const columns = Array.from(popupEl.querySelectorAll<HTMLElement>(".menu-column"));
-      const totalColumnsWidth = columns.reduce((acc, col) => {
-        const w = col.getBoundingClientRect().width;
-        return acc + Math.ceil(w > 0 ? w : anchorRect.width);
-      }, 0);
-      const gapTotal = Math.max(0, columns.length - 1) * 4;
-      const popupWidth = Math.min(1200, 16 + totalColumnsWidth + gapTotal);
+      const totalColumnsWidth = columnWidths.reduce((acc, w) => acc + w, 0);
+      const gapTotal = Math.max(0, levels.length - 1) * 4;
+      // .popup-container has 7px padding (14px total) and 1px border (2px total), plus 2px safety buffer
+      const popupWidth = Math.min(1600, 18 + totalColumnsWidth + gapTotal);
 
       const popupHeightVal = Math.min(
         560,
@@ -300,8 +407,6 @@ async function initializeSurface(): Promise<void> {
         menuUid,
         width: totalWidth,
         windowUid,
-      }).then(() => {
-        popupEl.scrollLeft = popupEl.scrollWidth;
       });
     }
   }
@@ -339,7 +444,7 @@ async function initializeSurface(): Promise<void> {
     menu: MenuSnapshot,
     toolbarPosition: "top" | "bottom" = "bottom",
   ): HTMLElement {
-    applyMenuTheme(menu);
+    const theme = applyMenuTheme(menu);
     let anchor = menu.placement.anchor;
     let targetWidth = menu.placement.width;
     let targetHeight = menu.placement.height;
@@ -348,10 +453,23 @@ async function initializeSurface(): Promise<void> {
     root.dataset.orientation = menu.orientation;
     root.onpointerdown = null;
 
+    const gap = menu.placement.gap ?? menu.gap ?? 4;
     const railContainer = document.createElement("div");
     railContainer.className = "customize-rail";
     railContainer.dataset.orientation = menu.orientation;
     railContainer.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
+    railContainer.style.setProperty("--menu-gap", `${gap}px`);
+
+    function updateCustomizeButtonSize(): void {
+      const btnFontSize = calculateButtonFontSize(
+        theme.fontSize,
+        menu.orientation,
+        { ...menu.placement, width: targetWidth, height: targetHeight },
+        menu.items.length,
+      );
+      railContainer.style.setProperty("--button-font-size", `${btnFontSize}px`);
+    }
+    updateCustomizeButtonSize();
 
     if (menu.items.length === 0) {
       const empty = document.createElement("div");
@@ -427,6 +545,7 @@ async function initializeSurface(): Promise<void> {
       content.style.width = `${Math.max(targetWidth, toolbarWidth)}px`;
       railContainer.style.width = `${targetWidth}px`;
       railContainer.style.height = `${targetHeight}px`;
+      updateCustomizeButtonSize();
     }
 
     function growNativeCanvasIfNeeded(): void {
@@ -540,6 +659,11 @@ function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
   button.className = "menu-button";
   button.toggleAttribute("data-popup", popup);
   button.title = entry.label;
+
+  if (entry.color) {
+    button.style.setProperty("--button-custom-color", entry.color);
+    button.dataset.hasCustomColor = "true";
+  }
 
   const labelSpan = document.createElement("span");
   labelSpan.className = "menu-button-label";

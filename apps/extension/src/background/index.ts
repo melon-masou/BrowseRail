@@ -1,7 +1,6 @@
 import {
   isServerMessage,
   PROTOCOL_VERSION,
-  type AttachmentMode,
   type BrowserInstance,
   type ClientMessage,
   type PanelSnapshot,
@@ -11,6 +10,9 @@ import browser from "webextension-polyfill";
 import { resolveMenuItems } from "../bookmarks";
 import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser-adapter";
 import {
+  DEFAULT_FONT_SIZE,
+  DEFAULT_MENU_GAP,
+  type ExtensionConfig,
   loadConfig,
   loadMenuPlacements,
   loadWidgetEnabled,
@@ -36,43 +38,29 @@ connectionStateMachine.subscribe((next, _prev, detail) => {
 });
 
 function updateActionBadge(state: ExtensionConnectionState, detail?: string): void {
-  let text = "";
-  let color = "#757575";
   let title = `BrowseRail: ${state}`;
   switch (state) {
     case "connected":
-      text = "ON";
-      color = "#2e7d32";
       title = `BrowseRail: Connected (${detail ?? "Ready"})`;
       break;
     case "syncing":
-      text = "SYNC";
-      color = "#1565c0";
       title = `BrowseRail: Syncing (${detail ?? ""})`;
       break;
     case "connecting":
     case "handshaking":
-      text = "…";
-      color = "#f57c00";
       title = "BrowseRail: Connecting…";
       break;
     case "reconnecting":
-      text = "WAIT";
-      color = "#e65100";
       title = `BrowseRail: Reconnecting (${detail ?? ""})`;
       break;
     case "disconnected":
-      text = "OFF";
-      color = "#757575";
       title = "BrowseRail: Disconnected";
       break;
     case "disabled":
-      text = "";
       title = "BrowseRail: Disabled";
       break;
   }
-  void browser.action.setBadgeText({ text });
-  void browser.action.setBadgeBackgroundColor({ color });
+  void browser.action.setBadgeText({ text: "" });
   void browser.action.setTitle({ title });
 }
 
@@ -197,8 +185,11 @@ function scheduleReconcile(): void {
   }, 50);
 }
 
+let previewConfigOverride: ExtensionConfig | null = null;
+
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && (changes.config || changes.widget_enabled)) {
+    previewConfigOverride = null;
     scheduleReconcile();
   }
 });
@@ -208,6 +199,27 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       state: connectionStateMachine.getState(),
       detail: connectionStateMachine.getDetail(),
     });
+  }
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    (message as { type?: string }).type === "previewConfig" &&
+    "config" in message
+  ) {
+    previewConfigOverride = (message as { config: ExtensionConfig }).config;
+    requestSync();
+    return Promise.resolve({ ok: true, message: "Preview updated" });
+  }
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    (message as { type?: string }).type === "cancelPreview"
+  ) {
+    if (previewConfigOverride !== null) {
+      previewConfigOverride = null;
+      requestSync();
+    }
+    return Promise.resolve({ ok: true });
   }
   if (
     typeof message === "object" &&
@@ -239,6 +251,7 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     return rebuildDesktopWindows();
   }
   if (isConfigSavedMessage(message)) {
+    previewConfigOverride = null;
     scheduleReconcile();
   }
   if (isSetWidgetEnabledMessage(message)) {
@@ -291,7 +304,14 @@ async function connect(generation = connectionGeneration): Promise<void> {
   }
   connectionStateMachine.transition("connecting", `Connecting to ${desiredSocketUrl}`);
   extLog("Connect", `Connecting to ${desiredSocketUrl} (gen ${generation})`);
-  const nextSocket = new WebSocket(desiredSocketUrl);
+  let nextSocket: WebSocket;
+  try {
+    nextSocket = new WebSocket(desiredSocketUrl);
+  } catch (err) {
+    extLog("Connect", `WebSocket constructor threw error: ${String(err)}`);
+    reconnect();
+    return;
+  }
   socket = nextSocket;
 
   nextSocket.addEventListener("open", () => {
@@ -323,8 +343,7 @@ async function connect(generation = connectionGeneration): Promise<void> {
     }
   });
   nextSocket.addEventListener("error", () => {
-    extLog("Connect", "WebSocket error");
-    nextSocket.close();
+    extLog("Connect", "WebSocket connection error");
   });
 }
 
@@ -469,11 +488,12 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [config, windows, placements] = await Promise.all([
+  const [loadedConfig, windows, placements] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
   ]);
+  const config = previewConfigOverride ?? loadedConfig;
   const menus = await Promise.all(
     config.panel.menus.map(async (menu, index) => {
       const items = await resolveMenuItems(menu.items);
@@ -483,9 +503,11 @@ async function syncOnce(): Promise<void> {
         menu.orientation,
         items.length,
         menu.fontSize,
+        menu.gap,
       );
       return {
-        fontSize: menu.fontSize ?? "medium",
+        fontSize: menu.fontSize ?? DEFAULT_FONT_SIZE,
+        gap: placement.gap ?? 0,
         items,
         orientation: menu.orientation,
         placement,
@@ -589,17 +611,18 @@ function reconnect(): void {
   }
 
   reconnectAttempts += 1;
-  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+  if (reconnectAttempts >= 3) {
     connectionStateMachine.transition(
       "disconnected",
-      `Failed to connect after ${MAX_RECONNECT_ATTEMPTS} attempts. Click Reconnect to retry.`,
+      "Desktop widget is offline. Click Reconnect when BrowseRail desktop is running.",
     );
+    clearTimeout(reconnectTimer);
     return;
   }
 
   connectionStateMachine.transition(
     "reconnecting",
-    `Retry attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in 3s…`,
+    `Retry attempt ${reconnectAttempts}/3 in 3s…`,
   );
   reconnectTimer = setTimeout(() => void connect(), RECONNECT_DELAY_MS);
 }

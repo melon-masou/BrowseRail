@@ -453,6 +453,7 @@ fn save_menu_placement(
         item_width,
         item_height,
         font_size: orig_menu.placement.font_size.clone(),
+        gap: orig_menu.placement.gap,
     };
 
     window
@@ -606,7 +607,8 @@ fn open_listener_settings(app: &tauri::AppHandle) {
         return;
     }
 
-    let _ = WebviewWindowBuilder::new(
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")).ok();
+    let mut builder = WebviewWindowBuilder::new(
         app,
         "listener-settings",
         WebviewUrl::App("index.html?view=settings".into()),
@@ -614,8 +616,12 @@ fn open_listener_settings(app: &tauri::AppHandle) {
     .title("BrowseRail Settings")
     .inner_size(440.0, 380.0)
     .min_inner_size(360.0, 260.0)
-    .resizable(true)
-    .build();
+    .resizable(true);
+
+    if let Some(icon) = icon {
+        builder = builder.icon(icon).expect("valid settings window icon");
+    }
+    let _ = builder.build();
 }
 
 #[cfg(target_os = "windows")]

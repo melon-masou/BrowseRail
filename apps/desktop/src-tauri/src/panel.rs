@@ -60,6 +60,29 @@ pub fn set_window_owner(window: &WebviewWindow, owner_hwnd: isize) -> Result<(),
     }
 }
 
+pub fn clear_window_owner(window: &WebviewWindow) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, 0);
+        SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER,
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+pub fn safely_destroy_window(window: &WebviewWindow) -> Result<(), String> {
+    let _ = set_window_visible_without_activation(window, false);
+    let _ = clear_window_owner(window);
+    window.destroy().map_err(|error| error.to_string())
+}
+
 pub fn set_window_visible_without_activation(
     window: &WebviewWindow,
     visible: bool,
