@@ -6,6 +6,7 @@ function createBrowser(): TabActionBrowser {
   return {
     bookmarks: { get: vi.fn(async () => [{ url: "https://example.com" }]) },
     tabs: {
+      create: vi.fn(async () => ({ id: 99 })),
       query: vi.fn(async () => [{ id: 17 }]),
       update: vi.fn(async () => undefined),
     },
@@ -23,13 +24,29 @@ describe("navigateBookmark", () => {
     expect(api.tabs.update).toHaveBeenCalledWith(17, { url: "https://example.com" });
   });
 
-  it("does not fall back when the bound window has no active tab", async () => {
+  it("opens a new tab when tabMode is newTab", async () => {
+    const api = createBrowser();
+
+    await navigateBookmark(api, "42", "bookmark:bookmark-1?tab=newTab");
+
+    expect(api.tabs.create).toHaveBeenCalledWith({
+      active: true,
+      url: "https://example.com",
+      windowId: 42,
+    });
+    expect(api.tabs.update).not.toHaveBeenCalled();
+  });
+
+  it("falls back to creating a tab when bound window has no active tab", async () => {
     const api = createBrowser();
     vi.mocked(api.tabs.query).mockResolvedValue([]);
 
-    await expect(navigateBookmark(api, "42", "bookmark:bookmark-1")).rejects.toThrow(
-      "no active tab",
-    );
+    await navigateBookmark(api, "42", "bookmark:bookmark-1");
+    expect(api.tabs.create).toHaveBeenCalledWith({
+      active: true,
+      url: "https://example.com",
+      windowId: 42,
+    });
     expect(api.tabs.update).not.toHaveBeenCalled();
   });
 

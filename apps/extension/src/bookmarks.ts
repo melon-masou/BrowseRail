@@ -1,7 +1,7 @@
 import type { LayoutEntry } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
-import type { StoredMenuItem } from "./config";
+import type { StoredMenuItem, TabMode } from "./config";
 
 export interface BookmarkNode {
   children?: BookmarkNode[];
@@ -124,10 +124,14 @@ function findBookmarkByUrl(nodes: BookmarkNode[], url: string): BookmarkNode | u
   return undefined;
 }
 
-export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutEntry[]> {
+export async function resolveMenuItems(
+  items: StoredMenuItem[],
+  menuTabMode?: TabMode,
+  menuColor?: string,
+): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = null;
   const entryGroups = await Promise.all(
-    items.map(async ({ bookmarkId, path, url, color, emoji, rename, type, expandOnHover }) => {
+    items.map(async ({ bookmarkId, path, url, color, emoji, rename, type, expandOnHover, tabMode }) => {
       let node: BookmarkNode | undefined;
       if (bookmarkId) {
         try {
@@ -153,6 +157,9 @@ export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutE
         return [];
       }
 
+      const effectiveTabMode: TabMode = tabMode || menuTabMode || "replace";
+      const effectiveColor = color || menuColor;
+
       if (type === "flattenFolder" || (!node.url && type === "flattenFolder")) {
         const bookmarkChildren = (node.children ?? []).filter((child) => child.url !== undefined);
         return bookmarkChildren.map((child) => {
@@ -160,19 +167,19 @@ export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutE
           const detectedEmoji = extractLeadingEmoji(rawTitle);
           const entry: LayoutEntry = {
             kind: "bookmark",
-            uid: actionUid("bookmark", child.id),
+            uid: actionUid("bookmark", child.id, effectiveTabMode),
             label: rawTitle,
             ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
-            ...(color ? { color } : {}),
+            ...(effectiveColor ? { color: effectiveColor } : {}),
           };
           return entry;
         });
       }
 
       const effectiveHover = expandOnHover !== undefined ? expandOnHover : true;
-      const entry = toLayoutEntry(node, effectiveHover);
-      if (color) {
-        entry.color = color;
+      const entry = toLayoutEntry(node, effectiveHover, effectiveTabMode, effectiveColor);
+      if (effectiveColor) {
+        entry.color = effectiveColor;
       }
       const effectiveRename = rename || emoji;
       if (effectiveRename) {
@@ -186,16 +193,22 @@ export async function resolveMenuItems(items: StoredMenuItem[]): Promise<LayoutE
   return entryGroups.flat();
 }
 
-function toLayoutEntry(node: BookmarkNode, expandOnHover?: boolean): LayoutEntry {
+function toLayoutEntry(
+  node: BookmarkNode,
+  expandOnHover?: boolean,
+  tabMode?: TabMode,
+  defaultColor?: string,
+): LayoutEntry {
   const title = node.title || (node.url !== undefined ? node.url : "Bookmarks");
   const detectedEmoji = extractLeadingEmoji(title);
 
   if (node.url !== undefined) {
     return {
       kind: "bookmark",
-      uid: actionUid("bookmark", node.id),
+      uid: actionUid("bookmark", node.id, tabMode),
       label: node.title || node.url,
       ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
+      ...(defaultColor ? { color: defaultColor } : {}),
     };
   }
 
@@ -203,14 +216,22 @@ function toLayoutEntry(node: BookmarkNode, expandOnHover?: boolean): LayoutEntry
     kind: "folder",
     uid: actionUid("folder", node.id),
     label: node.title || "Bookmarks",
-    children: (node.children ?? []).map((child) => toLayoutEntry(child, expandOnHover)),
+    children: (node.children ?? []).map((child) => toLayoutEntry(child, expandOnHover, tabMode, defaultColor)),
     ...(detectedEmoji ? { emoji: detectedEmoji } : {}),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
   };
 }
 
-export function actionUid(kind: "bookmark" | "folder", bookmarkId: string): string {
-  return `${kind}:${encodeURIComponent(bookmarkId)}`;
+export function actionUid(
+  kind: "bookmark" | "folder",
+  bookmarkId: string,
+  tabMode?: TabMode,
+): string {
+  const base = `${kind}:${encodeURIComponent(bookmarkId)}`;
+  if (kind === "bookmark" && tabMode === "newTab") {
+    return `${base}?tab=newTab`;
+  }
+  return base;
 }
 
 export function extractLeadingEmoji(text: string): string | null {

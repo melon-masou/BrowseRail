@@ -534,7 +534,7 @@ async function syncOnce(): Promise<void> {
   const config = previewConfigOverride ?? loadedConfig;
   const menus = await Promise.all(
     config.panel.menus.map(async (menu, index) => {
-      const items = await resolveMenuItems(menu.items);
+      const items = await resolveMenuItems(menu.items, menu.tabMode, menu.color);
       const placement = resolveMenuPlacement(
         placements[menu.uid],
         index,
@@ -546,6 +546,7 @@ async function syncOnce(): Promise<void> {
       return {
         fontSize: menu.fontSize ?? DEFAULT_FONT_SIZE,
         gap: placement.gap ?? 0,
+        ...(menu.color ? { color: menu.color } : {}),
         items,
         orientation: menu.orientation,
         placement,

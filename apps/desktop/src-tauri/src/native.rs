@@ -926,11 +926,7 @@ impl NativeReactor {
                 let label = menu_label(&instance_uid, &panel.window.uid, &menu.uid);
                 let target_pos = menu_position(&panel.window, &menu.placement);
                 let is_customizing = self.surfaces.is_customizing(&label);
-                let effective_always_on_top = if owner_hwnd > 0 {
-                    false
-                } else {
-                    panel.always_on_top
-                };
+                let effective_always_on_top = panel.always_on_top;
                 let geometry_changed = self.surfaces.update_geometry(
                     &label,
                     target_pos.x,
@@ -1173,11 +1169,7 @@ impl NativeReactor {
                 let owner_hwnd = browser_window_handles
                     .get(&(snapshot.instance_uid.clone(), panel.window.uid.clone()))
                     .copied();
-                let always_on_top = if owner_hwnd.is_some() {
-                    false
-                } else {
-                    panel.always_on_top
-                };
+                let always_on_top = panel.always_on_top;
                 let is_focused = match snapshot.attachment_mode {
                     AttachmentMode::None => false,
                     AttachmentMode::All => true,
@@ -1295,20 +1287,22 @@ impl NativeReactor {
     }
 
     fn format_server_status(&self) -> String {
+        use crate::i18n::Msg;
         let status = self.socket.status();
         if status.error.is_some() {
-            "! Listener: Error".to_string()
+            Msg::ListenerError.localized()
         } else if status.listening {
-            format!("● Listener: 127.0.0.1:{}", status.port)
+            Msg::ListenerListening { port: status.port }.localized()
         } else {
-            "○ Listener: Stopped".to_string()
+            Msg::ListenerStopped.localized()
         }
     }
 
     fn format_extension_lines(&self) -> Vec<String> {
+        use crate::i18n::Msg;
         let extensions = self.registry.active_extensions();
         if extensions.is_empty() {
-            vec!["○ Extension: Disconnected".to_string()]
+            vec![Msg::ExtensionDisconnected.localized()]
         } else {
             extensions
                 .into_iter()
@@ -1328,42 +1322,52 @@ impl NativeReactor {
                         .as_deref()
                         .filter(|l| !l.is_empty())
                         .unwrap_or(&ext.instance_uid);
-                    format!("● Extension: {browser_name} ({label})")
+                    Msg::ExtensionConnected {
+                        browser: browser_name,
+                        label,
+                    }
+                    .localized()
                 })
                 .collect()
         }
     }
 
     fn format_surfaces_status(&self) -> String {
+        use crate::i18n::Msg;
         let (visible, customizing, hidden) = self.surfaces.summary();
         if customizing > 0 {
-            format!("● Menus: {visible} visible, {customizing} customizing")
+            Msg::MenusVisibleCustomizing {
+                visible,
+                customizing,
+            }
+            .localized()
         } else if visible > 0 {
-            format!("● Menus: {visible} visible")
+            Msg::MenusVisible { visible }.localized()
         } else if hidden > 0 {
-            format!("○ Menus: {hidden} hidden (ready)")
+            Msg::MenusHidden { hidden }.localized()
         } else {
-            "○ Menus: None".to_string()
+            Msg::MenusNone.localized()
         }
     }
 
     fn format_tray_tooltip(&self) -> String {
+        use crate::i18n::Msg;
         let server_text = match self.socket.state_machine.current() {
             crate::state_machine::ServerState::Listening { port } => format!(":{port}"),
-            crate::state_machine::ServerState::Failed { .. } => "Error".to_string(),
-            crate::state_machine::ServerState::Unbound => "Stopped".to_string(),
+            crate::state_machine::ServerState::Failed { .. } => Msg::TooltipServerError.localized(),
+            crate::state_machine::ServerState::Unbound => Msg::TooltipServerStopped.localized(),
         };
         let active = self.registry.active_extensions();
         let client_text = if active.is_empty() {
-            "Ext: Disconnected".to_string()
+            Msg::TooltipExtDisconnected.localized()
         } else {
-            format!("Ext: {} connected", active.len())
+            Msg::TooltipExtConnected { count: active.len() }.localized()
         };
         let (visible, customizing, _) = self.surfaces.summary();
         let panels_text = if customizing > 0 {
-            format!(" ({visible} menus, customizing)")
+            Msg::TooltipPanelsCustomizing { visible }.localized()
         } else if visible > 0 {
-            format!(" ({visible} menus)")
+            Msg::TooltipPanels { visible }.localized()
         } else {
             String::new()
         };

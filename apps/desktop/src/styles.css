@@ -279,6 +279,35 @@ button {
   background: #384357;
 }
 
+/* Accent popups (menu default color): softer shadow, matching scrollbar, and no
+   dark drop-shadow halo on the same-color buttons. */
+.popup-container[data-accent="true"] {
+  box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
+}
+
+.popup-container[data-accent="true"] .menu-column {
+  scrollbar-color: rgb(255 255 255 / 35%) transparent;
+}
+
+.popup-container[data-accent="true"] .menu-column::-webkit-scrollbar {
+  width: 6px;
+}
+
+.popup-container[data-accent="true"] .menu-column::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.popup-container[data-accent="true"] .menu-column::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 35%);
+  border-radius: 3px;
+}
+
+.popup-container[data-accent="true"] .menu-button[data-has-custom-color="true"]:hover,
+.popup-container[data-accent="true"] .menu-button[data-has-custom-color="true"]:focus-visible,
+.popup-container[data-accent="true"] .menu-button[data-has-custom-color="true"][data-expanded] {
+  box-shadow: none;
+}
+
 .customize-mode {
   position: relative;
   display: block;

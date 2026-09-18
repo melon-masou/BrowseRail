@@ -9,6 +9,8 @@ const STORAGE_KEY = "config";
 
 export type StoredMenuItemType = "bookmark" | "folder" | "flattenFolder";
 
+export type TabMode = "replace" | "newTab";
+
 export interface StoredMenuItem {
   bookmarkId: string;
   path?: string[];
@@ -18,13 +20,16 @@ export interface StoredMenuItem {
   rename?: string;
   type?: StoredMenuItemType;
   expandOnHover?: boolean;
+  tabMode?: TabMode;
 }
 
 export interface StoredMenu {
+  color?: string;
   fontSize?: MenuFontSize;
   gap?: number;
   items: StoredMenuItem[];
   orientation: MenuOrientation;
+  tabMode?: TabMode;
   uid: string;
 }
 
@@ -253,19 +258,31 @@ function numericValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function normalizeMenu(value: unknown): StoredMenu | undefined {
-  if (!isRecord(value) || typeof value.uid !== "string" || !value.uid) {
+export function normalizeMenu(value: unknown): StoredMenu | undefined {
+  if (!isRecord(value)) {
     return undefined;
   }
+  const uid = typeof value.uid === "string" && value.uid
+    ? value.uid
+    : typeof (value as { id?: unknown }).id === "string" && (value as { id: string }).id
+      ? (value as { id: string }).id
+      : `menu-${Math.random().toString(36).slice(2, 9)}`;
   const fontSize = value.fontSize !== undefined ? normalizeFontSize(value.fontSize) : undefined;
   const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
     ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : DEFAULT_MENU_GAP;
+  const color = typeof value.color === "string" && value.color ? value.color : undefined;
+  const tabMode: TabMode | undefined =
+    value.tabMode === "newTab" || value.tabMode === "replace"
+      ? value.tabMode
+      : undefined;
   return {
+    ...(color !== undefined ? { color } : {}),
     ...(fontSize !== undefined ? { fontSize } : {}),
     gap,
     items: Array.isArray(value.items) ? value.items.filter(isStoredMenuItem) : [],
     orientation: value.orientation === "column" ? "column" : "row",
+    ...(tabMode !== undefined ? { tabMode } : {}),
     uid: value.uid,
   };
 }
@@ -327,6 +344,7 @@ function isStoredMenuItem(value: unknown): value is StoredMenuItem {
     (value.emoji === undefined || typeof value.emoji === "string") &&
     (value.rename === undefined || typeof value.rename === "string") &&
     (value.expandOnHover === undefined || typeof value.expandOnHover === "boolean") &&
+    (value.tabMode === undefined || value.tabMode === "replace" || value.tabMode === "newTab") &&
     (value.type === undefined ||
       value.type === "bookmark" ||
       value.type === "folder" ||

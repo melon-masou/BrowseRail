@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@browserail/i18n": "workspace:*",
     "@browserail/protocol": "workspace:*",
     "webextension-polyfill": "^0.12.0"
   },

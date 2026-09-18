@@ -136,6 +136,8 @@ pub struct MenuSnapshot {
     pub font_size: Option<serde_json::Value>,
     #[serde(default)]
     pub gap: Option<f64>,
+    #[serde(default)]
+    pub color: Option<String>,
     pub items: Vec<LayoutEntry>,
     pub orientation: MenuOrientation,
     pub placement: MenuPlacement,

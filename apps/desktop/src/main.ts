@@ -7,10 +7,14 @@ import type {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+import { getLanguage, type Lang, LANGUAGES, onLanguageChange, saveLanguage, t } from "@browserail/i18n";
 import "./styles.css";
 
 const root = requiredElement("app");
 const query = new URLSearchParams(location.search);
+
+// Keep the Rust-rendered tray/menu and window titles in this webview's language.
+void invoke("set_ui_language", { language: getLanguage() }).catch(() => {});
 
 window.addEventListener("contextmenu", (event) => {
   event.preventDefault();
@@ -56,7 +60,7 @@ async function initializeSurface(): Promise<void> {
 
   await listen<{ ok: boolean; message?: string }>("action-result", ({ payload }) => {
     root.toggleAttribute("data-error", !payload.ok);
-    root.title = payload.ok ? "" : (payload.message ?? "Action failed");
+    root.title = payload.ok ? "" : (payload.message ?? t("action.failed"));
   });
 
   if (initial.menu) {
@@ -164,7 +168,7 @@ async function initializeSurface(): Promise<void> {
     const gap = menu.placement.gap ?? menu.gap ?? 4;
     const menuBar = document.createElement("div");
     menuBar.className = "menu-bar";
-    menuBar.ariaLabel = "BrowseRail menu";
+    menuBar.ariaLabel = t("aria.menu");
     menuBar.dataset.orientation = menu.orientation;
     menuBar.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
@@ -182,7 +186,7 @@ async function initializeSurface(): Promise<void> {
     if (menu.items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty-menu";
-      empty.textContent = "Empty menu · add items in extension";
+      empty.textContent = t("menu.empty");
       menuBar.replaceChildren(empty);
     } else {
       menuBar.replaceChildren(
@@ -287,9 +291,18 @@ async function initializeSurface(): Promise<void> {
     let levels: LayoutEntry[][] = [entry.children];
     let expandedUids: string[] = [];
 
+    const menuColor = currentMenu?.color;
     const popupEl = document.createElement("div");
     popupEl.className = "popup-container";
-    popupEl.ariaLabel = "BrowseRail bookmark menu";
+    if (menuColor) {
+      // The whole popup chrome (frame/padding + border), not just a 1px line,
+      // takes the menu's default color so it matches the buttons. `data-accent`
+      // scopes the accent-specific shadow/scrollbar tweaks in the stylesheet.
+      popupEl.dataset.accent = "true";
+      popupEl.style.backgroundColor = menuColor;
+      popupEl.style.borderColor = menuColor;
+    }
+    popupEl.ariaLabel = t("aria.bookmarkMenu");
     popupEl.addEventListener("pointerenter", cancelClose);
     popupEl.addEventListener("pointerleave", (event) => {
       if (!menuBar.contains(event.relatedTarget as Node | null)) {
@@ -329,6 +342,10 @@ async function initializeSurface(): Promise<void> {
           column.append(
             ...entries.map((item) => {
               const button = menuButton(item, true);
+              if (menuColor) {
+                button.style.setProperty("--button-custom-color", menuColor);
+                button.dataset.hasCustomColor = "true";
+              }
               if (item.kind === "folder") {
                 const subExpand = item.expandOnHover !== false;
                 button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
@@ -474,7 +491,7 @@ async function initializeSurface(): Promise<void> {
     if (menu.items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty-menu";
-      empty.textContent = "Empty menu · add items in extension";
+      empty.textContent = t("menu.empty");
       railContainer.replaceChildren(empty);
     } else {
       railContainer.replaceChildren(
@@ -496,17 +513,17 @@ async function initializeSurface(): Promise<void> {
     content.className = "customize-content";
 
     const anchorButton = controlButton(createAnchorIcon(anchor));
-    anchorButton.title = `Anchor: ${anchorLabel(anchor)} (click to change)`;
+    anchorButton.title = t("customize.anchor", { anchor: anchorLabel(anchor) });
     anchorButton.addEventListener("pointerdown", (event) => {
       if (event.button === 0) {
         anchor = nextAnchor(anchor);
         anchorButton.replaceChildren(createAnchorIcon(anchor));
-        anchorButton.title = `Anchor: ${anchorLabel(anchor)} (click to change)`;
+        anchorButton.title = t("customize.anchor", { anchor: anchorLabel(anchor) });
       }
     });
 
     const moveButton = controlButton(createMoveIcon());
-    moveButton.title = "Drag to move";
+    moveButton.title = t("customize.dragToMove");
     moveButton.classList.add("move-handle");
     moveButton.addEventListener("pointerdown", (event) => {
       if (event.button === 0) {
@@ -516,7 +533,7 @@ async function initializeSurface(): Promise<void> {
     });
 
     const cancelButton = controlButton(createCancelIcon());
-    cancelButton.title = "Cancel";
+    cancelButton.title = t("customize.cancel");
     cancelButton.addEventListener("pointerdown", (event) => {
       if (event.button === 0) {
         void cancelCustomization();
@@ -524,7 +541,7 @@ async function initializeSurface(): Promise<void> {
     });
 
     const saveButton = controlButton(createSaveIcon());
-    saveButton.title = "Save placement";
+    saveButton.title = t("customize.savePlacement");
     saveButton.addEventListener("pointerdown", (event) => {
       if (event.button === 0) {
         void saveCustomization();
@@ -660,7 +677,9 @@ function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
   button.toggleAttribute("data-popup", popup);
   button.title = entry.label;
 
-  if (entry.color) {
+  // Popup (expanded folder) buttons are colored by the menu's default color at the
+  // popup level, not by the item's own color — so skip per-item color here for them.
+  if (!popup && entry.color) {
     button.style.setProperty("--button-custom-color", entry.color);
     button.dataset.hasCustomColor = "true";
   }
@@ -855,7 +874,7 @@ async function initializeListenerSettings(): Promise<void> {
   const portLabel = document.createElement("label");
   portLabel.className = "settings-label";
   portLabel.htmlFor = "settings-port-input";
-  portLabel.textContent = "Listen Port";
+  portLabel.textContent = t("settings.listenPort");
 
   const portRow = document.createElement("form");
   portRow.className = "settings-port-row";
@@ -869,7 +888,7 @@ async function initializeListenerSettings(): Promise<void> {
 
   const applyBtn = document.createElement("button");
   applyBtn.type = "submit";
-  applyBtn.textContent = "Apply";
+  applyBtn.textContent = t("settings.apply");
 
   portRow.append(portInput, applyBtn);
   portSection.append(portLabel, portRow);
@@ -885,18 +904,54 @@ async function initializeListenerSettings(): Promise<void> {
   debugCheckbox.id = "settings-debug-checkbox";
 
   const debugText = document.createElement("span");
-  debugText.textContent = "Debug";
+  debugText.textContent = t("settings.debug");
 
   debugLabel.append(debugCheckbox, debugText);
   debugSection.append(debugLabel);
 
+  const langSection = document.createElement("div");
+  langSection.className = "settings-section";
+
+  const langLabel = document.createElement("label");
+  langLabel.className = "settings-label";
+  langLabel.textContent = t("language.label");
+
+  const langSelect = document.createElement("select");
+  langSelect.className = "settings-language-select";
+  for (const lang of LANGUAGES) {
+    const opt = document.createElement("option");
+    opt.value = lang;
+    opt.textContent = lang === "zh-CN" ? t("language.zhCN") : t("language.en");
+    langSelect.append(opt);
+  }
+  langSelect.value = getLanguage();
+  langSelect.addEventListener("change", () => {
+    saveLanguage(langSelect.value as Lang);
+  });
+  langSection.append(langLabel, langSelect);
+
   const statusCard = document.createElement("div");
   statusCard.className = "settings-status-card";
 
-  root.append(portSection, debugSection, statusCard);
+  root.append(portSection, debugSection, langSection, statusCard);
 
   let currentState: ListenerState | null = null;
   let isSubmitting = false;
+
+  onLanguageChange(() => {
+    portLabel.textContent = t("settings.listenPort");
+    applyBtn.textContent = t("settings.apply");
+    debugText.textContent = t("settings.debug");
+    langLabel.textContent = t("language.label");
+    for (const opt of langSelect.options) {
+      opt.textContent = opt.value === "zh-CN" ? t("language.zhCN") : t("language.en");
+    }
+    langSelect.value = getLanguage();
+    void invoke("set_ui_language", { language: getLanguage() }).catch(() => {});
+    if (currentState) {
+      renderStatus(currentState);
+    }
+  });
 
   function renderStatus(state: ListenerState): void {
     currentState = state;
@@ -918,15 +973,15 @@ async function initializeListenerSettings(): Promise<void> {
     if (state.error) {
       dot.dataset.status = "error";
       dot.textContent = "!";
-      text.textContent = "Listener Error";
+      text.textContent = t("settings.listenerError");
     } else if (state.listening) {
       dot.dataset.status = "listening";
       dot.textContent = "●";
-      text.textContent = `Listening on ${state.address}`;
+      text.textContent = t("settings.listeningOn", { address: state.address });
     } else {
       dot.dataset.status = "stopped";
       dot.textContent = "○";
-      text.textContent = "Stopped";
+      text.textContent = t("settings.stopped");
     }
     statusRow.append(dot, text);
     statusCard.append(statusRow);
@@ -937,7 +992,7 @@ async function initializeListenerSettings(): Promise<void> {
 
       const errorTitle = document.createElement("div");
       errorTitle.className = "settings-error-title";
-      errorTitle.textContent = "Failure Reason";
+      errorTitle.textContent = t("settings.failureReason");
 
       const errorDetail = document.createElement("div");
       errorDetail.className = "settings-error-detail";
@@ -953,13 +1008,13 @@ async function initializeListenerSettings(): Promise<void> {
     const extTitle = document.createElement("div");
     extTitle.className = "settings-ext-title";
     const count = state.extensions?.length ?? 0;
-    extTitle.textContent = `Connected Extensions (${count})`;
+    extTitle.textContent = t("settings.connectedExtensions", { count });
     extSection.append(extTitle);
 
     if (!state.extensions || state.extensions.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-ext-empty";
-      empty.textContent = "No extensions connected";
+      empty.textContent = t("settings.noExtensions");
       extSection.append(empty);
     } else {
       const extList = document.createElement("div");
@@ -986,7 +1041,10 @@ async function initializeListenerSettings(): Promise<void> {
 
         const meta = document.createElement("div");
         meta.className = "settings-ext-item-meta";
-        meta.textContent = `${ext.windowsCount} window${ext.windowsCount === 1 ? "" : "s"}`;
+        meta.textContent =
+          ext.windowsCount === 1
+            ? t("settings.windowsOne", { count: ext.windowsCount })
+            : t("settings.windowsOther", { count: ext.windowsCount });
 
         item.append(main, meta);
         extList.append(item);
@@ -998,7 +1056,7 @@ async function initializeListenerSettings(): Promise<void> {
   }
 
   function formatBrowserName(browser?: string): string {
-    if (!browser) return "Extension";
+    if (!browser) return t("ext.fallback");
     const b = browser.toLowerCase();
     if (b === "chrome") return "Chrome";
     if (b === "edge") return "Edge";

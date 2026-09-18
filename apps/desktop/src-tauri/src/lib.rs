@@ -1,4 +1,5 @@
 pub mod debug;
+pub mod i18n;
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub mod protocol;
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
@@ -545,13 +546,19 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
     let display = CheckMenuItem::with_id(
         manager,
         "display_panels",
-        "Display menus",
+        i18n::Msg::DisplayMenus.localized(),
         true,
         state.display_panels,
         None::<&str>,
     )?;
-    let settings = MenuItem::with_id(manager, "settings", "Settings…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(manager, "quit", "Quit", true, None::<&str>)?;
+    let settings = MenuItem::with_id(
+        manager,
+        "settings",
+        i18n::Msg::Settings.localized(),
+        true,
+        None::<&str>,
+    )?;
+    let quit = MenuItem::with_id(manager, "quit", i18n::Msg::Quit.localized(), true, None::<&str>)?;
 
     let mut menu_items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
     menu_items.push(&server_item);
@@ -569,9 +576,9 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
 #[cfg(target_os = "windows")]
 fn create_tray(app: &tauri::App, initial_display: bool) -> tauri::Result<()> {
     let initial_state = native::TrayStateSnapshot {
-        server_text: "○ Listener: Starting…".into(),
-        extension_lines: vec!["○ Extension: Disconnected".into()],
-        surfaces_text: "○ Menus: None".into(),
+        server_text: i18n::Msg::ListenerStarting.localized(),
+        extension_lines: vec![i18n::Msg::ExtensionDisconnected.localized()],
+        surfaces_text: i18n::Msg::MenusNone.localized(),
         tooltip: "BrowseRail".into(),
         display_panels: initial_display,
     };
@@ -613,7 +620,7 @@ fn open_listener_settings(app: &tauri::AppHandle) {
         "listener-settings",
         WebviewUrl::App("index.html?view=settings".into()),
     )
-    .title("BrowseRail Settings")
+    .title(i18n::Msg::WindowSettingsTitle.localized())
     .inner_size(440.0, 380.0)
     .min_inner_size(360.0, 260.0)
     .resizable(true);
@@ -641,6 +648,17 @@ fn create_lifecycle_host(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Set the UI language for the Rust-rendered tray/menu and refresh it. The frontend
+/// resolves the language (stored choice or webview locale) and pushes it here.
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_ui_language(language: String, state: tauri::State<'_, AppState>) {
+    if let Some(lang) = i18n::Lang::from_code(&language) {
+        i18n::set_language(lang);
+        let _ = state.native_sender.send(native::NativeCommand::UpdateTray);
+    }
+}
+
 #[cfg(target_os = "windows")]
 pub fn run() {
     let display_panels = Arc::new(AtomicBool::new(true));
@@ -662,6 +680,7 @@ pub fn run() {
                 let settings = settings::load(app.handle()).unwrap_or_default();
                 display_panels.store(settings.display_panels, Ordering::Relaxed);
                 crate::debug::set_debug_enabled(settings.debug_enabled);
+                i18n::set_language(i18n::detect_system_lang());
 
                 create_tray(app, settings.display_panels)?;
 
@@ -718,7 +737,8 @@ pub fn run() {
             begin_menu_customization,
             start_menu_drag,
             save_menu_placement,
-            cancel_menu_customization
+            cancel_menu_customization,
+            set_ui_language
         ])
         .build(tauri::generate_context!())
         .expect("BrowseRail failed to start");

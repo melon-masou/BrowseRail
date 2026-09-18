@@ -52,6 +52,19 @@ form {
   box-shadow: 0 12px 32px rgb(26 35 54 / 8%);
 }
 
+.fields-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .fields-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -381,6 +394,98 @@ output {
   gap: 8px;
 }
 
+/* Menus toolbar (Add menu, Preview, Export, Import) */
+.menus-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.menu-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.menu-action-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.add-menu-btn {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.add-menu-btn:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.preview-btn {
+  background: #f8fafc;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.preview-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.export-btn,
+.import-btn {
+  background: #f8fafc;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.export-btn:hover,
+.import-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+/* Window Behavior row below Menus */
+.window-behavior-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.window-behavior-row .attachment-mode-label {
+  flex: 1;
+  min-width: 220px;
+}
+
+.window-behavior-row .always-on-top-check {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
 /* Form action buttons */
 .form-actions-row {
   display: flex;
@@ -406,39 +511,6 @@ output {
 .save-btn.is-dirty {
   background: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
-}
-
-.preview-btn {
-  background: #f1f5f9;
-  color: #1e293b;
-  font-weight: 600;
-  border: 1px solid #cbd5e1;
-  padding: 8px 20px;
-  border-radius: 8px;
-  transition: all 0.15s ease;
-}
-
-.preview-btn:hover {
-  background: #e2e8f0;
-  border-color: #94a3b8;
-}
-
-.export-btn,
-.import-btn {
-  background: #f8fafc;
-  color: #334155;
-  font-weight: 600;
-  border: 1px solid #cbd5e1;
-  padding: 8px 16px;
-  border-radius: 8px;
-  transition: all 0.15s ease;
-}
-
-.export-btn:hover,
-.import-btn:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-  color: #0f172a;
 }
 
 /* Item row with color swatch and remove button */
@@ -681,6 +753,12 @@ output {
   border: 1px solid #f5d0fe;
 }
 
+.item-tag-tab-mode {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
 /* Color Popover Floating Menu */
 .color-popover {
   position: fixed;
@@ -868,6 +946,19 @@ output {
   padding: 0 8px;
 }
 
+.menu-setting-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.menu-setting-color-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
 .menu-settings-btn {
   font-size: 12px;
   padding: 4px 10px;
@@ -965,6 +1056,24 @@ output {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.item-setting-select {
+  width: 100%;
+  height: 28px;
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.item-setting-select:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #ffffff;
 }
 
 .item-settings-folder-controls {

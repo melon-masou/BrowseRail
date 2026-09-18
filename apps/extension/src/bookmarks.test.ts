@@ -76,6 +76,59 @@ describe("resolveMenuItems", () => {
     expect(entries[0].kind).toBe("bookmark");
     expect(entries[1].kind).toBe("bookmark");
   });
+
+  it("applies menuColor as default color to items without custom color", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      { id: "bm-color-1", title: "GitHub", url: "https://github.com" },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ bookmarkId: "bm-color-1" }],
+      "replace",
+      "#10b981",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].color).toBe("#10b981");
+  });
+
+  it("preserves item custom color when menuColor is also provided", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      { id: "bm-color-2", title: "GitHub", url: "https://github.com" },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ bookmarkId: "bm-color-2", color: "#f59e0b" }],
+      "replace",
+      "#10b981",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].color).toBe("#f59e0b");
+  });
+
+  it("applies menuColor to flattened folder children when no custom color is specified", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "folder-color-flat",
+        title: "Links",
+        children: [
+          { id: "bm-cf-1", title: "Site A", url: "https://a.com" },
+          { id: "bm-cf-2", title: "Site B", url: "https://b.com" },
+        ],
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ bookmarkId: "folder-color-flat", type: "flattenFolder" }],
+      "replace",
+      "#8b5cf6",
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].color).toBe("#8b5cf6");
+    expect(entries[1].color).toBe("#8b5cf6");
+  });
 });
 
 describe("findBookmarkNodeByPath", () => {
@@ -206,6 +259,79 @@ describe("rename and emoji support", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0].emoji).toBe("🚀");
+  });
+});
+
+describe("tabMode configuration", () => {
+  it("defaults to standard actionUid when tabMode is replace or unspecified", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-replace",
+        title: "Example",
+        url: "https://example.com",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([
+      { bookmarkId: "bm-replace" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].uid).toBe("bookmark:bm-replace");
+  });
+
+  it("inherits newTab tabMode from menuTabMode", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-menu-tab",
+        title: "Example",
+        url: "https://example.com",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ bookmarkId: "bm-menu-tab" }],
+      "newTab",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].uid).toBe("bookmark:bm-menu-tab?tab=newTab");
+  });
+
+  it("allows individual item to override menuTabMode", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-override-replace",
+        title: "Example 1",
+        url: "https://example.com/1",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ bookmarkId: "bm-override-replace", tabMode: "replace" }],
+      "newTab",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].uid).toBe("bookmark:bm-override-replace");
+  });
+
+  it("allows individual item to specify newTab when menu is replace", async () => {
+    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+      {
+        id: "bm-item-newtab",
+        title: "Example 2",
+        url: "https://example.com/2",
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ bookmarkId: "bm-item-newtab", tabMode: "newTab" }],
+      "replace",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].uid).toBe("bookmark:bm-item-newtab?tab=newTab");
   });
 });
 

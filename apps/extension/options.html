@@ -10,73 +10,83 @@
       <header class="page-header">
         <img class="page-logo" src="icons/48.png" alt="BrowseRail" width="32" height="32" />
         <h1>BrowseRail</h1>
+        <label class="language-picker">
+          <span data-i18n="language.label">Language</span>
+          <select id="language-select"></select>
+        </label>
       </header>
 
       <div id="state-card" class="state-card" data-state="disconnected">
         <div class="state-indicator"></div>
         <div class="state-info">
           <div class="state-header">
-            <span class="state-title">Desktop Widget:</span>
-            <span id="state-badge" class="state-badge">Disconnected</span>
+            <span class="state-title" data-i18n="state.desktopWidget">Desktop Widget:</span>
+            <span id="state-badge" class="state-badge" data-i18n="state.badge.disconnected">Disconnected</span>
           </div>
-          <div id="state-detail" class="state-detail">Waiting for connection…</div>
+          <div id="state-detail" class="state-detail" data-i18n="state.waiting">Waiting for connection…</div>
           <output id="resync-status" class="resync-status" aria-live="polite"></output>
         </div>
         <div class="state-actions">
-          <button id="resync-button" class="action-btn" type="button" disabled>Resync</button>
-          <button id="reconnect-button" class="action-btn reconnect-btn" type="button">Reconnect</button>
-          <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button">Disable</button>
+          <button id="resync-button" class="action-btn" type="button" data-i18n="btn.resync" disabled>Resync</button>
+          <button id="reconnect-button" class="action-btn reconnect-btn" type="button" data-i18n="btn.reconnect">Reconnect</button>
+          <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button" data-i18n="btn.disable">Disable</button>
         </div>
       </div>
 
       <form id="settings">
-        <label>
-          Instance label
-          <span class="input-row">
-            <input id="instance-label" required />
-            <button id="random-instance-label" type="button">Random</button>
-          </span>
-        </label>
-        <label id="desktop-url-field">
-          <span class="label-row">
-            <span>Desktop Widget address</span>
-            <output id="desktop-test-status" class="field-status" aria-live="polite"></output>
-          </span>
-          <span class="input-row">
-            <input
-              id="desktop-url"
-              type="url"
-              required
-              spellcheck="false"
-              placeholder="ws://127.0.0.1:17654"
-            />
-            <button id="test-desktop" type="button">Test</button>
-          </span>
-        </label>
-        <label>
-          Attach menus to
-          <select id="attachment-mode">
-            <option value="lastFocused">Last focused window</option>
-            <option value="all">All windows</option>
-          </select>
-        </label>
-        <label class="check">
-          <input id="always-on-top" type="checkbox" />
-          Always on top
-        </label>
-
-        <section>
-          <h2>Menus</h2>
+        <div class="fields-row">
+          <label>
+            <span data-i18n="form.instanceLabel">Instance label</span>
+            <span class="input-row">
+              <input id="instance-label" required />
+              <button id="random-instance-label" type="button" data-i18n="btn.random">Random</button>
+            </span>
+          </label>
+          <label id="desktop-url-field">
+            <span class="label-row">
+              <span data-i18n="form.desktopAddress">Desktop Widget address</span>
+              <output id="desktop-test-status" class="field-status" aria-live="polite"></output>
+            </span>
+            <span class="input-row">
+              <input
+                id="desktop-url"
+                type="url"
+                required
+                spellcheck="false"
+                placeholder="ws://127.0.0.1:17654"
+              />
+              <button id="test-desktop" type="button" data-i18n="btn.test">Test</button>
+            </span>
+          </label>
+        </div>
+        <section class="menus-section">
+          <h2 data-i18n="section.menus">Menus</h2>
           <div id="menus"></div>
-          <button id="add-menu" type="button">Add menu</button>
+          <div class="menus-toolbar">
+            <button id="add-menu" class="menu-action-btn add-menu-btn" type="button" data-i18n="btn.addMenu">+ Add menu</button>
+            <button type="button" id="preview-btn" class="menu-action-btn preview-btn" data-i18n="btn.preview">Preview</button>
+            <button type="button" id="export-btn" class="menu-action-btn export-btn" data-i18n="btn.export">Export</button>
+            <button type="button" id="import-btn" class="menu-action-btn import-btn" data-i18n="btn.import">Import</button>
+            <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+          </div>
         </section>
 
+        <div class="window-behavior-row">
+          <label class="attachment-mode-label">
+            <span data-i18n="form.attachTo">Attach menus to</span>
+            <select id="attachment-mode">
+              <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
+              <option value="all" data-i18n="form.attach.all">All windows</option>
+            </select>
+          </label>
+          <label class="check always-on-top-check">
+            <input id="always-on-top" type="checkbox" />
+            <span data-i18n="form.alwaysOnTop">Always on top</span>
+          </label>
+        </div>
+
         <div class="form-actions-row">
-          <button type="submit" id="save-btn" class="save-btn">Save</button>
-          <button type="button" id="preview-btn" class="preview-btn">Preview</button>
-          <button type="button" id="export-btn" class="action-btn export-btn">Export</button>
-          <button type="button" id="import-btn" class="action-btn import-btn">Import</button>
-          <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+          <button type="submit" id="save-btn" class="save-btn" data-i18n="btn.save">Save</button>
           <output id="status"></output>
         </div>
       </form>
@@ -84,12 +94,12 @@
       <!-- Diagnostics Card -->
       <section class="card debug-card">
         <div class="debug-card-row">
-          <h2 class="debug-card-title">Diagnostics</h2>
-          <label class="switch-toggle" title="Enable diagnostics logging">
+          <h2 class="debug-card-title" data-i18n="section.diagnostics">Diagnostics</h2>
+          <label class="switch-toggle" data-i18n-title="diagnostics.enableLogging" title="Enable diagnostics logging">
             <input type="checkbox" id="debug-logging-toggle" />
             <span class="switch-slider"></span>
           </label>
-          <button type="button" id="copy-debug-btn" class="action-btn">Copy JSON</button>
+          <button type="button" id="copy-debug-btn" class="action-btn" data-i18n="btn.copyJson">Copy JSON</button>
           <span id="copy-debug-status" class="debug-copy-status"></span>
         </div>
       </section>
@@ -98,68 +108,87 @@
       <div id="color-popover" class="color-popover" style="display: none;">
         <div class="color-popover-header">
           <div class="color-popover-tools">
-            <button type="button" id="popover-random-btn" class="popover-mini-btn" title="随机颜色">🎲 随机</button>
-            <button type="button" id="popover-default-btn" class="popover-mini-btn" title="重置为默认">↺ 默认</button>
+            <button type="button" id="popover-random-btn" class="popover-mini-btn" data-i18n-title="color.randomTitle" data-i18n="color.random" title="Random color">🎲 Random</button>
+            <button type="button" id="popover-default-btn" class="popover-mini-btn" data-i18n-title="color.resetTitle" data-i18n="color.default" title="Reset to default">↺ Default</button>
           </div>
-          <button type="button" id="color-popover-close" class="color-popover-close" title="关闭">✕</button>
+          <button type="button" id="color-popover-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <div class="color-popover-presets" id="color-popover-presets"></div>
         <div class="color-popover-picker-row">
-          <input type="color" id="popover-color-input" class="popover-native-input" title="自定义颜色" />
+          <input type="color" id="popover-color-input" class="popover-native-input" data-i18n-title="color.customTitle" title="Custom color" />
         </div>
       </div>
 
       <!-- Menu Settings Popover (Direction, FontSize, ButtonGap) -->
       <div id="menu-settings-popover" class="menu-settings-popover" style="display: none;">
         <div class="menu-settings-header">
-          <span id="menu-settings-title" class="menu-settings-title">Menu Settings</span>
-          <button type="button" id="menu-settings-close" class="color-popover-close" title="Close">✕</button>
+          <span id="menu-settings-title" class="menu-settings-title" data-i18n="menuSettings.title">Menu Settings</span>
+          <button type="button" id="menu-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <div class="menu-settings-body">
           <label>
-            Direction
+            <span data-i18n="menuSettings.direction">Direction</span>
             <select id="menu-setting-orientation">
-              <option value="row">Row (Horizontal)</option>
-              <option value="column">Column (Vertical)</option>
+              <option value="row" data-i18n="menuSettings.row">Row (Horizontal)</option>
+              <option value="column" data-i18n="menuSettings.column">Column (Vertical)</option>
             </select>
           </label>
           <label>
-            Font size (px)
+            <span data-i18n="menuSettings.fontSize">Font size (px)</span>
             <input id="menu-setting-font-size" type="number" min="8" max="48" step="1" />
           </label>
           <label>
-            Button gap (% of button size)
+            <span data-i18n="menuSettings.gap">Button gap (% of button size)</span>
             <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
           </label>
+          <label>
+            <span data-i18n="menuSettings.openIn">Open in</span>
+            <select id="menu-setting-tab-mode">
+              <option value="replace" data-i18n="menuSettings.replaceTab">Replace current tab</option>
+              <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
+            </select>
+          </label>
+          <div class="menu-setting-color-row">
+            <span class="menu-setting-color-label" data-i18n="menuSettings.defaultColor">Default color</span>
+            <button type="button" id="menu-setting-color-swatch" class="item-color-swatch" data-i18n-title="menuSettings.defaultColorSwatchTitle" title="Menu default color"></button>
+          </div>
         </div>
       </div>
 
       <!-- Item Settings Popover -->
       <div id="item-settings-popover" class="item-settings-popover" style="display: none;">
         <div class="item-settings-header">
-          <span id="item-settings-title" class="item-settings-title">Item Settings</span>
-          <button type="button" id="item-settings-close" class="color-popover-close" title="Close">✕</button>
+          <span id="item-settings-title" class="item-settings-title" data-i18n="itemSettings.title">Item Settings</span>
+          <button type="button" id="item-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <div class="item-settings-body">
           <div class="item-setting-field">
-            <span class="item-setting-field-title">重命名 (Rename)</span>
+            <span class="item-setting-field-title" data-i18n="itemSettings.rename">Rename</span>
             <div class="item-setting-rename-row">
-              <input type="text" id="item-setting-rename" class="item-setting-rename-input" placeholder="自定义名称或 Emoji (例如: 🚀, GH)" maxlength="30" />
-              <button type="button" id="item-setting-clear-rename" class="action-btn item-setting-clear-btn" title="清除重命名">✕</button>
+              <input type="text" id="item-setting-rename" class="item-setting-rename-input" data-i18n-ph="itemSettings.renamePlaceholder" placeholder="Custom name or Emoji (e.g. 🚀, GH)" maxlength="30" />
+              <button type="button" id="item-setting-clear-rename" class="action-btn item-setting-clear-btn" data-i18n-title="itemSettings.clearRename" title="Clear rename">✕</button>
             </div>
+          </div>
+          <div class="item-setting-field">
+            <span class="item-setting-field-title" data-i18n="itemSettings.openMode">Open mode</span>
+            <select id="item-setting-tab-mode" class="item-setting-select">
+              <option value="" data-i18n="itemSettings.inherit">Inherit menu setting (default)</option>
+              <option value="replace" data-i18n="itemSettings.replaceTab">Replace current tab</option>
+              <option value="newTab" data-i18n="itemSettings.newTab">New tab</option>
+            </select>
           </div>
           <div id="item-settings-folder-controls" class="item-settings-folder-controls">
             <label class="item-setting-check-label">
               <input type="checkbox" id="item-setting-flatten" />
-              <span>摊平文件夹</span>
+              <span data-i18n="itemSettings.flatten">Flatten folder</span>
             </label>
             <label class="item-setting-check-label" id="item-setting-hover-expand-label">
               <input type="checkbox" id="item-setting-hover-expand" checked />
-              <span>Hover 展开</span>
+              <span data-i18n="itemSettings.hoverExpand">Expand on hover</span>
             </label>
           </div>
           <div class="item-settings-actions">
-            <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn">更换书签/目录…</button>
+            <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
           </div>
         </div>
       </div>
@@ -167,11 +196,11 @@
       <dialog id="bookmark-picker-dialog" class="picker-modal">
         <div class="picker-modal-inner">
           <div class="picker-header">
-            <h3 id="picker-title">Select from Bookmarks</h3>
-            <button id="picker-close-btn" class="picker-close-btn" type="button" aria-label="Close">✕</button>
+            <h3 id="picker-title" data-i18n="picker.title">Select from Bookmarks</h3>
+            <button id="picker-close-btn" class="picker-close-btn" type="button" data-i18n-aria="common.close" aria-label="Close">✕</button>
           </div>
           <div class="picker-nav">
-            <button id="picker-up-btn" class="action-btn picker-up-btn" type="button">⬆ Up</button>
+            <button id="picker-up-btn" class="action-btn picker-up-btn" type="button" data-i18n="picker.up">⬆ Up</button>
             <div id="picker-breadcrumbs" class="picker-breadcrumbs"></div>
           </div>
           <div class="picker-content" id="picker-content"></div>
@@ -181,13 +210,13 @@
               <button id="picker-custom-btn" class="action-btn" type="button" style="display: none;"></button>
               <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
                 <input type="checkbox" id="picker-flatten-checkbox" />
-                <span>摊平文件夹</span>
+                <span data-i18n="picker.flatten">Flatten folder</span>
               </label>
               <label id="picker-hover-expand-label" class="picker-flatten-check" style="display: none;">
                 <input type="checkbox" id="picker-hover-expand-checkbox" checked />
-                <span>Hover 展开</span>
+                <span data-i18n="picker.hoverExpand">Expand on hover</span>
               </label>
-              <button id="picker-confirm-btn" type="button" class="picker-confirm-btn">Add</button>
+              <button id="picker-confirm-btn" type="button" class="picker-confirm-btn" data-i18n="picker.add">Add</button>
             </div>
           </div>
         </div>

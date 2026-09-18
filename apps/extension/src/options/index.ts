@@ -20,6 +20,15 @@ import {
 import { type BookmarkNode, extractLeadingEmoji, findBookmarkNodeByPath } from "../bookmarks";
 import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
+import {
+  applyStaticI18n,
+  getLanguage,
+  type Lang,
+  LANGUAGES,
+  onLanguageChange,
+  saveLanguage,
+  t,
+} from "@browserail/i18n";
 
 import "./styles.css";
 
@@ -78,6 +87,7 @@ const status = element<HTMLOutputElement>("status");
 const reconnectButton = element<HTMLButtonElement>("reconnect-button");
 const resyncButton = element<HTMLButtonElement>("resync-button");
 const resyncStatus = element<HTMLOutputElement>("resync-status");
+const languageSelect = element<HTMLSelectElement>("language-select");
 
 // Dialog elements
 const pickerDialog = element<HTMLDialogElement>("bookmark-picker-dialog");
@@ -109,6 +119,8 @@ const menuSettingsClose = element<HTMLButtonElement>("menu-settings-close");
 const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientation");
 const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
+const menuSettingTabMode = element<HTMLSelectElement>("menu-setting-tab-mode");
+const menuSettingColorSwatch = element<HTMLButtonElement>("menu-setting-color-swatch");
 
 // Item settings popover elements
 const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
@@ -117,6 +129,7 @@ const itemSettingsClose = element<HTMLButtonElement>("item-settings-close");
 const itemSettingsFolderControls = element<HTMLDivElement>("item-settings-folder-controls");
 const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
 const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
+const itemSettingTabMode = element<HTMLSelectElement>("item-setting-tab-mode");
 const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
 const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hover-expand-label");
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
@@ -131,7 +144,7 @@ let bookmarkLabels = new Map<string, string>();
 let desktopTestGeneration = 0;
 
 // Popover state
-let activeColorItem: StoredMenuItem | null = null;
+let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
 let activeColorSwatchElement: HTMLElement | null = null;
 
 let activeSettingsMenuIndex = -1;
@@ -215,9 +228,9 @@ toggleEnabledButton.addEventListener("click", () => {
   widgetEnabled = !widgetEnabled;
   updateDesktopControls();
   if (!widgetEnabled) {
-    renderDesktopState("disabled", "Connection disabled");
+    renderDesktopState("disabled", t("state.detail.disabledConnection"));
   } else {
-    renderDesktopState("connecting", "Connecting to Desktop Widget…");
+    renderDesktopState("connecting", t("state.detail.connectingToWidget"));
   }
   void saveWidgetEnabled(widgetEnabled);
   void browser.runtime.sendMessage({ type: "setWidgetEnabled", enabled: widgetEnabled });
@@ -360,17 +373,17 @@ function openBookmarkPicker(
   pickerHoverExpandLabel.style.display = "none";
 
   if (mode === "addMenu") {
-    pickerTitle.textContent = "Add Menu from Bookmarks";
-    pickerConfirmBtn.textContent = "Add as Menu";
-    pickerCustomBtn.textContent = "Create Empty Menu";
+    pickerTitle.textContent = t("picker.addMenuTitle");
+    pickerConfirmBtn.textContent = t("picker.addAsMenu");
+    pickerCustomBtn.textContent = t("picker.createEmptyMenu");
     pickerCustomBtn.style.display = "inline-block";
   } else if (mode === "editItem") {
-    pickerTitle.textContent = "Change Bookmark / Folder";
-    pickerConfirmBtn.textContent = "Apply";
+    pickerTitle.textContent = t("picker.changeTitle");
+    pickerConfirmBtn.textContent = t("picker.apply");
     pickerCustomBtn.style.display = "none";
   } else {
-    pickerTitle.textContent = `Add Item to Menu ${menuIndex + 1}`;
-    pickerConfirmBtn.textContent = "Add to Menu";
+    pickerTitle.textContent = t("picker.addItemTitle", { n: menuIndex + 1 });
+    pickerConfirmBtn.textContent = t("picker.addToMenu");
     pickerCustomBtn.style.display = "none";
   }
 
@@ -465,7 +478,7 @@ function renderPicker(): void {
       const isCurrent = index === currentPath.length - 1;
       const span = document.createElement("span");
       span.className = `picker-crumb ${isCurrent ? "current" : ""}`;
-      span.textContent = node.title || (node.id === "0" ? "Bookmarks" : "Folder");
+      span.textContent = node.title || (node.id === "0" ? t("common.bookmarks") : t("common.folder"));
       if (!isCurrent) {
         span.addEventListener("click", () => {
           pickerCurrentFolderId = node.id;
@@ -495,7 +508,7 @@ function renderPicker(): void {
     empty.style.padding = "24px";
     empty.style.textAlign = "center";
     empty.style.color = "#64748b";
-    empty.textContent = "This folder is empty";
+    empty.textContent = t("picker.emptyFolder");
     pickerContent.appendChild(empty);
   } else {
     for (const node of items) {
@@ -510,7 +523,7 @@ function renderPicker(): void {
 
       const titleSpan = document.createElement("span");
       titleSpan.className = "picker-item-title";
-      titleSpan.textContent = node.title || (isFolder ? "Folder" : node.url || "Untitled");
+      titleSpan.textContent = node.title || (isFolder ? t("common.folder") : node.url || t("common.untitled"));
       if (node.url) {
         titleSpan.title = node.url;
       }
@@ -524,7 +537,7 @@ function renderPicker(): void {
         const openBtn = document.createElement("button");
         openBtn.type = "button";
         openBtn.className = "picker-item-open-btn";
-        openBtn.textContent = "Open ❯";
+        openBtn.textContent = t("picker.open");
         openBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           pickerCurrentFolderId = node.id;
@@ -568,21 +581,27 @@ function updateSelectedInfo(): void {
       pickerHoverExpandLabel.style.display = "inline-flex";
       const isFlatten = pickerFlattenCheckbox.checked;
       const isHover = pickerHoverExpandCheckbox.checked;
-      const hoverHint = !isFlatten ? (isHover ? " [Hover展开]" : " [点击展开]") : "";
-      pickerSelectedInfo.textContent = `Selected: 📁 ${isFlatten ? "[摊平] " : ""}${selectedNode?.title || "Folder"}${hoverHint}`;
+      const hoverHint = !isFlatten ? (isHover ? t("picker.hintHover") : t("picker.hintClick")) : "";
+      pickerSelectedInfo.textContent = t("picker.selectedFolder", {
+        flatten: isFlatten ? t("picker.flattenTag") : "",
+        name: selectedNode?.title || t("common.folder"),
+        hint: hoverHint,
+      });
     } else {
       pickerFlattenLabel.style.display = "none";
       pickerHoverExpandLabel.style.display = "none";
       pickerFlattenCheckbox.checked = false;
       pickerHoverExpandCheckbox.checked = true;
       pickerHoverExpandCheckbox.disabled = false;
-      pickerSelectedInfo.textContent = `Selected: 🔖 ${selectedNode?.title || "Bookmark"}`;
+      pickerSelectedInfo.textContent = t("picker.selectedBookmark", {
+        name: selectedNode?.title || t("common.bookmark"),
+      });
     }
     pickerConfirmBtn.disabled = false;
   } else {
     pickerFlattenLabel.style.display = "none";
     pickerHoverExpandLabel.style.display = "none";
-    pickerSelectedInfo.textContent = "Select a bookmark or folder";
+    pickerSelectedInfo.textContent = t("picker.selectHint");
     pickerConfirmBtn.disabled = true;
   }
 }
@@ -614,7 +633,7 @@ function setResyncStatus(state: "pending" | "success" | "error", message: string
 
 async function manualReconnect(): Promise<void> {
   clearResyncStatus();
-  renderDesktopState("connecting", "Reconnecting to Desktop Widget…");
+  renderDesktopState("connecting", t("state.detail.reconnectingToWidget"));
   try {
     await browser.runtime.sendMessage({ type: "manualReconnect" });
   } catch {
@@ -625,24 +644,24 @@ async function manualReconnect(): Promise<void> {
 async function resyncDesktopWindows(): Promise<void> {
   clearResyncStatus();
   resyncButton.disabled = true;
-  resyncButton.textContent = "Resyncing…";
-  setResyncStatus("pending", "Closing and rebuilding windows…");
+  resyncButton.textContent = t("resync.resyncing");
+  setResyncStatus("pending", t("resync.closingRebuilding"));
   try {
     const result = (await browser.runtime.sendMessage({ type: "resyncWindows" })) as
       | { ok?: boolean; message?: string }
       | undefined;
-    setResyncStatus(result?.ok ? "success" : "error", result?.message ?? "Resync failed", 3500);
+    setResyncStatus(result?.ok ? "success" : "error", result?.message ?? t("resync.failed"), 3500);
   } catch {
-    setResyncStatus("error", "Background is unavailable", 3500);
+    setResyncStatus("error", t("resync.backgroundUnavailable"), 3500);
   } finally {
-    resyncButton.textContent = "Resync";
+    resyncButton.textContent = t("btn.resync");
     resyncButton.disabled = stateCard.dataset.state !== "connected";
   }
 }
 
 function renderDesktopState(state: string, detail?: string): void {
   stateCard.dataset.state = state;
-  stateBadge.textContent = state;
+  stateBadge.textContent = badgeLabel(state);
   stateDetail.textContent = detail || defaultDetailForState(state);
   resyncButton.disabled = state !== "connected";
   if (state !== "connected") {
@@ -650,23 +669,38 @@ function renderDesktopState(state: string, detail?: string): void {
   }
 }
 
+const KNOWN_STATES = [
+  "connected",
+  "connecting",
+  "syncing",
+  "handshaking",
+  "reconnecting",
+  "disconnected",
+  "disabled",
+] as const;
+
+function badgeLabel(state: string): string {
+  const known = KNOWN_STATES.find((s) => s === state);
+  return known ? t(`state.badge.${known}`) : state;
+}
+
 function defaultDetailForState(state: string): string {
   switch (state) {
     case "connected":
-      return "Connected and synchronized with Desktop Widget";
+      return t("state.detail.connected");
     case "syncing":
-      return "Synchronizing menu layouts with Desktop Widget…";
+      return t("state.detail.syncing");
     case "connecting":
-      return "Attempting to connect to Desktop Widget…";
+      return t("state.detail.connecting");
     case "handshaking":
-      return "Verifying protocol handshake with Desktop Widget…";
+      return t("state.detail.handshaking");
     case "reconnecting":
-      return "Connection lost, retrying…";
+      return t("state.detail.reconnecting");
     case "disabled":
-      return "Desktop connection is disabled in settings";
+      return t("state.detail.disabled");
     case "disconnected":
     default:
-      return "Not connected to Desktop Widget";
+      return t("state.detail.disconnected");
   }
 }
 
@@ -683,7 +717,40 @@ async function refreshDesktopState(): Promise<void> {
   }
 }
 
+function initLanguagePicker(): void {
+  languageSelect.replaceChildren(
+    ...LANGUAGES.map((lang) => {
+      const opt = document.createElement("option");
+      opt.value = lang;
+      opt.textContent = lang === "zh-CN" ? t("language.zhCN") : t("language.en");
+      return opt;
+    }),
+  );
+  languageSelect.value = getLanguage();
+  languageSelect.addEventListener("change", () => {
+    void saveLanguage(languageSelect.value as Lang);
+  });
+}
+
+/** Re-apply translations to everything on screen after a language change. */
+function rerenderForLanguage(): void {
+  applyStaticI18n();
+  for (const opt of languageSelect.options) {
+    opt.textContent = opt.value === "zh-CN" ? t("language.zhCN") : t("language.en");
+  }
+  languageSelect.value = getLanguage();
+  renderMenus();
+  updateDesktopControls();
+  renderDesktopState(stateCard.dataset.state ?? "disconnected");
+  if (pickerDialog.open) {
+    updateSelectedInfo();
+  }
+}
+
 async function initialize(): Promise<void> {
+  applyStaticI18n();
+  initLanguagePicker();
+  onLanguageChange(rerenderForLanguage);
   initColorPopover();
   initMenuSettingsPopover();
   initItemSettingsPopover();
@@ -710,7 +777,7 @@ async function initialize(): Promise<void> {
 
 async function persist(): Promise<void> {
   if (!isLocalDesktopUrl(desktopUrl.value)) {
-    desktopUrl.setCustomValidity("Use a ws:// localhost address");
+    desktopUrl.setCustomValidity(t("validation.localWsAddress"));
     desktopUrl.reportValidity();
     return;
   }
@@ -733,9 +800,10 @@ async function persist(): Promise<void> {
   });
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearDirty();
-  status.value = "Saved";
+  const savedMsg = t("status.saved");
+  status.value = savedMsg;
   setTimeout(() => {
-    if (status.value === "Saved") {
+    if (status.value === savedMsg) {
       status.value = "";
     }
   }, 1_500);
@@ -756,24 +824,26 @@ async function previewCurrentConfig(): Promise<void> {
 
   try {
     previewBtn.disabled = true;
-    status.value = "Updating preview on desktop…";
+    status.value = t("preview.updating");
     const result = (await browser.runtime.sendMessage({
       type: "previewConfig",
       config: previewConfig,
     })) as { ok?: boolean; message?: string } | undefined;
 
+    let previewingMsg = "";
     if (result?.ok) {
-      status.value = "Previewing styles on desktop (live preview, unsaved)";
+      previewingMsg = t("preview.active");
+      status.value = previewingMsg;
     } else {
-      status.value = `Preview failed: ${result?.message ?? "Desktop unavailable"}`;
+      status.value = t("preview.failed", { message: result?.message ?? t("preview.desktopUnavailable") });
     }
     setTimeout(() => {
-      if (status.value.startsWith("Previewing styles on desktop")) {
+      if (previewingMsg && status.value === previewingMsg) {
         status.value = "";
       }
     }, 3_500);
   } catch (err) {
-    status.value = `Preview failed: ${String(err)}`;
+    status.value = t("preview.failed", { message: String(err) });
   } finally {
     previewBtn.disabled = false;
   }
@@ -805,8 +875,8 @@ function initColorPopover(): void {
   });
 
   popoverDefaultBtn.addEventListener("click", () => {
-    if (!activeColorItem || !activeColorSwatchElement) return;
-    delete activeColorItem.color;
+    if (!activeColorTarget || !activeColorSwatchElement) return;
+    delete activeColorTarget.color;
     popoverColorInput.value = "#3b82f6";
     updateSwatchAppearance(activeColorSwatchElement, undefined);
     markDirty();
@@ -833,8 +903,8 @@ function initColorPopover(): void {
 }
 
 function setColor(color: string): void {
-  if (!activeColorItem || !activeColorSwatchElement) return;
-  activeColorItem.color = color;
+  if (!activeColorTarget || !activeColorSwatchElement) return;
+  activeColorTarget.color = color;
   popoverColorInput.value = color;
   updateSwatchAppearance(activeColorSwatchElement, color);
   markDirty();
@@ -845,24 +915,24 @@ function updateSwatchAppearance(swatch: HTMLElement, color?: string): void {
     swatch.style.backgroundColor = color;
     swatch.style.borderColor = color;
     swatch.classList.remove("has-no-color");
-    swatch.title = `Color: ${color} (Click to change)`;
+    swatch.title = t("color.swatchSet", { color });
   } else {
     swatch.style.backgroundColor = "transparent";
     swatch.style.borderColor = "#cbd5e1";
     swatch.classList.add("has-no-color");
-    swatch.title = "Click to pick color";
+    swatch.title = t("color.swatchEmpty");
   }
 }
 
-function openColorPopover(item: StoredMenuItem, swatchElement: HTMLElement): void {
-  if (activeColorItem === item && colorPopover.style.display !== "none") {
+function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HTMLElement): void {
+  if (activeColorTarget === target && colorPopover.style.display !== "none") {
     closeColorPopover();
     return;
   }
-  activeColorItem = item;
+  activeColorTarget = target;
   activeColorSwatchElement = swatchElement;
 
-  const currentColor = item.color || "#3b82f6";
+  const currentColor = target.color || "#3b82f6";
   popoverColorInput.value = currentColor;
 
   const rect = swatchElement.getBoundingClientRect();
@@ -883,8 +953,11 @@ function openColorPopover(item: StoredMenuItem, swatchElement: HTMLElement): voi
 
 function closeColorPopover(): void {
   colorPopover.style.display = "none";
-  activeColorItem = null;
+  activeColorTarget = null;
   activeColorSwatchElement = null;
+  if (activeSettingsMenuIndex < 0 && !activeItemSettings) {
+    renderMenus();
+  }
 }
 
 function initMenuSettingsPopover(): void {
@@ -916,12 +989,30 @@ function initMenuSettingsPopover(): void {
     }
   });
 
+  menuSettingTabMode.addEventListener("change", () => {
+    const menu = menus[activeSettingsMenuIndex];
+    if (menu) {
+      menu.tabMode = menuSettingTabMode.value === "newTab" ? "newTab" : "replace";
+      renderMenus();
+      markDirty();
+    }
+  });
+
+  menuSettingColorSwatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const menu = menus[activeSettingsMenuIndex];
+    if (menu) {
+      openColorPopover(menu, menuSettingColorSwatch);
+    }
+  });
+
   document.addEventListener("click", (e) => {
     if (menuSettingsPopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
       target &&
       !menuSettingsPopover.contains(target) &&
+      !colorPopover.contains(target) &&
       activeSettingsBtn &&
       !activeSettingsBtn.contains(target)
     ) {
@@ -950,10 +1041,12 @@ function openMenuSettingsPopover(menuIndex: number, btnElement: HTMLElement): vo
   const fs = menu.fontSize !== undefined ? normalizeFontSize(menu.fontSize) : DEFAULT_FONT_SIZE;
   const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
 
-  menuSettingsTitle.textContent = `Menu ${menuIndex + 1} Settings`;
+  menuSettingsTitle.textContent = t("menuSettings.menuTitle", { n: menuIndex + 1 });
   menuSettingOrientation.value = menu.orientation;
   menuSettingFontSize.value = String(fs);
   menuSettingGap.value = String(gapVal);
+  menuSettingTabMode.value = menu.tabMode ?? "replace";
+  updateSwatchAppearance(menuSettingColorSwatch, menu.color);
 
   const rect = btnElement.getBoundingClientRect();
   const popoverWidth = 240;
@@ -975,6 +1068,7 @@ function closeMenuSettingsPopover(): void {
   menuSettingsPopover.style.display = "none";
   activeSettingsMenuIndex = -1;
   activeSettingsBtn = null;
+  renderMenus();
 }
 
 function initItemSettingsPopover(): void {
@@ -1007,6 +1101,22 @@ function initItemSettingsPopover(): void {
     itemSettingRename.value = "";
     delete item.rename;
     delete item.emoji;
+    renderMenus();
+    markDirty();
+  });
+
+  itemSettingTabMode.addEventListener("change", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item) return;
+
+    const val = itemSettingTabMode.value;
+    if (val === "newTab" || val === "replace") {
+      item.tabMode = val;
+    } else {
+      delete item.tabMode;
+    }
     renderMenus();
     markDirty();
   });
@@ -1102,6 +1212,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
   const rawLabel = bookmarkLabels.get(item.bookmarkId) ?? node?.title ?? item.bookmarkId;
   itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
   itemSettingRename.value = item.rename ?? item.emoji ?? "";
+  itemSettingTabMode.value = item.tabMode ?? "";
 
   if (isFolder) {
     itemSettingsFolderControls.style.display = "flex";
@@ -1150,7 +1261,7 @@ function renderMenus(): void {
 
       const header = document.createElement("header");
       const title = document.createElement("strong");
-      title.textContent = `Menu ${menuIndex + 1}`;
+      title.textContent = t("menu.title", { n: menuIndex + 1 });
 
       const headerActions = document.createElement("div");
       headerActions.className = "menu-header-actions";
@@ -1158,29 +1269,45 @@ function renderMenus(): void {
       const settingsBtn = document.createElement("button");
       settingsBtn.type = "button";
       settingsBtn.className = "action-btn menu-settings-btn";
-      settingsBtn.textContent = "⚙️ Settings";
-      settingsBtn.title = "Configure Direction, Font size, Button gap";
+      settingsBtn.textContent = t("menu.settings");
+      settingsBtn.title = t("menu.settingsTitle");
       settingsBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         openMenuSettingsPopover(menuIndex, settingsBtn);
       });
 
-      const removeMenu = actionButton("Remove menu", () => {
+      // Menu default color swatch button
+      const menuColorSwatch = document.createElement("button");
+      menuColorSwatch.type = "button";
+      menuColorSwatch.className = `item-color-swatch menu-color-swatch ${!menu.color ? "has-no-color" : ""}`;
+      menuColorSwatch.title = menu.color
+        ? t("menu.colorSwatchSet", { color: menu.color })
+        : t("menu.colorSwatchEmpty");
+      updateSwatchAppearance(menuColorSwatch, menu.color);
+      menuColorSwatch.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openColorPopover(menu, menuColorSwatch);
+      });
+
+      const removeMenu = actionButton(t("menu.removeMenu"), () => {
         if (activeSettingsMenuIndex === menuIndex) {
           closeMenuSettingsPopover();
+        }
+        if (activeColorTarget === menu) {
+          closeColorPopover();
         }
         menus.splice(menuIndex, 1);
         renderMenus();
         markDirty();
       });
 
-      const addItem = actionButton("+ Add item", () => {
+      const addItem = actionButton(t("menu.addItem"), () => {
         openBookmarkPicker("addItem", menuIndex);
       });
       addItem.style.fontWeight = "600";
       addItem.style.color = "#2563eb";
 
-      headerActions.append(settingsBtn, removeMenu, addItem);
+      headerActions.append(settingsBtn, menuColorSwatch, removeMenu, addItem);
       header.append(title, headerActions);
 
       const items = document.createElement("ol");
@@ -1216,13 +1343,28 @@ function renderMenus(): void {
           if (customRename) {
             const renameBadge = document.createElement("span");
             renameBadge.className = "item-tag item-tag-rename";
-            renameBadge.textContent = `Rename: ${customRename}`;
-            renameBadge.title = `自定义重命名: ${customRename} (点击修改配置)`;
+            renameBadge.textContent = t("item.renameBadge", { name: customRename });
+            renameBadge.title = t("item.renameBadgeTitle", { name: customRename });
             renameBadge.addEventListener("click", (e) => {
               e.stopPropagation();
               openItemSettingsPopover(menuIndex, itemIndex, renameBadge);
             });
             label.appendChild(renameBadge);
+          }
+
+          if (item.tabMode) {
+            const tabBadge = document.createElement("span");
+            tabBadge.className = "item-tag item-tag-tab-mode";
+            tabBadge.textContent =
+              item.tabMode === "newTab" ? t("item.tabBadgeNew") : t("item.tabBadgeReplace");
+            tabBadge.title = t("item.tabBadgeTitle", {
+              mode: item.tabMode === "newTab" ? t("itemSettings.newTab") : t("itemSettings.replaceTab"),
+            });
+            tabBadge.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openItemSettingsPopover(menuIndex, itemIndex, tabBadge);
+            });
+            label.appendChild(tabBadge);
           }
 
           if (isFlatten) {
@@ -1231,8 +1373,8 @@ function renderMenus(): void {
             const childCount = node?.children
               ? node.children.filter((c) => c.url !== undefined).length
               : 0;
-            badge.textContent = `摊平 (${childCount})`;
-            badge.title = `第一层展开为 ${childCount} 个独立按钮 (点击修改配置)`;
+            badge.textContent = t("item.flattenBadge", { count: childCount });
+            badge.title = t("item.flattenBadgeTitle", { count: childCount });
             badge.addEventListener("click", (e) => {
               e.stopPropagation();
               openItemSettingsPopover(menuIndex, itemIndex, badge);
@@ -1241,8 +1383,8 @@ function renderMenus(): void {
           } else if (isFolder) {
             const badge = document.createElement("span");
             badge.className = "item-tag item-tag-folder";
-            badge.textContent = "目录";
-            badge.title = "树状折叠菜单 (点击修改配置)";
+            badge.textContent = t("item.folderBadge");
+            badge.title = t("item.folderBadgeTitle");
             badge.addEventListener("click", (e) => {
               e.stopPropagation();
               openItemSettingsPopover(menuIndex, itemIndex, badge);
@@ -1252,8 +1394,8 @@ function renderMenus(): void {
             const isHover = item.expandOnHover !== false;
             const hoverBadge = document.createElement("span");
             hoverBadge.className = `item-tag ${isHover ? "item-tag-hover" : "item-tag-click"}`;
-            hoverBadge.textContent = isHover ? "Hover展开" : "点击展开";
-            hoverBadge.title = isHover ? "鼠标悬停展开 (点击修改配置)" : "点击才展开 (点击修改配置)";
+            hoverBadge.textContent = isHover ? t("item.hoverBadge") : t("item.clickBadge");
+            hoverBadge.title = isHover ? t("item.hoverBadgeTitle") : t("item.clickBadgeTitle");
             hoverBadge.addEventListener("click", (e) => {
               e.stopPropagation();
               openItemSettingsPopover(menuIndex, itemIndex, hoverBadge);
@@ -1268,7 +1410,7 @@ function renderMenus(): void {
           const dragHandleBtn = document.createElement("button");
           dragHandleBtn.type = "button";
           dragHandleBtn.className = "drag-handle-btn";
-          dragHandleBtn.title = "拖拽调整顺序 (Drag to reorder)";
+          dragHandleBtn.title = t("item.dragHandleTitle");
           dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
 
           dragHandleBtn.addEventListener("mousedown", () => {
@@ -1345,7 +1487,7 @@ function renderMenus(): void {
           const settingsBtn = document.createElement("button");
           settingsBtn.type = "button";
           settingsBtn.className = "item-settings-btn";
-          settingsBtn.title = "配置书签/目录 (Configure item)";
+          settingsBtn.title = t("item.settingsTitle");
           settingsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
           settingsBtn.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -1357,6 +1499,9 @@ function renderMenus(): void {
           swatch.type = "button";
           swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
           updateSwatchAppearance(swatch, item.color);
+          if (!item.color && menu.color) {
+            swatch.title = t("item.followMenuColor", { color: menu.color });
+          }
           swatch.addEventListener("click", (e) => {
             e.stopPropagation();
             openColorPopover(item, swatch);
@@ -1366,10 +1511,10 @@ function renderMenus(): void {
           const removeBtn = document.createElement("button");
           removeBtn.type = "button";
           removeBtn.className = "remove-item-btn";
-          removeBtn.title = "Remove item";
+          removeBtn.title = t("menu.removeItem");
           removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
           removeBtn.addEventListener("click", () => {
-            if (activeColorItem === item) {
+            if (activeColorTarget === item) {
               closeColorPopover();
             }
             if (
@@ -1397,14 +1542,14 @@ function renderMenus(): void {
 }
 
 function updateDesktopControls(): void {
-  toggleEnabledButton.textContent = widgetEnabled ? "Disable" : "Enable";
+  toggleEnabledButton.textContent = widgetEnabled ? t("btn.disable") : t("btn.enable");
   toggleEnabledButton.dataset.action = widgetEnabled ? "disable" : "enable";
 }
 
 async function testDesktopAddress(): Promise<void> {
   const generation = ++desktopTestGeneration;
   const url = desktopUrl.value;
-  setDesktopTestStatus("Connecting…", "pending");
+  setDesktopTestStatus(t("test.connecting"), "pending");
   await new Promise((resolve) => setTimeout(resolve, 500));
   if (generation !== desktopTestGeneration) {
     return;
@@ -1412,12 +1557,12 @@ async function testDesktopAddress(): Promise<void> {
   try {
     await probeDesktopConnection(url);
     if (generation === desktopTestGeneration && desktopUrl.value === url) {
-      setDesktopTestStatus("Connected", "success");
+      setDesktopTestStatus(t("test.connected"), "success");
     }
   } catch (error) {
     if (generation === desktopTestGeneration && desktopUrl.value === url) {
       setDesktopTestStatus(
-        error instanceof Error ? error.message : "Connection failed",
+        error instanceof Error ? error.message : t("test.connectionFailed"),
         "error",
       );
     }
@@ -1451,7 +1596,7 @@ function flattenBookmarks(
   depth = 0,
 ): BookmarkOption[] {
   return nodes.flatMap((node) => {
-    const current = node.id === "0" ? [] : [{ id: node.id, label: `${"  ".repeat(depth)}${node.title || "Bookmarks"}` }];
+    const current = node.id === "0" ? [] : [{ id: node.id, label: `${"  ".repeat(depth)}${node.title || t("common.bookmarks")}` }];
     return [...current, ...flattenBookmarks(node.children ?? [], depth + 1)];
   });
 }
@@ -1466,9 +1611,10 @@ function element<T extends HTMLElement>(id: string): T {
 
 function exportSettings(): void {
   if (isDirty) {
-    status.value = "请先保存配置后再导出 (Please save settings before exporting)";
+    const msg = t("export.saveFirst");
+    status.value = msg;
     setTimeout(() => {
-      if (status.value.includes("请先保存配置")) {
+      if (status.value === msg) {
         status.value = "";
       }
     }, 3_000);
@@ -1510,9 +1656,10 @@ function exportSettings(): void {
   document.body.removeChild(a);
   URL.revokeObjectURL(downloadUrl);
 
-  status.value = "Settings exported";
+  const exportedMsg = t("export.exported");
+  status.value = exportedMsg;
   setTimeout(() => {
-    if (status.value === "Settings exported") {
+    if (status.value === exportedMsg) {
       status.value = "";
     }
   }, 2_500);
@@ -1523,7 +1670,7 @@ async function importSettings(file: File): Promise<void> {
     const text = await file.text();
     const parsed = JSON.parse(text) as unknown;
     if (typeof parsed !== "object" || parsed === null) {
-      status.value = "Import failed: Invalid JSON structure";
+      status.value = t("import.invalidJson");
       return;
     }
 
@@ -1570,14 +1717,15 @@ async function importSettings(file: File): Promise<void> {
     renderMenus();
 
     await persist();
-    status.value = "Settings imported and saved";
+    const importedMsg = t("import.savedOk");
+    status.value = importedMsg;
     setTimeout(() => {
-      if (status.value === "Settings imported and saved") {
+      if (status.value === importedMsg) {
         status.value = "";
       }
     }, 3_000);
   } catch (err) {
-    status.value = `Import failed: ${String(err)}`;
+    status.value = t("import.failed", { error: String(err) });
   }
 }
 
@@ -1588,7 +1736,7 @@ exportBtn.addEventListener("click", () => {
 importBtn.addEventListener("click", () => {
   if (
     isDirty &&
-    !window.confirm("You have unsaved changes. Are you sure you want to import and overwrite them?")
+    !window.confirm(t("import.confirmOverwrite"))
   ) {
     return;
   }
@@ -1620,23 +1768,24 @@ debugLoggingToggle?.addEventListener("change", async () => {
     await browser.storage.local.set({ debugLoggingEnabled: enabled });
     await browser.runtime.sendMessage({ type: "setDebugLogging", enabled }).catch(() => {});
     if (copyDebugStatus) {
-      copyDebugStatus.textContent = enabled ? "调试日志已启用" : "调试日志已关闭";
+      const msg = enabled ? t("diagnostics.loggingEnabled") : t("diagnostics.loggingDisabled");
+      copyDebugStatus.textContent = msg;
       setTimeout(() => {
-        if (copyDebugStatus.textContent?.startsWith("调试日志")) {
+        if (copyDebugStatus.textContent === msg) {
           copyDebugStatus.textContent = "";
         }
       }, 2500);
     }
   } catch (err) {
     if (copyDebugStatus) {
-      copyDebugStatus.textContent = `设置失败: ${String(err)}`;
+      copyDebugStatus.textContent = t("diagnostics.setFailed", { error: String(err) });
     }
   }
 });
 
 copyDebugBtn?.addEventListener("click", async () => {
   if (copyDebugBtn) copyDebugBtn.disabled = true;
-  if (copyDebugStatus) copyDebugStatus.textContent = "正在收集调试信息...";
+  if (copyDebugStatus) copyDebugStatus.textContent = t("diagnostics.collecting");
 
   try {
     const extInfo = await browser.runtime
@@ -1686,16 +1835,17 @@ copyDebugBtn?.addEventListener("click", async () => {
     }
 
     if (copyDebugStatus) {
-      copyDebugStatus.textContent = copied ? "已复制 JSON 到剪贴板！" : "复制失败，请手动授予剪贴板权限";
+      const msg = copied ? t("diagnostics.copied") : t("diagnostics.copyFailed");
+      copyDebugStatus.textContent = msg;
       setTimeout(() => {
-        if (copyDebugStatus.textContent?.startsWith("已复制")) {
+        if (copyDebugStatus.textContent === msg) {
           copyDebugStatus.textContent = "";
         }
       }, 3000);
     }
   } catch (err) {
     if (copyDebugStatus) {
-      copyDebugStatus.textContent = `获取失败: ${String(err)}`;
+      copyDebugStatus.textContent = t("diagnostics.fetchFailed", { error: String(err) });
     }
   } finally {
     if (copyDebugBtn) copyDebugBtn.disabled = false;

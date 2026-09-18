@@ -64,6 +64,7 @@ export type LayoutEntry = BookmarkEntry | FolderEntry;
 export interface MenuSnapshot {
   fontSize?: MenuFontSize;
   gap?: number;
+  color?: string;
   items: LayoutEntry[];
   orientation: MenuOrientation;
   placement: MenuPlacement;
