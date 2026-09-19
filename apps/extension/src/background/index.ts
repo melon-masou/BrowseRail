@@ -13,6 +13,7 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_MENU_GAP,
   type ExtensionConfig,
+  loadBookmarkRootPrefix,
   loadConfig,
   loadMenuPlacements,
   loadWidgetEnabled,
@@ -210,6 +211,10 @@ let previewConfigOverride: ExtensionConfig | null = null;
 
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && (changes.config || changes.widget_enabled)) {
+    previewConfigOverride = null;
+    scheduleReconcile();
+  }
+  if (areaName === "sync" && changes.sync_menus) {
     previewConfigOverride = null;
     scheduleReconcile();
   }
@@ -423,6 +428,10 @@ async function handleMessage(raw: unknown): Promise<void> {
   }
 
   if (value.type === "invoke") {
+    if (value.actionUid.startsWith("noop")) {
+      send({ type: "actionResult", requestUid: value.requestUid, ok: true });
+      return;
+    }
     try {
       await navigateBookmark(browser, value.windowUid, value.actionUid);
       send({ type: "actionResult", requestUid: value.requestUid, ok: true });
@@ -526,20 +535,33 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [loadedConfig, windows, placements] = await Promise.all([
+  const [loadedConfig, windows, placements, rootPrefix] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
+    loadBookmarkRootPrefix(),
   ]);
   const config = previewConfigOverride ?? loadedConfig;
   const menus = await Promise.all(
     config.panel.menus.map(async (menu, index) => {
-      const items = await resolveMenuItems(menu.items, menu.tabMode, menu.color, menu.expandDirection);
+      const items = await resolveMenuItems(
+        menu.items,
+        menu.tabMode,
+        menu.color,
+        menu.expandDirection,
+        rootPrefix,
+      );
+      const totalUnits = items.reduce((acc, item) => {
+        if (item.kind === "space") {
+          return acc + Math.max(0.1, item.units ?? 1);
+        }
+        return acc + 1;
+      }, 0);
       const placement = resolveMenuPlacement(
         placements[menu.uid],
         index,
         menu.orientation,
-        items.length,
+        totalUnits,
         menu.fontSize,
         menu.gap,
       );

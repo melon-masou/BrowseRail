@@ -61,7 +61,15 @@ export interface FolderEntry {
   rename?: string;
 }
 
-export type LayoutEntry = BookmarkEntry | FolderEntry;
+export interface SpaceEntry {
+  kind: "space";
+  uid: string;
+  units?: number;
+  color?: string;
+  transparent?: boolean;
+}
+
+export type LayoutEntry = BookmarkEntry | FolderEntry | SpaceEntry;
 
 export interface MenuSnapshot {
   attachmentMode?: AttachmentMode;

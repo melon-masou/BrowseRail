@@ -324,8 +324,41 @@ pub enum LayoutEntry {
         #[serde(default)]
         rename: Option<String>,
     },
+    Space {
+        uid: String,
+        #[serde(default)]
+        units: Option<f64>,
+        #[serde(default)]
+        color: Option<String>,
+        #[serde(default)]
+        transparent: Option<bool>,
+    },
     #[serde(other)]
     Unknown,
+}
+
+/// Number of grid tracks the menu bar renders, matching the frontend exactly
+/// (apps/desktop/src/main.ts `totalUnits`): space items span `units` tracks
+/// (min 0.1), every other item spans 1, then the sum is rounded to whole
+/// tracks. Both the resize->item-size derivation and the item-size->total
+/// recompute must use this same count (and the same gap) so they stay exact
+/// inverses; otherwise a plain save round-trips into a growing menu size.
+pub fn menu_track_count(items: &[LayoutEntry]) -> f64 {
+    let total_units: f64 = items
+        .iter()
+        .map(|item| match item {
+            LayoutEntry::Space { units, .. } => units.unwrap_or(1.0).max(0.1),
+            _ => 1.0,
+        })
+        .sum();
+    total_units.round().max(1.0)
+}
+
+/// Gap in px between menu tracks, resolved identically to the frontend
+/// (apps/desktop/src/main.ts): the placement gap, else the snapshot gap,
+/// else 4. Both the resize derivation and the total recompute must use this.
+pub fn menu_gap(menu: &MenuSnapshot) -> f64 {
+    menu.placement.gap.or(menu.gap).unwrap_or(4.0)
 }
 
 #[derive(Clone, Debug, Serialize)]

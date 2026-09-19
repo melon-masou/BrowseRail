@@ -4,6 +4,7 @@ vi.mock("webextension-polyfill", () => ({
   default: {
     bookmarks: {
       getSubTree: vi.fn(),
+      getTree: vi.fn(),
     },
   },
 }));
@@ -14,18 +15,24 @@ import { findBookmarkNodeByPath, resolveMenuItems } from "./bookmarks";
 
 describe("resolveMenuItems", () => {
   it("resolves a folder with expandOnHover set to false", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "folder-1",
-        title: "Dev Tools",
+        id: "0",
+        title: "",
         children: [
-          { id: "bm-1", title: "GitHub", url: "https://github.com" },
+          {
+            id: "folder-1",
+            title: "Dev Tools",
+            children: [
+              { id: "bm-1", title: "GitHub", url: "https://github.com" },
+            ],
+          },
         ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "folder-1", type: "folder", expandOnHover: false },
+      { path: ["Dev Tools"], type: "folder", expandOnHover: false },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -36,18 +43,24 @@ describe("resolveMenuItems", () => {
   });
 
   it("resolves a folder with default hover expansion", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "folder-2",
-        title: "Docs",
+        id: "0",
+        title: "",
         children: [
-          { id: "bm-2", title: "MDN", url: "https://developer.mozilla.org" },
+          {
+            id: "folder-2",
+            title: "Docs",
+            children: [
+              { id: "bm-2", title: "MDN", url: "https://developer.mozilla.org" },
+            ],
+          },
         ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "folder-2", type: "folder" },
+      { path: ["Docs"], type: "folder" },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -57,19 +70,25 @@ describe("resolveMenuItems", () => {
   });
 
   it("flattens a folder into individual bookmark entries when type is flattenFolder", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "folder-3",
-        title: "Quick Links",
+        id: "0",
+        title: "",
         children: [
-          { id: "bm-3", title: "GitHub", url: "https://github.com" },
-          { id: "bm-4", title: "Vite", url: "https://vitejs.dev" },
+          {
+            id: "folder-3",
+            title: "Quick Links",
+            children: [
+              { id: "bm-3", title: "GitHub", url: "https://github.com" },
+              { id: "bm-4", title: "Vite", url: "https://vitejs.dev" },
+            ],
+          },
         ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "folder-3", type: "flattenFolder" },
+      { path: ["Quick Links"], type: "flattenFolder" },
     ]);
 
     expect(entries).toHaveLength(2);
@@ -78,12 +97,18 @@ describe("resolveMenuItems", () => {
   });
 
   it("applies menuColor as default color to items without custom color", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
-      { id: "bm-color-1", title: "GitHub", url: "https://github.com" },
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          { id: "bm-color-1", title: "GitHub", url: "https://github.com" },
+        ],
+      },
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ bookmarkId: "bm-color-1" }],
+      [{ path: ["GitHub"], url: "https://github.com" }],
       "replace",
       "#10b981",
     );
@@ -93,12 +118,18 @@ describe("resolveMenuItems", () => {
   });
 
   it("preserves item custom color when menuColor is also provided", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
-      { id: "bm-color-2", title: "GitHub", url: "https://github.com" },
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          { id: "bm-color-2", title: "GitHub", url: "https://github.com" },
+        ],
+      },
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ bookmarkId: "bm-color-2", color: "#f59e0b" }],
+      [{ path: ["GitHub"], url: "https://github.com", color: "#f59e0b" }],
       "replace",
       "#10b981",
     );
@@ -108,19 +139,25 @@ describe("resolveMenuItems", () => {
   });
 
   it("applies menuColor to flattened folder children when no custom color is specified", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "folder-color-flat",
-        title: "Links",
+        id: "0",
+        title: "",
         children: [
-          { id: "bm-cf-1", title: "Site A", url: "https://a.com" },
-          { id: "bm-cf-2", title: "Site B", url: "https://b.com" },
+          {
+            id: "folder-color-flat",
+            title: "Links",
+            children: [
+              { id: "bm-cf-1", title: "Site A", url: "https://a.com" },
+              { id: "bm-cf-2", title: "Site B", url: "https://b.com" },
+            ],
+          },
         ],
       },
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ bookmarkId: "folder-color-flat", type: "flattenFolder" }],
+      [{ path: ["Links"], type: "flattenFolder" }],
       "replace",
       "#8b5cf6",
     );
@@ -184,20 +221,31 @@ describe("findBookmarkNodeByPath", () => {
     expect(found).toBeDefined();
     expect(found?.id).toBe("bm-gh");
   });
+
+  it("strictly rejects folder path that does not exist without fuzzy searching other folders", () => {
+    const found = findBookmarkNodeByPath(tree, ["Bookmarks Toolbar", "RandomFolder", "Dev"]);
+    expect(found).toBeUndefined();
+  });
 });
 
 describe("rename and emoji support", () => {
   it("uses custom rename when configured on StoredMenuItem", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-custom-rename",
-        title: "Very Long GitHub Bookmark Title",
-        url: "https://github.com",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-custom-rename",
+            title: "Very Long GitHub Bookmark Title",
+            url: "https://github.com",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "bm-custom-rename", rename: "GH" },
+      { path: ["Very Long GitHub Bookmark Title"], url: "https://github.com", rename: "GH" },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -206,16 +254,22 @@ describe("rename and emoji support", () => {
   });
 
   it("uses custom rename with emoji on StoredMenuItem", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-custom-emoji-rename",
-        title: "GitHub",
-        url: "https://github.com",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-custom-emoji-rename",
+            title: "GitHub",
+            url: "https://github.com",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "bm-custom-emoji-rename", rename: "🐙" },
+      { path: ["GitHub"], url: "https://github.com", rename: "🐙" },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -224,16 +278,22 @@ describe("rename and emoji support", () => {
   });
 
   it("uses custom emoji when configured on StoredMenuItem for backwards compatibility", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-custom-emoji",
-        title: "GitHub",
-        url: "https://github.com",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-custom-emoji",
+            title: "GitHub",
+            url: "https://github.com",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "bm-custom-emoji", emoji: "🐙" },
+      { path: ["GitHub"], url: "https://github.com", emoji: "🐙" },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -241,36 +301,49 @@ describe("rename and emoji support", () => {
     expect(entries[0].label).toBe("GitHub");
   });
 
-  it("automatically detects leading emoji from title when no custom emoji is configured", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+  it("does not automatically extract leading emoji when no custom rename is configured", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-title-emoji",
-        title: "🚀 Production Server",
-        url: "https://prod.example.com",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-title-emoji",
+            title: "📁工作台",
+            url: "https://prod.example.com",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "bm-title-emoji" },
+      { path: ["📁工作台"], url: "https://prod.example.com" },
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].rename).toBe("🚀");
+    expect(entries[0].rename).toBeUndefined();
+    expect(entries[0].label).toBe("📁工作台");
   });
 });
 
 describe("tabMode configuration", () => {
   it("defaults to standard actionUid when tabMode is replace or unspecified", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-replace",
-        title: "Example",
-        url: "https://example.com",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-replace",
+            title: "Example",
+            url: "https://example.com",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "bm-replace" },
+      { path: ["Example"], url: "https://example.com" },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -278,16 +351,22 @@ describe("tabMode configuration", () => {
   });
 
   it("inherits newTab tabMode from menuTabMode", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-menu-tab",
-        title: "Example",
-        url: "https://example.com",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-menu-tab",
+            title: "Example",
+            url: "https://example.com",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ bookmarkId: "bm-menu-tab" }],
+      [{ path: ["Example"], url: "https://example.com" }],
       "newTab",
     );
 
@@ -296,16 +375,22 @@ describe("tabMode configuration", () => {
   });
 
   it("allows individual item to override menuTabMode", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-override-replace",
-        title: "Example 1",
-        url: "https://example.com/1",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-override-replace",
+            title: "Example 1",
+            url: "https://example.com/1",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ bookmarkId: "bm-override-replace", tabMode: "replace" }],
+      [{ path: ["Example 1"], url: "https://example.com/1", tabMode: "replace" }],
       "newTab",
     );
 
@@ -314,21 +399,89 @@ describe("tabMode configuration", () => {
   });
 
   it("allows individual item to specify newTab when menu is replace", async () => {
-    vi.mocked(browser.bookmarks.getSubTree).mockResolvedValue([
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
-        id: "bm-item-newtab",
-        title: "Example 2",
-        url: "https://example.com/2",
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-item-newtab",
+            title: "Example 2",
+            url: "https://example.com/2",
+          },
+        ],
       },
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ bookmarkId: "bm-item-newtab", tabMode: "newTab" }],
+      [{ path: ["Example 2"], url: "https://example.com/2", tabMode: "newTab" }],
       "replace",
     );
 
     expect(entries).toHaveLength(1);
     expect(entries[0].uid).toBe("bookmark:bm-item-newtab?tab=newTab");
+  });
+
+  it("preserves invalid items as noop entries when rootPrefix is /书签栏 and item path is 书签栏", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              { id: "bm-gbf", title: "gbfsync", url: "https://gbf.wiki" },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    // /书签栏 + /书签栏 = /书签栏/书签栏 -> does not exist under 书签栏
+    const entries = await resolveMenuItems(
+      [{ bookmarkId: "1", path: ["书签栏"], rename: "我的书签栏" }],
+      "replace",
+      "#ff0000",
+      undefined,
+      "/书签栏",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].label).toBe("书签栏");
+    expect(entries[0].rename).toBe("我的书签栏");
+    expect(entries[0].color).toBe("#ff0000");
+    expect(entries[0].uid).toMatch(/^noop:/);
+  });
+
+  it("resolves /书签栏/gbfsync when rootPrefix is /书签栏 and item is gbfsync", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              { id: "bm-gbf", title: "gbfsync", url: "https://gbf.wiki" },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ path: ["gbfsync"] }],
+      "replace",
+      undefined,
+      undefined,
+      "/书签栏",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].uid).toBe("bookmark:bm-gbf");
   });
 });
 
@@ -365,5 +518,168 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.type).toBe("customPluginType");
     expect(item?.rename).toBe("🛠️");
   });
+
+  it("normalizes a space item with units and transparency", async () => {
+    const { normalizeStoredMenuItem } = await import("./config");
+    const item = normalizeStoredMenuItem({
+      type: "space",
+      units: 2.5,
+      color: "#ff0000",
+      transparent: false,
+    });
+
+    expect(item).toBeDefined();
+    expect(item?.type).toBe("space");
+    expect(item?.units).toBe(2.5);
+    expect(item?.color).toBe("#ff0000");
+    expect(item?.transparent).toBe(false);
+    expect(item?.bookmarkId).toMatch(/^space-/);
+  });
 });
+
+describe("combineRootAndItemPath and space resolution", () => {
+  it("combines root prefix with item path strictly without deduplication", async () => {
+    const { combineRootAndItemPath } = await import("./bookmarks");
+
+    // Root prefix combined with relative item path
+    expect(combineRootAndItemPath("/书签栏", ["gbfsync"])).toEqual(["书签栏", "gbfsync"]);
+    expect(combineRootAndItemPath("/书签栏", ["Work", "Docs"])).toEqual(["书签栏", "Work", "Docs"]);
+
+    // Strictly concatenate without deduplicating prefix
+    expect(combineRootAndItemPath("/书签栏", ["书签栏", "gbfsync"])).toEqual(["书签栏", "书签栏", "gbfsync"]);
+    expect(combineRootAndItemPath("/书签栏", ["Bookmarks bar", "gbfsync"])).toEqual(["书签栏", "Bookmarks bar", "gbfsync"]);
+  });
+
+  it("resolves space items into SpaceEntry without querying bookmarks", async () => {
+    const entries = await resolveMenuItems([
+      {
+        bookmarkId: "space-1",
+        type: "space",
+        units: 2,
+        color: "#ffffff",
+      },
+      {
+        bookmarkId: "space-2",
+        type: "space",
+        units: 1,
+        color: "#ff0000",
+        transparent: false,
+      },
+    ]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toEqual({
+      kind: "space",
+      uid: "space-1",
+      units: 2,
+      transparent: true,
+    });
+    expect(entries[1]).toEqual({
+      kind: "space",
+      uid: "space-2",
+      units: 1,
+      color: "#ff0000",
+      transparent: false,
+    });
+  });
+
+  it("calculates item relative path correctly based on root prefix", async () => {
+    const { getFolderPath, getItemRelativePath, findBookmarkNodeByPath, combineRootAndItemPath } = await import("./bookmarks");
+
+    const tree = [
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              {
+                id: "10",
+                title: "Dev",
+                children: [
+                  { id: "100", title: "Tool", url: "https://tool.internal" },
+                ],
+              },
+              { id: "11", title: "GitHub", url: "https://github.com" },
+            ],
+          },
+          {
+            id: "2",
+            title: "其他书签",
+            children: [{ id: "20", title: "Read Later", url: "https://read.it" }],
+          },
+        ],
+      },
+    ];
+
+    // getFolderPath returns full chain
+    const folderPath = getFolderPath("100", tree);
+    expect(folderPath.map((n) => n.id)).toEqual(["0", "1", "10", "100"]);
+
+    // Relative path with no root prefix -> full path
+    expect(getItemRelativePath("100", tree, "")).toEqual(["书签栏", "Dev", "Tool"]);
+    expect(getItemRelativePath("11", tree, undefined)).toEqual(["书签栏", "GitHub"]);
+
+    // Relative path with root prefix "/书签栏"
+    expect(getItemRelativePath("100", tree, "/书签栏")).toEqual(["Dev", "Tool"]);
+    expect(getItemRelativePath("10", tree, "/书签栏")).toEqual(["Dev"]);
+    expect(getItemRelativePath("11", tree, "/书签栏")).toEqual(["GitHub"]);
+
+    // Relative path with nested root prefix "/书签栏/Dev"
+    expect(getItemRelativePath("100", tree, "/书签栏/Dev")).toEqual(["Tool"]);
+
+    // Relative path when selecting the root folder itself -> empty path []
+    expect(getItemRelativePath("1", tree, "/书签栏")).toEqual([]);
+    expect(combineRootAndItemPath("/书签栏", [])).toEqual(["书签栏"]);
+    const rootMatch = findBookmarkNodeByPath(tree, combineRootAndItemPath("/书签栏", []));
+    expect(rootMatch?.id).toBe("1");
+
+    // Combined relative path with root prefix resolves the exact node
+    const relPath = getItemRelativePath("100", tree, "/书签栏")!;
+    const combined = combineRootAndItemPath("/书签栏", relPath);
+    expect(combined).toEqual(["书签栏", "Dev", "Tool"]);
+    const foundNode = findBookmarkNodeByPath(tree, combined);
+    expect(foundNode?.id).toBe("100");
+  });
+
+  it("resolves an item with empty path [] as the root directory folder", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              { id: "100", title: "GitHub", url: "https://github.com" },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const { normalizeStoredMenuItem } = await import("./config");
+    const normalized = normalizeStoredMenuItem({
+      path: [],
+      type: "folder",
+    });
+    expect(normalized).toBeDefined();
+    expect(normalized?.path).toEqual([]);
+
+    const entries = await resolveMenuItems(
+      [{ path: [], type: "folder" }],
+      undefined,
+      undefined,
+      undefined,
+      "/书签栏",
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe("folder");
+    expect(entries[0].label).toBe("书签栏");
+  });
+});
+
 

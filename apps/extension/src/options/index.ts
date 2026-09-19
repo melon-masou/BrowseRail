@@ -14,18 +14,29 @@ import {
   DEFAULT_MENU_GAP_PERCENT,
   type ExtensionConfig,
   getItemDimensions,
+  loadBookmarkRootPrefix,
   loadConfig,
+  loadSyncEnabled,
   loadWidgetEnabled,
   normalizeFontSize,
   normalizeMenu,
+  saveBookmarkRootPrefix,
   saveConfig,
+  saveSyncEnabled,
   saveWidgetEnabled,
   type StoredMenu,
   type StoredMenuItem,
   type StoredMenuItemType,
 } from "../config";
-import { type BookmarkNode, extractLeadingEmoji, findBookmarkNodeByPath } from "../bookmarks";
-import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
+import {
+  type BookmarkNode,
+  combineRootAndItemPath,
+  findBookmarkNodeByPath,
+  getFolderPath,
+  getItemRelativePath,
+  parsePathSegments,
+} from "../bookmarks";
+import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
 import {
   applyStaticI18n,
@@ -104,6 +115,7 @@ const pickerHoverExpandCheckbox = element<HTMLInputElement>("picker-hover-expand
 const pickerCloseBtn = element<HTMLButtonElement>("picker-close-btn");
 const pickerUpBtn = element<HTMLButtonElement>("picker-up-btn");
 const pickerBreadcrumbs = element<HTMLDivElement>("picker-breadcrumbs");
+const pickerSelectCurrentBtn = element<HTMLButtonElement>("picker-select-current-btn");
 const pickerContent = element<HTMLDivElement>("picker-content");
 const pickerSelectedInfo = element<HTMLDivElement>("picker-selected-info");
 const pickerConfirmBtn = element<HTMLButtonElement>("picker-confirm-btn");
@@ -139,6 +151,10 @@ const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
 const itemSettingsTitle = element<HTMLSpanElement>("item-settings-title");
 const itemSettingsClose = element<HTMLButtonElement>("item-settings-close");
 const itemSettingsFolderControls = element<HTMLDivElement>("item-settings-folder-controls");
+const itemSettingsBookmarkControls = element<HTMLDivElement>("item-settings-bookmark-controls");
+const itemSettingsSpaceControls = element<HTMLDivElement>("item-settings-space-controls");
+const itemSettingSpaceUnits = element<HTMLInputElement>("item-setting-space-units");
+const itemSettingTransparent = element<HTMLInputElement>("item-setting-transparent");
 const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
 const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
 const itemSettingTabMode = element<HTMLSelectElement>("item-setting-tab-mode");
@@ -146,13 +162,19 @@ const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
 const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hover-expand-label");
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
 const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
+const addItemPopover = element<HTMLDivElement>("add-item-popover");
+const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
+const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
+const syncEnabledToggle = document.getElementById("sync-enabled-toggle") as HTMLInputElement | null;
+const bookmarkRootInput = document.getElementById("bookmark-root-input") as HTMLInputElement | null;
+const pickBookmarkRootBtn = document.getElementById("pick-bookmark-root-btn") as HTMLButtonElement | null;
 
 let widgetEnabled = true;
 let isDirty = false;
+let bookmarkRootPrefix = "";
 let menus: StoredMenu[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let bookmarkOptions: BookmarkOption[] = [];
-let bookmarkLabels = new Map<string, string>();
 let desktopTestGeneration = 0;
 
 // Popover state
@@ -168,10 +190,13 @@ let activeBehaviorBtn: HTMLElement | null = null;
 let activeItemSettings: { menuIndex: number; itemIndex: number } | null = null;
 let activeItemSettingsBtn: HTMLElement | null = null;
 
+let activeAddMenuIndex = -1;
+let activeAddBtn: HTMLElement | null = null;
+
 // Picker state
 let pickerCurrentFolderId = "0";
 let pickerSelectedId: string | null = null;
-let pickerMode: "addItem" | "editItem" = "addItem";
+let pickerMode: "addItem" | "editItem" | "selectRoot" = "addItem";
 let pickerTargetMenuIndex = -1;
 let pickerTargetItemIndex = -1;
 
@@ -283,17 +308,57 @@ pickerHoverExpandCheckbox.addEventListener("change", () => {
   updateSelectedInfo();
 });
 
+function getRootNode(): browser.Bookmarks.BookmarkTreeNode | undefined {
+  if (!bookmarkRootPrefix || !bookmarkRootPrefix.trim()) return undefined;
+  const segments = parsePathSegments(bookmarkRootPrefix);
+  if (segments.length === 0) return undefined;
+  return findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], segments) as
+    | browser.Bookmarks.BookmarkTreeNode
+    | undefined;
+}
+
 pickerUpBtn.addEventListener("click", () => {
-  const currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree);
+  const currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree as BookmarkNode[]);
   if (currentPath.length > 1) {
+    const rootNode = pickerMode === "selectRoot" ? undefined : getRootNode();
+    if (rootNode && pickerCurrentFolderId === rootNode.id) {
+      return;
+    }
     const parent = currentPath[currentPath.length - 2];
-    pickerCurrentFolderId = parent.id;
-    pickerSelectedId = null;
+    if (parent) {
+      pickerCurrentFolderId = parent.id;
+      pickerSelectedId = null;
+      renderPicker();
+    }
+  }
+});
+
+pickerSelectCurrentBtn.addEventListener("click", () => {
+  if (pickerCurrentFolderId) {
+    pickerSelectedId = pickerCurrentFolderId;
     renderPicker();
   }
 });
 
 pickerConfirmBtn.addEventListener("click", () => {
+  if (pickerMode === "selectRoot") {
+    const targetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
+    if (!targetId) return;
+    const targetNode = findBookmarkNode(targetId, rawBookmarkTree);
+    if (!targetNode || targetNode.id === "0") return;
+    const pathNodes = getFolderPath(targetNode.id, rawBookmarkTree as BookmarkNode[]);
+    const segments = pathNodes.map((n) => n.title).filter((t) => Boolean(t && t.trim()));
+    const rootPathStr = "/" + segments.join("/");
+    if (bookmarkRootInput) {
+      bookmarkRootInput.value = rootPathStr;
+    }
+    bookmarkRootPrefix = rootPathStr;
+    markDirty();
+    renderMenus();
+    pickerDialog.close();
+    return;
+  }
+
   if (!pickerSelectedId) return;
 
   const selectedNode = findBookmarkNode(pickerSelectedId, rawBookmarkTree);
@@ -301,13 +366,18 @@ pickerConfirmBtn.addEventListener("click", () => {
   const isFlatten = isFolder && pickerFlattenCheckbox.checked;
   const itemType = isFlatten ? "flattenFolder" : isFolder ? "folder" : "bookmark";
   const expandOnHover = isFolder && !isFlatten ? pickerHoverExpandCheckbox.checked : undefined;
-  const { path } = getItemPathAndUrl(pickerSelectedId, rawBookmarkTree);
+  const relativePath = getItemRelativePath(
+    pickerSelectedId,
+    rawBookmarkTree as BookmarkNode[],
+    bookmarkRootPrefix,
+  );
 
   const newItem: StoredMenuItem = {
     bookmarkId: pickerSelectedId,
     type: itemType,
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
-    ...(path ? { path } : {}),
+    ...(relativePath !== undefined ? { path: relativePath } : {}),
+    ...(selectedNode?.url ? { url: selectedNode.url } : {}),
   };
 
   if (pickerMode === "addItem") {
@@ -335,14 +405,16 @@ pickerConfirmBtn.addEventListener("click", () => {
 });
 
 function openBookmarkPicker(
-  mode: "addItem" | "editItem",
+  mode: "addItem" | "editItem" | "selectRoot",
   menuIndex = -1,
   itemIndex = -1,
 ): void {
   pickerMode = mode;
   pickerTargetMenuIndex = menuIndex;
   pickerTargetItemIndex = itemIndex;
-  pickerCurrentFolderId = "0";
+
+  const rootNode = mode === "selectRoot" ? undefined : getRootNode();
+  pickerCurrentFolderId = rootNode?.id ?? "0";
 
   let initialFlatten = false;
   let initialHover = true;
@@ -350,15 +422,44 @@ function openBookmarkPicker(
   if (mode === "editItem") {
     const existing = menus[menuIndex]?.items[itemIndex];
     if (existing) {
-      pickerSelectedId = existing.bookmarkId;
+      const node = getItemNode(existing) ?? (existing.bookmarkId ? findBookmarkNode(existing.bookmarkId, rawBookmarkTree) : undefined);
+      pickerSelectedId = node?.id ?? existing.bookmarkId ?? null;
       initialFlatten = existing.type === "flattenFolder";
       initialHover = existing.expandOnHover !== false;
-      const path = getFolderPath(existing.bookmarkId, rawBookmarkTree);
-      if (path.length > 1) {
-        pickerCurrentFolderId = path[path.length - 2].id;
+      if (node) {
+        const path = getFolderPath(node.id, rawBookmarkTree as BookmarkNode[]);
+        if (path.length > 1) {
+          const parent = path[path.length - 2];
+          if (parent) {
+            const parentId = parent.id;
+            if (rootNode) {
+              const parentPath = getFolderPath(parentId, rawBookmarkTree as BookmarkNode[]);
+              if (parentPath.some((n) => n.id === rootNode.id)) {
+                pickerCurrentFolderId = parentId;
+              }
+            } else {
+              pickerCurrentFolderId = parentId;
+            }
+          }
+        }
       }
     } else {
       pickerSelectedId = null;
+    }
+  } else if (mode === "selectRoot") {
+    pickerSelectedId = null;
+    if (bookmarkRootPrefix.trim()) {
+      const currentRoot = getRootNode();
+      if (currentRoot) {
+        pickerSelectedId = currentRoot.id;
+        const path = getFolderPath(currentRoot.id, rawBookmarkTree as BookmarkNode[]);
+        if (path.length > 1) {
+          const parent = path[path.length - 2];
+          if (parent) {
+            pickerCurrentFolderId = parent.id;
+          }
+        }
+      }
     }
   } else {
     pickerSelectedId = null;
@@ -370,7 +471,10 @@ function openBookmarkPicker(
   pickerFlattenLabel.style.display = "none";
   pickerHoverExpandLabel.style.display = "none";
 
-  if (mode === "editItem") {
+  if (mode === "selectRoot") {
+    pickerTitle.textContent = t("picker.selectRootTitle");
+    pickerConfirmBtn.textContent = t("picker.selectRootConfirm");
+  } else if (mode === "editItem") {
     pickerTitle.textContent = t("picker.changeTitle");
     pickerConfirmBtn.textContent = t("picker.apply");
   } else {
@@ -396,44 +500,25 @@ function findBookmarkNode(
   return undefined;
 }
 
-function getFolderPath(
-  id: string,
-  nodes: browser.Bookmarks.BookmarkTreeNode[],
-): browser.Bookmarks.BookmarkTreeNode[] {
-  function search(
-    current: browser.Bookmarks.BookmarkTreeNode,
-    targetId: string,
-    path: browser.Bookmarks.BookmarkTreeNode[],
-  ): browser.Bookmarks.BookmarkTreeNode[] | null {
-    const newPath = [...path, current];
-    if (current.id === targetId) return newPath;
-    if (current.children) {
-      for (const child of current.children) {
-        const res = search(child, targetId, newPath);
-        if (res) return res;
-      }
-    }
-    return null;
+function getItemNode(item: StoredMenuItem): browser.Bookmarks.BookmarkTreeNode | undefined {
+  const effectivePath = combineRootAndItemPath(bookmarkRootPrefix, item.path);
+  if (effectivePath.length > 0 || item.url) {
+    return findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, item.url) as
+      | browser.Bookmarks.BookmarkTreeNode
+      | undefined;
   }
-
-  for (const root of nodes) {
-    const res = search(root, id, []);
-    if (res) return res;
-  }
-  return [];
+  return undefined;
 }
 
 function getItemPathAndUrl(
   bookmarkId: string,
   nodes: browser.Bookmarks.BookmarkTreeNode[],
+  rootPrefix?: string,
 ): { path?: string[]; url?: string } {
   const node = findBookmarkNode(bookmarkId, nodes);
-  const pathNodes = getFolderPath(bookmarkId, nodes);
-  const path = pathNodes
-    .map((n) => n.title)
-    .filter((t) => Boolean(t && t.trim()));
+  const path = getItemRelativePath(bookmarkId, nodes as BookmarkNode[], rootPrefix);
   return {
-    path: path.length > 0 ? path : undefined,
+    path,
     url: node?.url,
   };
 }
@@ -441,42 +526,71 @@ function getItemPathAndUrl(
 function enrichMenuItemPaths(
   items: StoredMenuItem[],
   nodes: browser.Bookmarks.BookmarkTreeNode[],
+  rootPrefix?: string,
 ): void {
   if (nodes.length === 0) return;
   for (const item of items) {
-    if (item.bookmarkId) {
-      const { path } = getItemPathAndUrl(item.bookmarkId, nodes);
-      if (path && path.length > 0) {
-        item.path = path;
-      }
-      if (!item.type) {
-        const node = findBookmarkNode(item.bookmarkId, nodes);
-        if (node) {
-          item.type = node.children !== undefined || node.url === undefined ? "folder" : "bookmark";
+    if (item.path === undefined) {
+      if (item.bookmarkId && !item.bookmarkId.startsWith("space-")) {
+        const { path } = getItemPathAndUrl(item.bookmarkId, nodes, rootPrefix);
+        if (path !== undefined) {
+          item.path = path;
         }
+      }
+    }
+    if (!item.type) {
+      const node = item.bookmarkId ? findBookmarkNode(item.bookmarkId, nodes) : undefined;
+      if (node) {
+        item.type = node.children !== undefined || node.url === undefined ? "folder" : "bookmark";
       }
     }
   }
 }
 
 function renderPicker(): void {
+  const rootNode = pickerMode === "selectRoot" ? undefined : getRootNode();
   const currentFolder = findBookmarkNode(pickerCurrentFolderId, rawBookmarkTree);
-  const currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree);
+  const currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree as BookmarkNode[]);
 
-  // Update Up button
-  pickerUpBtn.disabled = currentPath.length <= 1;
+  let displayPath = currentPath;
+  if (rootNode) {
+    const rootIndex = currentPath.findIndex((n) => n.id === rootNode.id);
+    if (rootIndex !== -1) {
+      displayPath = currentPath.slice(rootIndex);
+      pickerUpBtn.disabled = displayPath.length <= 1;
+    } else {
+      pickerCurrentFolderId = rootNode.id;
+      displayPath = [rootNode as BookmarkNode];
+      pickerUpBtn.disabled = true;
+    }
+  } else {
+    pickerUpBtn.disabled = currentPath.length <= 1;
+  }
+
+  // Update select current folder button
+  const currentFolderName =
+    currentFolder?.title || (currentFolder?.id === "0" ? t("common.bookmarks") : t("common.folder"));
+  pickerSelectCurrentBtn.textContent = `${t("picker.selectCurrent")}: ${currentFolderName}`;
+  pickerSelectCurrentBtn.dataset.selected = String(pickerSelectedId === pickerCurrentFolderId);
 
   // Render Breadcrumbs
   pickerBreadcrumbs.replaceChildren(
-    ...currentPath.map((node, index) => {
-      const isCurrent = index === currentPath.length - 1;
+    ...displayPath.map((node, index) => {
+      const isCurrent = index === displayPath.length - 1;
+      const isSelected = pickerSelectedId === node.id;
       const span = document.createElement("span");
-      span.className = `picker-crumb ${isCurrent ? "current" : ""}`;
+      span.className = `picker-crumb ${isCurrent ? "current" : ""} ${isSelected ? "selected" : ""}`;
       span.textContent = node.title || (node.id === "0" ? t("common.bookmarks") : t("common.folder"));
       if (!isCurrent) {
         span.addEventListener("click", () => {
           pickerCurrentFolderId = node.id;
           pickerSelectedId = null;
+          renderPicker();
+        });
+      } else {
+        span.title = t("picker.selectCurrent");
+        span.addEventListener("click", () => {
+          pickerSelectedId = node.id;
           renderPicker();
         });
       }
@@ -492,9 +606,14 @@ function renderPicker(): void {
   );
 
   // Render list of items in current folder
-  const items =
+  const allItems =
     currentFolder?.children ??
     (rawBookmarkTree.length > 0 ? rawBookmarkTree[0].children ?? rawBookmarkTree : []);
+
+  const items = pickerMode === "selectRoot"
+    ? allItems.filter((node) => node.children !== undefined || node.url === undefined)
+    : allItems;
+
   pickerContent.replaceChildren();
 
   if (!items || items.length === 0) {
@@ -567,6 +686,25 @@ function renderPicker(): void {
 }
 
 function updateSelectedInfo(): void {
+  if (pickerMode === "selectRoot") {
+    pickerFlattenLabel.style.display = "none";
+    pickerHoverExpandLabel.style.display = "none";
+    const selectedTargetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
+    if (selectedTargetId) {
+      const selectedNode = findBookmarkNode(selectedTargetId, rawBookmarkTree);
+      pickerSelectedInfo.textContent = t("picker.selectedFolder", {
+        flatten: "",
+        name: selectedNode?.title || t("common.folder"),
+        hint: "",
+      });
+      pickerConfirmBtn.disabled = false;
+    } else {
+      pickerSelectedInfo.textContent = t("picker.selectRootHint");
+      pickerConfirmBtn.disabled = true;
+    }
+    return;
+  }
+
   if (pickerSelectedId) {
     const selectedNode = findBookmarkNode(pickerSelectedId, rawBookmarkTree);
     const isFolder = selectedNode?.children !== undefined || selectedNode?.url === undefined;
@@ -728,6 +866,7 @@ function initLanguagePicker(): void {
 
 /** Re-apply translations to everything on screen after a language change. */
 function rerenderForLanguage(): void {
+  closeAddItemDropdown();
   applyStaticI18n();
   for (const opt of languageSelect.options) {
     opt.textContent = opt.value === "zh-CN" ? t("language.zhCN") : t("language.en");
@@ -749,19 +888,34 @@ async function initialize(): Promise<void> {
   initMenuStylePopover();
   initMenuBehaviorPopover();
   initItemSettingsPopover();
+  initAddItemPopover();
   void refreshDesktopState();
-  const [config, enabled, tree] = await Promise.all([
+  const [config, enabled, tree, rootPrefix] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
     browser.bookmarks.getTree(),
+    loadBookmarkRootPrefix(),
   ]);
   rawBookmarkTree = tree;
   bookmarkOptions = flattenBookmarks(tree);
-  bookmarkLabels = new Map(bookmarkOptions.map((option) => [option.id, option.label]));
 
   instanceLabel.value = config.instanceLabel;
   widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
+  if (bookmarkRootInput) {
+    bookmarkRootPrefix = rootPrefix;
+    bookmarkRootInput.value = rootPrefix;
+    bookmarkRootInput.addEventListener("input", () => {
+      bookmarkRootPrefix = bookmarkRootInput.value.trim();
+      markDirty();
+      renderMenus();
+    });
+  }
+  if (pickBookmarkRootBtn) {
+    pickBookmarkRootBtn.addEventListener("click", () => {
+      openBookmarkPicker("selectRoot");
+    });
+  }
   menus = structuredClone(config.panel.menus);
   updateDesktopControls();
   renderMenus();
@@ -776,8 +930,12 @@ async function persist(): Promise<void> {
   }
   desktopUrl.setCustomValidity("");
 
+  if (bookmarkRootInput) {
+    await saveBookmarkRootPrefix(bookmarkRootInput.value.trim());
+  }
+
   for (const menu of menus) {
-    enrichMenuItemPaths(menu.items, rawBookmarkTree);
+    enrichMenuItemPaths(menu.items, rawBookmarkTree, bookmarkRootPrefix);
   }
 
   await saveConfig({
@@ -801,6 +959,10 @@ async function persist(): Promise<void> {
 }
 
 async function previewCurrentConfig(): Promise<void> {
+  if (bookmarkRootInput) {
+    await saveBookmarkRootPrefix(bookmarkRootInput.value.trim());
+  }
+
   const previewConfig: ExtensionConfig = {
     desktopWidget: {
       url: desktopUrl.value,
@@ -930,6 +1092,7 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
     closeColorPopover();
     return;
   }
+  closeAddItemDropdown();
   activeColorTarget = target;
   activeColorSwatchElement = swatchElement;
 
@@ -1028,6 +1191,7 @@ function openMenuStylePopover(menuIndex: number, btnElement: HTMLElement): void 
   // Measure the anchor before the close calls below, which re-render the menu list
   // and detach this button — a detached node reports a 0,0 rect (top-left popup).
   const rect = btnElement.getBoundingClientRect();
+  closeAddItemDropdown();
   closeMenuBehaviorPopover();
   closeColorPopover();
   closeItemSettingsPopover();
@@ -1126,6 +1290,7 @@ function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): vo
   // Measure the anchor before the close calls below, which re-render the menu list
   // and detach this button — a detached node reports a 0,0 rect (top-left popup).
   const rect = btnElement.getBoundingClientRect();
+  closeAddItemDropdown();
   closeMenuStylePopover();
   closeColorPopover();
   closeItemSettingsPopover();
@@ -1252,6 +1417,33 @@ function initItemSettingsPopover(): void {
     markDirty();
   });
 
+  itemSettingSpaceUnits.addEventListener("input", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item || item.type !== "space") return;
+
+    const val = parseFloat(itemSettingSpaceUnits.value);
+    if (!Number.isNaN(val) && val > 0) {
+      item.units = Math.max(0.1, Math.min(20, val));
+    } else {
+      item.units = 1;
+    }
+    renderMenus();
+    markDirty();
+  });
+
+  itemSettingTransparent.addEventListener("change", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item || item.type !== "space") return;
+
+    item.transparent = itemSettingTransparent.checked;
+    renderMenus();
+    markDirty();
+  });
+
   itemSettingChangeBtn.addEventListener("click", () => {
     if (!activeItemSettings) return;
     const { menuIndex, itemIndex } = activeItemSettings;
@@ -1289,6 +1481,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     closeItemSettingsPopover();
     return;
   }
+  closeAddItemDropdown();
 
   const menu = menus[menuIndex];
   const item = menu?.items[itemIndex];
@@ -1297,28 +1490,44 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
   activeItemSettings = { menuIndex, itemIndex };
   activeItemSettingsBtn = anchorEl;
 
-  const node = findBookmarkNode(item.bookmarkId, rawBookmarkTree);
-  const isFolderNode = node?.children !== undefined || node?.url === undefined;
-  const isFolder = item.type === "folder" || (!item.type && isFolderNode) || item.type === "flattenFolder";
-
-  const rawLabel = bookmarkLabels.get(item.bookmarkId) ?? node?.title ?? item.bookmarkId;
-  itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
-  itemSettingRename.value = item.rename ?? item.emoji ?? "";
-  itemSettingTabMode.value = item.tabMode ?? "";
-
-  if (isFolder) {
-    itemSettingsFolderControls.style.display = "flex";
-    const isFlatten = item.type === "flattenFolder";
-    itemSettingFlatten.checked = isFlatten;
-    if (isFlatten) {
-      itemSettingHoverExpand.checked = false;
-      itemSettingHoverExpand.disabled = true;
-    } else {
-      itemSettingHoverExpand.disabled = false;
-      itemSettingHoverExpand.checked = item.expandOnHover !== false;
-    }
+  const isSpace = item.type === "space";
+  if (isSpace) {
+    itemSettingsTitle.textContent = `␣ ${t("item.spaceBadge")}`;
+    itemSettingsSpaceControls.style.display = "block";
+    itemSettingsBookmarkControls.style.display = "none";
+    itemSettingSpaceUnits.value = String(item.units ?? 1);
+    itemSettingTransparent.checked = item.transparent !== false;
   } else {
-    itemSettingsFolderControls.style.display = "none";
+    itemSettingsSpaceControls.style.display = "none";
+    itemSettingsBookmarkControls.style.display = "block";
+
+    const node = getItemNode(item);
+    const isFolderNode = node ? (node.children !== undefined || node.url === undefined) : (item.type === "folder" || item.type === "flattenFolder");
+    const isFolder = item.type === "folder" || (!item.type && isFolderNode) || item.type === "flattenFolder";
+
+    const rawLabel =
+      node?.title ??
+      (item.path && item.path.length > 0
+        ? item.path[item.path.length - 1]
+        : (bookmarkRootPrefix || item.bookmarkId || ""));
+    itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
+    itemSettingRename.value = item.rename ?? item.emoji ?? "";
+    itemSettingTabMode.value = item.tabMode ?? "";
+
+    if (isFolder) {
+      itemSettingsFolderControls.style.display = "flex";
+      const isFlatten = item.type === "flattenFolder";
+      itemSettingFlatten.checked = isFlatten;
+      if (isFlatten) {
+        itemSettingHoverExpand.checked = false;
+        itemSettingHoverExpand.disabled = true;
+      } else {
+        itemSettingHoverExpand.disabled = false;
+        itemSettingHoverExpand.checked = item.expandOnHover !== false;
+      }
+    } else {
+      itemSettingsFolderControls.style.display = "none";
+    }
   }
 
   const rect = anchorEl.getBoundingClientRect();
@@ -1341,6 +1550,87 @@ function closeItemSettingsPopover(): void {
   itemSettingsPopover.style.display = "none";
   activeItemSettings = null;
   activeItemSettingsBtn = null;
+}
+
+function initAddItemPopover(): void {
+  addPopoverBookmarkBtn.addEventListener("click", () => {
+    const menuIdx = activeAddMenuIndex;
+    closeAddItemDropdown();
+    if (menuIdx >= 0 && menuIdx < menus.length) {
+      openBookmarkPicker("addItem", menuIdx);
+    }
+  });
+
+  addPopoverSpaceBtn.addEventListener("click", () => {
+    const menuIdx = activeAddMenuIndex;
+    closeAddItemDropdown();
+    if (menuIdx >= 0 && menuIdx < menus.length) {
+      const menu = menus[menuIdx];
+      const newSpace: StoredMenuItem = {
+        bookmarkId: `space-${crypto.randomUUID()}`,
+        type: "space",
+        units: 1,
+        transparent: true,
+      };
+      menu.items.push(newSpace);
+      renderMenus();
+      markDirty();
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (addItemPopover.style.display === "none") return;
+    const target = e.target as Node | null;
+    if (
+      target &&
+      !addItemPopover.contains(target) &&
+      activeAddBtn &&
+      !activeAddBtn.contains(target)
+    ) {
+      closeAddItemDropdown();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && addItemPopover.style.display !== "none") {
+      closeAddItemDropdown();
+    }
+  });
+}
+
+function openAddItemDropdown(menuIndex: number, btnElement: HTMLElement): void {
+  if (activeAddMenuIndex === menuIndex && addItemPopover.style.display !== "none") {
+    closeAddItemDropdown();
+    return;
+  }
+  const rect = btnElement.getBoundingClientRect();
+  closeMenuStylePopover();
+  closeMenuBehaviorPopover();
+  closeColorPopover();
+  closeItemSettingsPopover();
+
+  activeAddMenuIndex = menuIndex;
+  activeAddBtn = btnElement;
+
+  const popoverWidth = 170;
+  let top = rect.bottom + window.scrollY + 4;
+  let left = rect.right + window.scrollX - popoverWidth;
+
+  if (left < 10) left = 10;
+  if (left + popoverWidth > window.innerWidth - 10) {
+    left = window.innerWidth - popoverWidth - 10;
+  }
+
+  addItemPopover.style.position = "absolute";
+  addItemPopover.style.top = `${top}px`;
+  addItemPopover.style.left = `${left}px`;
+  addItemPopover.style.display = "flex";
+}
+
+function closeAddItemDropdown(): void {
+  addItemPopover.style.display = "none";
+  activeAddMenuIndex = -1;
+  activeAddBtn = null;
 }
 
 let draggingItem: { menuIndex: number; itemIndex: number } | null = null;
@@ -1374,10 +1664,9 @@ function renderMenus(): void {
       const styleBtn = document.createElement("button");
       styleBtn.type = "button";
       styleBtn.className = "action-btn menu-header-btn";
-      styleBtn.textContent = t("menu.style");
-      styleBtn.title = t("menu.styleTitle");
-      styleBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
+      styleBtn.textContent = t("menu.settings");
+      styleBtn.title = t("menu.settingsTitle");
+      styleBtn.addEventListener("click", () => {
         openMenuStylePopover(menuIndex, styleBtn);
       });
 
@@ -1386,8 +1675,7 @@ function renderMenus(): void {
       behaviorBtn.className = "action-btn menu-header-btn";
       behaviorBtn.textContent = t("menu.behavior");
       behaviorBtn.title = t("menu.behaviorTitle");
-      behaviorBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
+      behaviorBtn.addEventListener("click", () => {
         openMenuBehaviorPopover(menuIndex, behaviorBtn);
       });
 
@@ -1405,20 +1693,24 @@ function renderMenus(): void {
         if (activeColorTarget === menu) {
           closeColorPopover();
         }
+        if (activeAddMenuIndex === menuIndex) {
+          closeAddItemDropdown();
+        }
         menus.splice(menuIndex, 1);
         renderMenus();
         markDirty();
       });
 
-      const addItem = document.createElement("button");
-      addItem.type = "button";
-      addItem.className = "action-btn menu-header-btn menu-add-item-btn";
-      addItem.textContent = t("menu.addItem");
-      addItem.addEventListener("click", () => {
-        openBookmarkPicker("addItem", menuIndex);
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "action-btn menu-header-btn menu-add-btn";
+      addBtn.textContent = t("menu.add");
+      addBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openAddItemDropdown(menuIndex, addBtn);
       });
 
-      headerActions.append(menuColorSwatch, styleBtn, behaviorBtn, removeMenu, addItem);
+      headerActions.append(menuColorSwatch, styleBtn, behaviorBtn, removeMenu, addBtn);
       header.append(title, headerActions);
 
       const items = document.createElement("ol");
@@ -1427,8 +1719,168 @@ function renderMenus(): void {
           const row = document.createElement("li");
           row.className = "menu-item-row";
 
-          const node = findBookmarkNode(item.bookmarkId, rawBookmarkTree);
-          const isFolderNode = node?.children !== undefined || node?.url === undefined;
+          if (item.type === "space") {
+            const units = item.units ?? 1;
+            const isTransparent = item.transparent !== false;
+
+            const label = document.createElement("span");
+            label.className = "item-label";
+
+            const titleSpan = document.createElement("span");
+            titleSpan.className = "item-title";
+            titleSpan.textContent = `␣ ${t("item.spaceBadge")} (${units}x)`;
+            titleSpan.title = `${t("item.spaceBadge")} (${units}x)`;
+            label.appendChild(titleSpan);
+
+            const spaceBadge = document.createElement("span");
+            spaceBadge.className = "item-tag item-tag-space";
+            spaceBadge.textContent = `${units}x`;
+            spaceBadge.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openItemSettingsPopover(menuIndex, itemIndex, spaceBadge);
+            });
+            label.appendChild(spaceBadge);
+
+            if (!isTransparent) {
+              const solidBadge = document.createElement("span");
+              solidBadge.className = "item-tag item-tag-space-solid";
+              solidBadge.textContent = t("itemSettings.transparent") === "透明" ? "实体" : "Solid";
+              solidBadge.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openItemSettingsPopover(menuIndex, itemIndex, solidBadge);
+              });
+              label.appendChild(solidBadge);
+            }
+
+            const controls = document.createElement("div");
+            controls.className = "item-color-controls";
+
+            const dragHandleBtn = document.createElement("button");
+            dragHandleBtn.type = "button";
+            dragHandleBtn.className = "drag-handle-btn";
+            dragHandleBtn.title = t("item.dragHandleTitle");
+            dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
+
+            dragHandleBtn.addEventListener("mousedown", () => {
+              row.draggable = true;
+            });
+            dragHandleBtn.addEventListener("mouseup", () => {
+              if (!row.classList.contains("is-dragging")) {
+                row.draggable = false;
+              }
+            });
+            dragHandleBtn.addEventListener("mouseleave", () => {
+              if (!row.classList.contains("is-dragging")) {
+                row.draggable = false;
+              }
+            });
+
+            row.addEventListener("dragstart", (e) => {
+              draggingItem = { menuIndex, itemIndex };
+              if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", `${menuIndex}:${itemIndex}`);
+              }
+              requestAnimationFrame(() => {
+                row.classList.add("is-dragging");
+              });
+            });
+
+            row.addEventListener("dragover", (e) => {
+              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
+              e.preventDefault();
+              if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = "move";
+              }
+              const rect = row.getBoundingClientRect();
+              const isAfter = e.clientY > rect.top + rect.height / 2;
+              row.classList.toggle("drag-over-top", !isAfter);
+              row.classList.toggle("drag-over-bottom", isAfter);
+            });
+
+            row.addEventListener("dragleave", () => {
+              row.classList.remove("drag-over-top", "drag-over-bottom");
+            });
+
+            row.addEventListener("drop", (e) => {
+              e.preventDefault();
+              row.classList.remove("drag-over-top", "drag-over-bottom");
+              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
+              const sourceIndex = draggingItem.itemIndex;
+              const rect = row.getBoundingClientRect();
+              const isAfter = e.clientY > rect.top + rect.height / 2;
+              let targetIndex = isAfter ? itemIndex + 1 : itemIndex;
+              if (sourceIndex < targetIndex) {
+                targetIndex--;
+              }
+              if (sourceIndex !== targetIndex) {
+                const [moved] = menu.items.splice(sourceIndex, 1);
+                menu.items.splice(targetIndex, 0, moved);
+                renderMenus();
+                markDirty();
+              }
+              draggingItem = null;
+            });
+
+            row.addEventListener("dragend", () => {
+              row.draggable = false;
+              row.classList.remove("is-dragging");
+              draggingItem = null;
+              items.querySelectorAll(".menu-item-row").forEach((el) => {
+                el.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
+              });
+            });
+
+            const settingsBtn = document.createElement("button");
+            settingsBtn.type = "button";
+            settingsBtn.className = "item-settings-btn";
+            settingsBtn.title = t("itemSettings.title");
+            settingsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
+            settingsBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
+            });
+
+            const swatch = document.createElement("button");
+            swatch.type = "button";
+            swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
+            updateSwatchAppearance(swatch, item.color);
+            if (!item.color && menu.color) {
+              swatch.title = t("item.followMenuColor", { color: menu.color });
+            }
+            swatch.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openColorPopover(item, swatch);
+            });
+
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "remove-item-btn";
+            removeBtn.title = t("menu.removeItem");
+            removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
+            removeBtn.addEventListener("click", () => {
+              if (activeColorTarget === item) {
+                closeColorPopover();
+              }
+              if (
+                activeItemSettings &&
+                activeItemSettings.menuIndex === menuIndex &&
+                activeItemSettings.itemIndex === itemIndex
+              ) {
+                closeItemSettingsPopover();
+              }
+              menu.items.splice(itemIndex, 1);
+              renderMenus();
+              markDirty();
+            });
+
+            controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
+            row.append(label, controls);
+            return row;
+          }
+
+          const node = getItemNode(item);
+          const isFolderNode = node ? (node.children !== undefined || node.url === undefined) : (item.type === "folder" || item.type === "flattenFolder");
           const isFlatten = item.type === "flattenFolder";
           const isFolder = item.type === "folder" || (!item.type && isFolderNode);
 
@@ -1436,10 +1888,12 @@ function renderMenus(): void {
           label.className = "item-label";
 
           const rawLabel =
-            bookmarkLabels.get(item.bookmarkId) ?? node?.title ?? item.bookmarkId;
-          const detectedEmoji = node?.title ? extractLeadingEmoji(node.title) : null;
+            node?.title ??
+            (item.path && item.path.length > 0
+              ? item.path[item.path.length - 1]
+              : (bookmarkRootPrefix || item.bookmarkId || ""));
           const customRename = item.rename || item.emoji;
-          const iconPrefix = detectedEmoji || (isFolderNode ? "📁" : "🔖");
+          const iconPrefix = isFolderNode ? "📁" : "🔖";
 
           const titleSpan = document.createElement("span");
           titleSpan.className = "item-title";
@@ -1721,7 +2175,7 @@ function exportSettings(): void {
   }
 
   for (const menu of menus) {
-    enrichMenuItemPaths(menu.items, rawBookmarkTree);
+    enrichMenuItemPaths(menu.items, rawBookmarkTree, bookmarkRootPrefix);
   }
 
   // Export only the menus, in a portable shape: each item is identified by its
@@ -1744,8 +2198,8 @@ function exportSettings(): void {
       items: menu.items.map((item) => {
         let path = item.path;
         if (!path || path.length === 0) {
-          if (item.bookmarkId) {
-            const { path: resolvedPath } = getItemPathAndUrl(item.bookmarkId, rawBookmarkTree);
+          if (item.bookmarkId && !item.bookmarkId.startsWith("space-")) {
+            const { path: resolvedPath } = getItemPathAndUrl(item.bookmarkId, rawBookmarkTree, bookmarkRootPrefix);
             path = resolvedPath;
           }
         }
@@ -1756,9 +2210,10 @@ function exportSettings(): void {
         return {
           type: itemType,
           ...(path && path.length > 0 ? { path } : {}),
+          ...(typeof item.units === "number" ? { units: item.units } : {}),
+          ...(item.transparent !== undefined ? { transparent: item.transparent } : {}),
           ...(item.rename ? { rename: item.rename } : {}),
           ...(item.color ? { color: item.color } : {}),
-          ...(item.expandDirection ? { expandDirection: item.expandDirection } : {}),
           ...(item.expandOnHover !== undefined ? { expandOnHover: item.expandOnHover } : {}),
           ...(item.tabMode ? { tabMode: item.tabMode } : {}),
         };
@@ -1827,11 +2282,10 @@ async function importSettings(file: File): Promise<void> {
         let bookmarkId = "";
         let resolvedPath: string[] | undefined = path.length > 0 ? path : undefined;
         if (rawBookmarkTree.length > 0 && path.length > 0) {
-          const matched = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], path, undefined);
+          const effectivePath = combineRootAndItemPath(bookmarkRootPrefix, path);
+          const matched = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, undefined);
           if (matched) {
             bookmarkId = matched.id;
-            const enriched = getItemPathAndUrl(matched.id, rawBookmarkTree);
-            if (enriched.path) resolvedPath = enriched.path;
           }
         } else if (typeof itemRecord.bookmarkId === "string") {
           bookmarkId = itemRecord.bookmarkId;
@@ -1853,6 +2307,8 @@ async function importSettings(file: File): Promise<void> {
           bookmarkId,
           type,
           ...(resolvedPath ? { path: resolvedPath } : {}),
+          ...(typeof itemRecord.units === "number" ? { units: itemRecord.units } : {}),
+          ...(typeof itemRecord.transparent === "boolean" ? { transparent: itemRecord.transparent } : {}),
           ...(rename ? { rename } : {}),
           ...(typeof itemRecord.color === "string" && itemRecord.color
             ? { color: itemRecord.color }
@@ -1915,19 +2371,45 @@ importFileInput.addEventListener("change", () => {
   }
 });
 
+// Chrome Sync Toggle
+if (syncEnabledToggle) {
+  void loadSyncEnabled().then((enabled) => {
+    syncEnabledToggle.checked = enabled;
+  });
+
+  syncEnabledToggle.addEventListener("change", async () => {
+    const enabled = syncEnabledToggle.checked;
+    await saveSyncEnabled(enabled);
+    if (enabled) {
+      await saveConfig({
+        desktopWidget: { url: desktopUrl.value.trim() || DEFAULT_DESKTOP_URL },
+        instanceLabel: instanceLabel.value.trim(),
+        panel: { menus },
+      });
+    }
+  });
+}
+
 // Debug & Diagnostics Card
 const debugLoggingToggle = document.getElementById("debug-logging-toggle") as HTMLInputElement | null;
 const copyDebugBtn = document.getElementById("copy-debug-btn") as HTMLButtonElement | null;
 const copyDebugStatus = document.getElementById("copy-debug-status") as HTMLSpanElement | null;
 
 void browser.storage.local.get("debugLoggingEnabled").then((res) => {
+  const enabled = Boolean(res.debugLoggingEnabled);
   if (debugLoggingToggle) {
-    debugLoggingToggle.checked = Boolean(res.debugLoggingEnabled);
+    debugLoggingToggle.checked = enabled;
+  }
+  if (copyDebugBtn) {
+    copyDebugBtn.disabled = !enabled;
   }
 }).catch(() => {});
 
 debugLoggingToggle?.addEventListener("change", async () => {
   const enabled = Boolean(debugLoggingToggle.checked);
+  if (copyDebugBtn) {
+    copyDebugBtn.disabled = !enabled;
+  }
   try {
     await browser.storage.local.set({ debugLoggingEnabled: enabled });
     await browser.runtime.sendMessage({ type: "setDebugLogging", enabled }).catch(() => {});
@@ -1948,6 +2430,13 @@ debugLoggingToggle?.addEventListener("change", async () => {
 });
 
 copyDebugBtn?.addEventListener("click", async () => {
+  if (!debugLoggingToggle?.checked) {
+    if (copyDebugStatus) {
+      copyDebugStatus.textContent = t("diagnostics.notEnabled");
+    }
+    return;
+  }
+
   if (copyDebugBtn) copyDebugBtn.disabled = true;
   if (copyDebugStatus) copyDebugStatus.textContent = t("diagnostics.collecting");
 
@@ -2012,7 +2501,7 @@ copyDebugBtn?.addEventListener("click", async () => {
       copyDebugStatus.textContent = t("diagnostics.fetchFailed", { error: String(err) });
     }
   } finally {
-    if (copyDebugBtn) copyDebugBtn.disabled = false;
+    if (copyDebugBtn) copyDebugBtn.disabled = !debugLoggingToggle?.checked;
   }
 });
 

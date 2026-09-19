@@ -498,6 +498,7 @@ output {
   color: #0f172a;
 }
 
+.menu-header-btn.menu-add-btn,
 .menu-header-btn.menu-add-item-btn {
   color: #2563eb;
   border-color: #bfdbfe;
@@ -505,6 +506,7 @@ output {
   font-weight: 600;
 }
 
+.menu-header-btn.menu-add-btn:hover,
 .menu-header-btn.menu-add-item-btn:hover {
   background: #dbeafe;
   border-color: #93c5fd;
@@ -851,6 +853,69 @@ output {
   background: #f0fdf4;
   color: #15803d;
   border: 1px solid #bbf7d0;
+}
+
+.item-tag-space {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.menu-add-space-btn {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+/* Add Item Dropdown Popover */
+.add-item-popover {
+  position: fixed;
+  z-index: 10000;
+  min-width: 170px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  animation: popoverFadeIn 0.12s ease-out;
+}
+
+.add-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.add-popover-item:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+.add-popover-icon {
+  font-size: 15px;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.add-popover-text {
+  flex: 1;
 }
 
 /* Color Popover Floating Menu */
@@ -1349,14 +1414,31 @@ output {
   gap: 4px;
   font-size: 13px;
   color: #475569;
+  flex: 1;
+}
+
+.picker-select-current-btn {
+  padding: 4px 10px;
+  min-height: 28px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.picker-select-current-btn[data-selected="true"] {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #1d4ed8;
 }
 
 .picker-crumb {
   color: #2563eb;
   cursor: pointer;
   text-decoration: none;
-  padding: 2px 4px;
+  padding: 2px 6px;
   border-radius: 4px;
+  border: 1px solid transparent;
 }
 
 .picker-crumb:hover {
@@ -1366,7 +1448,13 @@ output {
 .picker-crumb.current {
   color: #0f172a;
   font-weight: 600;
-  cursor: default;
+  cursor: pointer;
+}
+
+.picker-crumb.selected {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
 }
 
 .picker-content {

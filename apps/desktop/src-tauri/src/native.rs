@@ -154,6 +154,27 @@ struct PendingWindowPairing {
     outgoing: UnboundedSender<ServerMessage>,
 }
 
+/// The bar's total width/height is derived from the remembered per-button size
+/// (item_width/item_height) and the current item count — the extension no longer
+/// computes or transmits the total. Recompute it here, at the single point where an
+/// incoming sync is received, before anything downstream sizes the window or renders.
+fn recompute_menu_total_size(menu: &mut MenuSnapshot) {
+    let count = crate::protocol::menu_track_count(&menu.items);
+    let item_width = menu.placement.item_width.unwrap_or(84.0);
+    let item_height = menu.placement.item_height.unwrap_or(36.0);
+    let gap = crate::protocol::menu_gap(menu);
+    match menu.orientation {
+        crate::protocol::MenuOrientation::Row => {
+            menu.placement.width = count * item_width + (count - 1.0) * gap;
+            menu.placement.height = item_height;
+        }
+        crate::protocol::MenuOrientation::Column => {
+            menu.placement.height = count * item_height + (count - 1.0) * gap;
+            menu.placement.width = item_width;
+        }
+    }
+}
+
 pub struct NativeReactor {
     app: AppHandle,
     display_panels: Arc<AtomicBool>,
@@ -372,6 +393,12 @@ impl NativeReactor {
                     attachment_mode,
                     panels,
                 } => {
+                    let mut panels = panels;
+                    for panel in panels.iter_mut() {
+                        for menu in panel.menus.iter_mut() {
+                            recompute_menu_total_size(menu);
+                        }
+                    }
                     if let Ok(Some(outcome)) =
                         self.registry
                             .sync(connection_uid, revision, attachment_mode, panels)

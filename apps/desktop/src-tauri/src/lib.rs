@@ -275,8 +275,6 @@ pub struct CustomizationStartInfo {
 #[cfg(target_os = "windows")]
 const CUSTOMIZE_ICON_SIZE: f64 = 26.0;
 
-#[cfg(target_os = "windows")]
-const MENU_ITEM_GAP: f64 = 4.0;
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
@@ -440,14 +438,19 @@ fn save_menu_placement(
         MenuAnchor::BottomLeft | MenuAnchor::BottomRight => bounds.y + bounds.height - y - height,
     };
 
-    let items_count = orig_menu.items.len().max(1) as f64;
+    // Derive the per-track size with the exact same track count and gap the
+    // grid renders with (and that native::recompute_menu_total_size inverts),
+    // so a save without a drag round-trips back to the same total instead of
+    // growing every time.
+    let track_count = protocol::menu_track_count(&orig_menu.items);
+    let item_gap = protocol::menu_gap(orig_menu);
     let (item_width, item_height) = match orig_menu.orientation {
         protocol::MenuOrientation::Row => {
-            let iw = ((width - (items_count - 1.0) * MENU_ITEM_GAP) / items_count).max(1.0);
+            let iw = ((width - (track_count - 1.0) * item_gap) / track_count).max(1.0);
             (Some(iw), Some(height))
         }
         protocol::MenuOrientation::Column => {
-            let ih = ((height - (items_count - 1.0) * MENU_ITEM_GAP) / items_count).max(1.0);
+            let ih = ((height - (track_count - 1.0) * item_gap) / track_count).max(1.0);
             (Some(width), Some(ih))
         }
     };

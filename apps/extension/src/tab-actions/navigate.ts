@@ -24,6 +24,10 @@ export async function navigateBookmark(
   windowUid: string,
   actionUid: string,
 ): Promise<void> {
+  if (actionUid.startsWith("noop")) {
+    return;
+  }
+
   const windowId = Number(windowUid);
   if (!Number.isInteger(windowId)) {
     throw new Error("The bound browser window is invalid");

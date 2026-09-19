@@ -11,10 +11,11 @@ import browser from "webextension-polyfill";
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "./desktop-connection";
 import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
+import { normalizeCategory } from "./bookmarks";
 
 const STORAGE_KEY = "config";
 
-export type StoredMenuItemType = "bookmark" | "folder" | "flattenFolder" | (string & {});
+export type StoredMenuItemType = "bookmark" | "folder" | "flattenFolder" | "space" | (string & {});
 
 export type TabMode = "replace" | "newTab";
 
@@ -28,6 +29,8 @@ export interface StoredMenuItem {
   type?: StoredMenuItemType;
   expandOnHover?: boolean;
   tabMode?: TabMode;
+  units?: number;
+  transparent?: boolean;
 }
 
 export interface StoredMenu {
@@ -136,62 +139,100 @@ export function resolveMenuPlacement(
   storedPlacement: MenuPlacement | undefined,
   index = 0,
   orientation: MenuOrientation = "row",
-  itemCount = 1,
+  _itemCount = 1,
   fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
   gapPercent = DEFAULT_MENU_GAP_PERCENT,
 ): MenuPlacement {
-  const count = Math.max(1, itemCount);
   const defaultDim = getItemDimensions(fontSize);
-  const buttonDim = defaultDim.itemHeight;
-
-  // gapPercent from menu config takes precedence!
   const effectiveGapPercent = gapPercent !== undefined ? gapPercent : DEFAULT_MENU_GAP_PERCENT;
-  const effectiveGapPx = calculateGapPx(buttonDim, effectiveGapPercent);
+  const effectiveGapPx = calculateGapPx(defaultDim.itemHeight, effectiveGapPercent);
 
-  if (!storedPlacement) {
-    return defaultMenuPlacement(index, orientation, count, fontSize, effectiveGapPercent);
-  }
+  // A never-customized menu still needs default anchor/offsets and a default per-button
+  // size; a remembered placement supplies those from the last desktop customization.
+  const base =
+    storedPlacement ?? defaultMenuPlacement(index, orientation, 1, fontSize, effectiveGapPercent);
 
-  let itemWidth = storedPlacement.itemWidth ?? defaultDim.itemWidth;
-  let itemHeight = storedPlacement.itemHeight ?? defaultDim.itemHeight;
+  const itemWidth =
+    typeof base.itemWidth === "number" && base.itemWidth > 0 ? base.itemWidth : defaultDim.itemWidth;
+  const itemHeight =
+    typeof base.itemHeight === "number" && base.itemHeight > 0
+      ? base.itemHeight
+      : defaultDim.itemHeight;
 
-  if (storedPlacement.fontSize !== undefined && normalizeFontSize(storedPlacement.fontSize) !== normalizeFontSize(fontSize)) {
-    itemHeight = defaultDim.itemHeight;
-    const oldDefaultDim = getItemDimensions(storedPlacement.fontSize);
-    if (storedPlacement.itemWidth === oldDefaultDim.itemWidth) {
-      itemWidth = defaultDim.itemWidth;
-    }
-  }
-
-  const width = orientation === "row" ? count * itemWidth + (count - 1) * effectiveGapPx : itemWidth;
-  const height = orientation === "column" ? count * itemHeight + (count - 1) * effectiveGapPx : itemHeight;
-
+  // The extension only carries the per-button size + placement. The TOTAL width/height
+  // is NOT computed or stored here — the desktop derives it from itemWidth/itemHeight ×
+  // item count on sync (and overwrites these zeros), so a stale total can never squeeze
+  // the buttons or drift when items are added/removed.
   return {
-    anchor: storedPlacement.anchor,
+    anchor: base.anchor,
+    offsetX: base.offsetX,
+    offsetY: base.offsetY,
     fontSize: normalizeFontSize(fontSize),
     gap: effectiveGapPx,
-    height,
-    itemHeight,
     itemWidth,
-    offsetX: storedPlacement.offsetX,
-    offsetY: storedPlacement.offsetY,
-    width,
+    itemHeight,
+    width: 0,
+    height: 0,
   };
 }
 
+export const SYNC_ENABLED_STORAGE_KEY = "sync_enabled";
+export const SYNC_CONFIG_KEY = "sync_menus";
+
+export async function loadSyncEnabled(): Promise<boolean> {
+  const stored = await browser.storage.local.get(SYNC_ENABLED_STORAGE_KEY);
+  return Boolean(stored[SYNC_ENABLED_STORAGE_KEY]);
+}
+
+export async function saveSyncEnabled(enabled: boolean): Promise<void> {
+  await browser.storage.local.set({
+    [SYNC_ENABLED_STORAGE_KEY]: enabled,
+  });
+}
+
 export async function loadConfig(): Promise<ExtensionConfig> {
-  const [stored, instanceUid] = await Promise.all([
+  const [storedLocal, instanceUid, isSync] = await Promise.all([
     browser.storage.local.get(STORAGE_KEY),
     loadInstanceUid(),
+    loadSyncEnabled(),
   ]);
-  return normalizeConfig(stored[STORAGE_KEY], instanceLabelFromUid(instanceUid));
+  let config = normalizeConfig(storedLocal[STORAGE_KEY], instanceLabelFromUid(instanceUid));
+
+  if (isSync && browser.storage.sync) {
+    try {
+      const storedSync = await browser.storage.sync.get(SYNC_CONFIG_KEY);
+      const syncMenus = storedSync[SYNC_CONFIG_KEY];
+      if (Array.isArray(syncMenus) && syncMenus.length > 0) {
+        config = normalizeConfig(
+          { ...config, panel: { menus: syncMenus } },
+          instanceLabelFromUid(instanceUid),
+        );
+      }
+    } catch (e) {
+      console.warn("Failed to load menus from storage.sync:", e);
+    }
+  }
+
+  return config;
 }
 
 export async function saveConfig(config: ExtensionConfig): Promise<void> {
   const instanceUid = await loadInstanceUid();
+  const normalized = normalizeConfig(config, instanceLabelFromUid(instanceUid));
   await browser.storage.local.set({
-    [STORAGE_KEY]: normalizeConfig(config, instanceLabelFromUid(instanceUid)),
+    [STORAGE_KEY]: normalized,
   });
+
+  const isSync = await loadSyncEnabled();
+  if (isSync && browser.storage.sync) {
+    try {
+      await browser.storage.sync.set({
+        [SYNC_CONFIG_KEY]: normalized.panel.menus,
+      });
+    } catch (e) {
+      console.warn("Failed to save menus to storage.sync:", e);
+    }
+  }
 }
 
 export function normalizeConfig(value: unknown, defaultInstanceLabel: string): ExtensionConfig {
@@ -372,11 +413,33 @@ function isAnchor(value: unknown): value is MenuPlacement["anchor"] {
 
 export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefined {
   if (!isRecord(value)) return undefined;
+  const rawType = typeof value.type === "string" && value.type
+    ? (value.type as StoredMenuItemType)
+    : undefined;
+
+  if (rawType === "space") {
+    const bookmarkId = typeof value.bookmarkId === "string" && value.bookmarkId
+      ? value.bookmarkId
+      : `space-${crypto.randomUUID()}`;
+    const units = typeof value.units === "number" && Number.isFinite(value.units)
+      ? boundedNumber(value.units, 0.1, 20, 1)
+      : undefined;
+    const color = typeof value.color === "string" && value.color ? value.color : undefined;
+    const transparent = typeof value.transparent === "boolean" ? value.transparent : true;
+    return {
+      bookmarkId,
+      type: "space",
+      ...(units !== undefined ? { units } : {}),
+      ...(color ? { color } : {}),
+      transparent,
+    };
+  }
+
   const bookmarkId = typeof value.bookmarkId === "string" ? value.bookmarkId : "";
   const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")
     ? value.path
     : undefined;
-  if (!bookmarkId && (!path || path.length === 0)) {
+  if (!bookmarkId && path === undefined) {
     return undefined;
   }
   const rename = typeof value.rename === "string" && value.rename
@@ -386,14 +449,11 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
       : undefined;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
   const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
-  const type = typeof value.type === "string" && value.type
-    ? (value.type as StoredMenuItemType)
-    : undefined;
   const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
   return {
     bookmarkId,
-    ...(path ? { path } : {}),
-    ...(type ? { type } : {}),
+    ...(path !== undefined ? { path } : {}),
+    ...(rawType ? { type: rawType } : {}),
     ...(rename ? { rename } : {}),
     ...(color ? { color } : {}),
     ...(tabMode ? { tabMode } : {}),
@@ -404,7 +464,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
 function isStoredMenuItem(value: unknown): value is StoredMenuItem {
   return (
     isRecord(value) &&
-    (typeof value.bookmarkId === "string" || (Array.isArray(value.path) && value.path.length > 0)) &&
+    (typeof value.bookmarkId === "string" || Array.isArray(value.path)) &&
     (value.path === undefined || (Array.isArray(value.path) && value.path.every((p) => typeof p === "string"))) &&
     (value.url === undefined || typeof value.url === "string") &&
     (value.color === undefined || typeof value.color === "string") &&
@@ -467,3 +527,49 @@ export async function saveWidgetEnabled(enabled: boolean): Promise<void> {
     [WIDGET_ENABLED_STORAGE_KEY]: enabled,
   });
 }
+
+export const BOOKMARK_ROOT_PREFIX_KEY = "bookmark_root_prefix";
+export const DEFAULT_BOOKMARK_ROOT_PREFIX = "/书签栏";
+
+export async function loadBookmarkRootPrefix(): Promise<string> {
+  const stored = await browser.storage.local.get(BOOKMARK_ROOT_PREFIX_KEY);
+  const raw = stored[BOOKMARK_ROOT_PREFIX_KEY];
+  if (typeof raw === "string" && raw.trim()) {
+    return raw.trim();
+  }
+  return await initBookmarkRootPrefix();
+}
+
+export async function saveBookmarkRootPrefix(prefix: string): Promise<void> {
+  await browser.storage.local.set({
+    [BOOKMARK_ROOT_PREFIX_KEY]: prefix.trim() || DEFAULT_BOOKMARK_ROOT_PREFIX,
+  });
+}
+
+export async function initBookmarkRootPrefix(): Promise<string> {
+  let detected = DEFAULT_BOOKMARK_ROOT_PREFIX;
+  try {
+    const rawTree = (await browser.bookmarks.getTree()) as Array<{
+      children?: Array<{ title?: string; children?: unknown[] }>;
+      id?: string;
+      title?: string;
+    }>;
+    const rootNodes =
+      rawTree.length === 1 && (rawTree[0].id === "0" || !rawTree[0].title) && rawTree[0].children
+        ? rawTree[0].children
+        : rawTree;
+    for (const node of rootNodes) {
+      if (node.title && normalizeCategory(node.title) === "toolbar") {
+        detected = `/${node.title.trim()}`;
+        break;
+      }
+    }
+  } catch {
+    // fallback to default
+  }
+  await browser.storage.local.set({
+    [BOOKMARK_ROOT_PREFIX_KEY]: detected,
+  });
+  return detected;
+}
+

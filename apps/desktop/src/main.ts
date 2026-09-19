@@ -48,25 +48,15 @@ async function initializeSurface(): Promise<void> {
   let customizing = false;
   let currentMenu = initial.menu;
 
-  let lastPointerX = -1;
-  let lastPointerY = -1;
-  window.addEventListener(
-    "pointermove",
-    (event) => {
-      lastPointerX = event.clientX;
-      lastPointerY = event.clientY;
-    },
-    { passive: true },
-  );
+  const POPUP_CLOSE_DELAY_MS = 50;
+  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
   window.addEventListener(
     "pointerout",
     (event) => {
-      // Pointer left the window entirely (no relatedTarget). Clear the cached
-      // position so scheduleClose's stale-position check doesn't keep the popup
-      // open forever after the cursor has moved away.
+      // Pointer left the window entirely (no relatedTarget) → close the popup.
       if (!event.relatedTarget) {
-        lastPointerX = -1;
-        lastPointerY = -1;
+        scheduleClose(POPUP_CLOSE_DELAY_MS);
       }
     },
     { passive: true },
@@ -76,7 +66,6 @@ async function initializeSurface(): Promise<void> {
   let activePopupEl: HTMLElement | null = null;
   let activePopupFolderUid: string | null = null;
   let activeAnchorButton: HTMLElement | null = null;
-  let expandingLockUntil = 0;
 
   let nativeAllocated = {
     height: 0,
@@ -101,30 +90,14 @@ async function initializeSurface(): Promise<void> {
     renderSurface(initial.menu);
   }
 
-  let closeTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function scheduleClose(delay = 200): void {
+  function scheduleClose(delay = POPUP_CLOSE_DELAY_MS): void {
+    // Trust pointerenter(cancelClose)/pointerleave(scheduleClose): re-entering a
+    // column or the expanded folder button cancels this timer. The old
+    // elementFromPoint(lastPointer) re-check kept the popup open over the
+    // transparent gap between columns, because the pointer stops firing pointermove
+    // there (pointer-events:none), leaving the cached position stale inside a column.
     clearTimeout(closeTimer);
     closeTimer = setTimeout(() => {
-      // If currently undergoing opening transition, cancel close attempt
-      if (Date.now() < expandingLockUntil) {
-        return;
-      }
-      // Inspect physical pointer position to verify if user is still interacting
-      if (lastPointerX >= 0 && lastPointerY >= 0) {
-        const hovered = document.elementFromPoint(lastPointerX, lastPointerY);
-        if (hovered) {
-          if (activePopupEl?.contains(hovered)) return;
-          if (activeAnchorButton?.contains(hovered)) return;
-          const menuBarEl = root.querySelector<HTMLElement>(".menu-bar");
-          if (menuBarEl?.contains(hovered)) {
-            // Check if pointer is over the currently expanded folder button
-            if (activePopupFolderUid && menuBarEl.querySelector(`.menu-button[data-expanded]`)?.contains(hovered)) {
-              return;
-            }
-          }
-        }
-      }
       void closePopup();
     }, delay);
   }
@@ -140,14 +113,14 @@ async function initializeSurface(): Promise<void> {
     }
     const ctx = measureCanvas.getContext("2d");
     if (!ctx) {
-      return text.length * fontSize * 0.8;
+      return text.length * fontSize * 1.0;
     }
-    ctx.font = `${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+    ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif`;
     return ctx.measureText(text).width;
   }
 
-  const MIN_COLUMN_WIDTH = 80;
-  const MAX_COLUMN_WIDTH = 320;
+  const MIN_COLUMN_WIDTH = 140;
+  const MAX_COLUMN_WIDTH = 420;
 
   function calculateColumnWidth(entries: LayoutEntry[], fontSize: number): number {
     if (entries.length === 0) {
@@ -156,16 +129,27 @@ async function initializeSurface(): Promise<void> {
     let maxTextWidth = 0;
     let hasFolder = false;
     for (const entry of entries) {
+      if (entry.kind === "space") continue;
       if (entry.kind === "folder") {
         hasFolder = true;
       }
-      const w = measureTextWidth(entry.label, fontSize);
+      const displayText =
+        entry.rename && entry.rename !== entry.label && !entry.label.startsWith(entry.rename)
+          ? `${entry.rename} (${entry.label})`
+          : entry.label;
+      const w = measureTextWidth(displayText, fontSize);
       if (w > maxTextWidth) {
         maxTextWidth = w;
       }
     }
-    // padding: left 10px + right 12px, plus folder indicator 18px if needed
-    const horizontalPadding = 10 + 12 + (hasFolder ? 18 : 6);
+    // Column padding (12px) + border (2px) = 14px
+    // Button horizontal padding: left 10px + (folder ? 24px : 10px) = 20px / 34px
+    // Windows vertical scrollbar allowance: 18px
+    // Safety buffer for subpixel font rendering and DirectWrite kerning: 16px
+    const buttonPadding = 10 + (hasFolder ? 24 : 10);
+    const scrollbarBuffer = 18;
+    const safetyBuffer = 16;
+    const horizontalPadding = 14 + buttonPadding + scrollbarBuffer + safetyBuffer;
     const neededWidth = Math.ceil(maxTextWidth + horizontalPadding);
     return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, neededWidth));
   }
@@ -225,8 +209,13 @@ async function initializeSurface(): Promise<void> {
     menuBar.dataset.orientation = menu.orientation;
     // Only down (row bar) / right (column bar) are supported — up/left were removed
     // because moving the window origin flickers. See .cx/specs popup-expand note.
-    menuBar.dataset.expandDirection = menu.orientation === "column" ? "right" : "down";
-    menuBar.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
+    const totalUnits = menu.items.reduce((acc, item) => {
+      if (item.kind === "space") {
+        return acc + Math.max(0.1, item.units ?? 1);
+      }
+      return acc + 1;
+    }, 0);
+    menuBar.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
     menuBar.style.setProperty("--menu-gap", `${gap}px`);
     menuBar.style.width = `${menu.placement.width}px`;
@@ -234,8 +223,9 @@ async function initializeSurface(): Promise<void> {
 
     menuBar.addEventListener("pointerenter", cancelClose);
     menuBar.addEventListener("pointerleave", (event) => {
-      if (!activePopupEl || !activePopupEl.contains(event.relatedTarget as Node | null)) {
-        scheduleClose(200);
+      const related = event.relatedTarget as Element | null;
+      if (!related?.closest(".menu-column")) {
+        scheduleClose(POPUP_CLOSE_DELAY_MS);
       }
     });
 
@@ -289,35 +279,59 @@ async function initializeSurface(): Promise<void> {
   }
 
   function renderMenuEntry(entry: LayoutEntry, menuBar: HTMLElement): HTMLElement {
+    if (entry.kind === "space") {
+      const spaceEl = document.createElement("div");
+      spaceEl.className = "menu-space";
+      const units = Math.max(0.1, entry.units ?? 1);
+      spaceEl.style.setProperty("--space-units", String(units));
+      const isTransparent = entry.transparent !== false;
+      spaceEl.dataset.transparent = isTransparent ? "true" : "false";
+      if (isTransparent) {
+        spaceEl.style.backgroundColor = "transparent";
+      } else if (entry.color) {
+        spaceEl.style.backgroundColor = entry.color;
+      } else {
+        spaceEl.classList.add("menu-space-solid");
+      }
+      return spaceEl;
+    }
+
     const button = menuButton(entry, false);
     if (entry.kind === "bookmark") {
       button.addEventListener("pointerenter", () => {
         if (activePopupEl) {
-          scheduleClose(150);
+          scheduleClose(POPUP_CLOSE_DELAY_MS);
         }
       });
       button.addEventListener("pointerdown", (event) => {
         if (event.button === 0) {
           event.preventDefault();
           void closePopup();
-          void invokeAction(instanceUid, windowUid, entry.uid);
+          if (!entry.uid.startsWith("noop")) {
+            void invokeAction(instanceUid, windowUid, entry.uid);
+          }
         }
       });
     } else {
       const expandOnHover = entry.expandOnHover !== false;
+      const hasChildren = Boolean(entry.children && entry.children.length > 0);
       if (expandOnHover) {
         button.addEventListener("pointerenter", () => {
           cancelClose();
-          openPopup(entry, button, menuBar);
+          if (hasChildren) {
+            openPopup(entry, button, menuBar);
+          }
         });
         button.addEventListener("focus", () => {
           cancelClose();
-          openPopup(entry, button, menuBar);
+          if (hasChildren) {
+            openPopup(entry, button, menuBar);
+          }
         });
       } else {
         button.addEventListener("pointerenter", () => {
           if (activePopupFolderUid !== entry.uid && activePopupEl) {
-            scheduleClose(150);
+            scheduleClose(POPUP_CLOSE_DELAY_MS);
           }
         });
         button.addEventListener("pointerdown", (event) => {
@@ -325,7 +339,7 @@ async function initializeSurface(): Promise<void> {
             event.preventDefault();
             if (activePopupFolderUid === entry.uid && activePopupEl) {
               void closePopup();
-            } else {
+            } else if (hasChildren) {
               openPopup(entry, button, menuBar);
             }
           }
@@ -341,7 +355,6 @@ async function initializeSurface(): Promise<void> {
     }
 
     cancelClose();
-    expandingLockUntil = Date.now() + 250;
     activeAnchorButton = anchorButton;
 
     // Mark anchor button as expanded
@@ -359,17 +372,13 @@ async function initializeSurface(): Promise<void> {
 
     let levels: LayoutEntry[][] = [entry.children];
     let expandedUids: string[] = [];
+    const columnEls: HTMLElement[] = [];
+    const renderedLevels: LayoutEntry[][] = [];
 
     const menuColor = currentMenu?.color;
     const popupEl = document.createElement("div");
     popupEl.className = "popup-container";
     popupEl.ariaLabel = t("aria.bookmarkMenu");
-    popupEl.addEventListener("pointerenter", cancelClose);
-    popupEl.addEventListener("pointerleave", (event) => {
-      if (!menuBar.contains(event.relatedTarget as Node | null)) {
-        scheduleClose(200);
-      }
-    });
     activePopupEl = popupEl;
 
     const direction: ExpandDirection = currentMenu?.orientation === "column" ? "right" : "down";
@@ -411,119 +420,165 @@ async function initializeSurface(): Promise<void> {
       }
     }
 
+    function buildColumn(entries: LayoutEntry[], level: number, colWidth: number): HTMLElement {
+      const column = document.createElement("div");
+      column.className = "menu-column";
+      column.addEventListener("pointerenter", cancelClose);
+      column.addEventListener("pointerleave", (event) => {
+        const related = event.relatedTarget as Element | null;
+        if (!related?.closest(".menu-column") && !menuBar.contains(related as Node | null)) {
+          scheduleClose(POPUP_CLOSE_DELAY_MS);
+        }
+      });
+      column.style.width = `${colWidth}px`;
+      column.style.minWidth = `${colWidth}px`;
+      column.style.maxWidth = `${colWidth}px`;
+      if (menuColor) {
+        column.dataset.accent = "true";
+        column.style.backgroundColor = menuColor;
+        column.style.borderColor = menuColor;
+      }
+      for (const item of entries) {
+        const button = menuButton(item, true);
+        if (menuColor) {
+          button.style.setProperty("--button-custom-color", menuColor);
+          button.dataset.hasCustomColor = "true";
+        }
+        if (item.kind === "folder") {
+          button.dataset.uid = item.uid;
+          const subExpand = item.expandOnHover !== false;
+          button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
+          if (subExpand) {
+            button.addEventListener("pointerenter", () => {
+              cancelClose();
+              // Already the open child → no-op, so scrolling this column (which slides
+              // this folder back under the cursor) does not rebuild and reset scroll.
+              if (expandedUids[level] === item.uid && levels.length > level + 1) return;
+              levels = [...levels.slice(0, level + 1), item.children];
+              expandedUids = [...expandedUids.slice(0, level), item.uid];
+              renderLevels();
+            });
+          } else {
+            button.addEventListener("pointerenter", () => {
+              cancelClose();
+              if (levels.length > level + 1 && expandedUids[level] !== item.uid) {
+                levels = levels.slice(0, level + 1);
+                expandedUids = expandedUids.slice(0, level);
+                renderLevels();
+              }
+            });
+            button.addEventListener("pointerdown", (event) => {
+              if (event.button === 0) {
+                event.preventDefault();
+                if (expandedUids[level] === item.uid) {
+                  levels = levels.slice(0, level + 1);
+                  expandedUids = expandedUids.slice(0, level);
+                } else {
+                  levels = [...levels.slice(0, level + 1), item.children];
+                  expandedUids = [...expandedUids.slice(0, level), item.uid];
+                }
+                renderLevels();
+              }
+            });
+          }
+        } else {
+          button.addEventListener("pointerenter", () => {
+            cancelClose();
+            if (levels.length > level + 1) {
+              levels = levels.slice(0, level + 1);
+              expandedUids = expandedUids.slice(0, level);
+              renderLevels();
+            }
+          });
+          button.addEventListener("pointerdown", (event) => {
+            if (event.button === 0) {
+              void closePopup();
+              if (!item.uid.startsWith("noop")) {
+                void invokeAction(instanceUid, windowUid, item.uid);
+              }
+            }
+          });
+        }
+        column.appendChild(button);
+      }
+      return column;
+    }
+
     function renderLevels(): void {
       const columnWidths = levels.map((entries) => calculateColumnWidth(entries, theme.fontSize));
 
-      popupEl.replaceChildren(
-        ...levels.map((entries, level) => {
-          const column = document.createElement("div");
-          column.className = "menu-column";
-          const colWidth = columnWidths[level];
-          column.style.width = `${colWidth}px`;
-          column.style.minWidth = `${colWidth}px`;
-          column.style.maxWidth = `${colWidth}px`;
-          if (menuColor) {
-            column.dataset.accent = "true";
-            column.style.backgroundColor = menuColor;
-            column.style.borderColor = menuColor;
-          }
-          column.append(
-            ...entries.map((item) => {
-              const button = menuButton(item, true);
-              if (menuColor) {
-                button.style.setProperty("--button-custom-color", menuColor);
-                button.dataset.hasCustomColor = "true";
-              }
-              if (item.kind === "folder") {
-                const subExpand = item.expandOnHover !== false;
-                button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
-                if (subExpand) {
-                  button.addEventListener("pointerenter", () => {
-                    cancelClose();
-                    levels = [...levels.slice(0, level + 1), item.children];
-                    expandedUids = [...expandedUids.slice(0, level), item.uid];
-                    renderLevels();
-                  });
-                } else {
-                  button.addEventListener("pointerenter", () => {
-                    cancelClose();
-                    if (levels.length > level + 1 && expandedUids[level] !== item.uid) {
-                      levels = levels.slice(0, level + 1);
-                      expandedUids = expandedUids.slice(0, level);
-                      renderLevels();
-                    }
-                  });
-                  button.addEventListener("pointerdown", (event) => {
-                    if (event.button === 0) {
-                      event.preventDefault();
-                      if (expandedUids[level] === item.uid) {
-                        levels = levels.slice(0, level + 1);
-                        expandedUids = expandedUids.slice(0, level);
-                      } else {
-                        levels = [...levels.slice(0, level + 1), item.children];
-                        expandedUids = [...expandedUids.slice(0, level), item.uid];
-                      }
-                      renderLevels();
-                    }
-                  });
-                }
-              } else {
-                button.addEventListener("pointerenter", () => {
-                  cancelClose();
-                  if (levels.length > level + 1) {
-                    levels = levels.slice(0, level + 1);
-                    expandedUids = expandedUids.slice(0, level);
-                    renderLevels();
-                  }
-                });
-                button.addEventListener("pointerdown", (event) => {
-                  if (event.button === 0) {
-                    void closePopup();
-                    void invokeAction(instanceUid, windowUid, item.uid);
-                  }
-                });
-              }
-              return button;
-            }),
-          );
-          return column;
-        }),
-      );
-
-      const totalColumnsWidth = columnWidths.reduce((acc, w) => acc + w, 0);
-      const gapTotal = Math.max(0, levels.length - 1) * 4;
-      const popupWidth = totalColumnsWidth + gapTotal;
-      popupEl.style.width = `${popupWidth}px`;
-
-      const maxPopupHeight = Math.min(
-        560,
-        Math.max(...levels.map((entries) => popupColumnHeight(entries, theme.itemHeight))),
-      );
-
-      let totalWidth = menuWidth;
-      let totalHeight = menuHeight;
-      const gap = 2;
-
-      // Only down / right are supported: both grow away from the window's fixed
-      // top-left origin, so the OS window never has to move (offset always 0) — it
-      // only grows. Moving the origin (the old up/left support) shifted the old
-      // framebuffer for one frame and was the source of the expansion flicker.
       popupEl.style.flexDirection = "row";
       popupEl.style.alignItems = "flex-start";
       popupEl.style.bottom = "";
       popupEl.style.right = "";
 
+      // Incremental: keep columns whose level is unchanged (same entries ref) so
+      // their DOM — and scroll position — survive; rebuild only from the first change.
+      let diffFrom = 0;
+      while (
+        diffFrom < renderedLevels.length &&
+        diffFrom < levels.length &&
+        renderedLevels[diffFrom] === levels[diffFrom]
+      ) {
+        diffFrom++;
+      }
+      for (let i = columnEls.length - 1; i >= diffFrom; i--) {
+        columnEls[i]?.remove();
+      }
+      columnEls.length = diffFrom;
+      renderedLevels.length = diffFrom;
+
+      for (let level = diffFrom; level < levels.length; level++) {
+        const column = buildColumn(levels[level]!, level, columnWidths[level]!);
+        // A sub-column opens aligned with the parent item that was hovered (its
+        // current on-screen position, honoring the parent column's scroll), not the top.
+        if (level > 0) {
+          const parentBtn = columnEls[level - 1]?.querySelector<HTMLElement>(
+            `.menu-button[data-uid="${expandedUids[level - 1]}"]`,
+          );
+          if (parentBtn) {
+            const offset =
+              parentBtn.getBoundingClientRect().top - popupEl.getBoundingClientRect().top;
+            column.style.marginTop = `${Math.max(0, offset)}px`;
+          }
+        }
+        popupEl.appendChild(column);
+        columnEls[level] = column;
+        renderedLevels[level] = levels[level]!;
+      }
+
+      // Refresh the expanded highlight on the kept parent columns.
+      for (let level = 0; level < diffFrom; level++) {
+        const uid = expandedUids[level];
+        for (const btn of columnEls[level]!.querySelectorAll<HTMLElement>(".menu-button[data-uid]")) {
+          btn.toggleAttribute("data-expanded", btn.dataset.uid === uid);
+        }
+      }
+
+      // Width is set explicitly (analytical) — an abspos width:auto flex container
+      // can measure 0 and leave the popup clipped outside the window. Height is
+      // measured (offsetHeight is reliable regardless of container width) so it
+      // accounts for the sub-column top margins. Only down/right: the window never
+      // moves its origin, it only grows.
+      const gapTotal = Math.max(0, levels.length - 1) * 4;
+      const popupWidth = columnWidths.reduce((acc, w) => acc + w, 0) + gapTotal;
+      popupEl.style.width = `${popupWidth}px`;
+      const popupHeight = popupEl.offsetHeight;
+      const gap = 2;
+      let totalWidth = menuWidth;
+      let totalHeight = menuHeight;
+
       if (direction === "right") {
         popupEl.style.top = `${btnTop}px`;
         popupEl.style.left = `${btnLeft + btnWidth + gap}px`;
         totalWidth = Math.max(menuWidth, btnLeft + btnWidth + gap + popupWidth);
-        totalHeight = Math.max(menuHeight, btnTop + maxPopupHeight);
+        totalHeight = Math.max(menuHeight, btnTop + popupHeight);
       } else {
         // down
         popupEl.style.top = `${btnTop + btnHeight + gap}px`;
         popupEl.style.left = `${btnLeft}px`;
         totalWidth = Math.max(menuWidth, btnLeft + popupWidth);
-        totalHeight = Math.max(menuHeight, btnTop + btnHeight + gap + maxPopupHeight);
+        totalHeight = Math.max(menuHeight, btnTop + btnHeight + gap + popupHeight);
       }
 
       ensureNativePopupSize(totalWidth, totalHeight, 0, 0);
@@ -591,7 +646,13 @@ async function initializeSurface(): Promise<void> {
     const railContainer = document.createElement("div");
     railContainer.className = "customize-rail";
     railContainer.dataset.orientation = menu.orientation;
-    railContainer.style.setProperty("--item-count", String(Math.max(1, menu.items.length)));
+    const totalUnits = menu.items.reduce((acc, it) => {
+      if (it.kind === "space") {
+        return acc + Math.max(1, Math.round(it.units ?? 1));
+      }
+      return acc + 1;
+    }, 0);
+    railContainer.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
     railContainer.style.setProperty("--menu-gap", `${gap}px`);
 
     function updateCustomizeButtonSize(): void {
@@ -599,7 +660,7 @@ async function initializeSurface(): Promise<void> {
         theme.fontSize,
         menu.orientation,
         { ...menu.placement, width: targetWidth, height: targetHeight },
-        menu.items.length,
+        Math.max(1, Math.round(totalUnits)),
       );
       railContainer.style.setProperty("--button-font-size", `${btnFontSize}px`);
     }
@@ -612,7 +673,25 @@ async function initializeSurface(): Promise<void> {
       railContainer.replaceChildren(empty);
     } else {
       railContainer.replaceChildren(
-        ...menu.items.map((entry) => menuButton(entry, false)),
+        ...menu.items.map((entry) => {
+          if (entry.kind === "space") {
+            const spaceEl = document.createElement("div");
+            spaceEl.className = "menu-space";
+            const units = Math.max(0.1, entry.units ?? 1);
+            spaceEl.style.setProperty("--space-units", String(units));
+            const isTransparent = entry.transparent !== false;
+            spaceEl.dataset.transparent = isTransparent ? "true" : "false";
+            if (isTransparent) {
+              spaceEl.style.backgroundColor = "transparent";
+            } else if (entry.color) {
+              spaceEl.style.backgroundColor = entry.color;
+            } else {
+              spaceEl.classList.add("menu-space-solid");
+            }
+            return spaceEl;
+          }
+          return menuButton(entry, false);
+        }),
       );
     }
 
@@ -700,7 +779,7 @@ async function initializeSurface(): Promise<void> {
       }
     }
 
-    function resizeHandle(direction: "east" | "south" | "southEast"): HTMLElement {
+    function resizeHandle(direction: "east" | "south" | "southEast" | "north"): HTMLElement {
       const handle = document.createElement("div");
       handle.className = `resize-handle resize-${direction}`;
       handle.addEventListener("pointerdown", (event) => {
@@ -723,6 +802,9 @@ async function initializeSurface(): Promise<void> {
           if (direction === "south" || direction === "southEast") {
             targetHeight = clampHeight(startHeight + moveEvent.screenY - startY);
           }
+          if (direction === "north") {
+            targetHeight = clampHeight(startHeight - (moveEvent.screenY - startY));
+          }
           applyTargetSize();
           growNativeCanvasIfNeeded();
         };
@@ -743,6 +825,7 @@ async function initializeSurface(): Promise<void> {
     }
 
     railContainer.append(
+      resizeHandle("north"),
       resizeHandle("east"),
       resizeHandle("south"),
       resizeHandle("southEast"),
@@ -806,7 +889,10 @@ function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
   const displayText = entry.rename;
   if (displayText) {
     if (popup) {
-      labelSpan.textContent = displayText === entry.label ? entry.label : `${displayText} (${entry.label})`;
+      labelSpan.textContent =
+        displayText === entry.label || entry.label.startsWith(displayText)
+          ? entry.label
+          : `${displayText} (${entry.label})`;
     } else {
       labelSpan.textContent = displayText;
       const isEmojiOnly = /^\p{Extended_Pictographic}+$/u.test(displayText.trim());

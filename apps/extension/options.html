@@ -58,6 +58,27 @@
               <button id="test-desktop" type="button" data-i18n="btn.test">Test</button>
             </span>
           </label>
+          <label id="sync-enabled-field">
+            <span class="label-row">
+              <span data-i18n="form.chromeSync">Chrome Sync</span>
+            </span>
+            <span class="input-row" style="display: flex; align-items: center; gap: 8px; height: 38px;">
+              <label class="switch-toggle" data-i18n-title="form.chromeSyncTitle" title="Sync menus and bookmarks across devices via Chrome Sync">
+                <input type="checkbox" id="sync-enabled-toggle" />
+                <span class="switch-slider"></span>
+              </label>
+              <span style="font-size: 12px; color: #8a99ad;" data-i18n="form.chromeSyncHint">Sync menus across devices</span>
+            </span>
+          </label>
+          <label id="bookmark-root-field">
+            <span class="label-row">
+              <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
+            </span>
+            <span class="input-row">
+              <input id="bookmark-root-input" type="text" placeholder="/书签栏" />
+              <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
+            </span>
+          </label>
         </div>
         <section class="menus-section">
           <div class="menus-section-header">
@@ -178,35 +199,63 @@
           <button type="button" id="item-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <div class="item-settings-body">
-          <div class="item-setting-field">
-            <span class="item-setting-field-title" data-i18n="itemSettings.rename">Rename</span>
-            <div class="item-setting-rename-row">
-              <input type="text" id="item-setting-rename" class="item-setting-rename-input" data-i18n-ph="itemSettings.renamePlaceholder" placeholder="Custom name or Emoji (e.g. 🚀, GH)" maxlength="30" />
-              <button type="button" id="item-setting-clear-rename" class="action-btn item-setting-clear-btn" data-i18n-title="itemSettings.clearRename" title="Clear rename">✕</button>
+          <!-- Space specific controls -->
+          <div id="item-settings-space-controls" class="item-settings-space-controls" style="display: none;">
+            <div class="item-setting-field">
+              <span class="item-setting-field-title" data-i18n="itemSettings.spaceWidth">Button width units</span>
+              <input type="number" id="item-setting-space-units" class="item-setting-number-input" min="0.1" max="20" step="0.5" value="1" />
+            </div>
+            <div class="item-setting-field">
+              <label class="item-setting-check-label">
+                <input type="checkbox" id="item-setting-transparent" />
+                <span data-i18n="itemSettings.transparent">Transparent</span>
+              </label>
             </div>
           </div>
-          <div class="item-setting-field">
-            <span class="item-setting-field-title" data-i18n="itemSettings.openMode">Open mode</span>
-            <select id="item-setting-tab-mode" class="item-setting-select">
-              <option value="" data-i18n="itemSettings.inherit">Inherit menu setting</option>
-              <option value="replace" data-i18n="itemSettings.replaceTab">Replace current tab</option>
-              <option value="newTab" data-i18n="itemSettings.newTab">New tab</option>
-            </select>
-          </div>
-          <div id="item-settings-folder-controls" class="item-settings-folder-controls">
-            <label class="item-setting-check-label">
-              <input type="checkbox" id="item-setting-flatten" />
-              <span data-i18n="itemSettings.flatten">Flatten folder</span>
-            </label>
-            <label class="item-setting-check-label" id="item-setting-hover-expand-label">
-              <input type="checkbox" id="item-setting-hover-expand" checked />
-              <span data-i18n="itemSettings.hoverExpand">Expand on hover</span>
-            </label>
-          </div>
-          <div class="item-settings-actions">
-            <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
+
+          <div id="item-settings-bookmark-controls">
+            <div class="item-setting-field">
+              <span class="item-setting-field-title" data-i18n="itemSettings.rename">Rename</span>
+              <div class="item-setting-rename-row">
+                <input type="text" id="item-setting-rename" class="item-setting-rename-input" data-i18n-ph="itemSettings.renamePlaceholder" placeholder="Custom name or Emoji (e.g. 🚀, GH)" maxlength="30" />
+                <button type="button" id="item-setting-clear-rename" class="action-btn item-setting-clear-btn" data-i18n-title="itemSettings.clearRename" title="Clear rename">✕</button>
+              </div>
+            </div>
+            <div class="item-setting-field">
+              <span class="item-setting-field-title" data-i18n="itemSettings.openMode">Open mode</span>
+              <select id="item-setting-tab-mode" class="item-setting-select">
+                <option value="" data-i18n="itemSettings.inherit">Inherit menu setting</option>
+                <option value="replace" data-i18n="itemSettings.replaceTab">Replace current tab</option>
+                <option value="newTab" data-i18n="itemSettings.newTab">New tab</option>
+              </select>
+            </div>
+            <div id="item-settings-folder-controls" class="item-settings-folder-controls">
+              <label class="item-setting-check-label">
+                <input type="checkbox" id="item-setting-flatten" />
+                <span data-i18n="itemSettings.flatten">Flatten folder</span>
+              </label>
+              <label class="item-setting-check-label" id="item-setting-hover-expand-label">
+                <input type="checkbox" id="item-setting-hover-expand" checked />
+                <span data-i18n="itemSettings.hoverExpand">Expand on hover</span>
+              </label>
+            </div>
+            <div class="item-settings-actions">
+              <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
+            </div>
           </div>
         </div>
+      </div>
+
+      <!-- Add Item Popover (Bookmark or Space) -->
+      <div id="add-item-popover" class="add-item-popover" style="display: none;">
+        <button type="button" id="add-popover-bookmark-btn" class="add-popover-item">
+          <span class="add-popover-icon">🔖</span>
+          <span class="add-popover-text" data-i18n="menu.addBookmark">Bookmark / Folder</span>
+        </button>
+        <button type="button" id="add-popover-space-btn" class="add-popover-item">
+          <span class="add-popover-icon">␣</span>
+          <span class="add-popover-text" data-i18n="menu.addSpace">Space</span>
+        </button>
       </div>
 
       <dialog id="bookmark-picker-dialog" class="picker-modal">
@@ -218,6 +267,7 @@
           <div class="picker-nav">
             <button id="picker-up-btn" class="action-btn picker-up-btn" type="button" data-i18n="picker.up">⬆ Up</button>
             <div id="picker-breadcrumbs" class="picker-breadcrumbs"></div>
+            <button id="picker-select-current-btn" class="action-btn picker-select-current-btn" type="button" data-i18n="picker.selectCurrent">📁 Select this folder</button>
           </div>
           <div class="picker-content" id="picker-content"></div>
           <div class="picker-footer">
