@@ -143,6 +143,21 @@ fn is_editing_locked(state: tauri::State<'_, AppState>) -> bool {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn surface_available_height(window: tauri::Window) -> Result<f64, String> {
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let top = f64::from(position.y) / scale;
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .ok_or("Current monitor is unavailable")?;
+    let work_area = monitor.work_area();
+    let bottom = (f64::from(work_area.position.y) + f64::from(work_area.size.height)) / scale;
+    Ok((bottom - top).max(0.0))
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn surface_state(
     state: tauri::State<'_, AppState>,
     instance_uid: String,
@@ -757,6 +772,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             surface_state,
+            surface_available_height,
             invoke_action,
             is_editing_locked,
             listener_state,

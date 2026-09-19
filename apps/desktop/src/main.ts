@@ -68,7 +68,6 @@ async function initializeSurface(): Promise<void> {
   // Track active popup state inside this single window
   let activePopupEl: HTMLElement | null = null;
   let activePopupFolderUid: string | null = null;
-  let activeAnchorButton: HTMLElement | null = null;
 
   let nativeAllocated = {
     height: 0,
@@ -139,12 +138,14 @@ async function initializeSurface(): Promise<void> {
 
   const MIN_COLUMN_WIDTH = 72;
   const MAX_COLUMN_WIDTH = 420;
+  const MIN_COLUMN_HEIGHT = 48;
+  const POPUP_SCREEN_MARGIN = 4;
 
-  // Popup columns scroll (and therefore widen) only past this height. Mirrors
-  // `.menu-column { max-height }` in styles.css.
-  const MAX_COLUMN_HEIGHT = 560;
-
-  function calculateColumnWidth(entries: LayoutEntry[], fontSize: number): number {
+  function calculateColumnWidth(
+    entries: LayoutEntry[],
+    fontSize: number,
+    maxColumnHeight: number,
+  ): number {
     if (entries.length === 0) {
       return MIN_COLUMN_WIDTH;
     }
@@ -174,8 +175,16 @@ async function initializeSurface(): Promise<void> {
     // overflow the column height; otherwise it is pure empty space.
     const itemHeight = Math.max(24, Math.round(fontSize * 2.7));
     const contentHeight = 12 + 2 + entries.length * (itemHeight + 2);
-    const scrollbarBuffer = contentHeight > MAX_COLUMN_HEIGHT ? 18 : 0;
+    const scrollbarBuffer = contentHeight > maxColumnHeight ? 18 : 0;
     return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, neededWidth + scrollbarBuffer));
+  }
+
+  async function getSurfaceAvailableHeight(): Promise<number> {
+    const height = await invoke<number>("surface_available_height");
+    if (!Number.isFinite(height) || height <= 0) {
+      throw new Error("Surface available height is unavailable");
+    }
+    return height;
   }
 
   function parseFontSize(value: unknown): number {
@@ -398,13 +407,12 @@ async function initializeSurface(): Promise<void> {
     return button;
   }
 
-  function openPopup(entry: LayoutEntry & { kind: "folder" }, anchorButton: HTMLElement, menuBar: HTMLElement): void {
+  async function openPopup(entry: LayoutEntry & { kind: "folder" }, anchorButton: HTMLElement, menuBar: HTMLElement): Promise<void> {
     if (activePopupFolderUid === entry.uid && activePopupEl) {
       return;
     }
 
     cancelClose();
-    activeAnchorButton = anchorButton;
 
     // Mark anchor button as expanded
     for (const btn of menuBar.querySelectorAll(".menu-button")) {
@@ -452,6 +460,25 @@ async function initializeSurface(): Promise<void> {
     const menuHeight = dims?.height ?? menuBar.offsetHeight;
 
     const theme = applyMenuTheme(currentMenu ?? initial.menu!);
+    let availableHeight: number;
+    try {
+      availableHeight = await getSurfaceAvailableHeight();
+    } catch (error) {
+      showSurfaceError(error);
+      activePopupEl = null;
+      activePopupFolderUid = null;
+      popupEl.remove();
+      return;
+    }
+    if (activePopupEl !== popupEl) {
+      return;
+    }
+    const popupGap = 2;
+    const popupTop = direction === "right" ? btnTop : btnTop + btnHeight + popupGap;
+    const maxColumnHeight = Math.max(
+      MIN_COLUMN_HEIGHT,
+      availableHeight - popupTop - POPUP_SCREEN_MARGIN,
+    );
 
     root.appendChild(popupEl);
     renderLevels();
@@ -481,6 +508,7 @@ async function initializeSurface(): Promise<void> {
     function buildColumn(entries: LayoutEntry[], level: number, colWidth: number): HTMLElement {
       const column = document.createElement("div");
       column.className = "menu-column";
+      column.style.maxHeight = `${maxColumnHeight}px`;
       column.addEventListener("pointerenter", cancelClose);
       column.addEventListener("pointerleave", (event) => {
         const related = event.relatedTarget as Element | null;
@@ -497,6 +525,7 @@ async function initializeSurface(): Promise<void> {
         column.style.borderColor = menuColor;
       }
       for (const item of entries) {
+        if (item.kind === "space") continue;
         const button = menuButton(item, true);
         if (menuColor) {
           button.style.setProperty("--button-custom-color", menuColor);
@@ -573,7 +602,7 @@ async function initializeSurface(): Promise<void> {
     }
 
     function renderLevels(): void {
-      const columnWidths = levels.map((entries) => calculateColumnWidth(entries, theme.fontSize));
+      const columnWidths = levels.map((entries) => calculateColumnWidth(entries, theme.fontSize, maxColumnHeight));
 
       popupEl.style.flexDirection = "row";
       popupEl.style.alignItems = "flex-start";
@@ -607,7 +636,12 @@ async function initializeSurface(): Promise<void> {
           if (parentBtn) {
             const offset =
               parentBtn.getBoundingClientRect().top - popupEl.getBoundingClientRect().top;
-            column.style.marginTop = `${Math.max(0, offset)}px`;
+            const marginTop = Math.min(
+              Math.max(0, offset),
+              Math.max(0, maxColumnHeight - MIN_COLUMN_HEIGHT),
+            );
+            column.style.marginTop = `${marginTop}px`;
+            column.style.maxHeight = `${Math.max(MIN_COLUMN_HEIGHT, maxColumnHeight - marginTop)}px`;
           }
         }
         popupEl.appendChild(column);
@@ -632,7 +666,7 @@ async function initializeSurface(): Promise<void> {
       const popupWidth = columnWidths.reduce((acc, w) => acc + w, 0) + gapTotal;
       popupEl.style.width = `${popupWidth}px`;
       const popupHeight = popupEl.offsetHeight;
-      const gap = 2;
+      const gap = popupGap;
       let totalWidth = menuWidth;
       let totalHeight = menuHeight;
 
@@ -660,7 +694,6 @@ async function initializeSurface(): Promise<void> {
       activePopupEl = null;
     }
     activePopupFolderUid = null;
-    activeAnchorButton = null;
     const menuBarEl = root.querySelector<HTMLElement>(".menu-bar");
     if (menuBarEl) {
       menuBarEl.style.transform = "";
@@ -945,7 +978,7 @@ async function initializeSurface(): Promise<void> {
   }
 }
 
-function menuButton(entry: LayoutEntry, popup: boolean): HTMLButtonElement {
+function menuButton(entry: Exclude<LayoutEntry, { kind: "space" }>, popup: boolean): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "menu-button";
@@ -1136,10 +1169,6 @@ async function invokeAction(
 function showSurfaceError(error: unknown): void {
   root.dataset.error = "";
   root.title = String(error);
-}
-
-function popupColumnHeight(entries: LayoutEntry[], itemHeight = 36): number {
-  return Math.min(560, Math.max(48, 16 + entries.length * (itemHeight + 2)));
 }
 
 async function initializeListenerSettings(): Promise<void> {
