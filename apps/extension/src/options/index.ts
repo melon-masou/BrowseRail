@@ -1251,9 +1251,6 @@ function initMenuStylePopover(): void {
     const menu = menus[activeStyleMenuIndex];
     if (menu) {
       menu.orientation = menuSettingOrientation.value as MenuOrientation;
-      if (!menu.expandDirection) {
-        menuSettingExpandDirection.value = menu.orientation === "column" ? "right" : "down";
-      }
       markDirty();
     }
   });
@@ -1261,7 +1258,8 @@ function initMenuStylePopover(): void {
   menuSettingExpandDirection.addEventListener("change", () => {
     const menu = menus[activeStyleMenuIndex];
     if (menu) {
-      menu.expandDirection = menuSettingExpandDirection.value as ExpandDirection;
+      const val = menuSettingExpandDirection.value;
+      menu.expandDirection = val === "down" || val === "right" ? val : undefined;
       markDirty();
     }
   });
@@ -1329,8 +1327,7 @@ function openMenuStylePopover(menuIndex: number, btnElement: HTMLElement): void 
 
   menuStyleTitle.textContent = t("menuStyle.title", { n: menuIndex + 1 });
   menuSettingOrientation.value = menu.orientation;
-  menuSettingExpandDirection.value =
-    menu.expandDirection ?? (menu.orientation === "column" ? "right" : "down");
+  menuSettingExpandDirection.value = menu.expandDirection ?? "";
   menuSettingFontSize.value = String(fs);
   menuSettingGap.value = String(gapVal);
 
