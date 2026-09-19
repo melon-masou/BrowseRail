@@ -17,6 +17,8 @@ pub enum ClientMessage {
         #[serde(default, rename = "attachmentMode")]
         attachment_mode: AttachmentMode,
         panels: Vec<PanelSnapshot>,
+        #[serde(default, rename = "freeMenus")]
+        free_menus: Vec<MenuSnapshot>,
     },
     #[serde(rename = "pairWindow")]
     PairWindow {
@@ -62,14 +64,25 @@ pub enum ServerMessage {
     Invoke {
         #[serde(rename = "actionUid")]
         action_uid: String,
-        #[serde(rename = "windowUid")]
-        window_uid: String,
+        // A free (detached) surface omits the target window; the extension then
+        // resolves it as the instance's current lastFocused window.
+        #[serde(rename = "windowUid", skip_serializing_if = "Option::is_none")]
+        window_uid: Option<String>,
+        #[serde(rename = "menuUid", skip_serializing_if = "Option::is_none")]
+        menu_uid: Option<String>,
     },
     #[serde(rename = "updateMenuPlacement")]
     UpdateMenuPlacement {
         #[serde(rename = "menuUid")]
         menu_uid: String,
         placement: MenuPlacement,
+    },
+    #[serde(rename = "updateFreePlacement")]
+    UpdateFreePlacement {
+        #[serde(rename = "menuUid")]
+        menu_uid: String,
+        x: f64,
+        y: f64,
     },
     #[serde(rename = "verifyWindowPairing")]
     VerifyWindowPairing {
@@ -113,6 +126,7 @@ pub enum AttachmentMode {
     #[default]
     LastFocused,
     All,
+    Free,
 }
 
 impl<'de> Deserialize<'de> for AttachmentMode {
@@ -124,6 +138,7 @@ impl<'de> Deserialize<'de> for AttachmentMode {
         match s.as_str() {
             "none" => Ok(AttachmentMode::None),
             "all" => Ok(AttachmentMode::All),
+            "free" => Ok(AttachmentMode::Free),
             _ => Ok(AttachmentMode::LastFocused),
         }
     }
@@ -204,6 +219,17 @@ pub struct MenuSnapshot {
     pub on_top_mode: OnTopMode,
     pub placement: MenuPlacement,
     pub uid: String,
+    // Absolute screen coordinates for a free menu's floating surface; absent
+    // means "no saved position, center on the primary monitor".
+    #[serde(default, rename = "freePosition")]
+    pub free_position: Option<FreePosition>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreePosition {
+    pub x: f64,
+    pub y: f64,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, Default)]
@@ -487,7 +513,8 @@ mod tests {
     fn writes_an_invocation_with_the_required_window_context() {
         let message = ServerMessage::Invoke {
             action_uid: "bookmark:same".into(),
-            window_uid: "window-a".into(),
+            window_uid: Some("window-a".into()),
+            menu_uid: None,
         };
 
         assert_eq!(
@@ -496,6 +523,24 @@ mod tests {
                 "type": "invoke",
                 "actionUid": "bookmark:same",
                 "windowUid": "window-a"
+            })
+        );
+    }
+
+    #[test]
+    fn writes_a_free_invocation_without_a_window() {
+        let message = ServerMessage::Invoke {
+            action_uid: "bookmark:same".into(),
+            window_uid: None,
+            menu_uid: Some("menu-1".into()),
+        };
+
+        assert_eq!(
+            serde_json::to_value(message).unwrap(),
+            serde_json::json!({
+                "type": "invoke",
+                "actionUid": "bookmark:same",
+                "menuUid": "menu-1"
             })
         );
     }

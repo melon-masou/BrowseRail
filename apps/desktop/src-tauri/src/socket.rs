@@ -262,12 +262,12 @@ async fn handle_connection(
                                         outgoing: outgoing.clone(),
                                     });
                                 }
-                                ClientMessage::Sync { revision, attachment_mode, panels } => {
+                                ClientMessage::Sync { revision, attachment_mode, panels, free_menus } => {
                                     let Some(ref inst_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored Sync received before Hello");
                                         continue;
                                     };
-                                    crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, mode={:?}, panels={}", attachment_mode, panels.len()));
+                                    crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, mode={:?}, panels={}, free={}", attachment_mode, panels.len(), free_menus.len()));
                                     connection_sm.transition(
                                         ConnectionState::Syncing {
                                             connection_uid,
@@ -281,6 +281,7 @@ async fn handle_connection(
                                         revision,
                                         attachment_mode,
                                         panels,
+                                        free_menus,
                                     });
                                     connection_sm.transition(
                                         ConnectionState::Active {

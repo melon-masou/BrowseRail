@@ -345,10 +345,9 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     value.expandDirection === "down" || value.expandDirection === "right"
       ? value.expandDirection
       : undefined;
-  const attachmentMode: AttachmentMode =
-    value.attachmentMode === "all" || value.attachmentMode === "lastFocused" || value.attachmentMode === "none"
-      ? value.attachmentMode
-      : "lastFocused";
+  const attachmentMode: AttachmentMode = isAttachmentMode(value.attachmentMode)
+    ? value.attachmentMode
+    : "lastFocused";
   const onTopMode: OnTopMode =
     value.onTopMode === "alwaysOnTop" ? "alwaysOnTop" : "aboveBrowser";
   const enabled = typeof value.enabled === "boolean" ? value.enabled : true;
@@ -410,7 +409,7 @@ function boundedNumber(
 }
 
 function isAttachmentMode(value: unknown): value is AttachmentMode {
-  return value === "none" || value === "lastFocused" || value === "all";
+  return value === "none" || value === "lastFocused" || value === "all" || value === "free";
 }
 
 function isAnchor(value: unknown): value is MenuPlacement["anchor"] {
@@ -517,6 +516,38 @@ export async function saveMenuPlacement(menuUid: string, placement: MenuPlacemen
   current[menuUid] = placement;
   await browser.storage.local.set({
     [PLACEMENTS_STORAGE_KEY]: current,
+  });
+}
+
+// Free (detached) menu surface positions: absolute screen coordinates, keyed by
+// menuUid. Kept separate from menu_placements (which stores anchor + window-
+// relative offsets that have no meaning off a browser window), so switching a
+// menu between free and attached modes never overwrites the other.
+export const FREE_PLACEMENTS_STORAGE_KEY = "free_placements";
+
+export type FreePlacement = { x: number; y: number };
+export type FreePlacementsMap = Record<string, FreePlacement>;
+
+export async function loadFreePlacements(): Promise<FreePlacementsMap> {
+  const stored = await browser.storage.local.get(FREE_PLACEMENTS_STORAGE_KEY);
+  const raw = stored[FREE_PLACEMENTS_STORAGE_KEY];
+  if (!isRecord(raw)) {
+    return {};
+  }
+  const result: FreePlacementsMap = {};
+  for (const [uid, pos] of Object.entries(raw)) {
+    if (isRecord(pos) && typeof pos.x === "number" && typeof pos.y === "number") {
+      result[uid] = { x: pos.x, y: pos.y };
+    }
+  }
+  return result;
+}
+
+export async function saveFreePlacement(menuUid: string, position: FreePlacement): Promise<void> {
+  const current = await loadFreePlacements();
+  current[menuUid] = position;
+  await browser.storage.local.set({
+    [FREE_PLACEMENTS_STORAGE_KEY]: current,
   });
 }
 

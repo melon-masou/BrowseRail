@@ -5,7 +5,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use crate::protocol::{
-    AttachmentMode, BrowserInstance, MenuPlacement, PanelSnapshot, ServerMessage,
+    AttachmentMode, BrowserInstance, MenuPlacement, MenuSnapshot, PanelSnapshot, ServerMessage,
 };
 
 #[derive(Default)]
@@ -18,6 +18,10 @@ struct Session {
     instance: BrowserInstance,
     outgoing: Option<UnboundedSender<ServerMessage>>,
     panels: HashMap<String, PanelSnapshot>,
+    // Free (detached) menu snapshots, keyed by menuUid. Stored like panels so a
+    // free surface can fetch its own snapshot via free_surface_state — the only
+    // difference from a bound menu is that there is no window key.
+    free_menus: HashMap<String, MenuSnapshot>,
     attachment_mode: AttachmentMode,
     revision: u64,
 }
@@ -27,6 +31,7 @@ pub struct SyncOutcome {
     pub attachment_mode: AttachmentMode,
     pub panels: Vec<PanelSnapshot>,
     pub removed_window_uids: Vec<String>,
+    pub free_menus: Vec<MenuSnapshot>,
 }
 
 pub struct InstancePanelsSnapshot {
@@ -66,6 +71,7 @@ impl SessionRegistry {
                     instance,
                     outgoing: Some(outgoing),
                     panels: HashMap::new(),
+                    free_menus: HashMap::new(),
                     attachment_mode: AttachmentMode::None,
                     revision: 0,
                 },
@@ -79,6 +85,7 @@ impl SessionRegistry {
         revision: u64,
         attachment_mode: AttachmentMode,
         panels: Vec<PanelSnapshot>,
+        free_menus: Vec<MenuSnapshot>,
     ) -> Result<Option<SyncOutcome>, String> {
         let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
@@ -101,6 +108,10 @@ impl SessionRegistry {
             .cloned()
             .collect();
         session.panels = next;
+        session.free_menus = free_menus
+            .iter()
+            .map(|menu| (menu.uid.clone(), menu.clone()))
+            .collect();
         session.attachment_mode = attachment_mode;
         session.revision = revision;
 
@@ -109,7 +120,19 @@ impl SessionRegistry {
             attachment_mode,
             panels,
             removed_window_uids,
+            free_menus,
         }))
+    }
+
+    /// The stored snapshot for a free (detached) menu, for free_surface_state.
+    pub fn free_menu(&self, instance_uid: &str, menu_uid: &str) -> Option<MenuSnapshot> {
+        self.sessions
+            .read()
+            .ok()?
+            .get(instance_uid)?
+            .free_menus
+            .get(menu_uid)
+            .cloned()
     }
 
     pub fn invoke(
@@ -132,8 +155,55 @@ impl SessionRegistry {
             .ok_or("The browser instance is disconnected")?
             .send(ServerMessage::Invoke {
                 action_uid,
-                window_uid: window_uid.to_owned(),
+                window_uid: Some(window_uid.to_owned()),
+                menu_uid: None,
             })
+            .map_err(|_| "The browser instance is disconnected".into())
+    }
+
+    /// Dispatch a free (detached) surface's action. No fixed target window is
+    /// sent: the extension resolves the target as its current lastFocused
+    /// window. Does not require any bound window to exist.
+    pub fn invoke_free(
+        &self,
+        instance_uid: &str,
+        menu_uid: String,
+        action_uid: String,
+    ) -> Result<(), String> {
+        let sessions = self.sessions.read().map_err(|_| "Session lock failed")?;
+        let session = sessions
+            .get(instance_uid)
+            .ok_or("The browser instance is disconnected")?;
+        session
+            .outgoing
+            .as_ref()
+            .ok_or("The browser instance is disconnected")?
+            .send(ServerMessage::Invoke {
+                action_uid,
+                window_uid: None,
+                menu_uid: Some(menu_uid),
+            })
+            .map_err(|_| "The browser instance is disconnected".into())
+    }
+
+    /// Report a free surface's new absolute screen position back to the
+    /// extension for persistence.
+    pub fn update_free_placement(
+        &self,
+        instance_uid: &str,
+        menu_uid: String,
+        x: f64,
+        y: f64,
+    ) -> Result<(), String> {
+        let sessions = self.sessions.read().map_err(|_| "Session lock failed")?;
+        let session = sessions
+            .get(instance_uid)
+            .ok_or("The browser instance is disconnected")?;
+        session
+            .outgoing
+            .as_ref()
+            .ok_or("The browser instance is disconnected")?
+            .send(ServerMessage::UpdateFreePlacement { menu_uid, x, y })
             .map_err(|_| "The browser instance is disconnected".into())
     }
 
@@ -328,7 +398,7 @@ mod tests {
                 connection_a,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")],
+                vec![panel("window-a")], vec![],
             )
             .unwrap();
         registry
@@ -336,7 +406,7 @@ mod tests {
                 connection_b,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")],
+                vec![panel("window-b")], vec![],
             )
             .unwrap();
 
@@ -348,7 +418,7 @@ mod tests {
         assert!(matches!(
             message,
             ServerMessage::Invoke { window_uid, action_uid, .. }
-                if window_uid == "window-a" && action_uid == "bookmark:same"
+                if window_uid.as_deref() == Some("window-a") && action_uid == "bookmark:same"
         ));
         assert!(receiver_b.try_recv().is_err());
     }
@@ -368,7 +438,7 @@ mod tests {
                 connection_a,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")],
+                vec![panel("window-a")], vec![],
             )
             .unwrap();
         registry
@@ -376,7 +446,7 @@ mod tests {
                 connection_b,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")],
+                vec![panel("window-b")], vec![],
             )
             .unwrap();
 
@@ -397,7 +467,7 @@ mod tests {
         let (sender, _) = unbounded_channel();
         registry.register(connection, instance("instance-a"), sender);
         registry
-            .sync(connection, 1, AttachmentMode::All, vec![panel("window-a")])
+            .sync(connection, 1, AttachmentMode::All, vec![panel("window-a")], vec![])
             .unwrap();
 
         let disconnected = registry.disconnect_all();
@@ -422,7 +492,7 @@ mod tests {
                 old_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")],
+                vec![panel("window-a")], vec![],
             )
             .unwrap();
 
@@ -434,7 +504,7 @@ mod tests {
                 new_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")],
+                vec![panel("window-b")], vec![],
             )
             .unwrap()
             .expect("sync outcome");
@@ -456,7 +526,7 @@ mod tests {
                 old_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")],
+                vec![panel("window-a")], vec![],
             )
             .unwrap();
 
@@ -473,7 +543,7 @@ mod tests {
                 new_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")],
+                vec![panel("window-b")], vec![],
             )
             .unwrap()
             .expect("sync outcome");
@@ -489,19 +559,19 @@ mod tests {
         registry.register(connection, instance("instance-a"), sender);
         assert!(
             registry
-                .sync(connection, 2, AttachmentMode::All, vec![panel("window-a")])
+                .sync(connection, 2, AttachmentMode::All, vec![panel("window-a")], vec![])
                 .unwrap()
                 .is_some()
         );
         assert!(
             registry
-                .sync(connection, 2, AttachmentMode::All, vec![panel("window-a")])
+                .sync(connection, 2, AttachmentMode::All, vec![panel("window-a")], vec![])
                 .unwrap()
                 .is_none()
         );
         assert!(
             registry
-                .sync(connection, 1, AttachmentMode::All, vec![panel("window-a")])
+                .sync(connection, 1, AttachmentMode::All, vec![panel("window-a")], vec![])
                 .unwrap()
                 .is_none()
         );
@@ -532,7 +602,7 @@ mod tests {
             connection_a,
             1,
             AttachmentMode::All,
-            vec![panel("window-1"), panel("window-2")],
+            vec![panel("window-1"), panel("window-2")], vec![],
         );
 
         let exts = registry.active_extensions();

@@ -18,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::PWSTR;
 
 use crate::panel::{
-    PopupRegistry, PopupRequest, SurfaceRegistry, instance_surface_prefix, menu_label,
+    PopupRegistry, PopupRequest, SurfaceRegistry, free_label, instance_surface_prefix, menu_label,
     popup_label, set_window_always_on_top, set_window_no_activate, set_window_owner,
     set_window_visible_without_activation, surface_prefix,
 };
@@ -53,6 +53,7 @@ pub enum NativeCommand {
         revision: u64,
         attachment_mode: crate::protocol::AttachmentMode,
         panels: Vec<PanelSnapshot>,
+        free_menus: Vec<MenuSnapshot>,
     },
     BeginWindowPairing {
         connection_uid: Uuid,
@@ -204,6 +205,58 @@ fn install_foreground_event_hook(app: &AppHandle, sender: UnboundedSender<Native
             let _ = FOREGROUND_EVENT_HOOK.set(hook.0 as isize);
         }
     });
+}
+
+/// Resolve where a free surface should sit, in logical screen coordinates.
+/// A saved position is used only when it lands inside some monitor's visible
+/// work area; otherwise (no saved position, or the old spot is now off-screen)
+/// the surface is centered on the lastFocused browser window when its bounds are
+/// known, else on the primary monitor.
+fn resolve_free_position(
+    app: &AppHandle,
+    free_pos: Option<(f64, f64)>,
+    width: f64,
+    height: f64,
+    window_bounds: Option<(f64, f64, f64, f64)>,
+) -> (f64, f64) {
+    let center = || -> (f64, f64) {
+        if let Some((bx, by, bw, bh)) = window_bounds {
+            return (bx + (bw - width) / 2.0, by + (bh - height) / 2.0);
+        }
+        if let Ok(Some(monitor)) = app.primary_monitor() {
+            let scale = monitor.scale_factor();
+            let pos = monitor.position();
+            let size = monitor.size();
+            let mx = f64::from(pos.x) / scale;
+            let my = f64::from(pos.y) / scale;
+            let mw = f64::from(size.width) / scale;
+            let mh = f64::from(size.height) / scale;
+            (mx + (mw - width) / 2.0, my + (mh - height) / 2.0)
+        } else {
+            (100.0, 100.0)
+        }
+    };
+
+    let Some((x, y)) = free_pos else {
+        return center();
+    };
+
+    let on_screen = app
+        .available_monitors()
+        .map(|monitors| {
+            monitors.iter().any(|monitor| {
+                let scale = monitor.scale_factor();
+                let area = monitor.work_area();
+                let ax = f64::from(area.position.x) / scale;
+                let ay = f64::from(area.position.y) / scale;
+                let aw = f64::from(area.size.width) / scale;
+                let ah = f64::from(area.size.height) / scale;
+                x >= ax && x < ax + aw && y >= ay && y < ay + ah
+            })
+        })
+        .unwrap_or(false);
+
+    if on_screen { (x, y) } else { center() }
 }
 
 fn foreground_browser_window() -> Option<(isize, &'static str)> {
@@ -362,6 +415,7 @@ impl NativeReactor {
                             });
                         }
                         self.hide_instance_windows(&instance_uid, &window_uids);
+                        self.hide_instance_free_surfaces(&instance_uid);
                         self.check_update_tray();
                     }
                 }
@@ -370,12 +424,30 @@ impl NativeReactor {
                     revision,
                     attachment_mode,
                     panels,
+                    free_menus,
                 } => {
-                    if let Ok(Some(outcome)) =
-                        self.registry
-                            .sync(connection_uid, revision, attachment_mode, panels)
-                    {
+                    if let Ok(Some(outcome)) = self.registry.sync(
+                        connection_uid,
+                        revision,
+                        attachment_mode,
+                        panels,
+                        free_menus,
+                    ) {
+                        let instance_uid = outcome.instance_uid.clone();
+                        let free_menus = outcome.free_menus.clone();
+                        // Center new free surfaces on the lastFocused browser window
+                        // (else any window), falling back to the primary monitor.
+                        let window_bounds = outcome
+                            .panels
+                            .iter()
+                            .find(|p| p.window.focused)
+                            .or_else(|| outcome.panels.first())
+                            .map(|p| {
+                                let b = &p.window.bounds;
+                                (b.x, b.y, b.width, b.height)
+                            });
                         self.handle_sync_outcome(outcome);
+                        self.handle_free_menus(&instance_uid, &free_menus, window_bounds);
                         self.refresh_window_levels();
                         self.check_update_tray();
                     }
@@ -444,7 +516,11 @@ impl NativeReactor {
                 } => {
                     let app = self.app.clone();
                     let _ = self.app.run_on_main_thread(move || {
-                        let label = crate::panel::menu_label(&instance_uid, &window_uid, &menu_uid);
+                        let label = if window_uid.is_empty() {
+                            crate::panel::free_label(&instance_uid, &menu_uid)
+                        } else {
+                            crate::panel::menu_label(&instance_uid, &window_uid, &menu_uid)
+                        };
                         if let Some(window) = app.get_webview_window(&label) {
                             // Only down/right expansion: the window origin never moves, it
                             // only grows. set_size keeps existing pixels and adds new area —
@@ -544,6 +620,7 @@ impl NativeReactor {
                                 attachment_mode,
                                 panels,
                                 removed_window_uids: Vec::new(),
+                                free_menus: Vec::new(),
                             });
                         } else {
                             let window_uids = panels
@@ -709,6 +786,7 @@ impl NativeReactor {
                     attachment_mode,
                     panels: vec![panel],
                     removed_window_uids: Vec::new(),
+                    free_menus: Vec::new(),
                 });
                 self.refresh_window_levels();
             } else {
@@ -762,11 +840,16 @@ impl NativeReactor {
             .retain(|_, pairing| pairing.instance_uid != instance_uid);
         let menu_prefix = instance_surface_prefix("menu", &instance_uid);
         let popup_prefix = instance_surface_prefix("popup", &instance_uid);
+        let free_prefix = instance_surface_prefix("free", &instance_uid);
         let mut labels = self
             .app
             .webview_windows()
             .into_keys()
-            .filter(|label| label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix))
+            .filter(|label| {
+                label.starts_with(&menu_prefix)
+                    || label.starts_with(&popup_prefix)
+                    || label.starts_with(&free_prefix)
+            })
             .collect::<Vec<_>>();
         labels.sort_by_key(|label| !label.starts_with(&popup_prefix));
 
@@ -779,12 +862,16 @@ impl NativeReactor {
         }
         if let Ok(mut levels) = self.window_levels.lock() {
             levels.retain(|label, _| {
-                !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix)
+                !label.starts_with(&menu_prefix)
+                    && !label.starts_with(&popup_prefix)
+                    && !label.starts_with(&free_prefix)
             });
         }
         if let Ok(mut owners) = self.window_owners.lock() {
             owners.retain(|label, _| {
-                !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix)
+                !label.starts_with(&menu_prefix)
+                    && !label.starts_with(&popup_prefix)
+                    && !label.starts_with(&free_prefix)
             });
         }
 
@@ -799,6 +886,203 @@ impl NativeReactor {
                 tokio::time::sleep(Duration::from_millis(75)).await;
                 let _ = outgoing.send(ServerMessage::ResyncComplete { request_uid });
             });
+        });
+    }
+
+    /// Hide (not destroy) every free surface for an instance — used when the
+    /// WebSocket disconnects. They are re-shown by the next sync once reconnected.
+    fn hide_instance_free_surfaces(&self, instance_uid: &str) {
+        let free_prefix = instance_surface_prefix("free", instance_uid);
+        let labels: Vec<String> = self
+            .app
+            .webview_windows()
+            .into_keys()
+            .filter(|label| label.starts_with(&free_prefix))
+            .collect();
+        for label in &labels {
+            self.surfaces.mark_hidden(label);
+        }
+        if !labels.is_empty() {
+            let app = self.app.clone();
+            let _ = self.app.run_on_main_thread(move || {
+                for label in labels {
+                    if let Some(window) = app.get_webview_window(&label) {
+                        let _ = set_window_visible_without_activation(&window, false);
+                    }
+                }
+            });
+        }
+    }
+
+    /// Reconcile the free (detached) surfaces for an instance to exactly match
+    /// the `free_menus` in the latest sync. The extension only sends free menus
+    /// that should currently be shown (windows exist + webpage-set matches), so
+    /// the desktop just creates/keeps those and destroys the rest. Each free
+    /// surface is a single non-owned, always-topmost, no-activate floating
+    /// window keyed by instance + menu (never per browser window).
+    fn handle_free_menus(
+        &self,
+        instance_uid: &str,
+        free_menus: &[MenuSnapshot],
+        // Bounds (x, y, w, h) of the lastFocused browser window, used to center a
+        // free surface that has no saved position (or whose saved spot is now
+        // off-screen). None → fall back to the primary monitor center.
+        window_bounds: Option<(f64, f64, f64, f64)>,
+    ) {
+        let display = self.display_panels.load(Ordering::Relaxed);
+        let free_prefix = instance_surface_prefix("free", instance_uid);
+
+        struct FreeItem {
+            label: String,
+            url: String,
+            width: f64,
+            height: f64,
+            free_pos: Option<(f64, f64)>,
+            menu: MenuSnapshot,
+        }
+        let mut desired: Vec<FreeItem> = Vec::new();
+        if display {
+            for menu in free_menus {
+                let label = free_label(instance_uid, &menu.uid);
+                let (mut width, mut height) = crate::protocol::menu_total_size(menu);
+                // Room for the frontend's drag handle: a strip on the left of a
+                // row bar / top of a column bar (see .free-drag-handle in CSS).
+                const FREE_DRAG_HANDLE: f64 = 10.0;
+                match menu.orientation {
+                    crate::protocol::MenuOrientation::Row => width += FREE_DRAG_HANDLE,
+                    crate::protocol::MenuOrientation::Column => height += FREE_DRAG_HANDLE,
+                }
+                let url = format!(
+                    "index.html?surface=menu&free=1&instanceUid={}&menuUid={}",
+                    urlencoding::encode(instance_uid),
+                    urlencoding::encode(&menu.uid),
+                );
+                desired.push(FreeItem {
+                    label,
+                    url,
+                    width,
+                    height,
+                    free_pos: menu.free_position.map(|p| (p.x, p.y)),
+                    menu: menu.clone(),
+                });
+            }
+        }
+        let desired_labels: HashSet<String> = desired.iter().map(|i| i.label.clone()).collect();
+
+        let to_destroy: Vec<String> = self
+            .app
+            .webview_windows()
+            .into_keys()
+            .filter(|label| label.starts_with(&free_prefix) && !desired_labels.contains(label))
+            .collect();
+        if !to_destroy.is_empty() {
+            self.surfaces.remove_labels(&to_destroy);
+            if let Ok(mut levels) = self.window_levels.lock() {
+                levels.retain(|label, _| !to_destroy.contains(label));
+            }
+        }
+
+        let app = self.app.clone();
+        let surfaces = self.surfaces.clone();
+        let _ = self.app.run_on_main_thread(move || {
+            for label in &to_destroy {
+                if let Some(window) = app.get_webview_window(label) {
+                    let _ = crate::panel::safely_destroy_window(&window);
+                }
+            }
+            for item in desired {
+                let is_new = app.get_webview_window(&item.label).is_none();
+                let window = match app.get_webview_window(&item.label) {
+                    Some(window) => {
+                        // Only resize on update; leave the position where the user
+                        // last dragged it (a fresh position arrives via freePosition
+                        // on the next create, not by snapping an open surface).
+                        let _ = window.set_size(LogicalSize::new(item.width, item.height));
+                        window
+                    }
+                    None => {
+                        let (x, y) = resolve_free_position(
+                            &app,
+                            item.free_pos,
+                            item.width,
+                            item.height,
+                            window_bounds,
+                        );
+                        crate::debug::log(
+                            "Native:Free",
+                            format!(
+                                "build {} at ({x:.0},{y:.0}) size {:.0}x{:.0} bounds={window_bounds:?}",
+                                item.label, item.width, item.height
+                            ),
+                        );
+                        let built = WebviewWindowBuilder::new(
+                            &app,
+                            &item.label,
+                            WebviewUrl::App(item.url.into()),
+                        )
+                        .title("BrowseRail")
+                        .inner_size(item.width, item.height)
+                        .position(x, y)
+                        .decorations(false)
+                        .focused(false)
+                        .focusable(false)
+                        .resizable(false)
+                        .shadow(false)
+                        .skip_taskbar(true)
+                        // Match the proven bound-menu Composition lifecycle:
+                        // finish attaching the visual tree while hidden, then
+                        // show with SWP_NOACTIVATE after bounds and z-order are set.
+                        .transparent(true)
+                        .always_on_top(false)
+                        .visible(false)
+                        .build();
+                        match built {
+                            Ok(window) => window,
+                            Err(error) => {
+                                crate::debug::log(
+                                    "Native:Free",
+                                    format!("Failed to build free surface {}: {error}", item.label),
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                };
+                let _ = set_window_no_activate(&window);
+                let _ = window.set_ignore_cursor_events(false);
+                if is_new {
+                    let (x, y) = resolve_free_position(
+                        &app,
+                        item.free_pos,
+                        item.width,
+                        item.height,
+                        window_bounds,
+                    );
+                    // Re-apply the initial bounds after WebView2's composition
+                    // controller exists. This deliberately mirrors bound menus
+                    // and delivers the post-creation WM_SIZE/WM_MOVE pair.
+                    let _ = window.set_size(LogicalSize::new(item.width, item.height));
+                    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+                }
+                let _ = set_window_always_on_top(&window, true);
+                if !surfaces.is_visible(&item.label) {
+                    let _ = set_window_visible_without_activation(&window, true);
+                    surfaces.mark_visible(&item.label);
+                    crate::debug::log(
+                        "Native:Free",
+                        format!(
+                            "shown {} is_new={is_new} visible={:?} outer_pos={:?} inner_size={:?}",
+                            item.label,
+                            window.is_visible().ok(),
+                            window.outer_position().ok(),
+                            window.inner_size().ok(),
+                        ),
+                    );
+                }
+                // Push the latest content so an already-open free surface refreshes
+                // (mirrors the bound menu-state emit).
+                let _ = window.emit_to(&item.label, "menu-state", &item.menu);
+            }
         });
     }
 
@@ -934,6 +1218,9 @@ impl NativeReactor {
                     AttachmentMode::None => false,
                     AttachmentMode::All => true,
                     AttachmentMode::LastFocused => panel.window.focused,
+                    // Free menus are never carried in panels; they get their own
+                    // detached surface via handle_free_menus.
+                    AttachmentMode::Free => false,
                 };
                 let should_be_visible = display && is_focused;
 
@@ -1174,6 +1461,7 @@ impl NativeReactor {
                         AttachmentMode::None => false,
                         AttachmentMode::All => true,
                         AttachmentMode::LastFocused => panel.window.focused,
+                        AttachmentMode::Free => false,
                     };
                     let should_be_visible = display
                         && owner_hwnd.is_some()

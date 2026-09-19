@@ -8,12 +8,14 @@ import {
 } from "@browserail/protocol";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { getLanguage, type Lang, LANGUAGES, onLanguageChange, saveLanguage, t } from "@browserail/i18n";
 import "./styles.css";
 
 const root = requiredElement("app");
 const query = new URLSearchParams(location.search);
+const FREE_DRAG_HANDLE_SIZE = 10;
 
 // Keep the Rust-rendered tray/menu and window titles in this webview's language.
 void invoke("set_ui_language", { language: getLanguage() }).catch(() => {});
@@ -35,16 +37,66 @@ if (query.get("view") === "host") {
 
 async function initializeSurface(): Promise<void> {
   const instanceUid = requiredQuery("instanceUid");
-  const windowUid = requiredQuery("windowUid");
   const menuUid = requiredQuery("menuUid");
-  const initial = await invoke<SurfaceState>("surface_state", {
-    instanceUid,
-    menuUid,
-    surface: "menu",
-    windowUid,
-  });
+  // A free (detached) surface has no bound browser window: it fetches its own
+  // snapshot by instance+menu and dispatches actions without a windowUid.
+  const isFree = query.get("free") === "1";
+  const windowUid = isFree ? "" : requiredQuery("windowUid");
+  const initial = isFree
+    ? await invoke<SurfaceState>("free_surface_state", { instanceUid, menuUid })
+    : await invoke<SurfaceState>("surface_state", {
+        instanceUid,
+        menuUid,
+        surface: "menu",
+        windowUid,
+      });
 
   document.body.dataset.surface = "menu";
+  if (isFree) {
+    document.body.dataset.free = "1";
+  }
+
+  // Dispatch a bookmark action. A free surface sends no windowUid (the extension
+  // targets its current lastFocused window); a bound surface sends its window.
+  const dispatchAction = (actionUid: string): void => {
+    void (async () => {
+      try {
+        if (isFree) {
+          await invoke("invoke_free_action", { actionUid, instanceUid, menuUid });
+        } else {
+          await invoke("invoke_action", { actionUid, instanceUid, windowUid });
+        }
+      } catch (error) {
+        root.dataset.error = "";
+        root.title = String(error);
+      }
+    })();
+  };
+
+  if (isFree) {
+    // Report the free surface's settled absolute (logical) position after the
+    // user drags it, so the extension can persist it in free_placements.
+    const appWindow = getCurrentWindow();
+    let moveReportTimer: ReturnType<typeof setTimeout> | undefined;
+    void appWindow.onMoved(({ payload }) => {
+      clearTimeout(moveReportTimer);
+      moveReportTimer = setTimeout(() => {
+        void (async () => {
+          try {
+            const scale = await appWindow.scaleFactor();
+            await invoke("update_free_placement", {
+              instanceUid,
+              menuUid,
+              x: payload.x / scale,
+              y: payload.y / scale,
+            });
+          } catch {
+            // Ignore: position will be reported again on the next move.
+          }
+        })();
+      }, 250);
+    });
+  }
 
   let customizing = false;
   // Global "lock editing" tray toggle: when on, right-click must not open customize.
@@ -222,6 +274,14 @@ async function initializeSurface(): Promise<void> {
     };
   }
 
+  function computeSurfaceDimensions(menu: MenuSnapshot): { width: number; height: number } {
+    const dimensions = computeMenuDimensions(menu);
+    if (!isFree) return dimensions;
+    return menu.orientation === "row"
+      ? { width: dimensions.width + FREE_DRAG_HANDLE_SIZE, height: dimensions.height }
+      : { width: dimensions.width, height: dimensions.height + FREE_DRAG_HANDLE_SIZE };
+  }
+
   function calculateButtonFontSize(
     configuredSize: number,
     placement: { itemWidth?: number; itemHeight?: number },
@@ -295,6 +355,9 @@ async function initializeSurface(): Promise<void> {
         event.preventDefault();
         event.stopPropagation();
         if (editingLocked) return;
+        // Free surfaces are moved via their drag handle; right-click customize
+        // (which is bound-window based) is not wired for them.
+        if (isFree) return;
         if (customizing) return;
 
         // If a popup is open, close it and wait for size and position to restore completely before customizing
@@ -326,6 +389,64 @@ async function initializeSurface(): Promise<void> {
     };
     menuBar.oncontextmenu = (event) => event.preventDefault();
 
+    if (isFree) {
+      // Dedicated drag handle: the only way to move a free surface (buttons stay
+      // clickable). Position updates preserve the no-activate window contract;
+      // onMoved persists the settled spot.
+      root.dataset.orientation = menu.orientation;
+      const handle = document.createElement("div");
+      handle.className = "free-drag-handle";
+      handle.title = t("free.dragHandle");
+      if (menu.orientation === "row") {
+        handle.style.width = `${FREE_DRAG_HANDLE_SIZE}px`;
+        handle.style.height = `${dims.height}px`;
+      } else {
+        handle.style.width = `${dims.width}px`;
+        handle.style.height = `${FREE_DRAG_HANDLE_SIZE}px`;
+      }
+      handle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        handle.setPointerCapture(event.pointerId);
+
+        const startScreenX = event.screenX;
+        const startScreenY = event.screenY;
+        const appWindow = getCurrentWindow();
+        let origin: { x: number; y: number } | undefined;
+        let pendingFrame: number | undefined;
+
+        void Promise.all([appWindow.outerPosition(), appWindow.scaleFactor()]).then(
+          ([position, scale]) => {
+            origin = { x: position.x / scale, y: position.y / scale };
+          },
+        );
+
+        const move = (moveEvent: PointerEvent): void => {
+          if (!origin) return;
+          const x = origin.x + moveEvent.screenX - startScreenX;
+          const y = origin.y + moveEvent.screenY - startScreenY;
+          if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+          pendingFrame = requestAnimationFrame(() => {
+            pendingFrame = undefined;
+            void invoke("move_free_surface", { x, y });
+          });
+        };
+        const stop = (stopEvent: PointerEvent): void => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", stop);
+          handle.removeEventListener("pointercancel", stop);
+          if (handle.hasPointerCapture(stopEvent.pointerId)) {
+            handle.releasePointerCapture(stopEvent.pointerId);
+          }
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", stop);
+        handle.addEventListener("pointercancel", stop);
+      });
+      handle.oncontextmenu = (event) => event.preventDefault();
+      root.appendChild(handle);
+    }
     root.appendChild(menuBar);
   }
 
@@ -364,7 +485,7 @@ async function initializeSurface(): Promise<void> {
           event.preventDefault();
           void closePopup();
           if (!entry.uid.startsWith("noop")) {
-            void invokeAction(instanceUid, windowUid, entry.uid);
+            dispatchAction(entry.uid);
           }
         }
       });
@@ -374,7 +495,7 @@ async function initializeSurface(): Promise<void> {
           event.stopPropagation();
           void closePopup();
           if (!entry.uid.startsWith("noop")) {
-            void invokeAction(instanceUid, windowUid, invertBookmarkActionUid(entry.uid));
+            dispatchAction(invertBookmarkActionUid(entry.uid));
           }
         }
       });
@@ -474,9 +595,11 @@ async function initializeSurface(): Promise<void> {
     const btnTop = anchorButton.offsetTop;
     const btnWidth = anchorButton.offsetWidth;
     const btnHeight = anchorButton.offsetHeight;
-    const dims = currentMenu ? computeMenuDimensions(currentMenu) : undefined;
-    const menuWidth = dims?.width ?? menuBar.offsetWidth;
-    const menuHeight = dims?.height ?? menuBar.offsetHeight;
+    const dims = currentMenu ? computeSurfaceDimensions(currentMenu) : undefined;
+    const surfaceWidth = dims?.width ?? menuBar.offsetWidth;
+    const surfaceHeight = dims?.height ?? menuBar.offsetHeight;
+    const menuBarLeft = menuBar.offsetLeft;
+    const menuBarTop = menuBar.offsetTop;
 
     const theme = applyMenuTheme(currentMenu ?? initial.menu!);
     let availableHeight: number;
@@ -494,7 +617,7 @@ async function initializeSurface(): Promise<void> {
     }
 
     const popupGap = 2;
-    const popupTop = direction === "right" ? btnTop : btnTop + btnHeight + popupGap;
+    const popupTop = menuBarTop + (direction === "right" ? btnTop : btnTop + btnHeight + popupGap);
     const maxColumnHeight = Math.max(
       MIN_COLUMN_HEIGHT,
       availableHeight - popupTop - POPUP_SCREEN_MARGIN,
@@ -601,7 +724,7 @@ async function initializeSurface(): Promise<void> {
             if (event.button === 0) {
               void closePopup();
               if (!item.uid.startsWith("noop")) {
-                void invokeAction(instanceUid, windowUid, item.uid);
+                dispatchAction(item.uid);
               }
             }
           });
@@ -611,7 +734,7 @@ async function initializeSurface(): Promise<void> {
               event.stopPropagation();
               void closePopup();
               if (!item.uid.startsWith("noop")) {
-                void invokeAction(instanceUid, windowUid, invertBookmarkActionUid(item.uid));
+                dispatchAction(invertBookmarkActionUid(item.uid));
               }
             }
           });
@@ -687,20 +810,24 @@ async function initializeSurface(): Promise<void> {
       popupEl.style.width = `${popupWidth}px`;
       const popupHeight = popupEl.offsetHeight;
       const gap = popupGap;
-      let totalWidth = menuWidth;
-      let totalHeight = menuHeight;
+      let totalWidth = surfaceWidth;
+      let totalHeight = surfaceHeight;
 
       if (direction === "right") {
-        popupEl.style.top = `${btnTop}px`;
-        popupEl.style.left = `${btnLeft + btnWidth + gap}px`;
-        totalWidth = Math.max(menuWidth, btnLeft + btnWidth + gap + popupWidth);
-        totalHeight = Math.max(menuHeight, btnTop + popupHeight);
+        const top = menuBarTop + btnTop;
+        const left = menuBarLeft + btnLeft + btnWidth + gap;
+        popupEl.style.top = `${top}px`;
+        popupEl.style.left = `${left}px`;
+        totalWidth = Math.max(surfaceWidth, left + popupWidth);
+        totalHeight = Math.max(surfaceHeight, top + popupHeight);
       } else {
         // down
-        popupEl.style.top = `${btnTop + btnHeight + gap}px`;
-        popupEl.style.left = `${btnLeft}px`;
-        totalWidth = Math.max(menuWidth, btnLeft + popupWidth);
-        totalHeight = Math.max(menuHeight, btnTop + btnHeight + gap + popupHeight);
+        const top = menuBarTop + btnTop + btnHeight + gap;
+        const left = menuBarLeft + btnLeft;
+        popupEl.style.top = `${top}px`;
+        popupEl.style.left = `${left}px`;
+        totalWidth = Math.max(surfaceWidth, left + popupWidth);
+        totalHeight = Math.max(surfaceHeight, top + popupHeight);
       }
 
       ensureNativePopupSize(totalWidth, totalHeight, 0, 0);
@@ -723,7 +850,7 @@ async function initializeSurface(): Promise<void> {
     }
 
     if (restoreNativeSize && currentMenu && !customizing) {
-      const { width, height } = computeMenuDimensions(currentMenu);
+      const { width, height } = computeSurfaceDimensions(currentMenu);
       nativeAllocated = {
         height,
         offsetX: 0,
@@ -1171,19 +1298,6 @@ function nextAnchor(anchor: MenuAnchor): MenuAnchor {
 
 function anchorLabel(anchor: MenuAnchor): string {
   return { topLeft: "TL", topRight: "TR", bottomLeft: "BL", bottomRight: "BR" }[anchor];
-}
-
-async function invokeAction(
-  instanceUid: string,
-  windowUid: string,
-  actionUid: string,
-): Promise<void> {
-  try {
-    await invoke("invoke_action", { actionUid, instanceUid, windowUid });
-  } catch (error) {
-    root.dataset.error = "";
-    root.title = String(error);
-  }
 }
 
 function showSurfaceError(error: unknown): void {

@@ -7,7 +7,7 @@ export const SOCKET_URL = DEFAULT_WS_URL;
 export const EXPORT_SCHEMA_VERSION = 1 as const;
 
 export type BrowserKind = "brave" | "chrome" | "edge" | "firefox" | "opera" | "vivaldi";
-export type AttachmentMode = "none" | "lastFocused" | "all";
+export type AttachmentMode = "none" | "lastFocused" | "all" | "free";
 export type MenuAnchor = "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
 export type MenuOrientation = "row" | "column";
 
@@ -94,6 +94,10 @@ export interface MenuSnapshot {
   orientation: MenuOrientation;
   placement: MenuPlacement;
   uid: string;
+  // Absolute screen coordinates for a free (detached) menu's floating surface.
+  // Only meaningful when attachmentMode === "free"; absent means "no saved
+  // position, center on the primary monitor".
+  freePosition?: { x: number; y: number };
 }
 
 export interface PanelSnapshot {
@@ -113,6 +117,10 @@ export type ClientMessage =
       revision: number;
       attachmentMode: AttachmentMode;
       panels: PanelSnapshot[];
+      // Free (detached) menus are not tied to any browser window: the desktop
+      // builds exactly one floating surface per entry, regardless of how many
+      // panels/windows exist. Omitted or empty when there are none.
+      freeMenus?: MenuSnapshot[];
     }
   | { type: "pairWindow"; requestUid: string; windowUid: string }
   | { type: "confirmWindowPairing"; requestUid: string; windowUid: string }
@@ -131,12 +139,24 @@ export type ServerMessage =
   | {
       type: "invoke";
       actionUid: string;
-      windowUid: string;
+      // Bound-window panels carry the fixed target window. A free (detached)
+      // surface omits it (null/undefined): the extension resolves the target as
+      // the instance's current lastFocused window at dispatch time.
+      windowUid?: string | null;
+      menuUid?: string;
     }
   | {
       type: "updateMenuPlacement";
       menuUid: string;
       placement: MenuPlacement;
+    }
+  | {
+      // Desktop reports a free surface's new absolute screen position after the
+      // user drags it; the extension persists it in free_placements.
+      type: "updateFreePlacement";
+      menuUid: string;
+      x: number;
+      y: number;
     }
   | { type: "verifyWindowPairing"; requestUid: string; windowUid: string }
   | { type: "pairWindowResult"; requestUid: string; windowUid: string; ok: boolean }
@@ -153,10 +173,19 @@ export function isServerMessage(value: unknown): value is ServerMessage {
       return value.protocolVersion === PROTOCOL_VERSION;
     case "invoke":
       return (
-        typeof value.actionUid === "string" && typeof value.windowUid === "string"
+        typeof value.actionUid === "string" &&
+        (value.windowUid === undefined ||
+          value.windowUid === null ||
+          typeof value.windowUid === "string")
       );
     case "updateMenuPlacement":
       return typeof value.menuUid === "string" && isMenuPlacement(value.placement);
+    case "updateFreePlacement":
+      return (
+        typeof value.menuUid === "string" &&
+        typeof value.x === "number" &&
+        typeof value.y === "number"
+      );
     case "verifyWindowPairing":
       return typeof value.requestUid === "string" && typeof value.windowUid === "string";
     case "pairWindowResult":
@@ -202,7 +231,7 @@ export type TabMode = (typeof TAB_MODES)[number];
 export type TabOpenMode = TabMode;
 
 export const EXPAND_DIRECTIONS = ["down", "right"] as const;
-export const ATTACHMENT_MODES = ["none", "lastFocused", "all"] as const;
+export const ATTACHMENT_MODES = ["none", "lastFocused", "all", "free"] as const;
 export const ON_TOP_MODES = ["aboveBrowser", "alwaysOnTop"] as const;
 export const MENU_ORIENTATIONS = ["row", "column"] as const;
 export const MENU_ANCHORS = ["topLeft", "topRight", "bottomLeft", "bottomRight"] as const;

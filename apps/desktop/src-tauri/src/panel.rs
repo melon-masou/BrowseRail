@@ -701,6 +701,17 @@ pub fn menu_label(instance_uid: &str, window_uid: &str, menu_uid: &str) -> Strin
     )
 }
 
+/// Label for a free (detached) menu's floating surface. Keyed only by instance
+/// + menu — there is exactly one per free menu, independent of browser windows.
+/// It shares the `instance_surface_prefix("free", instance)` prefix.
+pub fn free_label(instance_uid: &str, menu_uid: &str) -> String {
+    format!(
+        "free-{}-{}",
+        safe_label_part(instance_uid),
+        safe_label_part(menu_uid)
+    )
+}
+
 pub(crate) fn popup_label(instance_uid: &str, window_uid: &str, menu_uid: &str) -> String {
     format!(
         "popup-{}-{}-{}",

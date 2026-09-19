@@ -754,3 +754,61 @@ body[data-view="settings"] {
   color: #94a3b8;
   font-style: italic;
 }
+
+/* Free (detached) surface: a dedicated drag handle sits before the bar so the
+   buttons stay clickable. The handle is the only way to move the surface. */
+body[data-free="1"] #app.menu-surface {
+  display: flex;
+  align-items: stretch;
+  background: transparent;
+}
+body[data-free="1"] #app.menu-surface[data-orientation="row"] {
+  flex-direction: row;
+}
+body[data-free="1"] #app.menu-surface[data-orientation="column"] {
+  flex-direction: column;
+}
+/* The bar is normally position:absolute (fills the whole surface). In a free
+   surface it must be an in-flow flex item so it sits next to the drag handle
+   instead of overlapping it at (0,0). */
+body[data-free="1"] #app.menu-surface .menu-bar {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.free-drag-handle {
+  position: relative;
+  flex: 0 0 10px;
+  cursor: grab;
+  background: transparent;
+  pointer-events: auto;
+  touch-action: none;
+}
+.free-drag-handle:active {
+  cursor: grabbing;
+}
+.free-drag-handle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgb(180 190 208 / 58%);
+  transform: translate(-50%, -50%);
+}
+body[data-free="1"] #app.menu-surface[data-orientation="row"] .free-drag-handle {
+  width: 10px;
+  align-self: flex-start;
+}
+body[data-free="1"] #app.menu-surface[data-orientation="row"] .free-drag-handle::before {
+  box-shadow: 0 -4px rgb(180 190 208 / 58%), 0 4px rgb(180 190 208 / 58%);
+}
+body[data-free="1"] #app.menu-surface[data-orientation="column"] .free-drag-handle {
+  height: 10px;
+  align-self: flex-start;
+}
+body[data-free="1"] #app.menu-surface[data-orientation="column"] .free-drag-handle::before {
+  box-shadow: -4px 0 rgb(180 190 208 / 58%), 4px 0 rgb(180 190 208 / 58%);
+}

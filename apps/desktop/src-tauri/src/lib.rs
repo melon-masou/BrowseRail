@@ -143,6 +143,53 @@ fn is_editing_locked(state: tauri::State<'_, AppState>) -> bool {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn invoke_free_action(
+    state: tauri::State<'_, AppState>,
+    instance_uid: String,
+    menu_uid: String,
+    action_uid: String,
+) -> Result<(), String> {
+    state
+        .registry
+        .invoke_free(&instance_uid, menu_uid, action_uid)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn update_free_placement(
+    state: tauri::State<'_, AppState>,
+    instance_uid: String,
+    menu_uid: String,
+    x: f64,
+    y: f64,
+) -> Result<(), String> {
+    state
+        .registry
+        .update_free_placement(&instance_uid, menu_uid, x, y)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn free_surface_state(
+    state: tauri::State<'_, AppState>,
+    instance_uid: String,
+    menu_uid: String,
+) -> Result<SurfaceState, String> {
+    let menu = state.registry.free_menu(&instance_uid, &menu_uid);
+    crate::debug::log(
+        "Native:Free",
+        format!("free_surface_state inst={instance_uid} menu={menu_uid} found={}", menu.is_some()),
+    );
+    let menu = menu.ok_or("Free menu state is unavailable")?;
+    Ok(SurfaceState {
+        kind: "menu".into(),
+        menu: Some(menu),
+        payload: None,
+    })
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn surface_available_height(window: tauri::Window) -> Result<f64, String> {
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
@@ -395,6 +442,17 @@ fn begin_menu_customization(
 #[tauri::command]
 fn start_menu_drag(window: tauri::Window) -> Result<(), String> {
     window.start_dragging().map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn move_free_surface(window: tauri::Window, x: f64, y: f64) -> Result<(), String> {
+    if !window.label().starts_with("free-") {
+        return Err("Only free surfaces can be moved directly".into());
+    }
+    window
+        .set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -774,6 +832,9 @@ pub fn run() {
             surface_state,
             surface_available_height,
             invoke_action,
+            invoke_free_action,
+            update_free_placement,
+            free_surface_state,
             is_editing_locked,
             listener_state,
             set_listener_port,
@@ -785,6 +846,7 @@ pub fn run() {
             close_popup,
             begin_menu_customization,
             start_menu_drag,
+            move_free_surface,
             save_menu_placement,
             cancel_menu_customization,
             set_ui_language

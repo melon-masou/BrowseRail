@@ -17,9 +17,11 @@ import {
   type ExtensionConfig,
   loadBookmarkRootPrefix,
   loadConfig,
+  loadFreePlacements,
   loadMenuPlacements,
   loadWidgetEnabled,
   resolveMenuPlacement,
+  saveFreePlacement,
   saveMenuPlacement,
   saveWidgetEnabled,
 } from "../config";
@@ -491,8 +493,16 @@ async function handleMessage(raw: unknown): Promise<void> {
     if (value.actionUid.startsWith("noop")) {
       return;
     }
+    // Bound-window panels carry a fixed target window. A free (detached) surface
+    // omits windowUid, so the target is resolved here as the instance's current
+    // lastFocused window. No available window → silently drop (spec: no log, no
+    // error, no fallback, no foregrounding).
+    const targetWindowUid = value.windowUid ?? lastFocusedWindowUid;
+    if (!targetWindowUid) {
+      return;
+    }
     try {
-      await navigateBookmark(browser, value.windowUid, value.actionUid);
+      await navigateBookmark(browser, targetWindowUid, value.actionUid);
     } catch {
       requestSync();
     }
@@ -561,6 +571,11 @@ async function handleMessage(raw: unknown): Promise<void> {
     await saveMenuPlacement(value.menuUid, value.placement);
     requestSync();
   }
+
+  if (value.type === "updateFreePlacement") {
+    await saveFreePlacement(value.menuUid, { x: value.x, y: value.y });
+    requestSync();
+  }
 }
 
 function requestSync(): void {
@@ -587,11 +602,12 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [loadedConfig, windows, placements, rootPrefix] = await Promise.all([
+  const [loadedConfig, windows, placements, rootPrefix, freePlacements] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
     loadBookmarkRootPrefix(),
+    loadFreePlacements(),
   ]);
   const config = previewConfigOverride ?? loadedConfig;
   const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
@@ -637,30 +653,35 @@ async function syncOnce(): Promise<void> {
 
   const webpageSets = config.panel.webpageSets ?? config.webpageSets ?? [];
   const webpageSetMap = new Map(webpageSets.map((ws) => [ws.uid, ws]));
+  const origByUid = new Map(activeMenus.map((m) => [m.uid, m]));
+
+  // A menu with no webpage sets is always visible; otherwise it must match the
+  // given tab URL against at least one of its sets.
+  const menuVisibleForUrl = (menuUid: string, activeTabUrl: string | undefined): boolean => {
+    const setUids = origByUid.get(menuUid)?.webpageSetUids;
+    if (!setUids || setUids.length === 0) return true;
+    return (
+      Boolean(activeTabUrl) &&
+      setUids.some((setUid) => {
+        const ws = webpageSetMap.get(setUid);
+        return ws ? isUrlMatchingSet(activeTabUrl!, ws.patterns) : false;
+      })
+    );
+  };
+
+  const isFreeMenu = (menuUid: string): boolean =>
+    (origByUid.get(menuUid)?.attachmentMode ?? "lastFocused") === "free";
+
+  // Free menus are not tied to any window: build them once below, and keep them
+  // out of the per-window panels.
+  const boundMenus = menus.filter((menu) => !isFreeMenu(menu.uid));
 
   const panels: PanelSnapshot[] = windows.map((window) => {
-    const windowMenus = menus.map((menu) => {
-      const orig = activeMenus.find((m) => m.uid === menu.uid);
-      const setUids = orig?.webpageSetUids;
-      if (!setUids || setUids.length === 0) {
-        return menu;
-      }
-      const isMatch =
-        Boolean(window.activeTabUrl) &&
-        setUids.some((setUid) => {
-          const ws = webpageSetMap.get(setUid);
-          if (!ws) return false;
-          return isUrlMatchingSet(window.activeTabUrl!, ws.patterns);
-        });
-
-      if (!isMatch) {
-        return {
-          ...menu,
-          attachmentMode: "none" as const,
-        };
-      }
-      return menu;
-    });
+    const windowMenus = boundMenus.map((menu) =>
+      menuVisibleForUrl(menu.uid, window.activeTabUrl)
+        ? menu
+        : { ...menu, attachmentMode: "none" as const },
+    );
 
     return {
       menus: windowMenus,
@@ -672,13 +693,32 @@ async function syncOnce(): Promise<void> {
     };
   });
 
+  // A single free surface per free menu. It exists only when the instance has at
+  // least one browser window, and (if webpage-set-restricted) when the current
+  // lastFocused window's active tab matches.
+  const lastFocusedWindow =
+    windows.find((w) => w.uid === lastFocusedWindowUid) ?? windows.find((w) => w.focused);
+  const freeMenus = windows.length === 0
+    ? []
+    : menus
+        .filter((menu) => isFreeMenu(menu.uid))
+        .filter((menu) => menuVisibleForUrl(menu.uid, lastFocusedWindow?.activeTabUrl))
+        .map((menu) => {
+          const pos = freePlacements[menu.uid];
+          return {
+            ...menu,
+            attachmentMode: "free" as const,
+            ...(pos ? { freePosition: pos } : {}),
+          };
+        });
+
   const allEmittedMenus = panels.flatMap((p) => p.menus);
   const hasActiveAttachment = allEmittedMenus.some((m) => m.attachmentMode !== "none");
   const hasAllAttachment = allEmittedMenus.some((m) => m.attachmentMode === "all");
 
   extLog(
     "Sync",
-    `syncOnce: totalWindows=${windows.length}, menus=${menus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
+    `syncOnce: totalWindows=${windows.length}, menus=${menus.length}, free=${freeMenus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
   );
 
   send({
@@ -686,6 +726,7 @@ async function syncOnce(): Promise<void> {
     revision: ++revision,
     attachmentMode: hasAllAttachment ? "all" : hasActiveAttachment ? "lastFocused" : "none",
     panels,
+    ...(freeMenus.length > 0 ? { freeMenus } : {}),
   });
 
   if (hasActiveAttachment) {

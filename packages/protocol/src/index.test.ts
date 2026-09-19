@@ -22,11 +22,23 @@ describe("isServerMessage", () => {
     ).toBe(true);
   });
 
-  it("rejects an invocation without a target window", () => {
+  it("accepts an invocation without a target window (free surface dispatch)", () => {
+    // A free (detached) surface omits windowUid; the extension resolves the
+    // target as its current lastFocused window at dispatch time.
     expect(
       isServerMessage({
         type: "invoke",
         actionUid: "bookmark-1",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects an invocation with a non-string target window", () => {
+    expect(
+      isServerMessage({
+        type: "invoke",
+        actionUid: "bookmark-1",
+        windowUid: 42,
       }),
     ).toBe(false);
   });

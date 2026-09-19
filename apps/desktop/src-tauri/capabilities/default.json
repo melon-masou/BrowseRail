@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Panel capabilities",
-  "windows": ["listener-settings", "menu-*", "popup-*"],
+  "windows": ["listener-settings", "menu-*", "popup-*", "free-*"],
   "permissions": ["core:default"]
 }
