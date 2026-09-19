@@ -224,12 +224,33 @@ button {
   color: #f5f7fb;
   background: transparent;
   box-shadow: none;
-  pointer-events: none !important;
+  /* Make the flyout's own box hit-testable, not just the inner columns. This
+     closes the inter-column gaps and the area over any menu-bar button the
+     flyout is drawn on top of, so those never receive hover. */
+  pointer-events: auto;
   align-items: flex-start;
 }
 
 .popup-container::-webkit-scrollbar {
   display: none;
+}
+
+/* A thin invisible edge around the flyout itself (not a sibling overlay), so
+   the pointer crossing the anchor seam never lands on a menu-bar button. It is
+   ::before on the flyout, so it does not affect column layout and a hit on it
+   reports as a hit on .popup-container, keeping enter/leave semantics intact. */
+.popup-container::before {
+  content: "";
+  position: absolute;
+  /* Slightly larger than the visual flyout so the anchor seam and the gaps
+     between the flyout and the bar are well covered while the pointer crosses
+     them. */
+  inset: -6px;
+  /* Stay inside the container's z-index:10 stacking context but behind the
+     real columns, so the edge catches the anchor seam without ever covering a
+     button inside the flyout. */
+  z-index: -1;
+  pointer-events: auto;
 }
 
 .menu-column {

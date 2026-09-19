@@ -83,11 +83,6 @@ async function initializeSurface(): Promise<void> {
     }
   });
 
-  await listen<{ ok: boolean; message?: string }>("action-result", ({ payload }) => {
-    root.toggleAttribute("data-error", !payload.ok);
-    root.title = payload.ok ? "" : (payload.message ?? t("action.failed"));
-  });
-
   void invoke<boolean>("is_editing_locked")
     .then((locked) => {
       editingLocked = locked;
@@ -121,6 +116,14 @@ async function initializeSurface(): Promise<void> {
 
   function cancelClose(): void {
     clearTimeout(closeTimer);
+  }
+
+  // Any element that belongs to the open popup surface: the flyout itself or
+  // the menu bar/anchor button.
+  function isPopupInteractionTarget(el: Element | null): boolean {
+    if (!el) return false;
+    if (!el.closest) return false;
+    return Boolean(el.closest(".popup-container, .menu-bar"));
   }
 
   let measureCanvas: HTMLCanvasElement | null = null;
@@ -271,7 +274,7 @@ async function initializeSurface(): Promise<void> {
     menuBar.addEventListener("pointerenter", cancelClose);
     menuBar.addEventListener("pointerleave", (event) => {
       const related = event.relatedTarget as Element | null;
-      if (!related?.closest(".menu-column")) {
+      if (!isPopupInteractionTarget(related)) {
         scheduleClose(POPUP_CLOSE_DELAY_MS);
       }
     });
@@ -341,6 +344,11 @@ async function initializeSurface(): Promise<void> {
       } else {
         spaceEl.classList.add("menu-space-solid");
       }
+      spaceEl.addEventListener("pointerenter", () => {
+        if (activePopupEl) {
+          scheduleClose(POPUP_CLOSE_DELAY_MS);
+        }
+      });
       return spaceEl;
     }
 
@@ -437,6 +445,17 @@ async function initializeSurface(): Promise<void> {
     popupEl.className = "popup-container";
     popupEl.ariaLabel = t("aria.bookmarkMenu");
     activePopupEl = popupEl;
+    // The container is hit-testable (pointer-events:auto) so it also owns the
+    // inter-column gaps and whatever menu-bar button sits underneath it.
+    // Listening here keeps "pointer left the flyout" honest across the anchor
+    // seam instead of only at column boundaries.
+    popupEl.addEventListener("pointerenter", cancelClose);
+    popupEl.addEventListener("pointerleave", (event) => {
+      const related = event.relatedTarget as Element | null;
+      if (!isPopupInteractionTarget(related)) {
+        scheduleClose(POPUP_CLOSE_DELAY_MS);
+      }
+    });
 
     const configuredDirection =
       (entry.expandDirection === "right" || entry.expandDirection === "down"
@@ -473,6 +492,7 @@ async function initializeSurface(): Promise<void> {
     if (activePopupEl !== popupEl) {
       return;
     }
+
     const popupGap = 2;
     const popupTop = direction === "right" ? btnTop : btnTop + btnHeight + popupGap;
     const maxColumnHeight = Math.max(
@@ -512,7 +532,7 @@ async function initializeSurface(): Promise<void> {
       column.addEventListener("pointerenter", cancelClose);
       column.addEventListener("pointerleave", (event) => {
         const related = event.relatedTarget as Element | null;
-        if (!related?.closest(".menu-column") && !menuBar.contains(related as Node | null)) {
+        if (!isPopupInteractionTarget(related) && !menuBar.contains(related as Node | null)) {
           scheduleClose(POPUP_CLOSE_DELAY_MS);
         }
       });
