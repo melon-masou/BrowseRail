@@ -65,7 +65,7 @@ export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
     gap: DEFAULT_MENU_GAP_PERCENT,
     items: [],
     onTopMode: "aboveBrowser",
-    orientation: "row",
+    orientation: "column",
     uid,
   };
 }
@@ -92,7 +92,7 @@ export function getItemDimensions(fontSize: MenuFontSize = DEFAULT_FONT_SIZE): {
 
 export function defaultMenuPlacement(
   index = 0,
-  _orientation: MenuOrientation = "row",
+  _orientation: MenuOrientation = "column",
   _itemCount = 1,
   fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
   gapPercent = DEFAULT_MENU_GAP_PERCENT,
@@ -114,7 +114,7 @@ export function defaultMenuPlacement(
 export function resolveMenuPlacement(
   storedPlacement: MenuPlacement | undefined,
   index = 0,
-  orientation: MenuOrientation = "row",
+  orientation: MenuOrientation = "column",
   _itemCount = 1,
   fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
   gapPercent = DEFAULT_MENU_GAP_PERCENT,
@@ -285,7 +285,7 @@ function migrateLegacyMenu(panel: Record<string, unknown>): StoredMenu[] {
   menu.items = cells.flatMap((cell) =>
     typeof cell.bookmarkId === "string" ? [{ bookmarkId: cell.bookmarkId }] : [],
   );
-  menu.orientation = "row";
+  menu.orientation = "column";
   return [menu];
 }
 
@@ -333,7 +333,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
       ? value.items.map(normalizeStoredMenuItem).filter((i): i is StoredMenuItem => i !== undefined)
       : [],
     onTopMode,
-    orientation: value.orientation === "column" ? "column" : "row",
+    orientation: value.orientation === "row" ? "row" : "column",
     ...(tabMode !== undefined ? { tabMode } : {}),
     uid,
   };

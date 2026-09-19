@@ -413,7 +413,15 @@ async function initializeSurface(): Promise<void> {
     popupEl.ariaLabel = t("aria.bookmarkMenu");
     activePopupEl = popupEl;
 
-    const direction: ExpandDirection = currentMenu?.orientation === "column" ? "right" : "down";
+    const configuredDirection =
+      (entry.expandDirection === "right" || entry.expandDirection === "down"
+        ? entry.expandDirection
+        : undefined) ??
+      (currentMenu?.expandDirection === "right" || currentMenu?.expandDirection === "down"
+        ? currentMenu.expandDirection
+        : undefined);
+    const direction: ExpandDirection =
+      configuredDirection ?? (currentMenu?.orientation === "column" ? "right" : "down");
     popupEl.dataset.direction = direction;
 
     // Use un-transformed layout offsets relative to menuBar, NOT viewport getBoundingClientRect!

@@ -155,7 +155,7 @@ form,
 .connection-actions-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 12px;
   padding-top: 14px;
   border-top: 1px solid #edf2f7;
@@ -661,6 +661,11 @@ output {
   background: #f8fafc;
   color: #334155;
   border-color: #cbd5e1;
+  height: auto;
+  min-height: 36px;
+  padding: 8px 24px;
+  font-size: inherit;
+  line-height: normal;
 }
 
 .preview-btn:hover {
