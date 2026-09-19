@@ -2,14 +2,20 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const versionArg = process.argv[2] || process.env.BROWSERAIL_RELEASE_VERSION || process.env.RELEASE_VERSION;
-
-if (!versionArg) {
-  console.error("Error: Please specify a release version, e.g. pnpm build:release 0.2.0");
-  process.exit(1);
+function computeUtcDateVersion() {
+  const dt = new Date();
+  const yy = parseInt(String(dt.getUTCFullYear()).slice(-2), 10);
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  const hh = String(dt.getUTCHours()).padStart(2, "0");
+  const min = String(dt.getUTCMinutes()).padStart(2, "0");
+  const mmdd = parseInt(mm + dd, 10);
+  const hhmm = parseInt(hh + min, 10);
+  return `${yy}.${mmdd}.${hhmm}`;
 }
 
-const rawVersion = versionArg.trim();
+const versionArg = process.argv[2] || process.env.BROWSERAIL_RELEASE_VERSION || process.env.RELEASE_VERSION;
+const rawVersion = versionArg ? versionArg.trim() : computeUtcDateVersion();
 const normalizedVersion = rawVersion.replace(/^v/, "");
 const releaseTag = `v${normalizedVersion}`;
 

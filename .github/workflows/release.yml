@@ -3,12 +3,10 @@ name: Release
 on:
   push:
     branches: [release]
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 0.2.0 or v0.2.0)'
+        description: 'Release version (leave empty for date-based CalVer like 26.919.146)'
         required: false
         default: ''
 
