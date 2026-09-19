@@ -290,13 +290,6 @@ async fn handle_connection(
                                         Some("Sync applied"),
                                     );
                                 }
-                                ClientMessage::ActionResult { request_uid, ok, message } => {
-                                    let _ = native_sender.send(NativeCommand::ActionResult {
-                                        request_uid,
-                                        ok,
-                                        message,
-                                    });
-                                }
                                 ClientMessage::PairWindow { request_uid, window_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored PairWindow received before Hello");

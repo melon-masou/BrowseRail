@@ -114,12 +114,6 @@ export type ClientMessage =
       attachmentMode: AttachmentMode;
       panels: PanelSnapshot[];
     }
-  | {
-      type: "actionResult";
-      requestUid: string;
-      ok: boolean;
-      message?: string;
-    }
   | { type: "pairWindow"; requestUid: string; windowUid: string }
   | { type: "confirmWindowPairing"; requestUid: string; windowUid: string }
   | {
@@ -136,7 +130,6 @@ export type ServerMessage =
   | { type: "ready"; protocolVersion: typeof PROTOCOL_VERSION }
   | {
       type: "invoke";
-      requestUid: string;
       actionUid: string;
       windowUid: string;
     }
@@ -160,9 +153,7 @@ export function isServerMessage(value: unknown): value is ServerMessage {
       return value.protocolVersion === PROTOCOL_VERSION;
     case "invoke":
       return (
-        typeof value.requestUid === "string" &&
-        typeof value.actionUid === "string" &&
-        typeof value.windowUid === "string"
+        typeof value.actionUid === "string" && typeof value.windowUid === "string"
       );
     case "updateMenuPlacement":
       return typeof value.menuUid === "string" && isMenuPlacement(value.placement);

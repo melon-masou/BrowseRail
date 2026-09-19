@@ -536,21 +536,6 @@ impl SurfaceRegistry {
     }
 }
 
-pub fn emit_action_result(
-    app: &tauri::AppHandle,
-    instance_uid: &str,
-    window_uid: &str,
-    payload: &crate::protocol::ActionResultPayload,
-) {
-    let menu_prefix = surface_prefix("menu", instance_uid, window_uid);
-    let popup_prefix = surface_prefix("popup", instance_uid, window_uid);
-    for (label, window) in app.webview_windows() {
-        if label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix) {
-            let _ = window.emit_to(&label, "action-result", payload);
-        }
-    }
-}
-
 pub fn open_popup(
     app: &tauri::AppHandle,
     surfaces: &SurfaceRegistry,

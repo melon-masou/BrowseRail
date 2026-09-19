@@ -19,7 +19,6 @@ struct Session {
     outgoing: Option<UnboundedSender<ServerMessage>>,
     panels: HashMap<String, PanelSnapshot>,
     attachment_mode: AttachmentMode,
-    pending: HashMap<String, String>,
     revision: u64,
 }
 
@@ -35,11 +34,6 @@ pub struct InstancePanelsSnapshot {
     pub browser: Option<String>,
     pub instance_uid: String,
     pub panels: Vec<PanelSnapshot>,
-}
-
-pub struct ResolvedAction {
-    pub instance_uid: String,
-    pub window_uid: String,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -63,7 +57,6 @@ impl SessionRegistry {
             session.connection_uid = Some(connection_uid);
             session.instance = instance;
             session.outgoing = Some(outgoing);
-            session.pending.clear();
             session.revision = 0;
         } else {
             sessions.insert(
@@ -74,7 +67,6 @@ impl SessionRegistry {
                     outgoing: Some(outgoing),
                     panels: HashMap::new(),
                     attachment_mode: AttachmentMode::None,
-                    pending: HashMap::new(),
                     revision: 0,
                 },
             );
@@ -125,45 +117,24 @@ impl SessionRegistry {
         instance_uid: &str,
         window_uid: &str,
         action_uid: String,
-    ) -> Result<String, String> {
-        let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
+    ) -> Result<(), String> {
+        let sessions = self.sessions.read().map_err(|_| "Session lock failed")?;
         let session = sessions
-            .get_mut(instance_uid)
+            .get(instance_uid)
             .ok_or("The browser instance is disconnected")?;
         if !session.panels.contains_key(window_uid) {
             return Err("The bound browser window is unavailable".into());
         }
 
-        let outgoing = session
+        session
             .outgoing
             .as_ref()
-            .ok_or("The browser instance is disconnected")?;
-
-        let request_uid = Uuid::new_v4().to_string();
-        outgoing
+            .ok_or("The browser instance is disconnected")?
             .send(ServerMessage::Invoke {
-                request_uid: request_uid.clone(),
                 action_uid,
                 window_uid: window_uid.to_owned(),
             })
-            .map_err(|_| "The browser instance is disconnected")?;
-        session
-            .pending
-            .insert(request_uid.clone(), window_uid.to_owned());
-        Ok(request_uid)
-    }
-
-    pub fn resolve_action(&self, request_uid: &str) -> Option<ResolvedAction> {
-        let mut sessions = self.sessions.write().ok()?;
-        sessions.values_mut().find_map(|session| {
-            session
-                .pending
-                .remove(request_uid)
-                .map(|window_uid| ResolvedAction {
-                    instance_uid: session.instance.uid.clone(),
-                    window_uid,
-                })
-        })
+            .map_err(|_| "The browser instance is disconnected".into())
     }
 
     pub fn panel(&self, instance_uid: &str, window_uid: &str) -> Option<PanelSnapshot> {
@@ -272,7 +243,6 @@ impl SessionRegistry {
             .find(|session| session.connection_uid == Some(connection_uid))?;
         session.connection_uid = None;
         session.outgoing = None;
-        session.pending.clear();
         Some((
             session.instance.uid.clone(),
             session.panels.keys().cloned().collect(),

@@ -489,19 +489,11 @@ async function handleMessage(raw: unknown): Promise<void> {
 
   if (value.type === "invoke") {
     if (value.actionUid.startsWith("noop")) {
-      send({ type: "actionResult", requestUid: value.requestUid, ok: true });
       return;
     }
     try {
       await navigateBookmark(browser, value.windowUid, value.actionUid);
-      send({ type: "actionResult", requestUid: value.requestUid, ok: true });
-    } catch (error) {
-      send({
-        type: "actionResult",
-        requestUid: value.requestUid,
-        ok: false,
-        message: error instanceof Error ? error.message : "Action failed",
-      });
+    } catch {
       requestSync();
     }
     return;

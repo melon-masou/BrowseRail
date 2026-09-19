@@ -16,7 +16,6 @@ describe("isServerMessage", () => {
     expect(
       isServerMessage({
         type: "invoke",
-        requestUid: "request-1",
         actionUid: "bookmark-1",
         windowUid: "window-1",
       }),
@@ -27,7 +26,6 @@ describe("isServerMessage", () => {
     expect(
       isServerMessage({
         type: "invoke",
-        requestUid: "request-1",
         actionUid: "bookmark-1",
       }),
     ).toBe(false);

@@ -23,7 +23,7 @@ use crate::panel::{
     set_window_visible_without_activation, surface_prefix,
 };
 use crate::protocol::{
-    ActionResultPayload, AttachmentMode, BrowserInstance, MenuAnchor, MenuPlacement, MenuSnapshot,
+    AttachmentMode, BrowserInstance, MenuAnchor, MenuPlacement, MenuSnapshot,
     PanelSnapshot, ServerMessage,
 };
 use crate::session::SessionRegistry;
@@ -70,11 +70,6 @@ pub enum NativeCommand {
     },
     ExpireWindowPairing {
         request_uid: String,
-    },
-    ActionResult {
-        request_uid: String,
-        ok: bool,
-        message: Option<String>,
     },
     RebuildInstanceSurfaces {
         instance_uid: String,
@@ -421,24 +416,6 @@ impl NativeReactor {
                             request_uid,
                             window_uid: pairing.window_uid,
                             ok: false,
-                        });
-                    }
-                }
-                NativeCommand::ActionResult {
-                    request_uid,
-                    ok,
-                    message,
-                } => {
-                    if let Some(action) = self.registry.resolve_action(&request_uid) {
-                        let app = self.app.clone();
-                        let payload = ActionResultPayload { ok, message };
-                        let _ = self.app.run_on_main_thread(move || {
-                            crate::panel::emit_action_result(
-                                &app,
-                                &action.instance_uid,
-                                &action.window_uid,
-                                &payload,
-                            );
                         });
                     }
                 }

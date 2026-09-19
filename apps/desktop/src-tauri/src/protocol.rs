@@ -18,13 +18,6 @@ pub enum ClientMessage {
         attachment_mode: AttachmentMode,
         panels: Vec<PanelSnapshot>,
     },
-    #[serde(rename = "actionResult")]
-    ActionResult {
-        #[serde(rename = "requestUid")]
-        request_uid: String,
-        ok: bool,
-        message: Option<String>,
-    },
     #[serde(rename = "pairWindow")]
     PairWindow {
         #[serde(rename = "requestUid")]
@@ -67,8 +60,6 @@ pub enum ServerMessage {
     },
     #[serde(rename = "invoke")]
     Invoke {
-        #[serde(rename = "requestUid")]
-        request_uid: String,
         #[serde(rename = "actionUid")]
         action_uid: String,
         #[serde(rename = "windowUid")]
@@ -410,14 +401,6 @@ pub fn compute_menu_geometry(
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActionResultPayload {
-    pub ok: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::{ClientMessage, ServerMessage};
@@ -503,7 +486,6 @@ mod tests {
     #[test]
     fn writes_an_invocation_with_the_required_window_context() {
         let message = ServerMessage::Invoke {
-            request_uid: "request-a".into(),
             action_uid: "bookmark:same".into(),
             window_uid: "window-a".into(),
         };
@@ -512,7 +494,6 @@ mod tests {
             serde_json::to_value(message).unwrap(),
             serde_json::json!({
                 "type": "invoke",
-                "requestUid": "request-a",
                 "actionUid": "bookmark:same",
                 "windowUid": "window-a"
             })
