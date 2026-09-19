@@ -312,6 +312,11 @@ export function parseBookmarkAction(actionUid: string): ParsedBookmarkAction {
   };
 }
 
+export function invertBookmarkActionUid(actionUid: string): string {
+  const { bookmarkId, tabMode } = parseBookmarkAction(actionUid);
+  return formatActionUid("bookmark", bookmarkId, tabMode === "newTab" ? "replace" : "newTab");
+}
+
 export interface ExportedMenuItem {
   type: MenuItemType;
   path?: string[];

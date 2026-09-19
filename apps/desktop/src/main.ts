@@ -1,9 +1,10 @@
-import type {
-  ExpandDirection,
-  LayoutEntry,
-  MenuAnchor,
-  MenuPlacement,
-  MenuSnapshot,
+import {
+  invertBookmarkActionUid,
+  type ExpandDirection,
+  type LayoutEntry,
+  type MenuAnchor,
+  type MenuPlacement,
+  type MenuSnapshot,
 } from "@browserail/protocol";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -344,6 +345,16 @@ async function initializeSurface(): Promise<void> {
           }
         }
       });
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button === 2 && editingLocked) {
+          event.preventDefault();
+          event.stopPropagation();
+          void closePopup();
+          if (!entry.uid.startsWith("noop")) {
+            void invokeAction(instanceUid, windowUid, invertBookmarkActionUid(entry.uid));
+          }
+        }
+      });
     } else {
       const expandOnHover = entry.expandOnHover !== false;
       const hasChildren = Boolean(entry.children && entry.children.length > 0);
@@ -536,6 +547,16 @@ async function initializeSurface(): Promise<void> {
               void closePopup();
               if (!item.uid.startsWith("noop")) {
                 void invokeAction(instanceUid, windowUid, item.uid);
+              }
+            }
+          });
+          button.addEventListener("pointerdown", (event) => {
+            if (event.button === 2 && editingLocked) {
+              event.preventDefault();
+              event.stopPropagation();
+              void closePopup();
+              if (!item.uid.startsWith("noop")) {
+                void invokeAction(instanceUid, windowUid, invertBookmarkActionUid(item.uid));
               }
             }
           });

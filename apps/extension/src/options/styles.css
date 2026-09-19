@@ -1028,7 +1028,7 @@ output {
 .color-popover {
   position: fixed;
   z-index: 10000;
-  width: 200px;
+  width: 220px;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -1056,6 +1056,126 @@ output {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+
+.color-popover-cycle-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.color-popover-cycle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+
+.color-popover-cycle-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-height: 14px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}
+
+.color-popover-cycle-section {
+  padding: 6px 0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.color-popover-cycle-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cycle-color-dot {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.cycle-color-dot:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  z-index: 2;
+}
+
+.cycle-color-dot.is-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  transform: scale(1.08);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+  z-index: 3;
+}
+
+.cycle-color-dot .cycle-color-dot-del {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 13px;
+  height: 13px;
+  min-height: 13px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  font-size: 8px;
+  line-height: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.cycle-color-dot:hover .cycle-color-dot-del,
+.cycle-color-dot.is-selected .cycle-color-dot-del {
+  display: flex;
+}
+
+.cycle-color-dot-add {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border-radius: 5px;
+  border: 1px dashed #94a3b8;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.12s ease;
+}
+
+.cycle-color-dot-add:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #eff6ff;
+  transform: scale(1.1);
 }
 
 .color-popover-tools {
@@ -1294,7 +1414,7 @@ output {
 .item-settings-popover {
   position: fixed;
   z-index: 10000;
-  width: 250px;
+  width: 220px;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -1402,120 +1522,6 @@ output {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.item-setting-cycle-colors-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 6px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.cycle-colors-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 140px;
-  overflow-y: auto;
-}
-
-.cycle-colors-empty-hint {
-  font-size: 11px;
-  color: #94a3b8;
-  font-style: italic;
-  padding: 2px 0;
-}
-
-.cycle-color-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 3px 6px;
-}
-
-.cycle-color-chip-input {
-  width: 20px;
-  height: 20px;
-  min-height: 20px;
-  padding: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  cursor: pointer;
-  background: none;
-  flex-shrink: 0;
-}
-
-.cycle-color-chip-input::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.cycle-color-chip-input::-webkit-color-swatch {
-  border: none;
-  border-radius: 3px;
-}
-
-.cycle-color-chip-hex {
-  font-size: 11px;
-  font-family: monospace;
-  color: #334155;
-  flex-grow: 1;
-}
-
-.cycle-color-chip-del {
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 2px 5px;
-  font-size: 11px;
-  line-height: 1;
-  border-radius: 4px;
-}
-
-.cycle-color-chip-del:hover {
-  color: #ef4444;
-  background: #fee2e2;
-}
-
-.cycle-colors-add-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cycle-color-picker {
-  width: 26px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  cursor: pointer;
-  background: none;
-  flex-shrink: 0;
-}
-
-.cycle-color-picker::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.cycle-color-picker::-webkit-color-swatch {
-  border: none;
-  border-radius: 5px;
-}
-
-.cycle-color-add-btn {
-  flex-grow: 1;
-  font-size: 12px;
-  padding: 4px 8px;
-  height: 26px;
-  min-height: 26px;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .item-setting-check-label {

@@ -174,10 +174,10 @@ const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hove
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
 const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>("item-setting-include-folders-label");
 const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
-const itemSettingCycleColorsContainer = element<HTMLDivElement>("item-setting-cycle-colors-container");
-const itemSettingCycleColorsList = element<HTMLDivElement>("item-setting-cycle-colors-list");
-const cycleColorPicker = element<HTMLInputElement>("cycle-color-picker");
-const cycleColorAddBtn = element<HTMLButtonElement>("cycle-color-add-btn");
+const colorPopoverCycleRow = element<HTMLDivElement>("color-popover-cycle-row");
+const colorPopoverCycleToggle = element<HTMLInputElement>("color-popover-cycle-toggle");
+const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-section");
+const colorPopoverCycleList = element<HTMLDivElement>("color-popover-cycle-list");
 const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
@@ -1140,6 +1140,31 @@ function initColorPopover(): void {
 
   colorPopoverClose.addEventListener("click", () => closeColorPopover());
 
+  colorPopoverCycleToggle.addEventListener("change", () => {
+    if (!activeColorTarget || !("type" in activeColorTarget) || activeColorTarget.type !== "flattenFolder") return;
+    const item = activeColorTarget as StoredMenuItem;
+    if (colorPopoverCycleToggle.checked) {
+      if (!Array.isArray(item.cycleColors) || item.cycleColors.length === 0) {
+        item.cycleColors = ["#3b82f6", "#10b981"];
+      }
+      delete item.color;
+      colorPopoverCycleSection.style.display = "block";
+      selectedCycleIndex = 0;
+      renderPopoverCycleList();
+      popoverColorInput.value = item.cycleColors[0];
+      popoverColorHex.value = item.cycleColors[0].toUpperCase();
+    } else {
+      delete item.cycleColors;
+      delete item.color;
+      colorPopoverCycleSection.style.display = "none";
+      selectedCycleIndex = -1;
+      popoverColorInput.value = "#3b82f6";
+      popoverColorHex.value = "";
+    }
+    updateActiveTargetSwatch();
+    markDirty();
+  });
+
   popoverColorInput.addEventListener("input", () => {
     setColor(popoverColorInput.value);
   });
@@ -1160,10 +1185,34 @@ function initColorPopover(): void {
 
   popoverDefaultBtn.addEventListener("click", () => {
     if (!activeColorTarget || !activeColorSwatchElement) return;
+    if ("type" in activeColorTarget && activeColorTarget.type === "flattenFolder") {
+      const item = activeColorTarget as StoredMenuItem;
+      if (colorPopoverCycleToggle.checked && Array.isArray(item.cycleColors) && item.cycleColors.length > 0) {
+        if (item.cycleColors.length > 1 && selectedCycleIndex >= 0) {
+          item.cycleColors.splice(selectedCycleIndex, 1);
+          selectedCycleIndex = Math.max(0, selectedCycleIndex - 1);
+          renderPopoverCycleList();
+          const curColor = item.cycleColors[selectedCycleIndex];
+          popoverColorInput.value = curColor;
+          popoverColorHex.value = curColor.toUpperCase();
+        } else {
+          delete item.cycleColors;
+          delete item.color;
+          colorPopoverCycleToggle.checked = false;
+          colorPopoverCycleSection.style.display = "none";
+          selectedCycleIndex = -1;
+          popoverColorInput.value = "#3b82f6";
+          popoverColorHex.value = "";
+        }
+        updateActiveTargetSwatch();
+        markDirty();
+        return;
+      }
+    }
     delete activeColorTarget.color;
     popoverColorInput.value = "#3b82f6";
     popoverColorHex.value = "";
-    updateSwatchAppearance(activeColorSwatchElement, undefined);
+    updateActiveTargetSwatch();
     markDirty();
   });
 
@@ -1187,22 +1236,153 @@ function initColorPopover(): void {
   });
 }
 
+let selectedCycleIndex = -1;
+
+function renderPopoverCycleList(): void {
+  colorPopoverCycleList.replaceChildren();
+  if (!activeColorTarget || !("type" in activeColorTarget) || activeColorTarget.type !== "flattenFolder") {
+    return;
+  }
+  const item = activeColorTarget as StoredMenuItem;
+  if (!Array.isArray(item.cycleColors)) {
+    item.cycleColors = [];
+  }
+
+  item.cycleColors.forEach((color, idx) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = `cycle-color-dot ${idx === selectedCycleIndex ? "is-selected" : ""}`;
+    dot.style.backgroundColor = color;
+    dot.title = color;
+
+    dot.addEventListener("click", (e) => {
+      e.stopPropagation();
+      selectedCycleIndex = idx;
+      renderPopoverCycleList();
+      popoverColorInput.value = color;
+      popoverColorHex.value = color.toUpperCase();
+    });
+
+    const delBtn = document.createElement("span");
+    delBtn.className = "cycle-color-dot-del";
+    delBtn.textContent = "✕";
+    delBtn.title = t("common.close");
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      item.cycleColors!.splice(idx, 1);
+      if (selectedCycleIndex >= item.cycleColors!.length) {
+        selectedCycleIndex = item.cycleColors!.length - 1;
+      }
+      if (item.cycleColors!.length === 0) {
+        delete item.cycleColors;
+        delete item.color;
+        colorPopoverCycleToggle.checked = false;
+        colorPopoverCycleSection.style.display = "none";
+        selectedCycleIndex = -1;
+        popoverColorInput.value = "#3b82f6";
+        popoverColorHex.value = "";
+      } else {
+        renderPopoverCycleList();
+        const curColor = item.cycleColors![selectedCycleIndex];
+        popoverColorInput.value = curColor;
+        popoverColorHex.value = curColor.toUpperCase();
+      }
+      updateActiveTargetSwatch();
+      markDirty();
+    });
+
+    dot.appendChild(delBtn);
+    colorPopoverCycleList.appendChild(dot);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "cycle-color-dot-add";
+  addBtn.textContent = "+";
+  addBtn.title = t("itemSettings.addColor");
+  addBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const nextPreset = PALETTE_COLORS[item.cycleColors!.length % PALETTE_COLORS.length] || "#3b82f6";
+    item.cycleColors!.push(nextPreset);
+    selectedCycleIndex = item.cycleColors!.length - 1;
+    renderPopoverCycleList();
+    popoverColorInput.value = nextPreset;
+    popoverColorHex.value = nextPreset.toUpperCase();
+    updateActiveTargetSwatch();
+    markDirty();
+  });
+  colorPopoverCycleList.appendChild(addBtn);
+}
+
+function updateActiveTargetSwatch(): void {
+  if (!activeColorTarget || !activeColorSwatchElement) return;
+  if ("type" in activeColorTarget && activeColorTarget.type === "flattenFolder") {
+    const colors = activeColorTarget.cycleColors;
+    if (colors && colors.length > 0) {
+      if (colors.length === 1) {
+        activeColorSwatchElement.style.background = "";
+        activeColorSwatchElement.style.backgroundColor = colors[0];
+        activeColorSwatchElement.style.borderColor = colors[0];
+      } else {
+        activeColorSwatchElement.style.background = `linear-gradient(135deg, ${colors.join(", ")})`;
+        activeColorSwatchElement.style.borderColor = "transparent";
+      }
+      activeColorSwatchElement.classList.remove("has-no-color");
+      activeColorSwatchElement.title = t("item.cycleColorsTitle", { count: colors.length });
+    } else {
+      activeColorSwatchElement.style.background = "";
+      activeColorSwatchElement.style.backgroundColor = "transparent";
+      activeColorSwatchElement.style.borderColor = "#cbd5e1";
+      activeColorSwatchElement.classList.add("has-no-color");
+      activeColorSwatchElement.title = t("item.cycleColorsEmpty");
+    }
+  } else {
+    updateSwatchAppearance(activeColorSwatchElement, activeColorTarget.color);
+  }
+}
+
 function setColor(color: string): void {
   if (!activeColorTarget || !activeColorSwatchElement) return;
-  activeColorTarget.color = color;
+  if ("type" in activeColorTarget && activeColorTarget.type === "flattenFolder") {
+    const item = activeColorTarget as StoredMenuItem;
+    if (!colorPopoverCycleToggle.checked) {
+      colorPopoverCycleToggle.checked = true;
+      colorPopoverCycleSection.style.display = "block";
+      item.cycleColors = [color];
+      selectedCycleIndex = 0;
+      renderPopoverCycleList();
+    } else {
+      if (!Array.isArray(item.cycleColors)) {
+        item.cycleColors = [];
+      }
+      if (selectedCycleIndex < 0 || selectedCycleIndex >= item.cycleColors.length) {
+        selectedCycleIndex = 0;
+      }
+      if (item.cycleColors.length > 0) {
+        item.cycleColors[selectedCycleIndex] = color;
+      } else {
+        item.cycleColors.push(color);
+      }
+      renderPopoverCycleList();
+    }
+  } else {
+    activeColorTarget.color = color;
+  }
   popoverColorInput.value = color;
   popoverColorHex.value = color.toUpperCase();
-  updateSwatchAppearance(activeColorSwatchElement, color);
+  updateActiveTargetSwatch();
   markDirty();
 }
 
 function updateSwatchAppearance(swatch: HTMLElement, color?: string): void {
   if (color) {
+    swatch.style.background = "";
     swatch.style.backgroundColor = color;
     swatch.style.borderColor = color;
     swatch.classList.remove("has-no-color");
     swatch.title = t("color.swatchSet", { color });
   } else {
+    swatch.style.background = "";
     swatch.style.backgroundColor = "transparent";
     swatch.style.borderColor = "#cbd5e1";
     swatch.classList.add("has-no-color");
@@ -1219,12 +1399,34 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
   activeColorTarget = target;
   activeColorSwatchElement = swatchElement;
 
-  const currentColor = target.color || "#3b82f6";
-  popoverColorInput.value = currentColor;
-  popoverColorHex.value = target.color ? target.color.toUpperCase() : "";
+  const isFlatten = "type" in target && target.type === "flattenFolder";
+  if (isFlatten) {
+    colorPopoverCycleRow.style.display = "flex";
+    const hasCycle = Array.isArray(target.cycleColors) && target.cycleColors.length > 0;
+    colorPopoverCycleToggle.checked = hasCycle;
+    if (hasCycle) {
+      colorPopoverCycleSection.style.display = "block";
+      selectedCycleIndex = 0;
+      renderPopoverCycleList();
+      popoverColorInput.value = target.cycleColors![0];
+      popoverColorHex.value = target.cycleColors![0].toUpperCase();
+    } else {
+      colorPopoverCycleSection.style.display = "none";
+      selectedCycleIndex = -1;
+      popoverColorInput.value = "#3b82f6";
+      popoverColorHex.value = "";
+    }
+  } else {
+    colorPopoverCycleRow.style.display = "none";
+    colorPopoverCycleSection.style.display = "none";
+    selectedCycleIndex = -1;
+    const currentColor = target.color || "#3b82f6";
+    popoverColorInput.value = currentColor;
+    popoverColorHex.value = target.color ? target.color.toUpperCase() : "";
+  }
 
   const rect = swatchElement.getBoundingClientRect();
-  const popoverWidth = 200;
+  const popoverWidth = 220;
   let top = rect.bottom + window.scrollY + 6;
   let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
 
@@ -1514,42 +1716,17 @@ function initItemSettingsPopover(): void {
     if (itemSettingFlatten.checked) {
       item.type = "flattenFolder";
       delete item.color;
-      if (!Array.isArray(item.cycleColors)) {
-        item.cycleColors = [];
-      }
       itemSettingIncludeFoldersLabel.style.display = "inline-flex";
       itemSettingIncludeFolders.checked = item.includeFolders === true;
-      itemSettingCycleColorsContainer.style.display = "flex";
-      renderCycleColorsList(item);
     } else {
       item.type = "folder";
       delete item.includeFolders;
       delete item.cycleColors;
       itemSettingIncludeFoldersLabel.style.display = "none";
       itemSettingIncludeFolders.checked = false;
-      itemSettingCycleColorsContainer.style.display = "none";
     }
     renderMenus();
     markDirty();
-  });
-
-  cycleColorAddBtn.addEventListener("click", () => {
-    if (!activeItemSettings) return;
-    const menu = menus[activeItemSettings.menuIndex];
-    const item = menu?.items[activeItemSettings.itemIndex];
-    if (!item) return;
-    if (!Array.isArray(item.cycleColors)) {
-      item.cycleColors = [];
-    }
-    const colorToAdd = cycleColorPicker.value || "#3b82f6";
-    item.cycleColors.push(colorToAdd);
-    const nextPreset = PALETTE_COLORS[item.cycleColors.length % PALETTE_COLORS.length];
-    if (nextPreset) {
-      cycleColorPicker.value = nextPreset;
-    }
-    renderCycleColorsList(item);
-    markDirty();
-    renderMenus();
   });
 
   itemSettingIncludeFolders.addEventListener("change", () => {
@@ -1685,10 +1862,6 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
       itemSettingHoverExpand.checked = item.expandOnHover !== false;
       itemSettingIncludeFoldersLabel.style.display = isFlatten ? "inline-flex" : "none";
       itemSettingIncludeFolders.checked = isFlatten && item.includeFolders === true;
-      itemSettingCycleColorsContainer.style.display = isFlatten ? "flex" : "none";
-      if (isFlatten) {
-        renderCycleColorsList(item);
-      }
     } else {
       itemSettingsFolderControls.style.display = "none";
     }
@@ -1708,57 +1881,6 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
   itemSettingsPopover.style.top = `${top}px`;
   itemSettingsPopover.style.left = `${left}px`;
   itemSettingsPopover.style.display = "flex";
-}
-
-function renderCycleColorsList(item: StoredMenuItem): void {
-  if (!Array.isArray(item.cycleColors)) {
-    item.cycleColors = [];
-  }
-  itemSettingCycleColorsList.replaceChildren();
-
-  if (item.cycleColors.length === 0) {
-    const hint = document.createElement("div");
-    hint.className = "cycle-colors-empty-hint";
-    hint.textContent = t("itemSettings.noCycleColors");
-    itemSettingCycleColorsList.appendChild(hint);
-    return;
-  }
-
-  item.cycleColors.forEach((color, idx) => {
-    const chip = document.createElement("div");
-    chip.className = "cycle-color-chip";
-
-    const colorInput = document.createElement("input");
-    colorInput.type = "color";
-    colorInput.className = "cycle-color-chip-input";
-    colorInput.value = color;
-    colorInput.title = color;
-    colorInput.addEventListener("input", () => {
-      item.cycleColors![idx] = colorInput.value;
-      hexSpan.textContent = colorInput.value.toUpperCase();
-      markDirty();
-      renderMenus();
-    });
-
-    const hexSpan = document.createElement("span");
-    hexSpan.className = "cycle-color-chip-hex";
-    hexSpan.textContent = color.toUpperCase();
-
-    const delBtn = document.createElement("button");
-    delBtn.type = "button";
-    delBtn.className = "cycle-color-chip-del";
-    delBtn.textContent = "✕";
-    delBtn.title = t("common.close");
-    delBtn.addEventListener("click", () => {
-      item.cycleColors!.splice(idx, 1);
-      renderCycleColorsList(item);
-      markDirty();
-      renderMenus();
-    });
-
-    chip.append(colorInput, hexSpan, delBtn);
-    itemSettingCycleColorsList.appendChild(chip);
-  });
 }
 
 function closeItemSettingsPopover(): void {
@@ -2310,6 +2432,7 @@ function renderMenus(): void {
             const colors = item.cycleColors;
             if (colors && colors.length > 0) {
               if (colors.length === 1) {
+                swatch.style.background = "";
                 swatch.style.backgroundColor = colors[0];
                 swatch.style.borderColor = colors[0];
               } else {
@@ -2325,21 +2448,17 @@ function renderMenus(): void {
               swatch.classList.add("has-no-color");
               swatch.title = t("item.cycleColorsEmpty");
             }
-            swatch.addEventListener("click", (e) => {
-              e.stopPropagation();
-              openItemSettingsPopover(menuIndex, itemIndex, swatch);
-            });
           } else {
             swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
             updateSwatchAppearance(swatch, item.color);
             if (!item.color && menu.color) {
               swatch.title = t("item.followMenuColor", { color: menu.color });
             }
-            swatch.addEventListener("click", (e) => {
-              e.stopPropagation();
-              openColorPopover(item, swatch);
-            });
           }
+          swatch.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openColorPopover(item, swatch);
+          });
 
           // Centered minus button for remove item
           const removeBtn = document.createElement("button");

@@ -158,6 +158,15 @@
           </div>
           <button type="button" id="color-popover-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
+        <div id="color-popover-cycle-row" class="color-popover-cycle-row" style="display: none;">
+          <label class="color-popover-cycle-label">
+            <input type="checkbox" id="color-popover-cycle-toggle" />
+            <span data-i18n="itemSettings.cycleColors">Cycle colors</span>
+          </label>
+        </div>
+        <div id="color-popover-cycle-section" class="color-popover-cycle-section" style="display: none;">
+          <div id="color-popover-cycle-list" class="color-popover-cycle-list"></div>
+        </div>
         <div class="color-popover-presets" id="color-popover-presets"></div>
         <div class="color-popover-picker-row">
           <input type="color" id="popover-color-input" class="popover-native-input" data-i18n-title="color.customTitle" title="Custom color" />
@@ -279,14 +288,6 @@
                 <input type="checkbox" id="item-setting-include-folders" />
                 <span data-i18n="itemSettings.includeFolders">Include folders</span>
               </label>
-              <div id="item-setting-cycle-colors-container" class="item-setting-cycle-colors-container" style="display: none;">
-                <span class="item-setting-field-title" data-i18n="itemSettings.cycleColors">Cycle colors</span>
-                <div id="item-setting-cycle-colors-list" class="cycle-colors-list"></div>
-                <div class="cycle-colors-add-row">
-                  <input type="color" id="cycle-color-picker" class="cycle-color-picker" value="#3b82f6" />
-                  <button type="button" id="cycle-color-add-btn" class="action-btn cycle-color-add-btn" data-i18n="itemSettings.addColor">+ Add color</button>
-                </div>
-              </div>
             </div>
             <div class="item-settings-actions">
               <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>

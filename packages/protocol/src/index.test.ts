@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   EXPORT_SCHEMA_VERSION,
   formatActionUid,
+  invertBookmarkActionUid,
   isExportedSettingsData,
   isServerMessage,
   isSpecialRootPlaceholder,
@@ -98,6 +99,11 @@ describe("actionUid wire protocol", () => {
       "The action is not a bookmark navigation",
     );
   });
+
+  it("inverts bookmark open mode for one-off right-click invocation", () => {
+    expect(invertBookmarkActionUid("bookmark:123")).toBe("bookmark:123?tab=newTab");
+    expect(invertBookmarkActionUid("bookmark:123?tab=newTab")).toBe("bookmark:123");
+  });
 });
 
 describe("special root placeholders", () => {
@@ -109,4 +115,3 @@ describe("special root placeholders", () => {
     expect(isSpecialRootPlaceholder("normal-folder")).toBe(false);
   });
 });
-
