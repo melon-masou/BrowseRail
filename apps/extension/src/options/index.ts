@@ -2000,6 +2000,9 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     closeItemSettingsPopover();
     return;
   }
+  // Measure the anchor before the close calls below, which re-render the menu list
+  // and detach this button — a detached node reports a 0,0 rect (top-left popup).
+  const rect = anchorEl.getBoundingClientRect();
   closeAddItemDropdown();
   closeMenuWebpageSetsPopover();
 
@@ -2048,7 +2051,6 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     }
   }
 
-  const rect = anchorEl.getBoundingClientRect();
   const popoverWidth = 250;
   let top = rect.bottom + window.scrollY + 6;
   let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
