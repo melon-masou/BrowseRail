@@ -1032,6 +1032,10 @@ async function persistConnection(): Promise<void> {
 
   await saveBookmarkRootPrefix(bookmarkRootPrefix);
 
+  if (syncEnabledToggle) {
+    await saveSyncEnabled(syncEnabledToggle.checked);
+  }
+
   const currentConfig = await loadConfig();
   await saveConfig({
     ...currentConfig,
@@ -2540,16 +2544,8 @@ if (syncEnabledToggle) {
     syncEnabledToggle.checked = enabled;
   });
 
-  syncEnabledToggle.addEventListener("change", async () => {
-    const enabled = syncEnabledToggle.checked;
-    await saveSyncEnabled(enabled);
-    if (enabled) {
-      await saveConfig({
-        desktopWidget: { url: desktopUrl.value.trim() || DEFAULT_DESKTOP_URL },
-        instanceLabel: instanceLabel.value.trim(),
-        panel: { menus },
-      });
-    }
+  syncEnabledToggle.addEventListener("change", () => {
+    markConnectionDirty();
   });
 }
 
