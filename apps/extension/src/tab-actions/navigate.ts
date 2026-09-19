@@ -1,4 +1,10 @@
-export type TabMode = "replace" | "newTab";
+import {
+  parseBookmarkAction,
+  type ParsedBookmarkAction,
+  type TabMode,
+} from "@browserail/protocol";
+
+export { parseBookmarkAction, type ParsedBookmarkAction, type TabMode };
 
 export interface TabActionBrowser {
   bookmarks: {
@@ -12,11 +18,6 @@ export interface TabActionBrowser {
   windows: {
     get(windowId: number): Promise<unknown>;
   };
-}
-
-export interface ParsedBookmarkAction {
-  bookmarkId: string;
-  tabMode: TabMode;
 }
 
 export async function navigateBookmark(
@@ -60,26 +61,4 @@ export async function navigateBookmark(
   await api.tabs.update(tab.id, { url: bookmark.url });
 }
 
-export function parseBookmarkAction(actionUid: string): ParsedBookmarkAction {
-  const prefix = "bookmark:";
-  if (!actionUid.startsWith(prefix)) {
-    throw new Error("The action is not a bookmark navigation");
-  }
-
-  const raw = actionUid.slice(prefix.length);
-  const qIndex = raw.indexOf("?tab=");
-  if (qIndex !== -1) {
-    const bookmarkId = decodeURIComponent(raw.slice(0, qIndex));
-    const mode = raw.slice(qIndex + 5);
-    return {
-      bookmarkId,
-      tabMode: mode === "newTab" ? "newTab" : "replace",
-    };
-  }
-
-  return {
-    bookmarkId: decodeURIComponent(raw),
-    tabMode: "replace",
-  };
-}
 

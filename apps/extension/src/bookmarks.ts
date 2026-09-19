@@ -1,8 +1,16 @@
 import { t } from "@browserail/i18n";
-import type { ExpandDirection, LayoutEntry } from "@browserail/protocol";
+import {
+  actionUid,
+  type ExpandDirection,
+  type LayoutEntry,
+  SPECIAL_ROOT_PLACEHOLDERS,
+  type SpecialRootType,
+} from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import type { StoredMenuItem, TabMode } from "./config";
+
+export { actionUid, SPECIAL_ROOT_PLACEHOLDERS, type SpecialRootType };
 
 export interface BookmarkNode {
   children?: BookmarkNode[];
@@ -10,15 +18,6 @@ export interface BookmarkNode {
   title: string;
   url?: string;
 }
-
-export type SpecialRootType = "bookmarks-bar" | "other" | "mobile" | "managed";
-
-export const SPECIAL_ROOT_PLACEHOLDERS: Record<SpecialRootType, string> = {
-  "bookmarks-bar": "${bookmarks-bar}",
-  "other": "${other}",
-  "mobile": "${mobile}",
-  "managed": "${managed}",
-};
 
 export function getSpecialRootTypeFromTitle(name: string): SpecialRootType | undefined {
   const lower = name.trim().toLowerCase();
@@ -457,14 +456,3 @@ function toLayoutEntry(
   };
 }
 
-export function actionUid(
-  kind: "bookmark" | "folder",
-  bookmarkId: string,
-  tabMode?: TabMode,
-): string {
-  const base = `${kind}:${encodeURIComponent(bookmarkId)}`;
-  if (kind === "bookmark" && tabMode === "newTab") {
-    return `${base}?tab=newTab`;
-  }
-  return base;
-}

@@ -1,5 +1,8 @@
 export const PROTOCOL_VERSION = 1 as const;
-export const SOCKET_URL = "ws://127.0.0.1:17654" as const;
+export const DEFAULT_PORT = 17654 as const;
+export const DEFAULT_WS_URL = "ws://127.0.0.1:17654" as const;
+export const DEFAULT_HTTP_URL = "http://127.0.0.1:17654" as const;
+export const SOCKET_URL = DEFAULT_WS_URL;
 
 export const EXPORT_SCHEMA_VERSION = 1 as const;
 
@@ -190,11 +193,114 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export type TabOpenMode = "newTab" | "replace";
-export type ExportedItemType = "bookmark" | "folder" | "flattenFolder" | "space" | (string & {});
+// Menu Items and Options Enum Typings
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "space"] as const;
+export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
+export type StoredMenuItemType = MenuItemType;
+export type ExportedItemType = MenuItemType;
+
+export const TAB_MODES = ["replace", "newTab"] as const;
+export type TabMode = (typeof TAB_MODES)[number];
+export type TabOpenMode = TabMode;
+
+export const EXPAND_DIRECTIONS = ["down", "right"] as const;
+export const ATTACHMENT_MODES = ["none", "lastFocused", "all"] as const;
+export const ON_TOP_MODES = ["aboveBrowser", "alwaysOnTop"] as const;
+export const MENU_ORIENTATIONS = ["row", "column"] as const;
+export const MENU_ANCHORS = ["topLeft", "topRight", "bottomLeft", "bottomRight"] as const;
+
+export interface StoredMenuItem {
+  bookmarkId: string;
+  path?: string[];
+  url?: string;
+  color?: string;
+  emoji?: string;
+  rename?: string;
+  type?: MenuItemType;
+  expandOnHover?: boolean;
+  tabMode?: TabMode;
+  units?: number;
+  transparent?: boolean;
+}
+
+export interface StoredMenu {
+  attachmentMode?: AttachmentMode;
+  color?: string;
+  expandDirection?: ExpandDirection;
+  fontSize?: MenuFontSize;
+  gap?: number;
+  items: StoredMenuItem[];
+  onTopMode?: OnTopMode;
+  orientation: MenuOrientation;
+  tabMode?: TabMode;
+  uid: string;
+}
+
+// Special Root Placeholders
+export const SPECIAL_ROOT_TYPES = ["bookmarks-bar", "other", "mobile", "managed"] as const;
+export type SpecialRootType = (typeof SPECIAL_ROOT_TYPES)[number];
+
+export const SPECIAL_ROOT_PLACEHOLDERS: Record<SpecialRootType, string> = {
+  "bookmarks-bar": "${bookmarks-bar}",
+  other: "${other}",
+  mobile: "${mobile}",
+  managed: "${managed}",
+};
+
+export function isSpecialRootPlaceholder(value: string): boolean {
+  return (
+    value === "${bookmarks-bar}" ||
+    value === "${other}" ||
+    value === "${mobile}" ||
+    value === "${managed}"
+  );
+}
+
+// Action UID Wire Protocol
+export function formatActionUid(
+  kind: "bookmark" | "folder",
+  bookmarkId: string,
+  tabMode?: TabMode,
+): string {
+  const base = `${kind}:${encodeURIComponent(bookmarkId)}`;
+  if (kind === "bookmark" && tabMode === "newTab") {
+    return `${base}?tab=newTab`;
+  }
+  return base;
+}
+
+export const actionUid = formatActionUid;
+
+export interface ParsedBookmarkAction {
+  bookmarkId: string;
+  tabMode: TabMode;
+}
+
+export function parseBookmarkAction(actionUid: string): ParsedBookmarkAction {
+  const prefix = "bookmark:";
+  if (!actionUid.startsWith(prefix)) {
+    throw new Error("The action is not a bookmark navigation");
+  }
+
+  const raw = actionUid.slice(prefix.length);
+  const qIndex = raw.indexOf("?tab=");
+  if (qIndex !== -1) {
+    const bookmarkId = decodeURIComponent(raw.slice(0, qIndex));
+    const mode = raw.slice(qIndex + 5);
+    return {
+      bookmarkId,
+      tabMode: mode === "newTab" ? "newTab" : "replace",
+    };
+  }
+
+  return {
+    bookmarkId: decodeURIComponent(raw),
+    tabMode: "replace",
+  };
+}
 
 export interface ExportedMenuItem {
-  type: ExportedItemType;
+  type: MenuItemType;
   path?: string[];
   bookmarkId?: string;
   units?: number;
@@ -203,7 +309,7 @@ export interface ExportedMenuItem {
   color?: string;
   expandDirection?: ExpandDirection;
   expandOnHover?: boolean;
-  tabMode?: TabOpenMode;
+  tabMode?: TabMode;
 }
 
 export interface ExportedMenu {
@@ -215,7 +321,7 @@ export interface ExportedMenu {
   expandDirection?: ExpandDirection;
   attachmentMode?: AttachmentMode;
   onTopMode?: OnTopMode;
-  tabMode?: TabOpenMode;
+  tabMode?: TabMode;
   items: ExportedMenuItem[];
 }
 

@@ -2,9 +2,14 @@ import type {
   AttachmentMode,
   ExpandDirection,
   MenuFontSize,
+  MenuItemType,
   MenuOrientation,
   MenuPlacement,
   OnTopMode,
+  StoredMenu,
+  StoredMenuItem,
+  StoredMenuItemType,
+  TabMode,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -14,36 +19,13 @@ import { instanceLabelFromUid } from "./instance-label";
 
 const STORAGE_KEY = "config";
 
-export type StoredMenuItemType = "bookmark" | "folder" | "flattenFolder" | "space" | (string & {});
-
-export type TabMode = "replace" | "newTab";
-
-export interface StoredMenuItem {
-  bookmarkId: string;
-  path?: string[];
-  url?: string;
-  color?: string;
-  emoji?: string;
-  rename?: string;
-  type?: StoredMenuItemType;
-  expandOnHover?: boolean;
-  tabMode?: TabMode;
-  units?: number;
-  transparent?: boolean;
-}
-
-export interface StoredMenu {
-  attachmentMode?: AttachmentMode;
-  color?: string;
-  expandDirection?: ExpandDirection;
-  fontSize?: MenuFontSize;
-  gap?: number;
-  items: StoredMenuItem[];
-  onTopMode?: OnTopMode;
-  orientation: MenuOrientation;
-  tabMode?: TabMode;
-  uid: string;
-}
+export type {
+  MenuItemType,
+  StoredMenuItemType,
+  TabMode,
+  StoredMenuItem,
+  StoredMenu,
+};
 
 export interface ExtensionConfig {
   desktopWidget: {
