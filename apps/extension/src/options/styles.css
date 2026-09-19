@@ -272,6 +272,40 @@ li span {
   gap: 12px;
 }
 
+.menu-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-enable-toggle {
+  width: 36px;
+  height: 20px;
+}
+
+.menu-enable-toggle .switch-slider:before {
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+}
+
+.menu-enable-toggle input:checked + .switch-slider:before {
+  transform: translateX(16px);
+}
+
+.menu-disabled-badge {
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.menu-card[data-enabled="false"] {
+  opacity: 0.68;
+  background: #f1f3f8;
+  border-color: #e2e8f0;
+}
+
 .menu-card ol {
   margin: 0;
 }

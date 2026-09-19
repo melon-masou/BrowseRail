@@ -85,6 +85,7 @@ export type LayoutEntry = BookmarkEntry | FolderEntry | SpaceEntry;
 export interface MenuSnapshot {
   attachmentMode?: AttachmentMode;
   color?: string;
+  enabled?: boolean;
   expandDirection?: ExpandDirection;
   fontSize?: MenuFontSize;
   gap?: number;
@@ -232,6 +233,7 @@ export interface StoredMenuItem {
 export interface StoredMenu {
   attachmentMode?: AttachmentMode;
   color?: string;
+  enabled?: boolean;
   expandDirection?: ExpandDirection;
   fontSize?: MenuFontSize;
   gap?: number;
@@ -253,12 +255,13 @@ export const SPECIAL_ROOT_PLACEHOLDERS: Record<SpecialRootType, string> = {
   managed: "${managed}",
 };
 
-export function isSpecialRootPlaceholder(value: string): boolean {
+export function isSpecialRootPlaceholder(value: unknown): value is string {
   return (
-    value === "${bookmarks-bar}" ||
-    value === "${other}" ||
-    value === "${mobile}" ||
-    value === "${managed}"
+    typeof value === "string" &&
+    (value === SPECIAL_ROOT_PLACEHOLDERS["bookmarks-bar"] ||
+      value === SPECIAL_ROOT_PLACEHOLDERS.other ||
+      value === SPECIAL_ROOT_PLACEHOLDERS.mobile ||
+      value === SPECIAL_ROOT_PLACEHOLDERS.managed)
   );
 }
 
@@ -320,6 +323,7 @@ export interface ExportedMenuItem {
 
 export interface ExportedMenu {
   uid?: string;
+  enabled?: boolean;
   orientation: MenuOrientation;
   fontSize?: MenuFontSize;
   gap?: number;

@@ -148,6 +148,9 @@ export const en = {
 
   // Menu card
   "menu.title": "Menu {n}",
+  "menu.enable": "Enable menu",
+  "menu.disable": "Disable menu",
+  "menu.disabledBadge": "(Disabled)",
   "menu.style": "🎨 Style",
   "menu.styleTitle": "Style settings (Direction, Folder expand, Font size, Gap)",
   "menu.behavior": "⚙️ Behavior",
@@ -391,6 +394,9 @@ export const zhCN: Record<MessageKey, string> = {
 
   // Menu card
   "menu.title": "菜单 {n}",
+  "menu.enable": "启用菜单",
+  "menu.disable": "禁用菜单",
+  "menu.disabledBadge": "（已禁用）",
   "menu.style": "🎨 样式",
   "menu.styleTitle": "样式设置（方向、展开方向、字号、间距）",
   "menu.behavior": "⚙️ 行为",

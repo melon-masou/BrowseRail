@@ -60,6 +60,7 @@ export function calculateGapPx(buttonDim: number, gapPercent: number): number {
 export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
   return {
     attachmentMode: "lastFocused",
+    enabled: true,
     fontSize: DEFAULT_FONT_SIZE,
     gap: DEFAULT_MENU_GAP_PERCENT,
     items: [],
@@ -320,9 +321,11 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
       : "lastFocused";
   const onTopMode: OnTopMode =
     value.onTopMode === "alwaysOnTop" ? "alwaysOnTop" : "aboveBrowser";
+  const enabled = typeof value.enabled === "boolean" ? value.enabled : true;
   return {
     attachmentMode,
     ...(color !== undefined ? { color } : {}),
+    enabled,
     ...(expandDirection !== undefined ? { expandDirection } : {}),
     ...(fontSize !== undefined ? { fontSize } : {}),
     gap,

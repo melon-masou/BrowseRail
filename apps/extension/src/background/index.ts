@@ -542,8 +542,9 @@ async function syncOnce(): Promise<void> {
     loadBookmarkRootPrefix(),
   ]);
   const config = previewConfigOverride ?? loadedConfig;
+  const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
   const menus = await Promise.all(
-    config.panel.menus.map(async (menu, index) => {
+    activeMenus.map(async (menu, index) => {
       const items = await resolveMenuItems(
         menu.items,
         menu.tabMode,
@@ -567,6 +568,7 @@ async function syncOnce(): Promise<void> {
       );
       return {
         attachmentMode: menu.attachmentMode ?? "lastFocused",
+        enabled: true,
         fontSize: menu.fontSize ?? DEFAULT_FONT_SIZE,
         gap: placement.gap ?? 0,
         ...(menu.color ? { color: menu.color } : {}),

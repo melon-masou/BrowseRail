@@ -1708,10 +1708,45 @@ function renderMenus(): void {
     ...menus.map((menu, menuIndex) => {
       const card = document.createElement("article");
       card.className = "menu-card";
+      const isMenuEnabled = menu.enabled !== false;
+      card.dataset.enabled = String(isMenuEnabled);
 
       const header = document.createElement("header");
+
+      const titleRow = document.createElement("div");
+      titleRow.className = "menu-title-row";
+
       const title = document.createElement("strong");
       title.textContent = t("menu.title", { n: menuIndex + 1 });
+
+      const toggleLabel = document.createElement("label");
+      toggleLabel.className = "switch-toggle menu-enable-toggle";
+      toggleLabel.title = isMenuEnabled ? t("menu.disable") : t("menu.enable");
+      toggleLabel.setAttribute("aria-label", toggleLabel.title);
+
+      const toggleInput = document.createElement("input");
+      toggleInput.type = "checkbox";
+      toggleInput.checked = isMenuEnabled;
+      toggleInput.addEventListener("change", () => {
+        menu.enabled = toggleInput.checked;
+        card.dataset.enabled = String(menu.enabled);
+        toggleLabel.title = menu.enabled ? t("menu.disable") : t("menu.enable");
+        toggleLabel.setAttribute("aria-label", toggleLabel.title);
+        disabledBadge.style.display = menu.enabled ? "none" : "";
+        markDirty();
+      });
+
+      const toggleSlider = document.createElement("span");
+      toggleSlider.className = "switch-slider";
+
+      toggleLabel.append(toggleInput, toggleSlider);
+
+      const disabledBadge = document.createElement("span");
+      disabledBadge.className = "menu-disabled-badge";
+      disabledBadge.textContent = t("menu.disabledBadge");
+      disabledBadge.style.display = isMenuEnabled ? "none" : "";
+
+      titleRow.append(title, toggleLabel, disabledBadge);
 
       const headerActions = document.createElement("div");
       headerActions.className = "menu-header-actions";
@@ -1779,7 +1814,7 @@ function renderMenus(): void {
       });
 
       headerActions.append(menuColorSwatch, styleBtn, behaviorBtn, removeMenu, addBtn);
-      header.append(title, headerActions);
+      header.append(titleRow, headerActions);
 
       const items = document.createElement("ol");
       items.replaceChildren(
@@ -2257,6 +2292,7 @@ function exportSettings(): void {
     menus: menus.map((menu) => ({
       uid: menu.uid,
       orientation: menu.orientation,
+      ...(menu.enabled !== undefined ? { enabled: menu.enabled } : {}),
       ...(menu.fontSize !== undefined ? { fontSize: menu.fontSize } : {}),
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
       ...(menu.color ? { color: menu.color } : {}),

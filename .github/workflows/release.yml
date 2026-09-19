@@ -50,9 +50,11 @@ jobs:
             $manifest = $raw
           } else {
             $dt = (Get-Date).ToUniversalTime()
-            $release = $dt.ToString("yyMMdd.HHmm")
-            # Chrome requires each component <= 65535, so split YY.MMDD.HHmm (integers drop the leading zeros).
-            $manifest = "{0}.{1}.{2}" -f [int]$dt.ToString("yy"), [int]$dt.ToString("MMdd"), [int]$dt.ToString("HHmm")
+            # Version YY.(month*100+day).(hour*100+minute), e.g. 2026-09-01 13:01 UTC -> 26.901.1301.
+            # Chrome requires each component <= 65535; casting to int drops the leading zeros.
+            $version = "{0}.{1}.{2}" -f [int]$dt.ToString("yy"), [int]$dt.ToString("MMdd"), [int]$dt.ToString("HHmm")
+            $release = $version
+            $manifest = $version
           }
           "version=$release" >> $env:GITHUB_OUTPUT
           "manifest_version=$manifest" >> $env:GITHUB_OUTPUT

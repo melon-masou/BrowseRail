@@ -194,6 +194,8 @@ pub struct PanelSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct MenuSnapshot {
     #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
     pub font_size: Option<serde_json::Value>,
     #[serde(default)]
     pub gap: Option<f64>,

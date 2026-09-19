@@ -903,6 +903,7 @@ impl NativeReactor {
             let desired = panel
                 .menus
                 .iter()
+                .filter(|m| m.enabled != Some(false))
                 .map(|m| menu_label(&instance_uid, &panel.window.uid, &m.uid))
                 .collect::<HashSet<_>>();
 
@@ -913,7 +914,7 @@ impl NativeReactor {
                 }
             }
 
-            for menu in &panel.menus {
+            for menu in panel.menus.iter().filter(|m| m.enabled != Some(false)) {
                 let label = menu_label(&instance_uid, &panel.window.uid, &menu.uid);
                 let geometry = crate::protocol::compute_menu_geometry(&panel.window, menu);
                 let is_customizing = self.surfaces.is_customizing(&label);
