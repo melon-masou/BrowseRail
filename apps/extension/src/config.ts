@@ -10,6 +10,7 @@ import type {
   StoredMenuItem,
   StoredMenuItemType,
   TabMode,
+  WebpageSet,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -25,6 +26,7 @@ export type {
   TabMode,
   StoredMenuItem,
   StoredMenu,
+  WebpageSet,
 };
 
 export interface ExtensionConfig {
@@ -34,7 +36,9 @@ export interface ExtensionConfig {
   instanceLabel: string;
   panel: {
     menus: StoredMenu[];
+    webpageSets?: WebpageSet[];
   };
+  webpageSets?: WebpageSet[];
 }
 
 export const DEFAULT_FONT_SIZE = 13;
@@ -174,10 +178,15 @@ export async function loadConfig(): Promise<ExtensionConfig> {
   if (isSync && browser.storage.sync) {
     try {
       const storedSync = await browser.storage.sync.get(SYNC_CONFIG_KEY);
-      const syncMenus = storedSync[SYNC_CONFIG_KEY];
-      if (Array.isArray(syncMenus) && syncMenus.length > 0) {
+      const syncData = storedSync[SYNC_CONFIG_KEY];
+      if (Array.isArray(syncData) && syncData.length > 0) {
         config = normalizeConfig(
-          { ...config, panel: { menus: syncMenus } },
+          { ...config, panel: { ...config.panel, menus: syncData } },
+          instanceLabelFromUid(instanceUid),
+        );
+      } else if (isRecord(syncData)) {
+        config = normalizeConfig(
+          { ...config, panel: { ...config.panel, ...syncData } },
           instanceLabelFromUid(instanceUid),
         );
       }
@@ -200,7 +209,10 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
   if (isSync && browser.storage.sync) {
     try {
       await browser.storage.sync.set({
-        [SYNC_CONFIG_KEY]: normalized.panel.menus,
+        [SYNC_CONFIG_KEY]: {
+          menus: normalized.panel.menus,
+          webpageSets: normalized.panel.webpageSets ?? [],
+        },
       });
     } catch (e) {
       console.warn("Failed to save menus to storage.sync:", e);
@@ -254,6 +266,23 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     };
   });
 
+  const rawWebpageSets = Array.isArray(panel.webpageSets)
+    ? panel.webpageSets
+    : Array.isArray(value.webpageSets)
+      ? value.webpageSets
+      : [];
+  const webpageSets: WebpageSet[] = rawWebpageSets.flatMap((ws) => {
+    if (!isRecord(ws)) return [];
+    if (typeof ws.uid !== "string" || !ws.uid) return [];
+    const name = typeof ws.name === "string" && ws.name.trim() ? ws.name.trim() : "Webpage Set";
+    const patterns = Array.isArray(ws.patterns)
+      ? ws.patterns
+          .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+          .map((p) => p.trim())
+      : [];
+    return [{ uid: ws.uid, name, patterns }];
+  });
+
   return {
     desktopWidget: {
       url:
@@ -267,6 +296,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         : defaultInstanceLabel,
     panel: {
       menus: menus.length > 0 ? menus : [createMenu("menu-main")],
+      webpageSets,
     },
   };
 }
@@ -322,6 +352,9 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const onTopMode: OnTopMode =
     value.onTopMode === "alwaysOnTop" ? "alwaysOnTop" : "aboveBrowser";
   const enabled = typeof value.enabled === "boolean" ? value.enabled : true;
+  const webpageSetUids = Array.isArray(value.webpageSetUids)
+    ? value.webpageSetUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+    : undefined;
   return {
     attachmentMode,
     ...(color !== undefined ? { color } : {}),
@@ -336,6 +369,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     orientation: value.orientation === "row" ? "row" : "column",
     ...(tabMode !== undefined ? { tabMode } : {}),
     uid,
+    ...(webpageSetUids && webpageSetUids.length > 0 ? { webpageSetUids } : {}),
   };
 }
 

@@ -1,5 +1,6 @@
 import {
   isServerMessage,
+  isUrlMatchingSet,
   PROTOCOL_VERSION,
   type BrowserInstance,
   type ClientMessage,
@@ -208,6 +209,14 @@ browser.bookmarks.onCreated.addListener(requestSync);
 browser.bookmarks.onChanged.addListener(requestSync);
 browser.bookmarks.onMoved.addListener(requestSync);
 browser.bookmarks.onRemoved.addListener(requestSync);
+browser.tabs?.onActivated?.addListener(() => {
+  requestSync();
+});
+browser.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
+  if (changeInfo.url || changeInfo.status === "complete") {
+    requestSync();
+  }
+});
 let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleReconcile(): void {
@@ -627,17 +636,39 @@ async function syncOnce(): Promise<void> {
   );
   updateLastFocusedWindow(windows);
 
-  const panels: PanelSnapshot[] = windows.map((window) => ({
-    menus,
-    window: {
-      uid: window.uid,
-      bounds: window.bounds,
-      focused: window.uid === lastFocusedWindowUid,
-    },
-  }));
+  const webpageSets = config.panel.webpageSets ?? config.webpageSets ?? [];
+  const webpageSetMap = new Map(webpageSets.map((ws) => [ws.uid, ws]));
 
-  const hasActiveAttachment = menus.some((m) => m.attachmentMode !== "none");
-  const hasAllAttachment = menus.some((m) => m.attachmentMode === "all");
+  const panels: PanelSnapshot[] = windows.map((window) => {
+    const windowMenus = menus.filter((menu) => {
+      const orig = activeMenus.find((m) => m.uid === menu.uid);
+      const setUids = orig?.webpageSetUids;
+      if (!setUids || setUids.length === 0) {
+        return true;
+      }
+      if (!window.activeTabUrl) {
+        return false;
+      }
+      return setUids.some((setUid) => {
+        const ws = webpageSetMap.get(setUid);
+        if (!ws) return false;
+        return isUrlMatchingSet(window.activeTabUrl!, ws.patterns);
+      });
+    });
+
+    return {
+      menus: windowMenus,
+      window: {
+        uid: window.uid,
+        bounds: window.bounds,
+        focused: window.uid === lastFocusedWindowUid,
+      },
+    };
+  });
+
+  const allEmittedMenus = panels.flatMap((p) => p.menus);
+  const hasActiveAttachment = allEmittedMenus.some((m) => m.attachmentMode !== "none");
+  const hasAllAttachment = allEmittedMenus.some((m) => m.attachmentMode === "all");
 
   extLog(
     "Sync",

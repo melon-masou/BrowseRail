@@ -234,6 +234,12 @@ export interface StoredMenuItem {
   transparent?: boolean;
 }
 
+export interface WebpageSet {
+  uid: string;
+  name: string;
+  patterns: string[];
+}
+
 export interface StoredMenu {
   attachmentMode?: AttachmentMode;
   color?: string;
@@ -246,6 +252,7 @@ export interface StoredMenu {
   orientation: MenuOrientation;
   tabMode?: TabMode;
   uid: string;
+  webpageSetUids?: string[];
 }
 
 // Special Root Placeholders
@@ -344,12 +351,14 @@ export interface ExportedMenu {
   onTopMode?: OnTopMode;
   tabMode?: TabMode;
   items: ExportedMenuItem[];
+  webpageSetUids?: string[];
 }
 
 export interface ExportedSettingsData {
   version: typeof EXPORT_SCHEMA_VERSION;
   exportedAt: string;
   menus: ExportedMenu[];
+  webpageSets?: WebpageSet[];
 }
 
 export function isExportedSettingsData(value: unknown): value is ExportedSettingsData {
@@ -361,4 +370,96 @@ export function isExportedSettingsData(value: unknown): value is ExportedSetting
     typeof value.exportedAt === "string" &&
     Array.isArray(value.menus)
   );
+}
+
+/**
+ * Tests whether a URL matches a pattern.
+ *
+ * Supported pattern formats:
+ * 1. Regular expression: starts and ends with '/' (e.g. `/^https:\/\/github\.com\//`)
+ * 2. Wildcard: contains asterisk (e.g. `*.google.com`, `https://*.example.com/api`)
+ * 3. Domain or Domain/Path prefix: e.g. `github.com`, `bilibili.com/video`, `localhost:3000`
+ *    - Matches the domain or any subdomain (`*.github.com`)
+ *    - If path is present, verifies the pathname starts with that path
+ */
+export function matchUrlPattern(pattern: string, url: string): boolean {
+  const p = pattern.trim();
+  if (!p || !url) return false;
+
+  // 1. Regular expression: /pattern/flags
+  if (p.startsWith("/") && p.lastIndexOf("/") > 0) {
+    const lastSlash = p.lastIndexOf("/");
+    const regexBody = p.slice(1, lastSlash);
+    const regexFlags = p.slice(lastSlash + 1) || "i";
+    try {
+      return new RegExp(regexBody, regexFlags).test(url);
+    } catch {
+      return false;
+    }
+  }
+
+  const lowerUrl = url.toLowerCase();
+  const lowerPattern = p.toLowerCase();
+
+  // 2. Wildcard pattern containing '*'
+  if (lowerPattern.includes("*")) {
+    const escaped = lowerPattern
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, ".*");
+    try {
+      if (new RegExp(`^${escaped}$`, "i").test(lowerUrl)) {
+        return true;
+      }
+      try {
+        const parsed = new URL(url);
+        if (new RegExp(`^${escaped}$`, "i").test(parsed.hostname)) {
+          return true;
+        }
+      } catch {}
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  // 3. Domain / URL prefix matching
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const port = parsed.port ? `:${parsed.port}` : "";
+    const hostWithPort = `${host}${port}`;
+    const pathAndQuery = `${parsed.pathname}${parsed.search}`;
+
+    if (lowerPattern.includes("://")) {
+      return lowerUrl.startsWith(lowerPattern);
+    }
+
+    const slashIdx = lowerPattern.indexOf("/");
+    if (slashIdx !== -1) {
+      const targetHost = lowerPattern.slice(0, slashIdx);
+      const targetPath = lowerPattern.slice(slashIdx);
+
+      const hostMatches =
+        host === targetHost ||
+        hostWithPort === targetHost ||
+        host.endsWith(`.${targetHost}`);
+
+      return hostMatches && pathAndQuery.startsWith(targetPath);
+    }
+
+    if (lowerPattern.includes(":")) {
+      return hostWithPort === lowerPattern || hostWithPort.endsWith(`.${lowerPattern}`);
+    }
+
+    return host === lowerPattern || host.endsWith(`.${lowerPattern}`);
+  } catch {
+    return lowerUrl.includes(lowerPattern);
+  }
+}
+
+export function isUrlMatchingSet(url: string, patterns: string[]): boolean {
+  if (!url || !Array.isArray(patterns) || patterns.length === 0) {
+    return false;
+  }
+  return patterns.some((p) => matchUrlPattern(p, url));
 }

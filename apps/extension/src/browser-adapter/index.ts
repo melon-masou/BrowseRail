@@ -4,7 +4,10 @@ import type {
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
-export type BrowserWindowCandidate = BrowserWindowSnapshot & { focused: boolean };
+export type BrowserWindowCandidate = BrowserWindowSnapshot & {
+  focused: boolean;
+  activeTabUrl?: string;
+};
 
 export function browserKind(): BrowserKind {
   if (browser.runtime.getURL("").startsWith("moz-extension:")) {
@@ -31,7 +34,7 @@ export function browserKind(): BrowserKind {
 }
 
 export async function listBrowserWindows(): Promise<BrowserWindowCandidate[]> {
-  const windows = await browser.windows.getAll({ windowTypes: ["normal"] });
+  const windows = await browser.windows.getAll({ windowTypes: ["normal"], populate: true });
 
   return windows.flatMap((window) => {
     if (
@@ -44,10 +47,14 @@ export async function listBrowserWindows(): Promise<BrowserWindowCandidate[]> {
       return [];
     }
 
+    const activeTab = window.tabs?.find((tab) => tab.active);
+    const activeTabUrl = activeTab?.url;
+
     return [
       {
         uid: String(window.id),
         focused: window.focused ?? false,
+        activeTabUrl,
         bounds: {
           x: window.left,
           y: window.top,

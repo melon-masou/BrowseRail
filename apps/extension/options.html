@@ -129,6 +129,18 @@
           </div>
         </section>
 
+        <!-- Webpage Sets Section -->
+        <section class="webpage-sets-section">
+          <div class="webpage-sets-header">
+            <div class="webpage-sets-title-row">
+              <h2 data-i18n="section.webpageSets">Webpage Sets</h2>
+              <span class="webpage-sets-hint" data-i18n="webpageSets.hint">Define URL patterns to only show menus on specific sites</span>
+            </div>
+            <button id="add-webpage-set-btn" class="menu-action-btn add-webpage-set-btn" type="button" data-i18n="btn.addWebpageSet">+ Add webpage set</button>
+          </div>
+          <div id="webpage-sets-list" class="webpage-sets-list"></div>
+        </section>
+
         <div class="form-actions-row">
           <button type="submit" id="save-btn" class="save-btn" data-i18n="btn.save">Save</button>
           <button type="button" id="preview-btn" class="preview-btn action-btn" data-i18n="btn.preview">Preview</button>
@@ -236,6 +248,10 @@
               <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
             </select>
           </label>
+          <div class="menu-setting-field menu-setting-webpage-sets-field">
+            <span class="menu-setting-field-title" data-i18n="menuBehavior.webpageSetsTitle">Active on webpages</span>
+            <div id="menu-setting-webpage-sets-list" class="menu-setting-webpage-sets-list"></div>
+          </div>
         </div>
       </div>
 

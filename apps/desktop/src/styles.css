@@ -136,7 +136,6 @@ button {
   .menu-bar .menu-button[data-folder]::after,
   .customize-rail .menu-button[data-folder]::after {
     width: 5px;
-    background-size: 3px;
   }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
@@ -153,7 +152,6 @@ button {
   .menu-bar .menu-button[data-folder]::after,
   .customize-rail .menu-button[data-folder]::after {
     width: 3px;
-    background-image: none;
   }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
@@ -178,10 +176,6 @@ button {
   );
   background-color: rgb(0 0 0 / 24%);
   border-left: 1px solid rgb(0 0 0 / 18%);
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"><path d="M3.5 2L6.5 5L3.5 8"/></svg>');
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 4px;
   pointer-events: none;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
@@ -241,7 +235,7 @@ button {
 .menu-column {
   display: flex;
   flex: 0 0 auto;
-  min-width: 140px;
+  min-width: 72px;
   max-width: 420px;
   flex-direction: column;
   gap: 2px;

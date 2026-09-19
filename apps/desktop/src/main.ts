@@ -137,39 +137,45 @@ async function initializeSurface(): Promise<void> {
     return ctx.measureText(text).width;
   }
 
-  const MIN_COLUMN_WIDTH = 140;
+  const MIN_COLUMN_WIDTH = 72;
   const MAX_COLUMN_WIDTH = 420;
+
+  // Popup columns scroll (and therefore widen) only past this height. Mirrors
+  // `.menu-column { max-height }` in styles.css.
+  const MAX_COLUMN_HEIGHT = 560;
 
   function calculateColumnWidth(entries: LayoutEntry[], fontSize: number): number {
     if (entries.length === 0) {
       return MIN_COLUMN_WIDTH;
     }
-    let maxTextWidth = 0;
-    let hasFolder = false;
+    // Keep the width driven by the widest measured label plus the real box
+    // padding it sits in, so short labels do not inherit the slack of long ones.
+    // Popup button padding is clamp(4px, fontSize * 0.75, 10px) per side and the
+    // folder color block overlays the right edge, so only folders reserve it.
+    const buttonPadding = 2 * Math.min(10, Math.max(4, fontSize * 0.75));
+    const folderBlock = Math.min(8, Math.max(6, fontSize * 0.5));
+    let maxContentWidth = 0;
     for (const entry of entries) {
       if (entry.kind === "space") continue;
-      if (entry.kind === "folder") {
-        hasFolder = true;
-      }
       const displayText =
         entry.rename && entry.rename !== entry.label && !entry.label.startsWith(entry.rename)
           ? `${entry.rename} (${entry.label})`
           : entry.label;
-      const w = measureTextWidth(displayText, fontSize);
-      if (w > maxTextWidth) {
-        maxTextWidth = w;
-      }
+      const w =
+        measureTextWidth(displayText, fontSize) +
+        buttonPadding +
+        (entry.kind === "folder" ? folderBlock : 0);
+      if (w > maxContentWidth) maxContentWidth = w;
     }
-    // Column padding (12px) + border (2px) = 14px
-    // Button horizontal padding: left 10px + (folder ? 24px : 10px) = 20px / 34px
-    // Windows vertical scrollbar allowance: 18px
-    // Safety buffer for subpixel font rendering and DirectWrite kerning: 16px
-    const buttonPadding = 10 + (hasFolder ? 24 : 10);
-    const scrollbarBuffer = 18;
-    const safetyBuffer = 16;
-    const horizontalPadding = 14 + buttonPadding + scrollbarBuffer + safetyBuffer;
-    const neededWidth = Math.ceil(maxTextWidth + horizontalPadding);
-    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, neededWidth));
+    // Column padding (12px) + border (2px) = 14px, plus a 6px safety buffer for
+    // subpixel font rendering and DirectWrite kerning.
+    const neededWidth = Math.ceil(maxContentWidth + 14 + 6);
+    // Reserve room for the vertical scrollbar only when the entries will actually
+    // overflow the column height; otherwise it is pure empty space.
+    const itemHeight = Math.max(24, Math.round(fontSize * 2.7));
+    const contentHeight = 12 + 2 + entries.length * (itemHeight + 2);
+    const scrollbarBuffer = contentHeight > MAX_COLUMN_HEIGHT ? 18 : 0;
+    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, neededWidth + scrollbarBuffer));
   }
 
   function parseFontSize(value: unknown): number {

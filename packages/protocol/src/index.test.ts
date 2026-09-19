@@ -115,3 +115,45 @@ describe("special root placeholders", () => {
     expect(isSpecialRootPlaceholder("normal-folder")).toBe(false);
   });
 });
+
+describe("URL pattern matching", () => {
+  it("matches domain patterns including subdomains", async () => {
+    const { matchUrlPattern, isUrlMatchingSet } = await import("./index");
+    expect(matchUrlPattern("github.com", "https://github.com/microsoft/vscode")).toBe(true);
+    expect(matchUrlPattern("github.com", "https://gist.github.com/test")).toBe(true);
+    expect(matchUrlPattern("github.com", "https://fakegithub.com/test")).toBe(false);
+    expect(matchUrlPattern("github.com", "https://gitlab.com/test")).toBe(false);
+
+    expect(isUrlMatchingSet("https://github.com/test", ["github.com", "google.com"])).toBe(true);
+    expect(isUrlMatchingSet("https://bing.com/test", ["github.com", "google.com"])).toBe(false);
+  });
+
+  it("matches domain with path prefix", async () => {
+    const { matchUrlPattern } = await import("./index");
+    expect(matchUrlPattern("bilibili.com/video", "https://www.bilibili.com/video/BV123")).toBe(true);
+    expect(matchUrlPattern("bilibili.com/video", "https://www.bilibili.com/anime/123")).toBe(false);
+  });
+
+  it("matches wildcard patterns", async () => {
+    const { matchUrlPattern } = await import("./index");
+    expect(matchUrlPattern("*.google.com", "https://mail.google.com/mail")).toBe(true);
+    expect(matchUrlPattern("https://*.google.com/*", "https://www.google.com/search?q=hi")).toBe(true);
+    expect(matchUrlPattern("*://localhost:*/*", "http://localhost:3000/app")).toBe(true);
+    expect(matchUrlPattern("*://localhost:*/*", "https://remote.com/app")).toBe(false);
+  });
+
+  it("matches regex patterns", async () => {
+    const { matchUrlPattern } = await import("./index");
+    expect(matchUrlPattern("/^https:\\/\\/.*\\.dev\\//", "https://app.dev/home")).toBe(true);
+    expect(matchUrlPattern("/^https:\\/\\/.*\\.dev\\//", "https://app.com/home")).toBe(false);
+  });
+
+  it("handles empty or invalid patterns gracefully", async () => {
+    const { matchUrlPattern, isUrlMatchingSet } = await import("./index");
+    expect(matchUrlPattern("", "https://github.com")).toBe(false);
+    expect(matchUrlPattern("   ", "https://github.com")).toBe(false);
+    expect(matchUrlPattern("github.com", "")).toBe(false);
+    expect(isUrlMatchingSet("", ["github.com"])).toBe(false);
+    expect(isUrlMatchingSet("https://github.com", [])).toBe(false);
+  });
+});

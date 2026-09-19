@@ -31,6 +31,7 @@ import {
   type StoredMenu,
   type StoredMenuItem,
   type StoredMenuItemType,
+  type WebpageSet,
 } from "../config";
 import {
   type BookmarkNode,
@@ -183,6 +184,9 @@ const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
+const addWebpageSetBtn = element<HTMLButtonElement>("add-webpage-set-btn");
+const webpageSetsList = element<HTMLDivElement>("webpage-sets-list");
+const menuSettingWebpageSetsList = element<HTMLDivElement>("menu-setting-webpage-sets-list");
 const syncEnabledToggle = document.getElementById("sync-enabled-toggle") as HTMLInputElement | null;
 const bookmarkRootInput = document.getElementById("bookmark-root-input") as HTMLInputElement | null;
 const pickBookmarkRootBtn = document.getElementById("pick-bookmark-root-btn") as HTMLButtonElement | null;
@@ -192,6 +196,7 @@ let isConnectionDirty = false;
 let isMenusDirty = false;
 let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
+let webpageSets: WebpageSet[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let bookmarkOptions: BookmarkOption[] = [];
 let desktopTestGeneration = 0;
@@ -1022,8 +1027,10 @@ async function initialize(): Promise<void> {
     });
   }
   menus = structuredClone(config.panel.menus);
+  webpageSets = structuredClone(config.panel.webpageSets ?? config.webpageSets ?? []);
   updateDesktopControls();
   renderMenus();
+  renderWebpageSets();
   clearDirty();
 }
 
@@ -1070,6 +1077,7 @@ async function persistMenus(): Promise<void> {
     ...currentConfig,
     panel: {
       menus,
+      webpageSets,
     },
   });
   await browser.runtime.sendMessage({ type: "configSaved" });
@@ -1094,6 +1102,7 @@ async function previewCurrentConfig(): Promise<void> {
     instanceLabel: instanceLabel.value,
     panel: {
       menus,
+      webpageSets,
     },
   };
 
@@ -1611,6 +1620,78 @@ function initMenuBehaviorPopover(): void {
   });
 }
 
+function renderMenuBehaviorWebpageSets(menu: StoredMenu): void {
+  menuSettingWebpageSetsList.replaceChildren();
+
+  const allRow = document.createElement("label");
+  allRow.className = "menu-setting-webpage-set-item";
+  const allRadio = document.createElement("input");
+  allRadio.type = "checkbox";
+  const hasSpecificSets = Array.isArray(menu.webpageSetUids) && menu.webpageSetUids.length > 0;
+  allRadio.checked = !hasSpecificSets;
+
+  const allSpan = document.createElement("span");
+  allSpan.textContent = t("menuBehavior.allWebpages");
+  allRow.append(allRadio, allSpan);
+  menuSettingWebpageSetsList.appendChild(allRow);
+
+  allRadio.addEventListener("change", () => {
+    if (allRadio.checked) {
+      delete menu.webpageSetUids;
+    } else {
+      if (webpageSets.length > 0) {
+        menu.webpageSetUids = [webpageSets[0].uid];
+      }
+    }
+    renderMenuBehaviorWebpageSets(menu);
+    markDirty();
+  });
+
+  if (webpageSets.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "webpage-set-empty-hint";
+    hint.style.fontSize = "11px";
+    hint.style.padding = "6px";
+    hint.textContent = t("menuBehavior.noWebpageSets");
+    menuSettingWebpageSetsList.appendChild(hint);
+  } else {
+    webpageSets.forEach((ws) => {
+      const row = document.createElement("label");
+      row.className = "menu-setting-webpage-set-item";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = Array.isArray(menu.webpageSetUids) && menu.webpageSetUids.includes(ws.uid);
+      cb.addEventListener("change", () => {
+        if (!Array.isArray(menu.webpageSetUids)) {
+          menu.webpageSetUids = [];
+        }
+        if (cb.checked) {
+          if (!menu.webpageSetUids.includes(ws.uid)) {
+            menu.webpageSetUids.push(ws.uid);
+          }
+        } else {
+          menu.webpageSetUids = menu.webpageSetUids.filter((u) => u !== ws.uid);
+        }
+        if (menu.webpageSetUids.length === 0) {
+          delete menu.webpageSetUids;
+        }
+        renderMenuBehaviorWebpageSets(menu);
+        markDirty();
+      });
+
+      const span = document.createElement("span");
+      span.textContent = ws.name || t("webpageSets.defaultName");
+      if (ws.patterns.length > 0) {
+        span.title = ws.patterns.join("\n");
+      }
+
+      row.append(cb, span);
+      menuSettingWebpageSetsList.appendChild(row);
+    });
+  }
+}
+
 function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): void {
   if (activeBehaviorMenuIndex === menuIndex && menuBehaviorPopover.style.display !== "none") {
     closeMenuBehaviorPopover();
@@ -1634,6 +1715,7 @@ function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): vo
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
   menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
   menuSettingTabMode.value = menu.tabMode ?? "replace";
+  renderMenuBehaviorWebpageSets(menu);
 
   const popoverWidth = 320;
   let top = rect.bottom + window.scrollY + 6;
@@ -2020,7 +2102,36 @@ function renderMenus(): void {
       disabledBadge.textContent = t("menu.disabledBadge");
       disabledBadge.style.display = isMenuEnabled ? "none" : "";
 
-      titleRow.append(title, toggleLabel, disabledBadge);
+      const behaviorBtn = document.createElement("button");
+      behaviorBtn.type = "button";
+      behaviorBtn.className = "action-btn menu-header-btn";
+      behaviorBtn.textContent = t("menu.behavior");
+      behaviorBtn.title = t("menu.behaviorTitle");
+      behaviorBtn.addEventListener("click", () => {
+        openMenuBehaviorPopover(menuIndex, behaviorBtn);
+      });
+
+      const webpageBadge = document.createElement("button");
+      webpageBadge.type = "button";
+      const uids = menu.webpageSetUids ?? [];
+      const hasSets = uids.length > 0;
+      webpageBadge.className = `item-tag ${hasSets ? "item-tag-webpage-set" : "item-tag-all-webpages"}`;
+      webpageBadge.textContent = hasSets
+        ? t("menu.webpageSetsBadge", { count: uids.length })
+        : t("menu.allWebpagesBadge");
+      if (hasSets) {
+        const names = uids
+          .map((uid) => webpageSets.find((ws) => ws.uid === uid)?.name || uid)
+          .filter(Boolean);
+        webpageBadge.title = t("menu.webpageSetsBadgeTitle", { names: names.join(", ") });
+      } else {
+        webpageBadge.title = t("menuBehavior.allWebpages");
+      }
+      webpageBadge.addEventListener("click", () => {
+        openMenuBehaviorPopover(menuIndex, behaviorBtn);
+      });
+
+      titleRow.append(title, toggleLabel, disabledBadge, webpageBadge);
 
       const headerActions = document.createElement("div");
       headerActions.className = "menu-header-actions";
@@ -2045,15 +2156,6 @@ function renderMenus(): void {
       styleBtn.title = t("menu.styleTitle");
       styleBtn.addEventListener("click", () => {
         openMenuStylePopover(menuIndex, styleBtn);
-      });
-
-      const behaviorBtn = document.createElement("button");
-      behaviorBtn.type = "button";
-      behaviorBtn.className = "action-btn menu-header-btn";
-      behaviorBtn.textContent = t("menu.behavior");
-      behaviorBtn.title = t("menu.behaviorTitle");
-      behaviorBtn.addEventListener("click", () => {
-        openMenuBehaviorPopover(menuIndex, behaviorBtn);
       });
 
       const removeMenu = document.createElement("button");
@@ -2497,6 +2599,108 @@ function renderMenus(): void {
   );
 }
 
+function renderWebpageSets(): void {
+  webpageSetsList.replaceChildren();
+
+  if (webpageSets.length === 0) {
+    const emptyHint = document.createElement("div");
+    emptyHint.className = "webpage-set-empty-hint";
+    emptyHint.textContent = t("webpageSets.empty");
+    webpageSetsList.appendChild(emptyHint);
+    return;
+  }
+
+  webpageSets.forEach((ws, setIndex) => {
+    const card = document.createElement("div");
+    card.className = "webpage-set-card";
+
+    const header = document.createElement("div");
+    header.className = "webpage-set-header";
+
+    const titleGroup = document.createElement("div");
+    titleGroup.className = "webpage-set-title-group";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "webpage-set-name-input";
+    nameInput.placeholder = t("webpageSets.namePlaceholder");
+    nameInput.value = ws.name;
+    nameInput.addEventListener("input", () => {
+      ws.name = nameInput.value;
+      renderMenus();
+      markDirty();
+    });
+
+    const countPill = document.createElement("span");
+    countPill.className = "webpage-set-count-pill";
+    countPill.textContent = t("webpageSets.patternCount", { count: ws.patterns.length });
+
+    titleGroup.append(nameInput, countPill);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "action-btn webpage-set-remove-btn";
+    deleteBtn.textContent = t("webpageSets.deleteSet");
+    deleteBtn.addEventListener("click", () => {
+      const removedUid = ws.uid;
+      webpageSets.splice(setIndex, 1);
+      // Clean up references in menus
+      menus.forEach((menu) => {
+        if (menu.webpageSetUids) {
+          menu.webpageSetUids = menu.webpageSetUids.filter((uid) => uid !== removedUid);
+          if (menu.webpageSetUids.length === 0) {
+            delete menu.webpageSetUids;
+          }
+        }
+      });
+      renderWebpageSets();
+      renderMenus();
+      markDirty();
+    });
+
+    header.append(titleGroup, deleteBtn);
+
+    const patternsTextarea = document.createElement("textarea");
+    patternsTextarea.className = "webpage-set-patterns-input";
+    patternsTextarea.rows = 3;
+    patternsTextarea.placeholder = t("webpageSets.patternsPlaceholder");
+    patternsTextarea.value = ws.patterns.join("\n");
+    patternsTextarea.addEventListener("input", () => {
+      ws.patterns = patternsTextarea.value
+        .split("\n")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      countPill.textContent = t("webpageSets.patternCount", { count: ws.patterns.length });
+      markDirty();
+    });
+
+    const syntaxHint = document.createElement("div");
+    syntaxHint.className = "webpage-set-syntax-hint";
+    syntaxHint.textContent = t("webpageSets.syntaxHint");
+
+    card.append(header, patternsTextarea, syntaxHint);
+    webpageSetsList.appendChild(card);
+  });
+}
+
+addWebpageSetBtn.addEventListener("click", () => {
+  const newSet: WebpageSet = {
+    uid: crypto.randomUUID(),
+    name: t("webpageSets.newSetName", { n: webpageSets.length + 1 }),
+    patterns: [],
+  };
+  webpageSets.push(newSet);
+  renderWebpageSets();
+  renderMenus();
+  markDirty();
+  const nameInputs = webpageSetsList.querySelectorAll<HTMLInputElement>(".webpage-set-name-input");
+  const lastInput = nameInputs[nameInputs.length - 1];
+  if (lastInput) {
+    lastInput.focus();
+    lastInput.select();
+  }
+});
+
 function updateDesktopControls(): void {
   toggleEnabledButton.textContent = widgetEnabled ? t("btn.disable") : t("btn.enable");
   toggleEnabledButton.dataset.action = widgetEnabled ? "disable" : "enable";
@@ -2588,9 +2792,11 @@ function exportSettings(): void {
   const exportData: ExportedSettingsData = {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
+    ...(webpageSets.length > 0 ? { webpageSets: structuredClone(webpageSets) } : {}),
     menus: menus.map((menu) => ({
       uid: menu.uid,
       orientation: menu.orientation,
+      ...(menu.webpageSetUids && menu.webpageSetUids.length > 0 ? { webpageSetUids: menu.webpageSetUids } : {}),
       ...(menu.enabled !== undefined ? { enabled: menu.enabled } : {}),
       ...(menu.fontSize !== undefined ? { fontSize: menu.fontSize } : {}),
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
@@ -2739,9 +2945,27 @@ async function importSettings(file: File): Promise<void> {
       if (normalizedMenu) importedMenus.push(normalizedMenu);
     }
 
-    // Only the menus are imported; instance label, desktop address, attachment
+    // Only the menus and webpage sets are imported; instance label, desktop address, attachment
     // mode, always-on-top, and language keep their current values.
     menus = importedMenus;
+    if (Array.isArray(parsed.webpageSets)) {
+      webpageSets = parsed.webpageSets
+        .filter(
+          (ws): ws is WebpageSet =>
+            typeof ws === "object" &&
+            ws !== null &&
+            typeof (ws as WebpageSet).uid === "string" &&
+            typeof (ws as WebpageSet).name === "string",
+        )
+        .map((ws) => ({
+          uid: ws.uid,
+          name: ws.name,
+          patterns: Array.isArray(ws.patterns)
+            ? ws.patterns.filter((p): p is string => typeof p === "string")
+            : [],
+        }));
+      renderWebpageSets();
+    }
     renderMenus();
     markDirty();
 

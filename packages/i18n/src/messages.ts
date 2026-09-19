@@ -137,6 +137,25 @@ export const en = {
   "menuSettings.newTab": "New tab",
   "menuSettings.defaultColor": "Default color",
   "menuSettings.defaultColorSwatchTitle": "Menu default color",
+  "menuBehavior.webpageSetsTitle": "Active on webpages",
+  "menuBehavior.allWebpages": "All webpages",
+  "menuBehavior.noWebpageSets": "No webpage sets defined yet. Add them in the Webpage Sets section below.",
+  "menu.allWebpagesBadge": "🌐 All webpages",
+  "menu.webpageSetsBadge": "🌐 {count} sets",
+  "menu.webpageSetsBadgeTitle": "Active on: {names}",
+
+  // Webpage Sets
+  "section.webpageSets": "Webpage Sets",
+  "webpageSets.hint": "Define URL patterns to only show menus on specific sites",
+  "btn.addWebpageSet": "+ Add webpage set",
+  "webpageSets.empty": "No webpage sets defined yet. Click \"+ Add webpage set\" above to create one.",
+  "webpageSets.namePlaceholder": "Set name (e.g. Work, Dev, Video)",
+  "webpageSets.patternsPlaceholder": "One pattern per line, e.g.:\ngithub.com\n*.google.com\nlocalhost:*\nhttps://example.com/docs/*\n/regex/",
+  "webpageSets.patternCount": "{count} patterns",
+  "webpageSets.deleteSet": "Delete webpage set",
+  "webpageSets.newSetName": "Webpage Set {n}",
+  "webpageSets.defaultName": "Untitled Set",
+  "webpageSets.syntaxHint": "Supports domain (github.com), wildcard (*.google.com), URL prefix, or /regex/, one per line",
 
   // Item settings popover
   "itemSettings.title": "Item Settings",
@@ -395,6 +414,25 @@ export const zhCN: Record<MessageKey, string> = {
   "menuSettings.newTab": "新建标签页",
   "menuSettings.defaultColor": "默认颜色",
   "menuSettings.defaultColorSwatchTitle": "菜单默认颜色",
+  "menuBehavior.webpageSetsTitle": "生效网页",
+  "menuBehavior.allWebpages": "所有网页",
+  "menuBehavior.noWebpageSets": "暂无网页集，可在下方“网页集”中添加。",
+  "menu.allWebpagesBadge": "🌐 所有网页",
+  "menu.webpageSetsBadge": "🌐 {count} 个网页集",
+  "menu.webpageSetsBadgeTitle": "生效于：{names}",
+
+  // Webpage Sets
+  "section.webpageSets": "网页集",
+  "webpageSets.hint": "定义 URL 匹配规则，使菜单仅在指定网页下显示",
+  "btn.addWebpageSet": "+ 添加网页集",
+  "webpageSets.empty": "暂未定义网页集。点击上方“+ 添加网页集”创建。",
+  "webpageSets.namePlaceholder": "集合名称（例如：工作、开发、视频）",
+  "webpageSets.patternsPlaceholder": "每行一个匹配规则，例如：\ngithub.com\n*.google.com\nlocalhost:*\nhttps://example.com/docs/*\n/regex/",
+  "webpageSets.patternCount": "{count} 个规则",
+  "webpageSets.deleteSet": "删除网页集",
+  "webpageSets.newSetName": "网页集 {n}",
+  "webpageSets.defaultName": "未命名网页集",
+  "webpageSets.syntaxHint": "支持域名 (github.com)、通配符 (*.google.com)、URL 前缀或 /regex/，每行一条",
 
   // Item settings popover
   "itemSettings.title": "项目设置",
