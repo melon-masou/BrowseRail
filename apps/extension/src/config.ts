@@ -11,7 +11,6 @@ import browser from "webextension-polyfill";
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "./desktop-connection";
 import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
-import { normalizeCategory } from "./bookmarks";
 
 const STORAGE_KEY = "config";
 
@@ -529,15 +528,19 @@ export async function saveWidgetEnabled(enabled: boolean): Promise<void> {
 }
 
 export const BOOKMARK_ROOT_PREFIX_KEY = "bookmark_root_prefix";
-export const DEFAULT_BOOKMARK_ROOT_PREFIX = "/书签栏";
+export const DEFAULT_BOOKMARK_ROOT_PREFIX = "/";
 
 export async function loadBookmarkRootPrefix(): Promise<string> {
   const stored = await browser.storage.local.get(BOOKMARK_ROOT_PREFIX_KEY);
   const raw = stored[BOOKMARK_ROOT_PREFIX_KEY];
   if (typeof raw === "string" && raw.trim()) {
-    return raw.trim();
+    const trimmed = raw.trim();
+    if (trimmed === "/书签栏" || trimmed === "/Bookmarks bar") {
+      return DEFAULT_BOOKMARK_ROOT_PREFIX;
+    }
+    return trimmed;
   }
-  return await initBookmarkRootPrefix();
+  return DEFAULT_BOOKMARK_ROOT_PREFIX;
 }
 
 export async function saveBookmarkRootPrefix(prefix: string): Promise<void> {
@@ -547,29 +550,6 @@ export async function saveBookmarkRootPrefix(prefix: string): Promise<void> {
 }
 
 export async function initBookmarkRootPrefix(): Promise<string> {
-  let detected = DEFAULT_BOOKMARK_ROOT_PREFIX;
-  try {
-    const rawTree = (await browser.bookmarks.getTree()) as Array<{
-      children?: Array<{ title?: string; children?: unknown[] }>;
-      id?: string;
-      title?: string;
-    }>;
-    const rootNodes =
-      rawTree.length === 1 && (rawTree[0].id === "0" || !rawTree[0].title) && rawTree[0].children
-        ? rawTree[0].children
-        : rawTree;
-    for (const node of rootNodes) {
-      if (node.title && normalizeCategory(node.title) === "toolbar") {
-        detected = `/${node.title.trim()}`;
-        break;
-      }
-    }
-  } catch {
-    // fallback to default
-  }
-  await browser.storage.local.set({
-    [BOOKMARK_ROOT_PREFIX_KEY]: detected,
-  });
-  return detected;
+  return DEFAULT_BOOKMARK_ROOT_PREFIX;
 }
 

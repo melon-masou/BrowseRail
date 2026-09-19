@@ -91,6 +91,12 @@ async function initializeSurface(): Promise<void> {
   }
 
   function scheduleClose(delay = POPUP_CLOSE_DELAY_MS): void {
+    // While customizing there is no popup, and the window is deliberately
+    // enlarged to fit the customize toolbar. The window-level pointerout that
+    // fires when the cursor leaves the window must not schedule a popup close:
+    // closePopup restores the native window to the (small) bar placement size,
+    // which would shrink the customize window mid-edit.
+    if (customizing) return;
     // Trust pointerenter(cancelClose)/pointerleave(scheduleClose): re-entering a
     // column or the expanded folder button cancels this timer. The old
     // elementFromPoint(lastPointer) re-check kept the popup open over the
@@ -601,7 +607,7 @@ async function initializeSurface(): Promise<void> {
       btn.removeAttribute("data-expanded");
     }
 
-    if (restoreNativeSize && currentMenu) {
+    if (restoreNativeSize && currentMenu && !customizing) {
       nativeAllocated = {
         height: currentMenu.placement.height,
         offsetX: 0,

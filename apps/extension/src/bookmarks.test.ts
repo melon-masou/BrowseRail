@@ -6,6 +6,12 @@ vi.mock("webextension-polyfill", () => ({
       getSubTree: vi.fn(),
       getTree: vi.fn(),
     },
+    storage: {
+      local: {
+        get: vi.fn(),
+        set: vi.fn(),
+      },
+    },
   },
 }));
 
@@ -618,12 +624,14 @@ describe("combineRootAndItemPath and space resolution", () => {
     const folderPath = getFolderPath("100", tree);
     expect(folderPath.map((n) => n.id)).toEqual(["0", "1", "10", "100"]);
 
-    // Relative path with no root prefix -> full path
-    expect(getItemRelativePath("100", tree, "")).toEqual(["书签栏", "Dev", "Tool"]);
-    expect(getItemRelativePath("11", tree, undefined)).toEqual(["书签栏", "GitHub"]);
+    // Relative path with no root prefix -> full path using special root placeholder
+    expect(getItemRelativePath("100", tree, "")).toEqual(["${bookmarks-bar}", "Dev", "Tool"]);
+    expect(getItemRelativePath("11", tree, undefined)).toEqual(["${bookmarks-bar}", "GitHub"]);
+    expect(getItemRelativePath("20", tree, "/")).toEqual(["${other}", "Read Later"]);
 
-    // Relative path with root prefix "/书签栏"
+    // Relative path with root prefix "/书签栏" or "/${bookmarks-bar}"
     expect(getItemRelativePath("100", tree, "/书签栏")).toEqual(["Dev", "Tool"]);
+    expect(getItemRelativePath("100", tree, "/${bookmarks-bar}")).toEqual(["Dev", "Tool"]);
     expect(getItemRelativePath("10", tree, "/书签栏")).toEqual(["Dev"]);
     expect(getItemRelativePath("11", tree, "/书签栏")).toEqual(["GitHub"]);
 
@@ -632,9 +640,14 @@ describe("combineRootAndItemPath and space resolution", () => {
 
     // Relative path when selecting the root folder itself -> empty path []
     expect(getItemRelativePath("1", tree, "/书签栏")).toEqual([]);
+    expect(getItemRelativePath("1", tree, "/${bookmarks-bar}")).toEqual([]);
     expect(combineRootAndItemPath("/书签栏", [])).toEqual(["书签栏"]);
     const rootMatch = findBookmarkNodeByPath(tree, combineRootAndItemPath("/书签栏", []));
     expect(rootMatch?.id).toBe("1");
+
+    // Resolving via special root placeholder
+    expect(findBookmarkNodeByPath(tree, ["${bookmarks-bar}", "Dev", "Tool"])?.id).toBe("100");
+    expect(findBookmarkNodeByPath(tree, ["${other}", "Read Later"])?.id).toBe("20");
 
     // Combined relative path with root prefix resolves the exact node
     const relPath = getItemRelativePath("100", tree, "/书签栏")!;
@@ -679,6 +692,70 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].kind).toBe("folder");
     expect(entries[0].label).toBe("书签栏");
+  });
+
+  it("handles Chrome special root folder set: bookmarks-bar, other, mobile, managed", async () => {
+    const {
+      getItemRelativePath,
+      findBookmarkNodeByPath,
+      formatSpecialRootForDisplay,
+    } = await import("./bookmarks");
+    const { DEFAULT_BOOKMARK_ROOT_PREFIX, loadBookmarkRootPrefix } = await import("./config");
+
+    expect(DEFAULT_BOOKMARK_ROOT_PREFIX).toBe("/");
+
+    const chromeTree = [
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [{ id: "10", title: "GitHub", url: "https://github.com" }],
+          },
+          {
+            id: "2",
+            title: "其他书签",
+            children: [{ id: "20", title: "Docs", url: "https://docs.com" }],
+          },
+          {
+            id: "3",
+            title: "移动设备书签",
+            children: [{ id: "30", title: "Article", url: "https://article.com" }],
+          },
+          {
+            id: "managed",
+            title: "受管理书签",
+            children: [{ id: "40", title: "Intranet", url: "https://corp.internal" }],
+          },
+        ],
+      },
+    ];
+
+    // Default root "/" generates special root placeholders
+    expect(getItemRelativePath("10", chromeTree, "/")).toEqual(["${bookmarks-bar}", "GitHub"]);
+    expect(getItemRelativePath("20", chromeTree, "/")).toEqual(["${other}", "Docs"]);
+    expect(getItemRelativePath("30", chromeTree, "/")).toEqual(["${mobile}", "Article"]);
+    expect(getItemRelativePath("40", chromeTree, "/")).toEqual(["${managed}", "Intranet"]);
+
+    // Resolving via special root placeholder
+    expect(findBookmarkNodeByPath(chromeTree, ["${bookmarks-bar}", "GitHub"])?.id).toBe("10");
+    expect(findBookmarkNodeByPath(chromeTree, ["${other}", "Docs"])?.id).toBe("20");
+    expect(findBookmarkNodeByPath(chromeTree, ["${mobile}", "Article"])?.id).toBe("30");
+    expect(findBookmarkNodeByPath(chromeTree, ["${managed}", "Intranet"])?.id).toBe("40");
+
+    // UI display formatting retrieves title from Chrome tree
+    expect(formatSpecialRootForDisplay("${bookmarks-bar}", chromeTree)).toBe("书签栏");
+    expect(formatSpecialRootForDisplay("${other}", chromeTree)).toBe("其他书签");
+    expect(formatSpecialRootForDisplay("${mobile}", chromeTree)).toBe("移动设备书签");
+    expect(formatSpecialRootForDisplay("${managed}", chromeTree)).toBe("受管理书签");
+
+    // Migrates legacy /书签栏 storage to /
+    vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
+      bookmark_root_prefix: "/书签栏",
+    });
+    expect(await loadBookmarkRootPrefix()).toBe("/");
   });
 });
 

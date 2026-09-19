@@ -203,7 +203,7 @@ export const en = {
   "export.saveFirst": "Please save settings before exporting",
   "export.exported": "Settings exported",
   "import.invalidJson": "Import failed: Invalid JSON structure",
-  "import.savedOk": "Settings imported and saved",
+  "import.savedOk": "Settings imported. Click Save to apply changes",
   "import.failed": "Import failed: {error}",
   "import.confirmOverwrite":
     "You have unsaved changes. Are you sure you want to import and overwrite them?",
@@ -236,6 +236,10 @@ export const en = {
   "common.folder": "Folder",
   "common.bookmark": "Bookmark",
   "common.untitled": "Untitled",
+  "common.bookmarksBar": "Bookmarks bar",
+  "common.otherBookmarks": "Other bookmarks",
+  "common.mobileBookmarks": "Mobile bookmarks",
+  "common.managedBookmarks": "Managed bookmarks",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -438,7 +442,7 @@ export const zhCN: Record<MessageKey, string> = {
   "export.saveFirst": "请先保存配置后再导出",
   "export.exported": "配置已导出",
   "import.invalidJson": "导入失败：JSON 结构无效",
-  "import.savedOk": "配置已导入并保存",
+  "import.savedOk": "配置已导入，请点击“保存”以应用更改",
   "import.failed": "导入失败：{error}",
   "import.confirmOverwrite": "你有未保存的更改。确定要导入并覆盖它们吗？",
 
@@ -470,4 +474,8 @@ export const zhCN: Record<MessageKey, string> = {
   "common.folder": "文件夹",
   "common.bookmark": "书签",
   "common.untitled": "未命名",
+  "common.bookmarksBar": "书签栏",
+  "common.otherBookmarks": "其他书签",
+  "common.mobileBookmarks": "移动设备书签",
+  "common.managedBookmarks": "受管理书签",
 };

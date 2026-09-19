@@ -32,9 +32,13 @@ import {
   type BookmarkNode,
   combineRootAndItemPath,
   findBookmarkNodeByPath,
+  formatSpecialRootForDisplay,
   getFolderPath,
   getItemRelativePath,
+  getSpecialRootTypeFromNode,
+  getSpecialRootTypeFromTitle,
   parsePathSegments,
+  SPECIAL_ROOT_PLACEHOLDERS,
 } from "../bookmarks";
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
@@ -343,11 +347,37 @@ pickerSelectCurrentBtn.addEventListener("click", () => {
 pickerConfirmBtn.addEventListener("click", () => {
   if (pickerMode === "selectRoot") {
     const targetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
-    if (!targetId) return;
+    if (!targetId || targetId === "0") {
+      if (bookmarkRootInput) {
+        bookmarkRootInput.value = "/";
+      }
+      bookmarkRootPrefix = "/";
+      markDirty();
+      renderMenus();
+      pickerDialog.close();
+      return;
+    }
     const targetNode = findBookmarkNode(targetId, rawBookmarkTree);
-    if (!targetNode || targetNode.id === "0") return;
+    if (!targetNode || targetNode.id === "0") {
+      if (bookmarkRootInput) {
+        bookmarkRootInput.value = "/";
+      }
+      bookmarkRootPrefix = "/";
+      markDirty();
+      renderMenus();
+      pickerDialog.close();
+      return;
+    }
     const pathNodes = getFolderPath(targetNode.id, rawBookmarkTree as BookmarkNode[]);
-    const segments = pathNodes.map((n) => n.title).filter((t) => Boolean(t && t.trim()));
+    const segments = pathNodes
+      .filter((n) => n.id !== "0" && Boolean(n.title && n.title.trim()))
+      .map((n, idx) => {
+        if (idx === 0) {
+          const special = getSpecialRootTypeFromNode(n);
+          if (special) return SPECIAL_ROOT_PLACEHOLDERS[special];
+        }
+        return n.title.trim();
+      });
     const rootPathStr = "/" + segments.join("/");
     if (bookmarkRootInput) {
       bookmarkRootInput.value = rootPathStr;
@@ -535,6 +565,14 @@ function enrichMenuItemPaths(
         const { path } = getItemPathAndUrl(item.bookmarkId, nodes, rootPrefix);
         if (path !== undefined) {
           item.path = path;
+        }
+      }
+    } else if (item.path.length > 0) {
+      const firstSeg = item.path[0];
+      if (firstSeg) {
+        const special = getSpecialRootTypeFromTitle(firstSeg);
+        if (special) {
+          item.path[0] = SPECIAL_ROOT_PLACEHOLDERS[special];
         }
       }
     }
@@ -1505,10 +1543,11 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     const isFolderNode = node ? (node.children !== undefined || node.url === undefined) : (item.type === "folder" || item.type === "flattenFolder");
     const isFolder = item.type === "folder" || (!item.type && isFolderNode) || item.type === "flattenFolder";
 
+    const lastSeg = item.path && item.path.length > 0 ? item.path[item.path.length - 1] : undefined;
     const rawLabel =
       node?.title ??
-      (item.path && item.path.length > 0
-        ? item.path[item.path.length - 1]
+      (lastSeg
+        ? formatSpecialRootForDisplay(lastSeg, rawBookmarkTree)
         : (bookmarkRootPrefix || item.bookmarkId || ""));
     itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
     itemSettingRename.value = item.rename ?? item.emoji ?? "";
@@ -1566,15 +1605,17 @@ function initAddItemPopover(): void {
     closeAddItemDropdown();
     if (menuIdx >= 0 && menuIdx < menus.length) {
       const menu = menus[menuIdx];
-      const newSpace: StoredMenuItem = {
-        bookmarkId: `space-${crypto.randomUUID()}`,
-        type: "space",
-        units: 1,
-        transparent: true,
-      };
-      menu.items.push(newSpace);
-      renderMenus();
-      markDirty();
+      if (menu) {
+        const newSpace: StoredMenuItem = {
+          bookmarkId: `space-${crypto.randomUUID()}`,
+          type: "space",
+          units: 1,
+          transparent: true,
+        };
+        menu.items.push(newSpace);
+        renderMenus();
+        markDirty();
+      }
     }
   });
 
@@ -1887,10 +1928,11 @@ function renderMenus(): void {
           const label = document.createElement("span");
           label.className = "item-label";
 
+          const lastSeg = item.path && item.path.length > 0 ? item.path[item.path.length - 1] : undefined;
           const rawLabel =
             node?.title ??
-            (item.path && item.path.length > 0
-              ? item.path[item.path.length - 1]
+            (lastSeg
+              ? formatSpecialRootForDisplay(lastSeg, rawBookmarkTree)
               : (bookmarkRootPrefix || item.bookmarkId || ""));
           const customRename = item.rename || item.emoji;
           const iconPrefix = isFolderNode ? "📁" : "🔖";
@@ -2335,8 +2377,8 @@ async function importSettings(file: File): Promise<void> {
     // mode, always-on-top, and language keep their current values.
     menus = importedMenus;
     renderMenus();
+    markDirty();
 
-    await persist();
     const importedMsg = t("import.savedOk");
     status.value = importedMsg;
     setTimeout(() => {

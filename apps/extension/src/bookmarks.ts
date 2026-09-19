@@ -1,3 +1,4 @@
+import { t } from "@browserail/i18n";
 import type { ExpandDirection, LayoutEntry } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -10,29 +11,125 @@ export interface BookmarkNode {
   url?: string;
 }
 
-export function normalizeCategory(name: string): string {
+export type SpecialRootType = "bookmarks-bar" | "other" | "mobile" | "managed";
+
+export const SPECIAL_ROOT_PLACEHOLDERS: Record<SpecialRootType, string> = {
+  "bookmarks-bar": "${bookmarks-bar}",
+  "other": "${other}",
+  "mobile": "${mobile}",
+  "managed": "${managed}",
+};
+
+export function getSpecialRootTypeFromTitle(name: string): SpecialRootType | undefined {
   const lower = name.trim().toLowerCase();
   if (
+    lower === "${bookmarks-bar}" ||
+    lower === "${bookmarks_bar}" ||
+    lower === "${toolbar}" ||
+    lower === "bookmarks-bar" ||
+    lower === "toolbar" ||
     lower === "bookmarks bar" ||
     lower === "bookmarks toolbar" ||
     lower === "书签栏" ||
     lower === "书签工具栏" ||
+    lower === "書籤列" ||
     lower === "favourites bar" ||
-    lower === "favorites bar"
+    lower === "favorites bar" ||
+    lower === "ブックマーク バー"
   ) {
-    return "toolbar";
+    return "bookmarks-bar";
   }
   if (
+    lower === "${other}" ||
+    lower === "${unfiled}" ||
+    lower === "other" ||
+    lower === "unfiled" ||
     lower === "other bookmarks" ||
     lower === "其他书签" ||
+    lower === "其他書籤" ||
     lower === "unfiled bookmarks" ||
-    lower === "未分类书签"
+    lower === "未分类书签" ||
+    lower === "その他のブックマーク"
   ) {
     return "other";
   }
-  if (lower === "mobile bookmarks" || lower === "移动设备书签") {
+  if (
+    lower === "${mobile}" ||
+    lower === "mobile" ||
+    lower === "mobile bookmarks" ||
+    lower === "移动设备书签" ||
+    lower === "行動裝置書籤" ||
+    lower === "モバイルのブックマーク"
+  ) {
     return "mobile";
   }
+  if (
+    lower === "${managed}" ||
+    lower === "managed" ||
+    lower === "managed bookmarks" ||
+    lower === "受管理书签" ||
+    lower === "企业书签" ||
+    lower.includes("managed") ||
+    lower.includes("受管理")
+  ) {
+    return "managed";
+  }
+  return undefined;
+}
+
+export function getSpecialRootTypeFromNode(
+  node: { id?: string; title?: string },
+  isTopLevel = true,
+): SpecialRootType | undefined {
+  if (!isTopLevel) return undefined;
+  if (node.id === "1" || node.id === "toolbar_____") return "bookmarks-bar";
+  if (node.id === "2" || node.id === "unfiled_____") return "other";
+  if (node.id === "3" || node.id === "mobile______") return "mobile";
+  if (node.id === "managed") return "managed";
+  return getSpecialRootTypeFromTitle(node.title || "");
+}
+
+export function getSpecialRootPlaceholder(node: { id?: string; title?: string }): string | undefined {
+  const type = getSpecialRootTypeFromNode(node);
+  return type ? SPECIAL_ROOT_PLACEHOLDERS[type] : undefined;
+}
+
+export function formatSpecialRootForDisplay(
+  segment: string,
+  tree?: BookmarkNode[] | browser.Bookmarks.BookmarkTreeNode[],
+): string {
+  const special = getSpecialRootTypeFromTitle(segment);
+  if (!special) return segment;
+
+  if (tree && tree.length > 0) {
+    const first = tree[0];
+    const rootNodes =
+      tree.length === 1 && first && (first.id === "0" || !first.title) && first.children
+        ? first.children
+        : tree;
+    for (const node of rootNodes) {
+      if (getSpecialRootTypeFromNode(node) === special && node.title && node.title.trim()) {
+        return node.title.trim();
+      }
+    }
+  }
+
+  switch (special) {
+    case "bookmarks-bar":
+      return t("common.bookmarksBar") || "Bookmarks bar";
+    case "other":
+      return t("common.otherBookmarks") || "Other bookmarks";
+    case "mobile":
+      return t("common.mobileBookmarks") || "Mobile bookmarks";
+    case "managed":
+      return t("common.managedBookmarks") || "Managed bookmarks";
+  }
+}
+
+export function normalizeCategory(name: string): string {
+  const special = getSpecialRootTypeFromTitle(name);
+  if (special) return special;
+  const lower = name.trim().toLowerCase();
   if (lower === "bookmarks menu" || lower === "书签菜单") {
     return "menu";
   }
@@ -44,9 +141,10 @@ export function findBookmarkNodeByPath(
   path: string[],
   targetUrl?: string,
 ): BookmarkNode | undefined {
+  const first = nodes[0];
   const actualNodes =
-    nodes.length === 1 && (nodes[0].id === "0" || !nodes[0].title) && nodes[0].children
-      ? nodes[0].children
+    nodes.length === 1 && first && (first.id === "0" || !first.title) && first.children
+      ? first.children
       : nodes;
 
   if (!path || path.length === 0) {
@@ -59,15 +157,24 @@ export function findBookmarkNodeByPath(
   function search(currentList: BookmarkNode[], pathIndex: number): BookmarkNode | undefined {
     if (pathIndex >= path.length) return undefined;
     const targetSegment = path[pathIndex];
+    if (!targetSegment) return undefined;
     const isRootLevel = pathIndex === 0;
+    const targetSpecial = isRootLevel ? getSpecialRootTypeFromTitle(targetSegment) : undefined;
     const targetNormalized = isRootLevel
       ? normalizeCategory(targetSegment)
       : targetSegment.trim().toLowerCase();
 
     for (const node of currentList) {
       const nodeTitle = (node.title || "").trim().toLowerCase();
-      const nodeNormalized = isRootLevel ? normalizeCategory(node.title || "") : nodeTitle;
-      const matches = nodeNormalized === targetNormalized;
+      const nodeSpecial = isRootLevel ? getSpecialRootTypeFromNode(node) : undefined;
+
+      let matches = false;
+      if (isRootLevel && (targetSpecial || nodeSpecial)) {
+        matches = targetSpecial !== undefined && nodeSpecial === targetSpecial;
+      } else {
+        const nodeNormalized = isRootLevel ? normalizeCategory(node.title || "") : nodeTitle;
+        matches = nodeNormalized === targetNormalized;
+      }
 
       if (matches) {
         if (pathIndex === path.length - 1) {
@@ -158,11 +265,24 @@ export function getItemRelativePath(
   rootPrefix?: string,
 ): string[] | undefined {
   const fullNodePath = getFolderPath(targetId, nodes);
-  const fullSegments = fullNodePath
-    .map((n) => n.title)
-    .filter((t) => Boolean(t && t.trim()));
+  const meaningfulNodes = fullNodePath.filter(
+    (n) => n.id !== "0" && Boolean(n.title && n.title.trim()),
+  );
 
-  if (fullSegments.length === 0) return undefined;
+  if (meaningfulNodes.length === 0) {
+    if (targetId === "0") return [];
+    return undefined;
+  }
+
+  const fullSegments = meaningfulNodes.map((n, idx) => {
+    if (idx === 0) {
+      const special = getSpecialRootTypeFromNode(n);
+      if (special) {
+        return SPECIAL_ROOT_PLACEHOLDERS[special];
+      }
+    }
+    return n.title.trim();
+  });
 
   if (rootPrefix && rootPrefix.trim()) {
     const rootSegments = parsePathSegments(rootPrefix);
@@ -176,8 +296,8 @@ export function getItemRelativePath(
         ) {
           const relNodes = fullNodePath.slice(rootNodePath.length);
           const relSegments = relNodes
-            .map((n) => n.title)
-            .filter((t) => Boolean(t && t.trim()));
+            .filter((n) => n.id !== "0" && Boolean(n.title && n.title.trim()))
+            .map((n) => n.title.trim());
           return relSegments;
         }
       }
@@ -245,8 +365,9 @@ export async function resolveMenuItems(
       const effectiveRename = rename || emoji;
 
       if (!node) {
+        const lastSeg = path && path.length > 0 ? path[path.length - 1] : undefined;
         const fallbackTitle =
-          (path && path.length > 0 ? path[path.length - 1] : undefined) ||
+          (lastSeg ? formatSpecialRootForDisplay(lastSeg, treeCache ?? []) : undefined) ||
           (rootPrefix ? parsePathSegments(rootPrefix).slice(-1)[0] : undefined) ||
           url ||
           bookmarkId ||

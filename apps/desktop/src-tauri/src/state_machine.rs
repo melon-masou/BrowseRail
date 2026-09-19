@@ -160,7 +160,6 @@ pub enum SurfaceState {
     Created,
     Hidden,
     Visible,
-    Customizing,
 }
 
 impl fmt::Display for SurfaceState {
@@ -169,7 +168,6 @@ impl fmt::Display for SurfaceState {
             Self::Created => write!(f, "Created"),
             Self::Hidden => write!(f, "Hidden"),
             Self::Visible => write!(f, "Visible"),
-            Self::Customizing => write!(f, "Customizing"),
         }
     }
 }

@@ -121,10 +121,6 @@ button {
     padding-left: min(var(--button-padding-left), 3px);
     padding-right: min(var(--button-padding-right), 3px);
   }
-  .menu-bar .menu-button[data-folder],
-  .customize-rail .menu-button[data-folder] {
-    padding-right: 6px;
-  }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
     font-size: calc(var(--button-font-size, var(--menu-font-size, 13px)) - 1.5px);
@@ -137,9 +133,10 @@ button {
     padding-left: 1px;
     padding-right: 1px;
   }
-  .menu-bar .menu-button[data-folder],
-  .customize-rail .menu-button[data-folder] {
-    padding-right: 5px;
+  .menu-bar .menu-button[data-folder]::after,
+  .customize-rail .menu-button[data-folder]::after {
+    width: 5px;
+    background-size: 3px;
   }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
@@ -153,9 +150,10 @@ button {
     padding-left: 0;
     padding-right: 0;
   }
-  .menu-bar .menu-button[data-folder],
-  .customize-rail .menu-button[data-folder] {
-    padding-right: 4px;
+  .menu-bar .menu-button[data-folder]::after,
+  .customize-rail .menu-button[data-folder]::after {
+    width: 3px;
+    background-image: none;
   }
   .menu-bar .menu-button .menu-button-label,
   .customize-rail .menu-button .menu-button-label {
@@ -164,37 +162,35 @@ button {
 }
 
 .menu-button[data-folder] {
-  padding-right: clamp(
-    6px,
-    calc(6px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.0),
-    10px
-  );
+  position: relative;
 }
 
 .menu-button[data-folder]::after {
+  content: "";
   position: absolute;
-  right: clamp(1px, calc(var(--button-padding-left) * 0.4), 3px);
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: clamp(6px, calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.6), 8px);
-  line-height: 1;
-  color: #aab3c4;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: clamp(
+    6px,
+    calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.5),
+    8px
+  );
+  background-color: rgb(0 0 0 / 24%);
+  border-left: 1px solid rgb(0 0 0 / 18%);
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"><path d="M3.5 2L6.5 5L3.5 8"/></svg>');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 4px;
   pointer-events: none;
-  content: "▾";
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.menu-bar[data-orientation="row"] .menu-button[data-folder]::after,
-.customize-rail[data-orientation="row"] .menu-button[data-folder]::after,
-.menu-bar[data-expand-direction="down"] .menu-button[data-folder]::after,
-.customize-rail[data-expand-direction="down"] .menu-button[data-folder]::after {
-  content: "▾";
-}
-
-.menu-bar[data-orientation="column"] .menu-button[data-folder]::after,
-.customize-rail[data-orientation="column"] .menu-button[data-folder]::after,
-.menu-bar[data-expand-direction="right"] .menu-button[data-folder]::after,
-.customize-rail[data-expand-direction="right"] .menu-button[data-folder]::after {
-  content: "▸";
+.menu-button[data-folder]:hover::after,
+.menu-button[data-folder]:focus-visible::after,
+.menu-button[data-folder][data-expanded]::after {
+  background-color: rgb(0 0 0 / 38%);
+  border-left-color: rgb(0 0 0 / 28%);
 }
 
 .menu-button:hover,
@@ -312,25 +308,10 @@ button {
   font-size: var(--menu-font-size, 13px) !important;
 }
 
-.popup-container .menu-button[data-folder] {
-  padding-right: clamp(14px, calc(var(--menu-font-size, 13px) * 1.8), 24px);
-}
-
 .popup-container .menu-button .menu-button-label {
   text-align: left;
   flex: 1 1 auto;
   font-size: var(--menu-font-size, 13px) !important;
-}
-
-.popup-container .menu-button[data-folder]::after {
-  position: absolute;
-  right: 9px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 11px;
-  line-height: 1;
-  color: #aab3c4;
-  content: "▸";
 }
 
 .popup-container .menu-button:hover,

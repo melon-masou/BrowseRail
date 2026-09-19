@@ -396,6 +396,12 @@ pub struct AppliedGeometry {
 pub struct SurfaceRegistry {
     states: Mutex<HashMap<String, SurfaceState>>,
     geometries: Mutex<HashMap<String, AppliedGeometry>>,
+    // Customizing is tracked orthogonally to visibility. It used to be a
+    // SurfaceState variant, but visibility transitions (mark_visible /
+    // mark_hidden fired when the menu's panel gains/loses focus) then clobbered
+    // it, dropping the guard that keeps geometry sync from shrinking the
+    // enlarged customize window back to the stored placement size.
+    customizing: Mutex<HashSet<String>>,
 }
 
 impl SurfaceRegistry {
@@ -448,31 +454,29 @@ impl SurfaceRegistry {
     }
 
     pub fn is_customizing(&self, label: &str) -> bool {
-        self.state(label) == SurfaceState::Customizing
+        self.customizing
+            .lock()
+            .map(|set| set.contains(label))
+            .unwrap_or(false)
     }
 
     pub fn set_customizing(&self, label: &str, customizing: bool) {
-        let next = if customizing {
-            SurfaceState::Customizing
-        } else {
-            SurfaceState::Visible
-        };
-        self.set_state(
-            label,
-            next,
-            Some(if customizing {
-                "Enter customize mode"
+        if let Ok(mut set) = self.customizing.lock() {
+            let changed = if customizing {
+                set.insert(label.to_string())
             } else {
-                "Exit customize mode"
-            }),
-        );
+                set.remove(label)
+            };
+            if changed {
+                eprintln!(
+                    "[BrowseRail:Tauri:Surface:{label}] customizing -> {customizing}",
+                );
+            }
+        }
     }
 
     pub fn is_visible(&self, label: &str) -> bool {
-        matches!(
-            self.state(label),
-            SurfaceState::Visible | SurfaceState::Customizing
-        )
+        matches!(self.state(label), SurfaceState::Visible)
     }
 
     pub fn mark_visible(&self, label: &str) {
@@ -490,23 +494,31 @@ impl SurfaceRegistry {
         if let Ok(mut geometries) = self.geometries.lock() {
             geometries.retain(|label, _| !labels.contains(label));
         }
+        if let Ok(mut set) = self.customizing.lock() {
+            set.retain(|label| !labels.contains(label));
+        }
     }
 
     pub fn summary(&self) -> (usize, usize, usize) {
+        let customizing = self
+            .customizing
+            .lock()
+            .map(|set| set.len())
+            .unwrap_or(0);
         if let Ok(states) = self.states.lock() {
-            let mut visible = 0;
-            let mut customizing = 0;
-            let mut hidden = 0;
+            let mut visible: usize = 0;
+            let mut hidden: usize = 0;
             for state in states.values() {
                 match state {
                     SurfaceState::Visible => visible += 1,
-                    SurfaceState::Customizing => customizing += 1,
                     SurfaceState::Hidden | SurfaceState::Created => hidden += 1,
                 }
             }
-            (visible, customizing, hidden)
+            // A customizing surface is also state=Visible; report it only under
+            // the customizing count so the status string doesn't double-count.
+            (visible.saturating_sub(customizing), customizing, hidden)
         } else {
-            (0, 0, 0)
+            (0, customizing, 0)
         }
     }
 
@@ -516,9 +528,7 @@ impl SurfaceRegistry {
             .map(|states| {
                 states
                     .iter()
-                    .filter(|(_, state)| {
-                        matches!(state, SurfaceState::Visible | SurfaceState::Customizing)
-                    })
+                    .filter(|(_, state)| matches!(state, SurfaceState::Visible))
                     .map(|(label, _)| label.clone())
                     .collect()
             })
