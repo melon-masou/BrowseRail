@@ -297,26 +297,34 @@ li span {
   gap: 8px;
 }
 
-.menu-enable-toggle {
-  width: 36px;
-  height: 20px;
+.menu-collapse-btn {
+  appearance: none;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.menu-enable-toggle .switch-slider:before {
-  height: 14px;
-  width: 14px;
-  left: 3px;
-  bottom: 3px;
+.menu-collapse-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
 }
 
-.menu-enable-toggle input:checked + .switch-slider:before {
-  transform: translateX(16px);
+.menu-card.is-collapsed {
+  gap: 0;
 }
 
-.menu-disabled-badge {
-  font-size: 12px;
-  font-weight: 500;
-  color: #94a3b8;
+.menu-card.is-collapsed > ol,
+.menu-card.is-collapsed .menu-header-actions {
+  display: none;
 }
 
 .menu-card[data-enabled="false"] {
@@ -530,16 +538,36 @@ output {
   background: #dcf2e3;
 }
 
-/* Menus section header with global settings button */
-.menus-section-header {
+/* Menus card tab switcher (Menus / Webpage Sets share one card and one Save) */
+.menus-card-tabs {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  width: fit-content;
 }
 
-.menus-section-header h2 {
-  margin: 0;
+.menus-card-tab {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.menus-card-tab:hover {
+  color: #0f172a;
+}
+
+.menus-card-tab[aria-selected="true"] {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
 }
 
 .global-settings-btn {
@@ -570,6 +598,32 @@ output {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Keep every menu header action on the same 28px baseline as the Add button. */
+.item-color-swatch.menu-color-swatch {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  box-sizing: border-box;
+}
+
+.remove-item-btn.menu-remove-btn {
+  width: auto;
+  min-height: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.remove-item-btn.menu-remove-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 /* Unified button style for Menu Card Header: Settings, Remove Menu, Add Item */
@@ -1884,9 +1938,13 @@ output {
 
 /* Webpage Sets Section */
 .webpage-sets-section {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #e2e8f0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.webpage-sets-section[hidden] {
+  display: none;
 }
 
 .webpage-sets-header {
@@ -1901,13 +1959,6 @@ output {
   display: flex;
   align-items: baseline;
   gap: 12px;
-}
-
-.webpage-sets-title-row h2 {
-  font-size: 16px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0;
 }
 
 .webpage-sets-hint {

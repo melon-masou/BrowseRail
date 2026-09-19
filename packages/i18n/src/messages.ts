@@ -173,9 +173,10 @@ export const en = {
 
   // Menu card
   "menu.title": "Menu {n}",
+  "menu.expand": "Expand menu",
+  "menu.collapse": "Collapse menu",
   "menu.enable": "Enable menu",
   "menu.disable": "Disable menu",
-  "menu.disabledBadge": "(Disabled)",
   "menu.style": "🎨 Style",
   "menu.styleTitle": "Style settings (Direction, Folder expand, Font size, Gap)",
   "menu.behavior": "⚙️ Behavior",
@@ -183,6 +184,7 @@ export const en = {
   "menu.settings": "⚙️ Settings",
   "menu.settingsTitle": "Configure Direction, Font size, Button gap, Default color",
   "menu.removeMenu": "Remove menu",
+  "menu.remove": "Remove",
   "menu.add": "+ Add ▾",
   "menu.addBookmark": "Bookmark / Folder",
   "menu.addItem": "+ Add item",
@@ -244,7 +246,7 @@ export const en = {
     "You have unsaved changes. Are you sure you want to import and overwrite them?",
 
   // Desktop app (Tauri menu surfaces + customize toolbar + listener settings)
-  "menu.empty": "Empty menu · add items in extension",
+  "menu.empty": "Empty menu",
   "aria.menu": "BrowseRail menu",
   "aria.bookmarkMenu": "BrowseRail bookmark menu",
   "action.openSettings": "Open settings",
@@ -449,9 +451,10 @@ export const zhCN: Record<MessageKey, string> = {
 
   // Menu card
   "menu.title": "菜单 {n}",
+  "menu.expand": "展开菜单",
+  "menu.collapse": "收起菜单",
   "menu.enable": "启用菜单",
   "menu.disable": "禁用菜单",
-  "menu.disabledBadge": "（已禁用）",
   "menu.style": "🎨 样式",
   "menu.styleTitle": "样式设置（方向、展开方向、字号、间距）",
   "menu.behavior": "⚙️ 行为",
@@ -459,6 +462,7 @@ export const zhCN: Record<MessageKey, string> = {
   "menu.settings": "⚙️ 设置",
   "menu.settingsTitle": "配置方向、字号、按钮间距、默认颜色",
   "menu.removeMenu": "删除菜单",
+  "menu.remove": "删除",
   "menu.add": "+ 添加 ▾",
   "menu.addBookmark": "书签 / 目录",
   "menu.addItem": "+ 添加项目",
@@ -519,7 +523,7 @@ export const zhCN: Record<MessageKey, string> = {
   "import.confirmOverwrite": "你有未保存的更改。确定要导入并覆盖它们吗？",
 
   // Desktop app (Tauri menu surfaces + customize toolbar + listener settings)
-  "menu.empty": "空菜单 · 在扩展中添加项目",
+  "menu.empty": "空菜单",
   "aria.menu": "BrowseRail 菜单",
   "aria.bookmarkMenu": "BrowseRail 书签菜单",
   "action.openSettings": "打开设置",

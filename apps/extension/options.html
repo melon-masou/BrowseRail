@@ -114,12 +114,18 @@
         </div>
       </form>
 
-      <!-- Card 2: Menus Configuration -->
+      <!-- Card 2: Menus + Webpage Sets -->
       <form id="menus-form" class="options-card menus-card">
-        <section class="menus-section">
-          <div class="menus-section-header">
-            <h2 data-i18n="section.menus">Menus</h2>
-          </div>
+        <div class="menus-card-tabs" role="tablist">
+          <button type="button" id="menus-tab" class="menus-card-tab" role="tab"
+            data-tab-target="menus-panel" aria-selected="true" aria-controls="menus-panel"
+            data-i18n="section.menus">Menus</button>
+          <button type="button" id="webpage-sets-tab" class="menus-card-tab" role="tab"
+            data-tab-target="webpage-sets-panel" aria-selected="false" aria-controls="webpage-sets-panel"
+            data-i18n="section.webpageSets">Webpage Sets</button>
+        </div>
+
+        <section id="menus-panel" class="menus-section" role="tabpanel" aria-labelledby="menus-tab">
           <div id="menus"></div>
           <div class="menus-toolbar">
             <button id="add-menu" class="menu-action-btn add-menu-btn" type="button" data-i18n="btn.addMenu">+ Add menu</button>
@@ -129,11 +135,10 @@
           </div>
         </section>
 
-        <!-- Webpage Sets Section -->
-        <section class="webpage-sets-section">
+        <!-- Webpage Sets Panel -->
+        <section id="webpage-sets-panel" class="webpage-sets-section" role="tabpanel" aria-labelledby="webpage-sets-tab" hidden>
           <div class="webpage-sets-header">
             <div class="webpage-sets-title-row">
-              <h2 data-i18n="section.webpageSets">Webpage Sets</h2>
               <span class="webpage-sets-hint" data-i18n="webpageSets.hint">Define URL patterns to only show menus on specific sites</span>
             </div>
             <button id="add-webpage-set-btn" class="menu-action-btn add-webpage-set-btn" type="button" data-i18n="btn.addWebpageSet">+ Add webpage set</button>

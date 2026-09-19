@@ -184,6 +184,9 @@ const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
+const menusCardTabs = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"),
+);
 const addWebpageSetBtn = element<HTMLButtonElement>("add-webpage-set-btn");
 const webpageSetsList = element<HTMLDivElement>("webpage-sets-list");
 const menuWebpageSetsPopover = element<HTMLDivElement>("menu-webpage-sets-popover");
@@ -968,6 +971,7 @@ function rerenderForLanguage(): void {
   }
   languageSelect.value = getLanguage();
   renderMenus();
+  renderWebpageSets();
   updateDesktopControls();
   renderDesktopState(stateCard.dataset.state ?? "disconnected");
   if (pickerDialog.open) {
@@ -1002,6 +1006,7 @@ async function initialize(): Promise<void> {
   initLanguagePicker();
   initHeaderLinks();
   onLanguageChange(rerenderForLanguage);
+  initMenusCardTabs();
   initColorPopover();
   initMenuStylePopover();
   initMenuBehaviorPopover();
@@ -1072,6 +1077,23 @@ async function persistConnection(): Promise<void> {
       connectionStatus.value = "";
     }
   }, 1_500);
+}
+
+function initMenusCardTabs(): void {
+  for (const tab of menusCardTabs) {
+    tab.addEventListener("click", () => {
+      const targetId = tab.dataset.tabTarget;
+      if (!targetId) return;
+      for (const other of menusCardTabs) {
+        const panelId = other.dataset.tabTarget;
+        if (!panelId) continue;
+        const panel = document.getElementById(panelId);
+        const selected = other === tab;
+        other.setAttribute("aria-selected", String(selected));
+        if (panel) panel.toggleAttribute("hidden", !selected);
+      }
+    });
+  }
 }
 
 async function persistMenus(): Promise<void> {
@@ -2157,25 +2179,51 @@ function closeAddItemDropdown(): void {
 }
 
 let draggingItem: { menuIndex: number; itemIndex: number } | null = null;
+// Collapsed state is view-only; persisting it would write UI preferences into
+// the exported menu config that the desktop surfaces consume.
+const collapsedMenuUids = new Set<string>();
 
 function renderMenus(): void {
   menusContainer.replaceChildren(
     ...menus.map((menu, menuIndex) => {
+      const isCollapsed = collapsedMenuUids.has(menu.uid);
       const card = document.createElement("article");
-      card.className = "menu-card";
+      card.className = `menu-card${isCollapsed ? " is-collapsed" : ""}`;
       const isMenuEnabled = menu.enabled !== false;
       card.dataset.enabled = String(isMenuEnabled);
+      card.dataset.collapsed = String(isCollapsed);
 
       const header = document.createElement("header");
 
       const titleRow = document.createElement("div");
       titleRow.className = "menu-title-row";
 
+      const collapseBtn = document.createElement("button");
+      collapseBtn.type = "button";
+      collapseBtn.className = "menu-collapse-btn";
+      collapseBtn.textContent = isCollapsed ? "▸" : "▾";
+      collapseBtn.title = isCollapsed ? t("menu.expand") : t("menu.collapse");
+      collapseBtn.setAttribute("aria-label", collapseBtn.title);
+      collapseBtn.setAttribute("aria-expanded", String(!isCollapsed));
+      collapseBtn.addEventListener("click", () => {
+        if (collapsedMenuUids.has(menu.uid)) {
+          collapsedMenuUids.delete(menu.uid);
+        } else {
+          collapsedMenuUids.add(menu.uid);
+          if (activeStyleMenuIndex === menuIndex) closeMenuStylePopover();
+          if (activeBehaviorMenuIndex === menuIndex) closeMenuBehaviorPopover();
+          if (activeWebpageSetsMenuIndex === menuIndex) closeMenuWebpageSetsPopover();
+          if (activeColorTarget === menu) closeColorPopover();
+          if (activeAddMenuIndex === menuIndex) closeAddItemDropdown();
+        }
+        renderMenus();
+      });
+
       const title = document.createElement("strong");
       title.textContent = t("menu.title", { n: menuIndex + 1 });
 
       const toggleLabel = document.createElement("label");
-      toggleLabel.className = "switch-toggle menu-enable-toggle";
+      toggleLabel.className = "switch-toggle";
       toggleLabel.title = isMenuEnabled ? t("menu.disable") : t("menu.enable");
       toggleLabel.setAttribute("aria-label", toggleLabel.title);
 
@@ -2187,7 +2235,6 @@ function renderMenus(): void {
         card.dataset.enabled = String(menu.enabled);
         toggleLabel.title = menu.enabled ? t("menu.disable") : t("menu.enable");
         toggleLabel.setAttribute("aria-label", toggleLabel.title);
-        disabledBadge.style.display = menu.enabled ? "none" : "";
         markDirty();
       });
 
@@ -2195,11 +2242,6 @@ function renderMenus(): void {
       toggleSlider.className = "switch-slider";
 
       toggleLabel.append(toggleInput, toggleSlider);
-
-      const disabledBadge = document.createElement("span");
-      disabledBadge.className = "menu-disabled-badge";
-      disabledBadge.textContent = t("menu.disabledBadge");
-      disabledBadge.style.display = isMenuEnabled ? "none" : "";
 
       const behaviorBtn = document.createElement("button");
       behaviorBtn.type = "button";
@@ -2218,7 +2260,7 @@ function renderMenus(): void {
         openMenuWebpageSetsPopover(menuIndex, webpageBadge);
       });
 
-      titleRow.append(title, toggleLabel, disabledBadge, webpageBadge);
+      titleRow.append(collapseBtn, title, toggleLabel, webpageBadge);
 
       const headerActions = document.createElement("div");
       headerActions.className = "menu-header-actions";
@@ -2247,8 +2289,10 @@ function renderMenus(): void {
 
       const removeMenu = document.createElement("button");
       removeMenu.type = "button";
-      removeMenu.className = "action-btn menu-header-btn";
-      removeMenu.textContent = t("menu.removeMenu");
+      removeMenu.className = "remove-item-btn menu-remove-btn";
+      removeMenu.title = t("menu.removeMenu");
+      removeMenu.setAttribute("aria-label", t("menu.removeMenu"));
+      removeMenu.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("menu.remove")}</span>`;
       removeMenu.addEventListener("click", () => {
         if (activeStyleMenuIndex === menuIndex) {
           closeMenuStylePopover();
@@ -2266,6 +2310,7 @@ function renderMenus(): void {
           closeAddItemDropdown();
         }
         menus.splice(menuIndex, 1);
+        collapsedMenuUids.delete(menu.uid);
         renderMenus();
         markDirty();
       });
