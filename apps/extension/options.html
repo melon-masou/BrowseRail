@@ -152,20 +152,21 @@
       <!-- Color Palette Popover -->
       <div id="color-popover" class="color-popover" style="display: none;">
         <div class="color-popover-header">
-          <div class="color-popover-tools">
-            <button type="button" id="popover-random-btn" class="popover-mini-btn" data-i18n-title="color.randomTitle" data-i18n="color.random" title="Random color">🎲 Random</button>
-            <button type="button" id="popover-default-btn" class="popover-mini-btn" data-i18n-title="color.resetTitle" data-i18n="color.default" title="Reset to default">↺ Default</button>
+          <div id="color-popover-cycle-row" class="color-popover-cycle-row" style="display: none;">
+            <label class="color-popover-cycle-label">
+              <input type="checkbox" id="color-popover-cycle-toggle" />
+              <span data-i18n="itemSettings.cycleColors">Cycle colors</span>
+            </label>
           </div>
+          <span id="color-popover-title" class="color-popover-title" data-i18n="color.title">Color</span>
           <button type="button" id="color-popover-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
-        </div>
-        <div id="color-popover-cycle-row" class="color-popover-cycle-row" style="display: none;">
-          <label class="color-popover-cycle-label">
-            <input type="checkbox" id="color-popover-cycle-toggle" />
-            <span data-i18n="itemSettings.cycleColors">Cycle colors</span>
-          </label>
         </div>
         <div id="color-popover-cycle-section" class="color-popover-cycle-section" style="display: none;">
           <div id="color-popover-cycle-list" class="color-popover-cycle-list"></div>
+        </div>
+        <div class="color-popover-tools">
+          <button type="button" id="popover-random-btn" class="popover-mini-btn" data-i18n-title="color.randomTitle" data-i18n="color.random" title="Random color">🎲 Random</button>
+          <button type="button" id="popover-default-btn" class="popover-mini-btn" data-i18n-title="color.resetTitle" data-i18n="color.default" title="Reset to default">↺ Default</button>
         </div>
         <div class="color-popover-presets" id="color-popover-presets"></div>
         <div class="color-popover-picker-row">

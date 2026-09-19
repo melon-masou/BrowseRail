@@ -133,6 +133,7 @@ const pickerConfirmBtn = element<HTMLButtonElement>("picker-confirm-btn");
 
 // Color popover elements
 const colorPopover = element<HTMLDivElement>("color-popover");
+const colorPopoverTitle = element<HTMLSpanElement>("color-popover-title");
 const colorPopoverClose = element<HTMLButtonElement>("color-popover-close");
 const popoverColorInput = element<HTMLInputElement>("popover-color-input");
 const popoverColorHex = element<HTMLInputElement>("popover-color-hex");
@@ -1402,6 +1403,7 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
   const isFlatten = "type" in target && target.type === "flattenFolder";
   if (isFlatten) {
     colorPopoverCycleRow.style.display = "flex";
+    colorPopoverTitle.style.display = "none";
     const hasCycle = Array.isArray(target.cycleColors) && target.cycleColors.length > 0;
     colorPopoverCycleToggle.checked = hasCycle;
     if (hasCycle) {
@@ -1418,6 +1420,7 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
     }
   } else {
     colorPopoverCycleRow.style.display = "none";
+    colorPopoverTitle.style.display = "block";
     colorPopoverCycleSection.style.display = "none";
     selectedCycleIndex = -1;
     const currentColor = target.color || "#3b82f6";

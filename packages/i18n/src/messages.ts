@@ -113,6 +113,7 @@ export const en = {
   "diagnostics.fetchFailed": "Failed to collect: {error}",
 
   // Color popover
+  "color.title": "Color",
   "color.randomTitle": "Random color",
   "color.random": "🎲 Random",
   "color.resetTitle": "Reset to default",
@@ -370,6 +371,7 @@ export const zhCN: Record<MessageKey, string> = {
   "diagnostics.fetchFailed": "获取失败：{error}",
 
   // Color popover
+  "color.title": "颜色",
   "color.randomTitle": "随机颜色",
   "color.random": "🎲 随机",
   "color.resetTitle": "重置为默认",

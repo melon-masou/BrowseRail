@@ -1056,6 +1056,13 @@ output {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  min-height: 22px;
+}
+
+.color-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .color-popover-cycle-row {
@@ -1181,10 +1188,14 @@ output {
 .color-popover-tools {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
+  padding: 1px 0;
 }
 
 .popover-mini-btn {
+  flex: 1;
+  justify-content: center;
   min-height: 24px;
   height: 24px;
   padding: 0 8px;
