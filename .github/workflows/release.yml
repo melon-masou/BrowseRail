@@ -3,6 +3,14 @@ name: Release
 on:
   push:
     branches: [release]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.2.0 or v0.2.0)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -28,13 +36,24 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      - name: Compute UTC version
+      - name: Compute release version
         id: version
+        shell: pwsh
         run: |
-          $dt = (Get-Date).ToUniversalTime()
-          $release = $dt.ToString("yyMMdd.HHmm")
-          # Chrome requires each component <= 65535, so split YY.MMDD.HHmm (integers drop the leading zeros).
-          $manifest = "{0}.{1}.{2}" -f [int]$dt.ToString("yy"), [int]$dt.ToString("MMdd"), [int]$dt.ToString("HHmm")
+          if ("${{ github.event.inputs.version }}") {
+            $raw = "${{ github.event.inputs.version }}".Trim().TrimStart("v")
+            $release = $raw
+            $manifest = $raw
+          } elseif ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME) {
+            $raw = $env:GITHUB_REF_NAME.Trim().TrimStart("v")
+            $release = $raw
+            $manifest = $raw
+          } else {
+            $dt = (Get-Date).ToUniversalTime()
+            $release = $dt.ToString("yyMMdd.HHmm")
+            # Chrome requires each component <= 65535, so split YY.MMDD.HHmm (integers drop the leading zeros).
+            $manifest = "{0}.{1}.{2}" -f [int]$dt.ToString("yy"), [int]$dt.ToString("MMdd"), [int]$dt.ToString("HHmm")
+          }
           "version=$release" >> $env:GITHUB_OUTPUT
           "manifest_version=$manifest" >> $env:GITHUB_OUTPUT
 
@@ -42,15 +61,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build exe and extensions
-        run: pnpm build
-
-      - name: Stamp extension manifest version
+        shell: pwsh
         run: |
-          $mv = "${{ steps.version.outputs.manifest_version }}"
-          foreach ($t in @("chrome", "firefox")) {
-            $p = "build/extension/$t/manifest.json"
-            (Get-Content $p -Raw) -replace '"version":\s*"[^"]*"', "`"version`": `"$mv`"" | Set-Content -NoNewline $p
-          }
+          $env:BROWSERAIL_RELEASE_TAG = "v${{ steps.version.outputs.version }}"
+          pnpm build:release "${{ steps.version.outputs.manifest_version }}"
 
       - name: Package release assets
         run: |

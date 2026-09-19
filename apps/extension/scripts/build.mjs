@@ -1,4 +1,4 @@
-import { cp, copyFile, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,9 +15,21 @@ const outDir = resolve(root, "..", "..", "build", "extension", target);
 await rm(outDir, { force: true, recursive: true });
 await mkdir(outDir, { recursive: true });
 
+const rawVersion = (process.env.BROWSERAIL_RELEASE_VERSION || process.env.RELEASE_VERSION || "").trim();
+const isRelease = Boolean(rawVersion && rawVersion !== "0.1.0");
+const releaseVersion = isRelease ? rawVersion.replace(/^v/, "") : "0.1.0";
+const releaseTag = isRelease ? (process.env.BROWSERAIL_RELEASE_TAG || `v${releaseVersion}`) : "";
+
+const define = {
+  __BROWSERAIL_IS_RELEASE__: JSON.stringify(isRelease),
+  __BROWSERAIL_RELEASE_TAG__: JSON.stringify(releaseTag),
+  __BROWSERAIL_RELEASE_VERSION__: JSON.stringify(releaseVersion),
+};
+
 await build({
   configFile: false,
   root,
+  define,
   build: {
     emptyOutDir: false,
     outDir,
@@ -29,6 +41,7 @@ await build({
 
 await build({
   configFile: false,
+  define,
   build: {
     emptyOutDir: false,
     lib: {
@@ -41,5 +54,11 @@ await build({
   },
 });
 
-await copyFile(resolve(root, `manifest.${target}.json`), resolve(outDir, "manifest.json"));
+const manifestRaw = await readFile(resolve(root, `manifest.${target}.json`), "utf8");
+const manifestJson = JSON.parse(manifestRaw);
+if (isRelease) {
+  manifestJson.version = releaseVersion;
+}
+await writeFile(resolve(outDir, "manifest.json"), JSON.stringify(manifestJson, null, 2), "utf8");
+
 await cp(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });

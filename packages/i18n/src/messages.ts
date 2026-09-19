@@ -11,6 +11,10 @@ export const en = {
   "language.en": "English",
   "language.zhCN": "中文",
 
+  // Header links
+  "header.github": "GitHub",
+  "header.downloadDesktop": "Download Desktop",
+
   // Connection state card
   "state.desktopWidget": "Desktop Widget:",
   "state.waiting": "Waiting for connection…",
@@ -249,6 +253,10 @@ export const zhCN: Record<MessageKey, string> = {
   "language.label": "语言",
   "language.en": "English",
   "language.zhCN": "中文",
+
+  // Header links
+  "header.github": "GitHub",
+  "header.downloadDesktop": "下载桌面端",
 
   // Connection state card
   "state.desktopWidget": "桌面组件：",

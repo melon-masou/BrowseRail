@@ -922,9 +922,32 @@ function rerenderForLanguage(): void {
   }
 }
 
+function initHeaderLinks(): void {
+  const downloadLink = document.getElementById("download-desktop-link") as HTMLAnchorElement | null;
+  if (!downloadLink) return;
+
+  const isReleaseBuild = typeof __BROWSERAIL_IS_RELEASE__ !== "undefined" && __BROWSERAIL_IS_RELEASE__;
+  const buildReleaseTag = typeof __BROWSERAIL_RELEASE_TAG__ !== "undefined" ? __BROWSERAIL_RELEASE_TAG__ : "";
+  const manifestVersion = browser.runtime?.getManifest?.()?.version;
+  const hasCustomManifestVersion = Boolean(manifestVersion && manifestVersion !== "0.1.0");
+
+  const isRelease = isReleaseBuild || hasCustomManifestVersion;
+  const effectiveTag = buildReleaseTag || (hasCustomManifestVersion ? `v${manifestVersion}` : "");
+
+  if (isRelease) {
+    downloadLink.href = effectiveTag
+      ? `https://github.com/melon-masou/BrowseRail/releases/tag/${effectiveTag}`
+      : "https://github.com/melon-masou/BrowseRail/releases";
+    downloadLink.style.display = "";
+  } else {
+    downloadLink.style.display = "none";
+  }
+}
+
 async function initialize(): Promise<void> {
   applyStaticI18n();
   initLanguagePicker();
+  initHeaderLinks();
   onLanguageChange(rerenderForLanguage);
   initColorPopover();
   initMenuStylePopover();
