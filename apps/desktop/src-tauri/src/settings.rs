@@ -14,6 +14,8 @@ pub struct DesktopSettings {
     pub display_panels: bool,
     #[serde(default)]
     pub debug_enabled: bool,
+    #[serde(default)]
+    pub lock_editing: bool,
 }
 
 impl Default for DesktopSettings {
@@ -22,6 +24,7 @@ impl Default for DesktopSettings {
             listener_port: DEFAULT_LISTENER_PORT,
             display_panels: true,
             debug_enabled: false,
+            lock_editing: false,
         }
     }
 }

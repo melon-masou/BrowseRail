@@ -89,6 +89,7 @@ pub enum Msg<'a> {
     MenusNone,
     // Tray: actionable items
     DisplayMenus,
+    LockEditing,
     Settings,
     Quit,
     // Tray tooltip fragments
@@ -134,6 +135,7 @@ impl Msg<'_> {
             Msg::MenusHidden { hidden } => format!("○ Menus: {hidden} hidden (ready)"),
             Msg::MenusNone => "○ Menus: None".into(),
             Msg::DisplayMenus => "Display menus".into(),
+            Msg::LockEditing => "Lock editing".into(),
             Msg::Settings => "Settings…".into(),
             Msg::Quit => "Quit".into(),
             Msg::TooltipServerError => "Error".into(),
@@ -164,6 +166,7 @@ impl Msg<'_> {
             Msg::MenusHidden { hidden } => format!("○ 菜单：{hidden} 隐藏（就绪）"),
             Msg::MenusNone => "○ 菜单：无".into(),
             Msg::DisplayMenus => "显示菜单".into(),
+            Msg::LockEditing => "锁定编辑".into(),
             Msg::Settings => "设置…".into(),
             Msg::Quit => "退出".into(),
             Msg::TooltipServerError => "错误".into(),

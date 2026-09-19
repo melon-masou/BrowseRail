@@ -3,7 +3,7 @@
   "name": "BrowseRail",
   "version": "0.1.0",
   "description": "External bookmark controls for browser windows.",
-  "permissions": ["bookmarks", "storage"],
+  "permissions": ["bookmarks", "storage", "contextMenus"],
   "background": {
     "service_worker": "background.js"
   },

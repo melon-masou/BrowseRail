@@ -422,6 +422,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
   const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
   const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
+  const includeFolders = value.includeFolders === true ? true : undefined;
   return {
     bookmarkId,
     ...(path !== undefined ? { path } : {}),
@@ -430,6 +431,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     ...(color ? { color } : {}),
     ...(tabMode ? { tabMode } : {}),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
+    ...(includeFolders ? { includeFolders } : {}),
   };
 }
 
@@ -501,28 +503,38 @@ export async function saveWidgetEnabled(enabled: boolean): Promise<void> {
 }
 
 export const BOOKMARK_ROOT_PREFIX_KEY = "bookmark_root_prefix";
-export const DEFAULT_BOOKMARK_ROOT_PREFIX = "/";
+// The root prefix is an array of folder titles (each a single segment that may
+// itself contain "/"), never a "/"-joined string. Empty means "whole tree".
+export const DEFAULT_BOOKMARK_ROOT_PREFIX: string[] = [];
 
-export async function loadBookmarkRootPrefix(): Promise<string> {
+export async function loadBookmarkRootPrefix(): Promise<string[]> {
   const stored = await browser.storage.local.get(BOOKMARK_ROOT_PREFIX_KEY);
   const raw = stored[BOOKMARK_ROOT_PREFIX_KEY];
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .map((s) => s.trim());
+  }
   if (typeof raw === "string" && raw.trim()) {
+    // Legacy "/"-joined string format: migrate by splitting on "/".
     const trimmed = raw.trim();
     if (trimmed === "/书签栏" || trimmed === "/Bookmarks bar") {
-      return DEFAULT_BOOKMARK_ROOT_PREFIX;
+      return [];
     }
-    return trimmed;
+    return trimmed
+      .split("/")
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
-  return DEFAULT_BOOKMARK_ROOT_PREFIX;
+  return [];
 }
 
-export async function saveBookmarkRootPrefix(prefix: string): Promise<void> {
-  await browser.storage.local.set({
-    [BOOKMARK_ROOT_PREFIX_KEY]: prefix.trim() || DEFAULT_BOOKMARK_ROOT_PREFIX,
-  });
+export async function saveBookmarkRootPrefix(prefix: string[]): Promise<void> {
+  const segments = prefix.map((s) => s.trim()).filter(Boolean);
+  await browser.storage.local.set({ [BOOKMARK_ROOT_PREFIX_KEY]: segments });
 }
 
-export async function initBookmarkRootPrefix(): Promise<string> {
+export async function initBookmarkRootPrefix(): Promise<string[]> {
   return DEFAULT_BOOKMARK_ROOT_PREFIX;
 }
 

@@ -144,6 +144,7 @@ export const en = {
   "itemSettings.newTab": "New tab",
   "itemSettings.flatten": "Flatten folder",
   "itemSettings.hoverExpand": "Expand on hover",
+  "itemSettings.includeFolders": "Include folders",
   "itemSettings.change": "Change bookmark / folder…",
 
   // Menu card
@@ -192,6 +193,7 @@ export const en = {
   "picker.selectCurrent": "📁 Select this folder",
   "picker.flatten": "Flatten folder",
   "picker.hoverExpand": "Expand on hover",
+  "picker.includeFolders": "Include folders",
   "picker.add": "Add",
   "picker.changeTitle": "Change Bookmark / Folder",
   "picker.apply": "Apply",
@@ -220,6 +222,9 @@ export const en = {
   "aria.menu": "BrowseRail menu",
   "aria.bookmarkMenu": "BrowseRail bookmark menu",
   "action.failed": "Action failed",
+  "action.openSettings": "Open settings",
+  "action.iconTitleEnabled": "BrowseRail (click to disable)",
+  "action.iconTitleDisabled": "BrowseRail: paused (click to enable)",
   "customize.anchor": "Anchor: {anchor} (click to change)",
   "customize.dragToMove": "Drag to move",
   "customize.cancel": "Cancel",
@@ -390,6 +395,7 @@ export const zhCN: Record<MessageKey, string> = {
   "itemSettings.newTab": "新建标签页",
   "itemSettings.flatten": "摊平文件夹",
   "itemSettings.hoverExpand": "悬停展开",
+  "itemSettings.includeFolders": "包括文件夹",
   "itemSettings.change": "更换书签 / 目录…",
 
   // Menu card
@@ -438,6 +444,7 @@ export const zhCN: Record<MessageKey, string> = {
   "picker.selectCurrent": "📁 选择当前目录",
   "picker.flatten": "摊平文件夹",
   "picker.hoverExpand": "悬停展开",
+  "picker.includeFolders": "包括文件夹",
   "picker.add": "添加",
   "picker.changeTitle": "更换书签 / 目录",
   "picker.apply": "应用",
@@ -465,6 +472,9 @@ export const zhCN: Record<MessageKey, string> = {
   "aria.menu": "BrowseRail 菜单",
   "aria.bookmarkMenu": "BrowseRail 书签菜单",
   "action.failed": "操作失败",
+  "action.openSettings": "打开设置",
+  "action.iconTitleEnabled": "BrowseRail（点击停用）",
+  "action.iconTitleDisabled": "BrowseRail：已暂停（点击启用）",
   "customize.anchor": "锚点：{anchor}（点击切换）",
   "customize.dragToMove": "拖拽移动",
   "customize.cancel": "取消",

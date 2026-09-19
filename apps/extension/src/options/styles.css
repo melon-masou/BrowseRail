@@ -24,6 +24,7 @@ main {
 .page-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -132,7 +133,8 @@ main {
   outline-offset: -1px;
 }
 
-form {
+form,
+.options-card {
   display: grid;
   gap: 18px;
   padding: 24px;
@@ -140,6 +142,23 @@ form {
   border-radius: 14px;
   background: white;
   box-shadow: 0 12px 32px rgb(26 35 54 / 8%);
+  margin-bottom: 24px;
+}
+
+.connection-card .state-card {
+  margin-bottom: 4px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+.connection-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid #edf2f7;
 }
 
 .fields-row {
@@ -1600,19 +1619,10 @@ output {
 .picker-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 12px 18px;
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
-}
-
-.picker-selected-info {
-  font-size: 13px;
-  color: #475569;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 260px;
 }
 
 .picker-actions {

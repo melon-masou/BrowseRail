@@ -221,9 +221,11 @@ export function parsePathSegments(rawPath: string): string[] {
     .filter(Boolean);
 }
 
-export function combineRootAndItemPath(rootPath?: string, itemPath?: string[]): string[] {
-  const rootSegments = rootPath ? parsePathSegments(rootPath) : [];
-  const segments = itemPath ? itemPath.flatMap(parsePathSegments) : [];
+export function combineRootAndItemPath(rootPath?: string[], itemPath?: string[]): string[] {
+  // Both are arrays of individual folder titles (a title may itself contain
+  // "/"), so their elements must NOT be re-split on "/".
+  const rootSegments = rootPath ? rootPath.map((s) => s.trim()).filter(Boolean) : [];
+  const segments = itemPath ? itemPath.map((s) => s.trim()).filter(Boolean) : [];
 
   if (rootSegments.length === 0) {
     return segments;
@@ -261,7 +263,7 @@ export function getFolderPath(
 export function getItemRelativePath(
   targetId: string,
   nodes: BookmarkNode[],
-  rootPrefix?: string,
+  rootPrefix?: string[],
 ): string[] | undefined {
   const fullNodePath = getFolderPath(targetId, nodes);
   const meaningfulNodes = fullNodePath.filter(
@@ -283,8 +285,8 @@ export function getItemRelativePath(
     return n.title.trim();
   });
 
-  if (rootPrefix && rootPrefix.trim()) {
-    const rootSegments = parsePathSegments(rootPrefix);
+  if (rootPrefix && rootPrefix.length > 0) {
+    const rootSegments = rootPrefix.map((s) => s.trim()).filter(Boolean);
     if (rootSegments.length > 0) {
       const rootNode = findBookmarkNodeByPath(nodes, rootSegments);
       if (rootNode) {
@@ -327,11 +329,11 @@ export async function resolveMenuItems(
   menuTabMode?: TabMode,
   menuColor?: string,
   menuExpandDirection?: ExpandDirection,
-  rootPrefix?: string,
+  rootPrefix?: string[],
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = null;
   const entryGroups = await Promise.all(
-    items.map(async ({ bookmarkId, path, url, color, emoji, rename, type, expandOnHover, tabMode, units, transparent }) => {
+    items.map(async ({ bookmarkId, path, url, color, emoji, rename, type, expandOnHover, includeFolders, tabMode, units, transparent }) => {
       if (type === "space") {
         const isTransparent = transparent !== false;
         const spaceEntry: LayoutEntry = {
@@ -367,7 +369,7 @@ export async function resolveMenuItems(
         const lastSeg = path && path.length > 0 ? path[path.length - 1] : undefined;
         const fallbackTitle =
           (lastSeg ? formatSpecialRootForDisplay(lastSeg, treeCache ?? []) : undefined) ||
-          (rootPrefix ? parsePathSegments(rootPrefix).slice(-1)[0] : undefined) ||
+          (rootPrefix && rootPrefix.length > 0 ? rootPrefix[rootPrefix.length - 1] : undefined) ||
           url ||
           bookmarkId ||
           "Untitled";
@@ -394,9 +396,26 @@ export async function resolveMenuItems(
         return [entry];
       }
 
-      if (type === "flattenFolder" || (!node.url && type === "flattenFolder")) {
-        const bookmarkChildren = (node.children ?? []).filter((child) => child.url !== undefined);
-        return bookmarkChildren.map((child) => {
+      if (type === "flattenFolder") {
+        return (node.children ?? []).flatMap((child) => {
+          if (child.url === undefined) {
+            // Sub-folder: only emitted when "include folders" is on, as a folder
+            // that inherits this flatten item's folder options.
+            if (!includeFolders) return [];
+            const folderEntry = toLayoutEntry(
+              child,
+              effectiveHover,
+              effectiveTabMode,
+              undefined,
+              menuExpandDirection,
+            );
+            // Apply the flatten item's color to the outside folder button itself,
+            // matching the flattened bookmarks on the rail.
+            if (effectiveColor && folderEntry.kind !== "space") {
+              folderEntry.color = effectiveColor;
+            }
+            return [folderEntry];
+          }
           const rawTitle = child.title || child.url || "Untitled";
           const entry: LayoutEntry = {
             kind: "bookmark",
@@ -404,7 +423,7 @@ export async function resolveMenuItems(
             label: rawTitle,
             ...(effectiveColor ? { color: effectiveColor } : {}),
           };
-          return entry;
+          return [entry];
         });
       }
 

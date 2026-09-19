@@ -44,6 +44,7 @@ pub const TRAY_ID: &str = "browserail";
 #[cfg(target_os = "windows")]
 pub struct AppState {
     pub display_panels: Arc<AtomicBool>,
+    pub lock_editing: Arc<AtomicBool>,
     pub popups: Arc<panel::PopupRegistry>,
     pub registry: Arc<SessionRegistry>,
     pub socket: Arc<socket::SocketServer>,
@@ -132,6 +133,12 @@ fn invoke_action(
     state
         .registry
         .invoke(&instance_uid, &window_uid, action_uid)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn is_editing_locked(state: tauri::State<'_, AppState>) -> bool {
+    state.lock_editing.load(Ordering::Relaxed)
 }
 
 #[cfg(target_os = "windows")]
@@ -555,6 +562,14 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
         state.display_panels,
         None::<&str>,
     )?;
+    let lock_editing = CheckMenuItem::with_id(
+        manager,
+        "lock_editing",
+        i18n::Msg::LockEditing.localized(),
+        true,
+        state.lock_editing,
+        None::<&str>,
+    )?;
     let settings = MenuItem::with_id(
         manager,
         "settings",
@@ -571,6 +586,7 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
     }
     menu_items.push(&surfaces_item);
     menu_items.push(&display);
+    menu_items.push(&lock_editing);
     menu_items.push(&settings);
     menu_items.push(&quit);
 
@@ -578,13 +594,14 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
 }
 
 #[cfg(target_os = "windows")]
-fn create_tray(app: &tauri::App, initial_display: bool) -> tauri::Result<()> {
+fn create_tray(app: &tauri::App, initial_display: bool, initial_lock: bool) -> tauri::Result<()> {
     let initial_state = native::TrayStateSnapshot {
         server_text: i18n::Msg::ListenerStarting.localized(),
         extension_lines: vec![i18n::Msg::ExtensionDisconnected.localized()],
         surfaces_text: i18n::Msg::MenusNone.localized(),
         tooltip: "BrowseRail".into(),
         display_panels: initial_display,
+        lock_editing: initial_lock,
     };
     let menu = build_tray_menu(app, &initial_state)?;
 
@@ -600,6 +617,12 @@ fn create_tray(app: &tauri::App, initial_display: bool) -> tauri::Result<()> {
                 let _ = state
                     .native_sender
                     .send(native::NativeCommand::ToggleDisplayPanels);
+            }
+            "lock_editing" => {
+                let state = app.state::<AppState>();
+                let _ = state
+                    .native_sender
+                    .send(native::NativeCommand::ToggleLockEditing);
             }
             "settings" => open_listener_settings(app),
             "quit" => app.exit(0),
@@ -666,6 +689,7 @@ fn set_ui_language(language: String, state: tauri::State<'_, AppState>) {
 #[cfg(target_os = "windows")]
 pub fn run() {
     let display_panels = Arc::new(AtomicBool::new(true));
+    let lock_editing = Arc::new(AtomicBool::new(false));
     let popups = Arc::new(panel::PopupRegistry::default());
     let registry = Arc::new(SessionRegistry::default());
     let socket = Arc::new(socket::SocketServer::default());
@@ -674,6 +698,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .setup({
             let display_panels = display_panels.clone();
+            let lock_editing = lock_editing.clone();
             let popups = popups.clone();
             let registry = registry.clone();
             let socket = socket.clone();
@@ -683,14 +708,16 @@ pub fn run() {
                 create_lifecycle_host(app)?;
                 let settings = settings::load(app.handle()).unwrap_or_default();
                 display_panels.store(settings.display_panels, Ordering::Relaxed);
+                lock_editing.store(settings.lock_editing, Ordering::Relaxed);
                 crate::debug::set_debug_enabled(settings.debug_enabled);
                 i18n::set_language(i18n::detect_system_lang());
 
-                create_tray(app, settings.display_panels)?;
+                create_tray(app, settings.display_panels, settings.lock_editing)?;
 
                 let native_sender = native::NativeReactor::start(
                     app.handle().clone(),
                     display_panels.clone(),
+                    lock_editing.clone(),
                     popups.clone(),
                     registry.clone(),
                     socket.clone(),
@@ -699,6 +726,7 @@ pub fn run() {
 
                 app.manage(AppState {
                     display_panels,
+                    lock_editing,
                     popups,
                     registry,
                     socket: socket.clone(),
@@ -730,6 +758,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             surface_state,
             invoke_action,
+            is_editing_locked,
             listener_state,
             set_listener_port,
             set_debug_enabled,

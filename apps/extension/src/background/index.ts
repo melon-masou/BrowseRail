@@ -5,6 +5,7 @@ import {
   type ClientMessage,
   type PanelSnapshot,
 } from "@browserail/protocol";
+import { t } from "@browserail/i18n";
 import browser from "webextension-polyfill";
 
 import { resolveMenuItems } from "../bookmarks";
@@ -39,29 +40,38 @@ connectionStateMachine.subscribe((next, _prev, detail) => {
 });
 
 function updateActionBadge(state: ExtensionConnectionState, detail?: string): void {
-  let title = `BrowseRail: ${state}`;
+  const disabled = state === "disabled";
+  // Clicking the toolbar icon toggles enable/disable, so the tooltip states the
+  // current state and what a click will do. When disabled, the corner badge
+  // shows two blue bars with a transparent background.
+  let title = disabled ? t("action.iconTitleDisabled") : t("action.iconTitleEnabled");
   switch (state) {
     case "connected":
-      title = `BrowseRail: Connected (${detail ?? "Ready"})`;
+      title = `${t("action.iconTitleEnabled")} — Connected (${detail ?? "Ready"})`;
       break;
     case "syncing":
-      title = `BrowseRail: Syncing (${detail ?? ""})`;
+      title = `${t("action.iconTitleEnabled")} — Syncing`;
       break;
     case "connecting":
     case "handshaking":
-      title = "BrowseRail: Connecting…";
+      title = `${t("action.iconTitleEnabled")} — Connecting…`;
       break;
     case "reconnecting":
-      title = `BrowseRail: Reconnecting (${detail ?? ""})`;
+      title = `${t("action.iconTitleEnabled")} — Reconnecting (${detail ?? ""})`;
       break;
     case "disconnected":
-      title = "BrowseRail: Disconnected";
+      title = `${t("action.iconTitleEnabled")} — Disconnected`;
       break;
     case "disabled":
-      title = "BrowseRail: Disabled";
+      title = t("action.iconTitleDisabled");
       break;
   }
-  void browser.action.setBadgeText({ text: "" });
+  void browser.action.setBadgeText({ text: disabled ? "OFF" : "" });
+  if (disabled) {
+    // Transparent background so only the two blue bars show, at the corner.
+    void browser.action.setBadgeTextColor?.({ color: "#2563eb" });
+    void browser.action.setBadgeBackgroundColor({ color: [0, 0, 0, 0] });
+  }
   void browser.action.setTitle({ title });
 }
 
@@ -298,17 +308,51 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     scheduleReconcile();
   }
   if (isSetWidgetEnabledMessage(message)) {
-    connectionEnabled = message.enabled;
-    void saveWidgetEnabled(message.enabled);
-    if (!connectionEnabled) {
-      stopConnection();
-    } else {
-      scheduleReconcile();
-    }
+    void applyWidgetEnabled(message.enabled);
     return Promise.resolve({ ok: true });
   }
 });
-browser.action.onClicked.addListener(() => void browser.runtime.openOptionsPage());
+// Clicking the toolbar icon toggles the widget on/off (was: open options).
+browser.action.onClicked.addListener(() => void toggleWidgetEnabled());
+
+async function applyWidgetEnabled(enabled: boolean): Promise<void> {
+  connectionEnabled = enabled;
+  await saveWidgetEnabled(enabled);
+  if (!enabled) {
+    stopConnection();
+  } else {
+    scheduleReconcile();
+  }
+}
+
+async function toggleWidgetEnabled(): Promise<void> {
+  const enabled = await loadWidgetEnabled();
+  await applyWidgetEnabled(!enabled);
+}
+
+// Right-click the toolbar icon → open the options page.
+const OPEN_SETTINGS_MENU_ID = "browserail-open-settings";
+
+async function setupActionContextMenu(): Promise<void> {
+  if (!browser.contextMenus) return;
+  try {
+    await browser.contextMenus.removeAll();
+    browser.contextMenus.create({
+      id: OPEN_SETTINGS_MENU_ID,
+      title: t("action.openSettings"),
+      contexts: ["action"],
+    });
+  } catch {
+    // Ignore: menu may already exist, or contexts unsupported on this browser.
+  }
+}
+
+browser.runtime.onInstalled.addListener(() => void setupActionContextMenu());
+browser.contextMenus?.onClicked.addListener((info) => {
+  if (info.menuItemId === OPEN_SETTINGS_MENU_ID) {
+    void browser.runtime.openOptionsPage();
+  }
+});
 
 async function reconcileConnection(): Promise<void> {
   clearTimeout(reconcileTimer);

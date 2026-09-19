@@ -46,6 +46,8 @@ async function initializeSurface(): Promise<void> {
   document.body.dataset.surface = "menu";
 
   let customizing = false;
+  // Global "lock editing" tray toggle: when on, right-click must not open customize.
+  let editingLocked = false;
   let currentMenu = initial.menu;
 
   const POPUP_CLOSE_DELAY_MS = 50;
@@ -84,6 +86,15 @@ async function initializeSurface(): Promise<void> {
   await listen<{ ok: boolean; message?: string }>("action-result", ({ payload }) => {
     root.toggleAttribute("data-error", !payload.ok);
     root.title = payload.ok ? "" : (payload.message ?? t("action.failed"));
+  });
+
+  void invoke<boolean>("is_editing_locked")
+    .then((locked) => {
+      editingLocked = locked;
+    })
+    .catch(() => {});
+  await listen<boolean>("editing-lock-changed", ({ payload }) => {
+    editingLocked = payload;
   });
 
   if (initial.menu) {
@@ -264,6 +275,7 @@ async function initializeSurface(): Promise<void> {
       if (event.button === 2) {
         event.preventDefault();
         event.stopPropagation();
+        if (editingLocked) return;
         if (customizing) return;
 
         // If a popup is open, close it and wait for size and position to restore completely before customizing

@@ -102,6 +102,79 @@ describe("resolveMenuItems", () => {
     expect(entries[1].kind).toBe("bookmark");
   });
 
+  it("flatten skips sub-folders by default and includes them when includeFolders is set", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-mix",
+            title: "Mixed",
+            children: [
+              { id: "bm-a", title: "GitHub", url: "https://github.com" },
+              {
+                id: "sub-1",
+                title: "Sub",
+                children: [{ id: "bm-b", title: "Vite", url: "https://vitejs.dev" }],
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const withoutFolders = await resolveMenuItems([
+      { bookmarkId: "folder-mix", path: ["Mixed"], type: "flattenFolder" },
+    ]);
+    expect(withoutFolders).toHaveLength(1);
+    expect(withoutFolders[0].kind).toBe("bookmark");
+
+    const withFolders = await resolveMenuItems([
+      {
+        bookmarkId: "folder-mix",
+        path: ["Mixed"],
+        type: "flattenFolder",
+        includeFolders: true,
+        color: "#22c55e",
+      },
+    ]);
+    expect(withFolders).toHaveLength(2);
+    expect(withFolders.map((e) => e.kind).sort()).toEqual(["bookmark", "folder"]);
+    // Both the flattened bookmark and the included folder take the item's color.
+    for (const entry of withFolders) {
+      expect(entry.color).toBe("#22c55e");
+    }
+    const folderEntry = withFolders.find((e) => e.kind === "folder");
+    // Inside the expanded menu, children are not changed
+    expect(folderEntry?.kind === "folder" && folderEntry.children[0]?.color).toBeUndefined();
+  });
+
+  it("resolves a folder whose title contains a slash (path segment not re-split)", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "slash-folder",
+            title: "A/B",
+            children: [{ id: "bm-slash", title: "GitHub", url: "https://github.com" }],
+          },
+        ],
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([
+      { bookmarkId: "slash-folder", path: ["A/B"], type: "flattenFolder" },
+    ]);
+
+    // Must emit the folder's actual child, not a single fallback entry labelled "A/B".
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe("bookmark");
+    expect(entries[0].label).toBe("GitHub");
+  });
+
   it("applies menuColor as default color to items without custom color", async () => {
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
@@ -451,7 +524,7 @@ describe("tabMode configuration", () => {
       "replace",
       "#ff0000",
       undefined,
-      "/书签栏",
+      ["书签栏"],
     );
 
     expect(entries).toHaveLength(1);
@@ -483,7 +556,7 @@ describe("tabMode configuration", () => {
       "replace",
       undefined,
       undefined,
-      "/书签栏",
+      ["书签栏"],
     );
 
     expect(entries).toHaveLength(1);
@@ -548,12 +621,12 @@ describe("combineRootAndItemPath and space resolution", () => {
     const { combineRootAndItemPath } = await import("./bookmarks");
 
     // Root prefix combined with relative item path
-    expect(combineRootAndItemPath("/书签栏", ["gbfsync"])).toEqual(["书签栏", "gbfsync"]);
-    expect(combineRootAndItemPath("/书签栏", ["Work", "Docs"])).toEqual(["书签栏", "Work", "Docs"]);
+    expect(combineRootAndItemPath(["书签栏"], ["gbfsync"])).toEqual(["书签栏", "gbfsync"]);
+    expect(combineRootAndItemPath(["书签栏"], ["Work", "Docs"])).toEqual(["书签栏", "Work", "Docs"]);
 
     // Strictly concatenate without deduplicating prefix
-    expect(combineRootAndItemPath("/书签栏", ["书签栏", "gbfsync"])).toEqual(["书签栏", "书签栏", "gbfsync"]);
-    expect(combineRootAndItemPath("/书签栏", ["Bookmarks bar", "gbfsync"])).toEqual(["书签栏", "Bookmarks bar", "gbfsync"]);
+    expect(combineRootAndItemPath(["书签栏"], ["书签栏", "gbfsync"])).toEqual(["书签栏", "书签栏", "gbfsync"]);
+    expect(combineRootAndItemPath(["书签栏"], ["Bookmarks bar", "gbfsync"])).toEqual(["书签栏", "Bookmarks bar", "gbfsync"]);
   });
 
   it("resolves space items into SpaceEntry without querying bookmarks", async () => {
@@ -625,24 +698,24 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(folderPath.map((n) => n.id)).toEqual(["0", "1", "10", "100"]);
 
     // Relative path with no root prefix -> full path using special root placeholder
-    expect(getItemRelativePath("100", tree, "")).toEqual(["${bookmarks-bar}", "Dev", "Tool"]);
+    expect(getItemRelativePath("100", tree, [])).toEqual(["${bookmarks-bar}", "Dev", "Tool"]);
     expect(getItemRelativePath("11", tree, undefined)).toEqual(["${bookmarks-bar}", "GitHub"]);
-    expect(getItemRelativePath("20", tree, "/")).toEqual(["${other}", "Read Later"]);
+    expect(getItemRelativePath("20", tree, [])).toEqual(["${other}", "Read Later"]);
 
-    // Relative path with root prefix "/书签栏" or "/${bookmarks-bar}"
-    expect(getItemRelativePath("100", tree, "/书签栏")).toEqual(["Dev", "Tool"]);
-    expect(getItemRelativePath("100", tree, "/${bookmarks-bar}")).toEqual(["Dev", "Tool"]);
-    expect(getItemRelativePath("10", tree, "/书签栏")).toEqual(["Dev"]);
-    expect(getItemRelativePath("11", tree, "/书签栏")).toEqual(["GitHub"]);
+    // Relative path with root prefix ["书签栏"] or ["${bookmarks-bar}"]
+    expect(getItemRelativePath("100", tree, ["书签栏"])).toEqual(["Dev", "Tool"]);
+    expect(getItemRelativePath("100", tree, ["${bookmarks-bar}"])).toEqual(["Dev", "Tool"]);
+    expect(getItemRelativePath("10", tree, ["书签栏"])).toEqual(["Dev"]);
+    expect(getItemRelativePath("11", tree, ["书签栏"])).toEqual(["GitHub"]);
 
-    // Relative path with nested root prefix "/书签栏/Dev"
-    expect(getItemRelativePath("100", tree, "/书签栏/Dev")).toEqual(["Tool"]);
+    // Relative path with nested root prefix ["书签栏", "Dev"]
+    expect(getItemRelativePath("100", tree, ["书签栏", "Dev"])).toEqual(["Tool"]);
 
     // Relative path when selecting the root folder itself -> empty path []
-    expect(getItemRelativePath("1", tree, "/书签栏")).toEqual([]);
-    expect(getItemRelativePath("1", tree, "/${bookmarks-bar}")).toEqual([]);
-    expect(combineRootAndItemPath("/书签栏", [])).toEqual(["书签栏"]);
-    const rootMatch = findBookmarkNodeByPath(tree, combineRootAndItemPath("/书签栏", []));
+    expect(getItemRelativePath("1", tree, ["书签栏"])).toEqual([]);
+    expect(getItemRelativePath("1", tree, ["${bookmarks-bar}"])).toEqual([]);
+    expect(combineRootAndItemPath(["书签栏"], [])).toEqual(["书签栏"]);
+    const rootMatch = findBookmarkNodeByPath(tree, combineRootAndItemPath(["书签栏"], []));
     expect(rootMatch?.id).toBe("1");
 
     // Resolving via special root placeholder
@@ -650,8 +723,8 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(findBookmarkNodeByPath(tree, ["${other}", "Read Later"])?.id).toBe("20");
 
     // Combined relative path with root prefix resolves the exact node
-    const relPath = getItemRelativePath("100", tree, "/书签栏")!;
-    const combined = combineRootAndItemPath("/书签栏", relPath);
+    const relPath = getItemRelativePath("100", tree, ["书签栏"])!;
+    const combined = combineRootAndItemPath(["书签栏"], relPath);
     expect(combined).toEqual(["书签栏", "Dev", "Tool"]);
     const foundNode = findBookmarkNodeByPath(tree, combined);
     expect(foundNode?.id).toBe("100");
@@ -687,7 +760,7 @@ describe("combineRootAndItemPath and space resolution", () => {
       undefined,
       undefined,
       undefined,
-      "/书签栏",
+      ["书签栏"],
     );
     expect(entries).toHaveLength(1);
     expect(entries[0].kind).toBe("folder");
@@ -702,7 +775,7 @@ describe("combineRootAndItemPath and space resolution", () => {
     } = await import("./bookmarks");
     const { DEFAULT_BOOKMARK_ROOT_PREFIX, loadBookmarkRootPrefix } = await import("./config");
 
-    expect(DEFAULT_BOOKMARK_ROOT_PREFIX).toBe("/");
+    expect(DEFAULT_BOOKMARK_ROOT_PREFIX).toEqual([]);
 
     const chromeTree = [
       {
@@ -733,11 +806,11 @@ describe("combineRootAndItemPath and space resolution", () => {
       },
     ];
 
-    // Default root "/" generates special root placeholders
-    expect(getItemRelativePath("10", chromeTree, "/")).toEqual(["${bookmarks-bar}", "GitHub"]);
-    expect(getItemRelativePath("20", chromeTree, "/")).toEqual(["${other}", "Docs"]);
-    expect(getItemRelativePath("30", chromeTree, "/")).toEqual(["${mobile}", "Article"]);
-    expect(getItemRelativePath("40", chromeTree, "/")).toEqual(["${managed}", "Intranet"]);
+    // Empty root prefix generates special root placeholders
+    expect(getItemRelativePath("10", chromeTree, [])).toEqual(["${bookmarks-bar}", "GitHub"]);
+    expect(getItemRelativePath("20", chromeTree, [])).toEqual(["${other}", "Docs"]);
+    expect(getItemRelativePath("30", chromeTree, [])).toEqual(["${mobile}", "Article"]);
+    expect(getItemRelativePath("40", chromeTree, [])).toEqual(["${managed}", "Intranet"]);
 
     // Resolving via special root placeholder
     expect(findBookmarkNodeByPath(chromeTree, ["${bookmarks-bar}", "GitHub"])?.id).toBe("10");
@@ -751,11 +824,21 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(formatSpecialRootForDisplay("${mobile}", chromeTree)).toBe("移动设备书签");
     expect(formatSpecialRootForDisplay("${managed}", chromeTree)).toBe("受管理书签");
 
-    // Migrates legacy /书签栏 storage to /
+    // Legacy "/书签栏" storage migrates to empty (whole tree)
     vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
       bookmark_root_prefix: "/书签栏",
     });
-    expect(await loadBookmarkRootPrefix()).toBe("/");
+    expect(await loadBookmarkRootPrefix()).toEqual([]);
+    // Other legacy "/"-joined strings migrate to a segment array
+    vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
+      bookmark_root_prefix: "/Work/Docs",
+    });
+    expect(await loadBookmarkRootPrefix()).toEqual(["Work", "Docs"]);
+    // A stored array is used as-is, so a title containing "/" stays one segment
+    vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
+      bookmark_root_prefix: ["Work", "A/B"],
+    });
+    expect(await loadBookmarkRootPrefix()).toEqual(["Work", "A/B"]);
   });
 });
 

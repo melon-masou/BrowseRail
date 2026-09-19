@@ -41,7 +41,6 @@ import {
   getItemRelativePath,
   getSpecialRootTypeFromNode,
   getSpecialRootTypeFromTitle,
-  parsePathSegments,
   SPECIAL_ROOT_PLACEHOLDERS,
 } from "../bookmarks";
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
@@ -90,7 +89,10 @@ interface BookmarkOption {
   label: string;
 }
 
-const form = element<HTMLFormElement>("settings");
+const connectionForm = element<HTMLFormElement>("connection-form");
+const saveConnectionBtn = element<HTMLButtonElement>("save-connection-btn");
+const connectionStatus = element<HTMLOutputElement>("connection-status");
+const menusForm = element<HTMLFormElement>("menus-form");
 const instanceLabel = element<HTMLInputElement>("instance-label");
 const randomInstanceLabel = element<HTMLButtonElement>("random-instance-label");
 const toggleEnabledButton = element<HTMLButtonElement>("toggle-enabled-button");
@@ -120,12 +122,13 @@ const pickerFlattenLabel = element<HTMLLabelElement>("picker-flatten-label");
 const pickerFlattenCheckbox = element<HTMLInputElement>("picker-flatten-checkbox");
 const pickerHoverExpandLabel = element<HTMLLabelElement>("picker-hover-expand-label");
 const pickerHoverExpandCheckbox = element<HTMLInputElement>("picker-hover-expand-checkbox");
+const pickerIncludeFoldersLabel = element<HTMLLabelElement>("picker-include-folders-label");
+const pickerIncludeFoldersCheckbox = element<HTMLInputElement>("picker-include-folders-checkbox");
 const pickerCloseBtn = element<HTMLButtonElement>("picker-close-btn");
 const pickerUpBtn = element<HTMLButtonElement>("picker-up-btn");
 const pickerBreadcrumbs = element<HTMLDivElement>("picker-breadcrumbs");
 const pickerSelectCurrentBtn = element<HTMLButtonElement>("picker-select-current-btn");
 const pickerContent = element<HTMLDivElement>("picker-content");
-const pickerSelectedInfo = element<HTMLDivElement>("picker-selected-info");
 const pickerConfirmBtn = element<HTMLButtonElement>("picker-confirm-btn");
 
 // Color popover elements
@@ -169,6 +172,8 @@ const itemSettingTabMode = element<HTMLSelectElement>("item-setting-tab-mode");
 const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
 const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hover-expand-label");
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
+const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>("item-setting-include-folders-label");
+const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
 const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
@@ -178,8 +183,9 @@ const bookmarkRootInput = document.getElementById("bookmark-root-input") as HTML
 const pickBookmarkRootBtn = document.getElementById("pick-bookmark-root-btn") as HTMLButtonElement | null;
 
 let widgetEnabled = true;
-let isDirty = false;
-let bookmarkRootPrefix = "";
+let isConnectionDirty = false;
+let isMenusDirty = false;
+let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let bookmarkOptions: BookmarkOption[] = [];
@@ -225,44 +231,70 @@ browser.runtime.onMessage.addListener((message: unknown) => {
   }
 });
 
-function markDirty(): void {
-  if (!isDirty) {
-    isDirty = true;
+function markConnectionDirty(): void {
+  if (!isConnectionDirty) {
+    isConnectionDirty = true;
+    saveConnectionBtn.classList.add("is-dirty");
+  }
+}
+
+function clearConnectionDirty(): void {
+  isConnectionDirty = false;
+  saveConnectionBtn.classList.remove("is-dirty");
+}
+
+function markMenusDirty(): void {
+  if (!isMenusDirty) {
+    isMenusDirty = true;
     saveBtn.classList.add("is-dirty");
   }
 }
 
-function clearDirty(): void {
-  isDirty = false;
+function clearMenusDirty(): void {
+  isMenusDirty = false;
   saveBtn.classList.remove("is-dirty");
 }
 
+function markDirty(): void {
+  markMenusDirty();
+}
+
+function clearDirty(): void {
+  clearConnectionDirty();
+  clearMenusDirty();
+}
+
 window.addEventListener("beforeunload", (event) => {
-  if (isDirty) {
+  if (isConnectionDirty || isMenusDirty) {
     event.preventDefault();
     event.returnValue = "";
   }
 });
 
 window.addEventListener("pagehide", () => {
-  if (isDirty) {
+  if (isMenusDirty) {
     void browser.runtime.sendMessage({ type: "cancelPreview" });
   }
 });
 
-form.addEventListener("submit", (event) => {
+connectionForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  void persist();
+  void persistConnection();
+});
+
+menusForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void persistMenus();
 });
 
 previewBtn.addEventListener("click", () => {
   void previewCurrentConfig();
 });
 
-instanceLabel.addEventListener("input", markDirty);
+instanceLabel.addEventListener("input", markConnectionDirty);
 desktopUrl.addEventListener("input", () => {
   clearDesktopTestStatus();
-  markDirty();
+  markConnectionDirty();
 });
 
 addMenu.addEventListener("click", () => {
@@ -286,7 +318,7 @@ toggleEnabledButton.addEventListener("click", () => {
 
 randomInstanceLabel.addEventListener("click", () => {
   instanceLabel.value = createRandomInstanceLabel();
-  markDirty();
+  markConnectionDirty();
 });
 
 testDesktop.addEventListener("click", () => void testDesktopAddress());
@@ -299,30 +331,45 @@ resyncButton.addEventListener("click", () => void resyncDesktopWindows());
 pickerCloseBtn.addEventListener("click", () => pickerDialog.close());
 
 pickerFlattenCheckbox.addEventListener("change", () => {
-  if (pickerFlattenCheckbox.checked) {
-    pickerHoverExpandCheckbox.checked = false;
-    pickerHoverExpandCheckbox.disabled = true;
-  } else {
-    pickerHoverExpandCheckbox.disabled = false;
-    pickerHoverExpandCheckbox.checked = true;
+  // Flatten and expand-on-hover are independent; only clear include-folders when
+  // flatten is turned off (it has no meaning without flatten).
+  if (!pickerFlattenCheckbox.checked) {
+    pickerIncludeFoldersCheckbox.checked = false;
   }
+  updateSelectedInfo();
+});
+
+pickerIncludeFoldersCheckbox.addEventListener("change", () => {
   updateSelectedInfo();
 });
 
 pickerHoverExpandCheckbox.addEventListener("change", () => {
-  if (pickerHoverExpandCheckbox.checked) {
-    pickerFlattenCheckbox.checked = false;
-  }
   updateSelectedInfo();
 });
 
 function getRootNode(): browser.Bookmarks.BookmarkTreeNode | undefined {
-  if (!bookmarkRootPrefix || !bookmarkRootPrefix.trim()) return undefined;
-  const segments = parsePathSegments(bookmarkRootPrefix);
+  const segments = bookmarkRootPrefix.map((s) => s.trim()).filter(Boolean);
   if (segments.length === 0) return undefined;
   return findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], segments) as
     | browser.Bookmarks.BookmarkTreeNode
     | undefined;
+}
+
+// Read-only display string for the root prefix segments (first segment's
+// special-root placeholder shown with its friendly folder name).
+function formatRootPrefixDisplay(segments: string[]): string {
+  if (segments.length === 0) return "/";
+  const shown = segments.map((seg, idx) =>
+    idx === 0 ? formatSpecialRootForDisplay(seg, rawBookmarkTree) : seg,
+  );
+  return "/" + shown.join("/");
+}
+
+function setBookmarkRootPrefix(segments: string[]): void {
+  bookmarkRootPrefix = segments.map((s) => s.trim()).filter(Boolean);
+  if (bookmarkRootInput) {
+    bookmarkRootInput.value = formatRootPrefixDisplay(bookmarkRootPrefix);
+  }
 }
 
 pickerUpBtn.addEventListener("click", () => {
@@ -351,23 +398,10 @@ pickerSelectCurrentBtn.addEventListener("click", () => {
 pickerConfirmBtn.addEventListener("click", () => {
   if (pickerMode === "selectRoot") {
     const targetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
-    if (!targetId || targetId === "0") {
-      if (bookmarkRootInput) {
-        bookmarkRootInput.value = "/";
-      }
-      bookmarkRootPrefix = "/";
-      markDirty();
-      renderMenus();
-      pickerDialog.close();
-      return;
-    }
-    const targetNode = findBookmarkNode(targetId, rawBookmarkTree);
+    const targetNode = targetId && targetId !== "0" ? findBookmarkNode(targetId, rawBookmarkTree) : undefined;
     if (!targetNode || targetNode.id === "0") {
-      if (bookmarkRootInput) {
-        bookmarkRootInput.value = "/";
-      }
-      bookmarkRootPrefix = "/";
-      markDirty();
+      setBookmarkRootPrefix([]);
+      markConnectionDirty();
       renderMenus();
       pickerDialog.close();
       return;
@@ -382,12 +416,8 @@ pickerConfirmBtn.addEventListener("click", () => {
         }
         return n.title.trim();
       });
-    const rootPathStr = "/" + segments.join("/");
-    if (bookmarkRootInput) {
-      bookmarkRootInput.value = rootPathStr;
-    }
-    bookmarkRootPrefix = rootPathStr;
-    markDirty();
+    setBookmarkRootPrefix(segments);
+    markConnectionDirty();
     renderMenus();
     pickerDialog.close();
     return;
@@ -399,7 +429,8 @@ pickerConfirmBtn.addEventListener("click", () => {
   const isFolder = selectedNode?.children !== undefined || selectedNode?.url === undefined;
   const isFlatten = isFolder && pickerFlattenCheckbox.checked;
   const itemType = isFlatten ? "flattenFolder" : isFolder ? "folder" : "bookmark";
-  const expandOnHover = isFolder && !isFlatten ? pickerHoverExpandCheckbox.checked : undefined;
+  const expandOnHover = isFolder ? pickerHoverExpandCheckbox.checked : undefined;
+  const includeFolders = isFlatten && pickerIncludeFoldersCheckbox.checked ? true : undefined;
   const relativePath = getItemRelativePath(
     pickerSelectedId,
     rawBookmarkTree as BookmarkNode[],
@@ -410,6 +441,7 @@ pickerConfirmBtn.addEventListener("click", () => {
     bookmarkId: pickerSelectedId,
     type: itemType,
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
+    ...(includeFolders ? { includeFolders } : {}),
     ...(relativePath !== undefined ? { path: relativePath } : {}),
     ...(selectedNode?.url ? { url: selectedNode.url } : {}),
   };
@@ -429,6 +461,11 @@ pickerConfirmBtn.addEventListener("click", () => {
       existing.bookmarkId = newItem.bookmarkId;
       existing.type = newItem.type;
       existing.expandOnHover = newItem.expandOnHover;
+      if (newItem.includeFolders) {
+        existing.includeFolders = true;
+      } else {
+        delete existing.includeFolders;
+      }
       existing.path = newItem.path;
       existing.url = newItem.url;
       renderMenus();
@@ -438,11 +475,27 @@ pickerConfirmBtn.addEventListener("click", () => {
   }
 });
 
-function openBookmarkPicker(
+// Re-read the browser bookmark tree into the cache. The tree is otherwise
+// loaded once at init, so bookmarks the user creates in the browser afterwards
+// would be missing from the picker until the options page is reopened.
+async function refreshBookmarkTree(): Promise<void> {
+  try {
+    const tree = await browser.bookmarks.getTree();
+    rawBookmarkTree = tree;
+    bookmarkOptions = flattenBookmarks(tree);
+  } catch {
+    // Keep the previous cache if the read fails.
+  }
+}
+
+async function openBookmarkPicker(
   mode: "addItem" | "editItem" | "selectRoot",
   menuIndex = -1,
   itemIndex = -1,
-): void {
+): Promise<void> {
+  // Pick up bookmarks added in the browser since the page (or last picker) loaded.
+  await refreshBookmarkTree();
+
   pickerMode = mode;
   pickerTargetMenuIndex = menuIndex;
   pickerTargetItemIndex = itemIndex;
@@ -452,6 +505,7 @@ function openBookmarkPicker(
 
   let initialFlatten = false;
   let initialHover = true;
+  let initialIncludeFolders = false;
 
   if (mode === "editItem") {
     const existing = menus[menuIndex]?.items[itemIndex];
@@ -460,6 +514,7 @@ function openBookmarkPicker(
       pickerSelectedId = node?.id ?? existing.bookmarkId ?? null;
       initialFlatten = existing.type === "flattenFolder";
       initialHover = existing.expandOnHover !== false;
+      initialIncludeFolders = existing.includeFolders === true;
       if (node) {
         const path = getFolderPath(node.id, rawBookmarkTree as BookmarkNode[]);
         if (path.length > 1) {
@@ -482,7 +537,7 @@ function openBookmarkPicker(
     }
   } else if (mode === "selectRoot") {
     pickerSelectedId = null;
-    if (bookmarkRootPrefix.trim()) {
+    if (bookmarkRootPrefix.length > 0) {
       const currentRoot = getRootNode();
       if (currentRoot) {
         pickerSelectedId = currentRoot.id;
@@ -500,10 +555,12 @@ function openBookmarkPicker(
   }
 
   pickerFlattenCheckbox.checked = initialFlatten;
-  pickerHoverExpandCheckbox.checked = !initialFlatten && initialHover;
-  pickerHoverExpandCheckbox.disabled = initialFlatten;
+  pickerHoverExpandCheckbox.checked = initialHover;
+  pickerHoverExpandCheckbox.disabled = false;
+  pickerIncludeFoldersCheckbox.checked = initialFlatten && initialIncludeFolders;
   pickerFlattenLabel.style.display = "none";
   pickerHoverExpandLabel.style.display = "none";
+  pickerIncludeFoldersLabel.style.display = "none";
 
   if (mode === "selectRoot") {
     pickerTitle.textContent = t("picker.selectRootTitle");
@@ -547,7 +604,7 @@ function getItemNode(item: StoredMenuItem): browser.Bookmarks.BookmarkTreeNode |
 function getItemPathAndUrl(
   bookmarkId: string,
   nodes: browser.Bookmarks.BookmarkTreeNode[],
-  rootPrefix?: string,
+  rootPrefix?: string[],
 ): { path?: string[]; url?: string } {
   const node = findBookmarkNode(bookmarkId, nodes);
   const path = getItemRelativePath(bookmarkId, nodes as BookmarkNode[], rootPrefix);
@@ -560,7 +617,7 @@ function getItemPathAndUrl(
 function enrichMenuItemPaths(
   items: StoredMenuItem[],
   nodes: browser.Bookmarks.BookmarkTreeNode[],
-  rootPrefix?: string,
+  rootPrefix?: string[],
 ): void {
   if (nodes.length === 0) return;
   for (const item of items) {
@@ -731,19 +788,9 @@ function updateSelectedInfo(): void {
   if (pickerMode === "selectRoot") {
     pickerFlattenLabel.style.display = "none";
     pickerHoverExpandLabel.style.display = "none";
+    pickerIncludeFoldersLabel.style.display = "none";
     const selectedTargetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
-    if (selectedTargetId) {
-      const selectedNode = findBookmarkNode(selectedTargetId, rawBookmarkTree);
-      pickerSelectedInfo.textContent = t("picker.selectedFolder", {
-        flatten: "",
-        name: selectedNode?.title || t("common.folder"),
-        hint: "",
-      });
-      pickerConfirmBtn.disabled = false;
-    } else {
-      pickerSelectedInfo.textContent = t("picker.selectRootHint");
-      pickerConfirmBtn.disabled = true;
-    }
+    pickerConfirmBtn.disabled = !selectedTargetId;
     return;
   }
 
@@ -753,29 +800,19 @@ function updateSelectedInfo(): void {
     if (isFolder) {
       pickerFlattenLabel.style.display = "inline-flex";
       pickerHoverExpandLabel.style.display = "inline-flex";
-      const isFlatten = pickerFlattenCheckbox.checked;
-      const isHover = pickerHoverExpandCheckbox.checked;
-      const hoverHint = !isFlatten ? (isHover ? t("picker.hintHover") : t("picker.hintClick")) : "";
-      pickerSelectedInfo.textContent = t("picker.selectedFolder", {
-        flatten: isFlatten ? t("picker.flattenTag") : "",
-        name: selectedNode?.title || t("common.folder"),
-        hint: hoverHint,
-      });
+      pickerIncludeFoldersLabel.style.display = pickerFlattenCheckbox.checked ? "inline-flex" : "none";
     } else {
       pickerFlattenLabel.style.display = "none";
       pickerHoverExpandLabel.style.display = "none";
+      pickerIncludeFoldersLabel.style.display = "none";
       pickerFlattenCheckbox.checked = false;
-      pickerHoverExpandCheckbox.checked = true;
-      pickerHoverExpandCheckbox.disabled = false;
-      pickerSelectedInfo.textContent = t("picker.selectedBookmark", {
-        name: selectedNode?.title || t("common.bookmark"),
-      });
+      pickerIncludeFoldersCheckbox.checked = false;
     }
     pickerConfirmBtn.disabled = false;
   } else {
     pickerFlattenLabel.style.display = "none";
     pickerHoverExpandLabel.style.display = "none";
-    pickerSelectedInfo.textContent = t("picker.selectHint");
+    pickerIncludeFoldersLabel.style.display = "none";
     pickerConfirmBtn.disabled = true;
   }
 }
@@ -967,18 +1004,16 @@ async function initialize(): Promise<void> {
   instanceLabel.value = config.instanceLabel;
   widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
+  bookmarkRootPrefix = rootPrefix;
   if (bookmarkRootInput) {
-    bookmarkRootPrefix = rootPrefix;
-    bookmarkRootInput.value = rootPrefix;
-    bookmarkRootInput.addEventListener("input", () => {
-      bookmarkRootPrefix = bookmarkRootInput.value.trim();
-      markDirty();
-      renderMenus();
-    });
+    // Read-only display: the root is set only via the "pick root" button, so a
+    // folder title containing "/" can be represented (a typed string can't).
+    bookmarkRootInput.readOnly = true;
+    bookmarkRootInput.value = formatRootPrefixDisplay(bookmarkRootPrefix);
   }
   if (pickBookmarkRootBtn) {
     pickBookmarkRootBtn.addEventListener("click", () => {
-      openBookmarkPicker("selectRoot");
+      void openBookmarkPicker("selectRoot");
     });
   }
   menus = structuredClone(config.panel.menus);
@@ -987,7 +1022,7 @@ async function initialize(): Promise<void> {
   clearDirty();
 }
 
-async function persist(): Promise<void> {
+async function persistConnection(): Promise<void> {
   if (!isLocalDesktopUrl(desktopUrl.value)) {
     desktopUrl.setCustomValidity(t("validation.localWsAddress"));
     desktopUrl.reportValidity();
@@ -995,25 +1030,41 @@ async function persist(): Promise<void> {
   }
   desktopUrl.setCustomValidity("");
 
-  if (bookmarkRootInput) {
-    await saveBookmarkRootPrefix(bookmarkRootInput.value.trim());
-  }
+  await saveBookmarkRootPrefix(bookmarkRootPrefix);
 
+  const currentConfig = await loadConfig();
+  await saveConfig({
+    ...currentConfig,
+    desktopWidget: {
+      url: desktopUrl.value.trim(),
+    },
+    instanceLabel: instanceLabel.value.trim(),
+  });
+  await browser.runtime.sendMessage({ type: "configSaved" });
+  clearConnectionDirty();
+  const savedMsg = t("status.saved");
+  connectionStatus.value = savedMsg;
+  setTimeout(() => {
+    if (connectionStatus.value === savedMsg) {
+      connectionStatus.value = "";
+    }
+  }, 1_500);
+}
+
+async function persistMenus(): Promise<void> {
   for (const menu of menus) {
     enrichMenuItemPaths(menu.items, rawBookmarkTree, bookmarkRootPrefix);
   }
 
+  const currentConfig = await loadConfig();
   await saveConfig({
-    desktopWidget: {
-      url: desktopUrl.value,
-    },
-    instanceLabel: instanceLabel.value,
+    ...currentConfig,
     panel: {
       menus,
     },
   });
   await browser.runtime.sendMessage({ type: "configSaved" });
-  clearDirty();
+  clearMenusDirty();
   const savedMsg = t("status.saved");
   status.value = savedMsg;
   setTimeout(() => {
@@ -1023,10 +1074,9 @@ async function persist(): Promise<void> {
   }, 1_500);
 }
 
+
 async function previewCurrentConfig(): Promise<void> {
-  if (bookmarkRootInput) {
-    await saveBookmarkRootPrefix(bookmarkRootInput.value.trim());
-  }
+  await saveBookmarkRootPrefix(bookmarkRootPrefix);
 
   const previewConfig: ExtensionConfig = {
     desktopWidget: {
@@ -1449,16 +1499,33 @@ function initItemSettingsPopover(): void {
     const item = menu?.items[activeItemSettings.itemIndex];
     if (!item) return;
 
+    // Flatten and expand-on-hover are independent: expand-on-hover applies to the
+    // sub-folders emitted when "include folders" is on, so toggling flatten must
+    // not change the hover checkbox.
     if (itemSettingFlatten.checked) {
       item.type = "flattenFolder";
-      delete item.expandOnHover;
-      itemSettingHoverExpand.checked = false;
-      itemSettingHoverExpand.disabled = true;
+      itemSettingIncludeFoldersLabel.style.display = "inline-flex";
+      itemSettingIncludeFolders.checked = item.includeFolders === true;
     } else {
       item.type = "folder";
-      item.expandOnHover = true;
-      itemSettingHoverExpand.disabled = false;
-      itemSettingHoverExpand.checked = true;
+      delete item.includeFolders;
+      itemSettingIncludeFoldersLabel.style.display = "none";
+      itemSettingIncludeFolders.checked = false;
+    }
+    renderMenus();
+    markDirty();
+  });
+
+  itemSettingIncludeFolders.addEventListener("change", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item) return;
+
+    if (itemSettingIncludeFolders.checked) {
+      item.includeFolders = true;
+    } else {
+      delete item.includeFolders;
     }
     renderMenus();
     markDirty();
@@ -1470,14 +1537,8 @@ function initItemSettingsPopover(): void {
     const item = menu?.items[activeItemSettings.itemIndex];
     if (!item) return;
 
-    if (itemSettingHoverExpand.checked) {
-      item.type = "folder";
-      item.expandOnHover = true;
-      itemSettingFlatten.checked = false;
-    } else {
-      item.type = "folder";
-      item.expandOnHover = false;
-    }
+    // Only controls expand-on-hover; leaves the flatten/include-folders state alone.
+    item.expandOnHover = itemSettingHoverExpand.checked;
     renderMenus();
     markDirty();
   });
@@ -1513,7 +1574,7 @@ function initItemSettingsPopover(): void {
     if (!activeItemSettings) return;
     const { menuIndex, itemIndex } = activeItemSettings;
     closeItemSettingsPopover();
-    openBookmarkPicker("editItem", menuIndex, itemIndex);
+    void openBookmarkPicker("editItem", menuIndex, itemIndex);
   });
 
   document.addEventListener("click", (e) => {
@@ -1575,7 +1636,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
       node?.title ??
       (lastSeg
         ? formatSpecialRootForDisplay(lastSeg, rawBookmarkTree)
-        : (bookmarkRootPrefix || item.bookmarkId || ""));
+        : (item.bookmarkId || ""));
     itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
     itemSettingRename.value = item.rename ?? item.emoji ?? "";
     itemSettingTabMode.value = item.tabMode ?? "";
@@ -1584,13 +1645,10 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
       itemSettingsFolderControls.style.display = "flex";
       const isFlatten = item.type === "flattenFolder";
       itemSettingFlatten.checked = isFlatten;
-      if (isFlatten) {
-        itemSettingHoverExpand.checked = false;
-        itemSettingHoverExpand.disabled = true;
-      } else {
-        itemSettingHoverExpand.disabled = false;
-        itemSettingHoverExpand.checked = item.expandOnHover !== false;
-      }
+      itemSettingHoverExpand.disabled = false;
+      itemSettingHoverExpand.checked = item.expandOnHover !== false;
+      itemSettingIncludeFoldersLabel.style.display = isFlatten ? "inline-flex" : "none";
+      itemSettingIncludeFolders.checked = isFlatten && item.includeFolders === true;
     } else {
       itemSettingsFolderControls.style.display = "none";
     }
@@ -1623,7 +1681,7 @@ function initAddItemPopover(): void {
     const menuIdx = activeAddMenuIndex;
     closeAddItemDropdown();
     if (menuIdx >= 0 && menuIdx < menus.length) {
-      openBookmarkPicker("addItem", menuIdx);
+      void openBookmarkPicker("addItem", menuIdx);
     }
   });
 
@@ -1767,8 +1825,8 @@ function renderMenus(): void {
       const styleBtn = document.createElement("button");
       styleBtn.type = "button";
       styleBtn.className = "action-btn menu-header-btn";
-      styleBtn.textContent = t("menu.settings");
-      styleBtn.title = t("menu.settingsTitle");
+      styleBtn.textContent = t("menu.style");
+      styleBtn.title = t("menu.styleTitle");
       styleBtn.addEventListener("click", () => {
         openMenuStylePopover(menuIndex, styleBtn);
       });
@@ -1995,7 +2053,7 @@ function renderMenus(): void {
             node?.title ??
             (lastSeg
               ? formatSpecialRootForDisplay(lastSeg, rawBookmarkTree)
-              : (bookmarkRootPrefix || item.bookmarkId || ""));
+              : (item.bookmarkId || ""));
           const customRename = item.rename || item.emoji;
           const iconPrefix = isFolderNode ? "📁" : "🔖";
 
@@ -2028,7 +2086,9 @@ function renderMenus(): void {
             const badge = document.createElement("span");
             badge.className = "item-tag item-tag-flatten";
             const childCount = node?.children
-              ? node.children.filter((c) => c.url !== undefined).length
+              ? (item.includeFolders
+                  ? node.children.length
+                  : node.children.filter((c) => c.url !== undefined).length)
               : 0;
             badge.textContent = t("item.flattenBadge", { count: childCount });
             badge.title = t("item.flattenBadgeTitle", { count: childCount });
@@ -2267,7 +2327,7 @@ function element<T extends HTMLElement>(id: string): T {
 }
 
 function exportSettings(): void {
-  if (isDirty) {
+  if (isMenusDirty) {
     const msg = t("export.saveFirst");
     status.value = msg;
     setTimeout(() => {
@@ -2320,6 +2380,7 @@ function exportSettings(): void {
           ...(item.rename ? { rename: item.rename } : {}),
           ...(item.color ? { color: item.color } : {}),
           ...(item.expandOnHover !== undefined ? { expandOnHover: item.expandOnHover } : {}),
+          ...(item.includeFolders ? { includeFolders: true } : {}),
           ...(item.tabMode ? { tabMode: item.tabMode } : {}),
         };
         return exportedItem;
@@ -2418,6 +2479,7 @@ async function importSettings(file: File): Promise<void> {
           ...(typeof itemRecord.expandOnHover === "boolean"
             ? { expandOnHover: itemRecord.expandOnHover }
             : {}),
+          ...(itemRecord.includeFolders === true ? { includeFolders: true } : {}),
           ...(itemRecord.tabMode === "newTab" || itemRecord.tabMode === "replace"
             ? { tabMode: itemRecord.tabMode }
             : {}),
@@ -2456,7 +2518,7 @@ exportBtn.addEventListener("click", () => {
 
 importBtn.addEventListener("click", () => {
   if (
-    isDirty &&
+    isMenusDirty &&
     !window.confirm(t("import.confirmOverwrite"))
   ) {
     return;

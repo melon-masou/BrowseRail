@@ -225,6 +225,9 @@ export interface StoredMenuItem {
   rename?: string;
   type?: MenuItemType;
   expandOnHover?: boolean;
+  // For flattenFolder items: also emit the folder's sub-folders (as folders
+  // inheriting this item's folder options), not just its bookmarks. Default off.
+  includeFolders?: boolean;
   tabMode?: TabMode;
   units?: number;
   transparent?: boolean;
@@ -318,6 +321,7 @@ export interface ExportedMenuItem {
   color?: string;
   expandDirection?: ExpandDirection;
   expandOnHover?: boolean;
+  includeFolders?: boolean;
   tabMode?: TabMode;
 }
 

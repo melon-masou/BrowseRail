@@ -36,6 +36,7 @@ pub struct TrayStateSnapshot {
     pub surfaces_text: String,
     pub tooltip: String,
     pub display_panels: bool,
+    pub lock_editing: bool,
 }
 
 pub enum NativeCommand {
@@ -129,6 +130,7 @@ pub enum NativeCommand {
         menu_uid: String,
     },
     ToggleDisplayPanels,
+    ToggleLockEditing,
     RefreshWindowLevels,
     UpdateTray,
 }
@@ -156,6 +158,7 @@ struct PendingWindowPairing {
 pub struct NativeReactor {
     app: AppHandle,
     display_panels: Arc<AtomicBool>,
+    lock_editing: Arc<AtomicBool>,
     popups: Arc<PopupRegistry>,
     registry: Arc<SessionRegistry>,
     socket: Arc<SocketServer>,
@@ -268,6 +271,7 @@ impl NativeReactor {
     pub fn start(
         app: AppHandle,
         display_panels: Arc<AtomicBool>,
+        lock_editing: Arc<AtomicBool>,
         popups: Arc<PopupRegistry>,
         registry: Arc<SessionRegistry>,
         socket: Arc<SocketServer>,
@@ -277,6 +281,7 @@ impl NativeReactor {
         let mut reactor = Self {
             app,
             display_panels,
+            lock_editing,
             popups,
             registry,
             socket,
@@ -572,6 +577,17 @@ impl NativeReactor {
                         }
                     }
                     self.refresh_window_levels();
+                    self.check_update_tray();
+                }
+                NativeCommand::ToggleLockEditing => {
+                    let next = !self.lock_editing.load(Ordering::Relaxed);
+                    self.lock_editing.store(next, Ordering::Relaxed);
+                    let mut settings = crate::settings::load(&self.app).unwrap_or_default();
+                    settings.lock_editing = next;
+                    settings.listener_port = self.socket.port();
+                    let _ = crate::settings::save(&self.app, &settings);
+                    // Tell every menu webview so it can enable/disable right-click customize live.
+                    let _ = self.app.emit("editing-lock-changed", next);
                     self.check_update_tray();
                 }
                 NativeCommand::RefreshWindowLevels => {
@@ -1266,6 +1282,7 @@ impl NativeReactor {
         let surfaces_text = self.format_surfaces_status();
         let tooltip = self.format_tray_tooltip();
         let display_panels = self.display_panels.load(Ordering::Relaxed);
+        let lock_editing = self.lock_editing.load(Ordering::Relaxed);
 
         let next = TrayStateSnapshot {
             server_text,
@@ -1273,6 +1290,7 @@ impl NativeReactor {
             surfaces_text,
             tooltip,
             display_panels,
+            lock_editing,
         };
 
         if self.last_tray.as_ref() == Some(&next) {

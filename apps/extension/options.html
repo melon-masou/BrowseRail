@@ -42,24 +42,25 @@
         </label>
       </header>
 
-      <div id="state-card" class="state-card" data-state="disconnected">
-        <div class="state-indicator"></div>
-        <div class="state-info">
-          <div class="state-header">
-            <span class="state-title" data-i18n="state.desktopWidget">Desktop Widget:</span>
-            <span id="state-badge" class="state-badge" data-i18n="state.badge.disconnected">Disconnected</span>
+      <!-- Card 1: Desktop Widget & Connection Settings -->
+      <form id="connection-form" class="options-card connection-card">
+        <div id="state-card" class="state-bar state-card" data-state="disconnected">
+          <div class="state-indicator"></div>
+          <div class="state-info">
+            <div class="state-header">
+              <span class="state-title" data-i18n="state.desktopWidget">Desktop Widget:</span>
+              <span id="state-badge" class="state-badge" data-i18n="state.badge.disconnected">Disconnected</span>
+            </div>
+            <div id="state-detail" class="state-detail" data-i18n="state.waiting">Waiting for connection…</div>
+            <output id="resync-status" class="resync-status" aria-live="polite"></output>
           </div>
-          <div id="state-detail" class="state-detail" data-i18n="state.waiting">Waiting for connection…</div>
-          <output id="resync-status" class="resync-status" aria-live="polite"></output>
+          <div class="state-actions">
+            <button id="resync-button" class="action-btn" type="button" data-i18n="btn.resync" disabled>Resync</button>
+            <button id="reconnect-button" class="action-btn reconnect-btn" type="button" data-i18n="btn.reconnect">Reconnect</button>
+            <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button" data-i18n="btn.disable">Disable</button>
+          </div>
         </div>
-        <div class="state-actions">
-          <button id="resync-button" class="action-btn" type="button" data-i18n="btn.resync" disabled>Resync</button>
-          <button id="reconnect-button" class="action-btn reconnect-btn" type="button" data-i18n="btn.reconnect">Reconnect</button>
-          <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button" data-i18n="btn.disable">Disable</button>
-        </div>
-      </div>
 
-      <form id="settings">
         <div class="fields-row">
           <label>
             <span data-i18n="form.instanceLabel">Instance label</span>
@@ -101,11 +102,20 @@
               <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
             </span>
             <span class="input-row">
-              <input id="bookmark-root-input" type="text" placeholder="/" />
+              <input id="bookmark-root-input" type="text" placeholder="/" readonly />
               <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
             </span>
           </label>
         </div>
+
+        <div class="form-actions-row connection-actions-row">
+          <button type="submit" id="save-connection-btn" class="save-btn" data-i18n="btn.save">Save</button>
+          <output id="connection-status"></output>
+        </div>
+      </form>
+
+      <!-- Card 2: Menus Configuration -->
+      <form id="menus-form" class="options-card menus-card">
         <section class="menus-section">
           <div class="menus-section-header">
             <h2 data-i18n="section.menus">Menus</h2>
@@ -264,6 +274,10 @@
                 <input type="checkbox" id="item-setting-hover-expand" checked />
                 <span data-i18n="itemSettings.hoverExpand">Expand on hover</span>
               </label>
+              <label class="item-setting-check-label" id="item-setting-include-folders-label" style="display: none;">
+                <input type="checkbox" id="item-setting-include-folders" />
+                <span data-i18n="itemSettings.includeFolders">Include folders</span>
+              </label>
             </div>
             <div class="item-settings-actions">
               <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
@@ -297,7 +311,6 @@
           </div>
           <div class="picker-content" id="picker-content"></div>
           <div class="picker-footer">
-            <div id="picker-selected-info" class="picker-selected-info"></div>
             <div class="picker-actions">
               <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
                 <input type="checkbox" id="picker-flatten-checkbox" />
@@ -306,6 +319,10 @@
               <label id="picker-hover-expand-label" class="picker-flatten-check" style="display: none;">
                 <input type="checkbox" id="picker-hover-expand-checkbox" checked />
                 <span data-i18n="picker.hoverExpand">Expand on hover</span>
+              </label>
+              <label id="picker-include-folders-label" class="picker-flatten-check" style="display: none;">
+                <input type="checkbox" id="picker-include-folders-checkbox" />
+                <span data-i18n="picker.includeFolders">Include folders</span>
               </label>
               <button id="picker-confirm-btn" type="button" class="picker-confirm-btn" data-i18n="picker.add">Add</button>
             </div>
