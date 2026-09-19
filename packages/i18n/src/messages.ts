@@ -150,12 +150,12 @@ export const en = {
   "btn.addWebpageSet": "+ Add webpage set",
   "webpageSets.empty": "No webpage sets defined yet. Click \"+ Add webpage set\" above to create one.",
   "webpageSets.namePlaceholder": "Set name (e.g. Work, Dev, Video)",
-  "webpageSets.patternsPlaceholder": "One pattern per line, e.g.:\ngithub.com\n*.google.com\nlocalhost:*\nhttps://example.com/docs/*\n/regex/",
+  "webpageSets.patternsPlaceholder": "One pattern per line, e.g.:\ngithub.com\nhttps://example.com/docs\n*.google.com\nlocalhost:*\n/regex/",
   "webpageSets.patternCount": "{count} patterns",
   "webpageSets.deleteSet": "Delete webpage set",
   "webpageSets.newSetName": "Webpage Set {n}",
   "webpageSets.defaultName": "Untitled Set",
-  "webpageSets.syntaxHint": "Supports domain (github.com), wildcard (*.google.com), URL prefix, or /regex/, one per line",
+  "webpageSets.syntaxHint": "Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line",
 
   // Item settings popover
   "itemSettings.title": "Item Settings",
@@ -427,12 +427,12 @@ export const zhCN: Record<MessageKey, string> = {
   "btn.addWebpageSet": "+ 添加网页集",
   "webpageSets.empty": "暂未定义网页集。点击上方“+ 添加网页集”创建。",
   "webpageSets.namePlaceholder": "集合名称（例如：工作、开发、视频）",
-  "webpageSets.patternsPlaceholder": "每行一个匹配规则，例如：\ngithub.com\n*.google.com\nlocalhost:*\nhttps://example.com/docs/*\n/regex/",
+  "webpageSets.patternsPlaceholder": "每行一个匹配规则，例如：\ngithub.com\nhttps://example.com/docs\n*.google.com\nlocalhost:*\n/regex/",
   "webpageSets.patternCount": "{count} 个规则",
   "webpageSets.deleteSet": "删除网页集",
   "webpageSets.newSetName": "网页集 {n}",
   "webpageSets.defaultName": "未命名网页集",
-  "webpageSets.syntaxHint": "支持域名 (github.com)、通配符 (*.google.com)、URL 前缀或 /regex/，每行一条",
+  "webpageSets.syntaxHint": "支持域名 (github.com)、URL 前缀 (https://example.com/docs)、通配符 (*.google.com) 或 /regex/，每行一条",
 
   // Item settings popover
   "itemSettings.title": "项目设置",

@@ -415,6 +415,12 @@ export function matchUrlPattern(pattern: string, url: string): boolean {
         if (new RegExp(`^${escaped}$`, "i").test(parsed.hostname)) {
           return true;
         }
+        if (lowerPattern.startsWith("*.")) {
+          const apex = lowerPattern.slice(2);
+          if (parsed.hostname === apex || parsed.hostname.endsWith("." + apex)) {
+            return true;
+          }
+        }
       } catch {}
       return false;
     } catch {
@@ -437,14 +443,23 @@ export function matchUrlPattern(pattern: string, url: string): boolean {
     const slashIdx = lowerPattern.indexOf("/");
     if (slashIdx !== -1) {
       const targetHost = lowerPattern.slice(0, slashIdx);
-      const targetPath = lowerPattern.slice(slashIdx);
+      const rawTargetPath = lowerPattern.slice(slashIdx);
+      const targetPath =
+        rawTargetPath.endsWith("/") && rawTargetPath.length > 1
+          ? rawTargetPath.slice(0, -1)
+          : rawTargetPath;
 
       const hostMatches =
         host === targetHost ||
         hostWithPort === targetHost ||
         host.endsWith(`.${targetHost}`);
 
-      return hostMatches && pathAndQuery.startsWith(targetPath);
+      return (
+        hostMatches &&
+        (pathAndQuery === targetPath ||
+          pathAndQuery.startsWith(targetPath + "/") ||
+          pathAndQuery.startsWith(rawTargetPath))
+      );
     }
 
     if (lowerPattern.includes(":")) {

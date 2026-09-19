@@ -131,12 +131,15 @@ describe("URL pattern matching", () => {
   it("matches domain with path prefix", async () => {
     const { matchUrlPattern } = await import("./index");
     expect(matchUrlPattern("bilibili.com/video", "https://www.bilibili.com/video/BV123")).toBe(true);
+    expect(matchUrlPattern("bilibili.com/video/", "https://www.bilibili.com/video")).toBe(true);
     expect(matchUrlPattern("bilibili.com/video", "https://www.bilibili.com/anime/123")).toBe(false);
   });
 
   it("matches wildcard patterns", async () => {
     const { matchUrlPattern } = await import("./index");
     expect(matchUrlPattern("*.google.com", "https://mail.google.com/mail")).toBe(true);
+    expect(matchUrlPattern("*.google.com", "https://google.com")).toBe(true);
+    expect(matchUrlPattern("*.google.com", "https://google.com/")).toBe(true);
     expect(matchUrlPattern("https://*.google.com/*", "https://www.google.com/search?q=hi")).toBe(true);
     expect(matchUrlPattern("*://localhost:*/*", "http://localhost:3000/app")).toBe(true);
     expect(matchUrlPattern("*://localhost:*/*", "https://remote.com/app")).toBe(false);

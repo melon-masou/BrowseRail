@@ -34,7 +34,20 @@ export function browserKind(): BrowserKind {
 }
 
 export async function listBrowserWindows(): Promise<BrowserWindowCandidate[]> {
-  const windows = await browser.windows.getAll({ windowTypes: ["normal"], populate: true });
+  const [windows, activeTabs] = await Promise.all([
+    browser.windows.getAll({ windowTypes: ["normal"], populate: true }),
+    browser.tabs.query({ active: true }).catch(() => []),
+  ]);
+
+  const activeTabMap = new Map<number, string>();
+  for (const tab of activeTabs) {
+    if (tab.windowId !== undefined) {
+      const url = tab.url || (tab as { pendingUrl?: string }).pendingUrl;
+      if (url) {
+        activeTabMap.set(tab.windowId, url);
+      }
+    }
+  }
 
   return windows.flatMap((window) => {
     if (
@@ -48,7 +61,10 @@ export async function listBrowserWindows(): Promise<BrowserWindowCandidate[]> {
     }
 
     const activeTab = window.tabs?.find((tab) => tab.active);
-    const activeTabUrl = activeTab?.url;
+    const activeTabUrl =
+      (window.id !== undefined ? activeTabMap.get(window.id) : undefined) ||
+      activeTab?.url ||
+      (activeTab as { pendingUrl?: string } | undefined)?.pendingUrl;
 
     return [
       {

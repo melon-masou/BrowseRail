@@ -212,10 +212,17 @@ browser.bookmarks.onRemoved.addListener(requestSync);
 browser.tabs?.onActivated?.addListener(() => {
   requestSync();
 });
-browser.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
-  if (changeInfo.url || changeInfo.status === "complete") {
-    requestSync();
-  }
+browser.tabs?.onUpdated?.addListener(() => {
+  requestSync();
+});
+browser.tabs?.onReplaced?.addListener(() => {
+  requestSync();
+});
+browser.tabs?.onAttached?.addListener(() => {
+  requestSync();
+});
+browser.tabs?.onDetached?.addListener(() => {
+  requestSync();
 });
 let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -640,20 +647,27 @@ async function syncOnce(): Promise<void> {
   const webpageSetMap = new Map(webpageSets.map((ws) => [ws.uid, ws]));
 
   const panels: PanelSnapshot[] = windows.map((window) => {
-    const windowMenus = menus.filter((menu) => {
+    const windowMenus = menus.map((menu) => {
       const orig = activeMenus.find((m) => m.uid === menu.uid);
       const setUids = orig?.webpageSetUids;
       if (!setUids || setUids.length === 0) {
-        return true;
+        return menu;
       }
-      if (!window.activeTabUrl) {
-        return false;
+      const isMatch =
+        Boolean(window.activeTabUrl) &&
+        setUids.some((setUid) => {
+          const ws = webpageSetMap.get(setUid);
+          if (!ws) return false;
+          return isUrlMatchingSet(window.activeTabUrl!, ws.patterns);
+        });
+
+      if (!isMatch) {
+        return {
+          ...menu,
+          attachmentMode: "none" as const,
+        };
       }
-      return setUids.some((setUid) => {
-        const ws = webpageSetMap.get(setUid);
-        if (!ws) return false;
-        return isUrlMatchingSet(window.activeTabUrl!, ws.patterns);
-      });
+      return menu;
     });
 
     return {
