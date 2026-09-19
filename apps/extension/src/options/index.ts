@@ -186,6 +186,9 @@ const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-b
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
 const addWebpageSetBtn = element<HTMLButtonElement>("add-webpage-set-btn");
 const webpageSetsList = element<HTMLDivElement>("webpage-sets-list");
+const menuWebpageSetsPopover = element<HTMLDivElement>("menu-webpage-sets-popover");
+const menuWebpageSetsTitle = element<HTMLSpanElement>("menu-webpage-sets-title");
+const menuWebpageSetsClose = element<HTMLButtonElement>("menu-webpage-sets-close");
 const menuSettingWebpageSetsList = element<HTMLDivElement>("menu-setting-webpage-sets-list");
 const syncEnabledToggle = document.getElementById("sync-enabled-toggle") as HTMLInputElement | null;
 const bookmarkRootInput = document.getElementById("bookmark-root-input") as HTMLInputElement | null;
@@ -210,6 +213,9 @@ let activeStyleBtn: HTMLElement | null = null;
 
 let activeBehaviorMenuIndex = -1;
 let activeBehaviorBtn: HTMLElement | null = null;
+
+let activeWebpageSetsMenuIndex = -1;
+let activeWebpageSetsBtn: HTMLElement | null = null;
 
 let activeItemSettings: { menuIndex: number; itemIndex: number } | null = null;
 let activeItemSettingsBtn: HTMLElement | null = null;
@@ -999,6 +1005,7 @@ async function initialize(): Promise<void> {
   initColorPopover();
   initMenuStylePopover();
   initMenuBehaviorPopover();
+  initMenuWebpageSetsPopover();
   initItemSettingsPopover();
   initAddItemPopover();
   void refreshDesktopState();
@@ -1406,6 +1413,7 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
     return;
   }
   closeAddItemDropdown();
+  closeMenuWebpageSetsPopover();
   activeColorTarget = target;
   activeColorSwatchElement = swatchElement;
 
@@ -1531,6 +1539,7 @@ function openMenuStylePopover(menuIndex: number, btnElement: HTMLElement): void 
   const rect = btnElement.getBoundingClientRect();
   closeAddItemDropdown();
   closeMenuBehaviorPopover();
+  closeMenuWebpageSetsPopover();
   closeColorPopover();
   closeItemSettingsPopover();
 
@@ -1620,7 +1629,94 @@ function initMenuBehaviorPopover(): void {
   });
 }
 
-function renderMenuBehaviorWebpageSets(menu: StoredMenu): void {
+function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): void {
+  if (activeBehaviorMenuIndex === menuIndex && menuBehaviorPopover.style.display !== "none") {
+    closeMenuBehaviorPopover();
+    return;
+  }
+  // Measure the anchor before the close calls below, which re-render the menu list
+  // and detach this button — a detached node reports a 0,0 rect (top-left popup).
+  const rect = btnElement.getBoundingClientRect();
+  closeAddItemDropdown();
+  closeMenuStylePopover();
+  closeColorPopover();
+  closeItemSettingsPopover();
+  closeMenuWebpageSetsPopover();
+
+  activeBehaviorMenuIndex = menuIndex;
+  activeBehaviorBtn = btnElement;
+
+  const menu = menus[menuIndex];
+  if (!menu) return;
+
+  menuBehaviorTitle.textContent = t("menuBehavior.title", { n: menuIndex + 1 });
+  menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
+  menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
+  menuSettingTabMode.value = menu.tabMode ?? "replace";
+
+  const popoverWidth = 320;
+  let top = rect.bottom + window.scrollY + 6;
+  let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
+
+  if (left < 10) left = 10;
+  if (left + popoverWidth > window.innerWidth - 10) {
+    left = window.innerWidth - popoverWidth - 10;
+  }
+
+  menuBehaviorPopover.style.position = "absolute";
+  menuBehaviorPopover.style.top = `${top}px`;
+  menuBehaviorPopover.style.left = `${left}px`;
+  menuBehaviorPopover.style.display = "flex";
+}
+
+function closeMenuBehaviorPopover(): void {
+  menuBehaviorPopover.style.display = "none";
+  activeBehaviorMenuIndex = -1;
+  activeBehaviorBtn = null;
+  renderMenus();
+}
+
+function updateWebpageBadge(menu: StoredMenu, badgeElement: HTMLElement): void {
+  const uids = menu.webpageSetUids ?? [];
+  const hasSets = uids.length > 0;
+  badgeElement.className = `item-tag ${hasSets ? "item-tag-webpage-set" : "item-tag-all-webpages"}`;
+  badgeElement.textContent = hasSets
+    ? t("menu.webpageSetsBadge", { count: uids.length })
+    : t("menu.allWebpagesBadge");
+  if (hasSets) {
+    const names = uids
+      .map((uid) => webpageSets.find((ws) => ws.uid === uid)?.name || uid)
+      .filter(Boolean);
+    badgeElement.title = t("menu.webpageSetsBadgeTitle", { names: names.join(", ") });
+  } else {
+    badgeElement.title = t("menuBehavior.allWebpages");
+  }
+}
+
+function initMenuWebpageSetsPopover(): void {
+  menuWebpageSetsClose.addEventListener("click", () => closeMenuWebpageSetsPopover());
+
+  document.addEventListener("click", (e) => {
+    if (menuWebpageSetsPopover.style.display === "none") return;
+    const target = e.target as Node | null;
+    if (
+      target &&
+      !menuWebpageSetsPopover.contains(target) &&
+      activeWebpageSetsBtn &&
+      !activeWebpageSetsBtn.contains(target)
+    ) {
+      closeMenuWebpageSetsPopover();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && menuWebpageSetsPopover.style.display !== "none") {
+      closeMenuWebpageSetsPopover();
+    }
+  });
+}
+
+function renderMenuWebpageSetsContent(menu: StoredMenu, badgeBtn: HTMLElement): void {
   menuSettingWebpageSetsList.replaceChildren();
 
   const allRow = document.createElement("label");
@@ -1643,7 +1739,8 @@ function renderMenuBehaviorWebpageSets(menu: StoredMenu): void {
         menu.webpageSetUids = [webpageSets[0].uid];
       }
     }
-    renderMenuBehaviorWebpageSets(menu);
+    renderMenuWebpageSetsContent(menu, badgeBtn);
+    updateWebpageBadge(menu, badgeBtn);
     markDirty();
   });
 
@@ -1676,7 +1773,8 @@ function renderMenuBehaviorWebpageSets(menu: StoredMenu): void {
         if (menu.webpageSetUids.length === 0) {
           delete menu.webpageSetUids;
         }
-        renderMenuBehaviorWebpageSets(menu);
+        renderMenuWebpageSetsContent(menu, badgeBtn);
+        updateWebpageBadge(menu, badgeBtn);
         markDirty();
       });
 
@@ -1692,32 +1790,29 @@ function renderMenuBehaviorWebpageSets(menu: StoredMenu): void {
   }
 }
 
-function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): void {
-  if (activeBehaviorMenuIndex === menuIndex && menuBehaviorPopover.style.display !== "none") {
-    closeMenuBehaviorPopover();
+function openMenuWebpageSetsPopover(menuIndex: number, btnElement: HTMLElement): void {
+  if (activeWebpageSetsMenuIndex === menuIndex && menuWebpageSetsPopover.style.display !== "none") {
+    closeMenuWebpageSetsPopover();
     return;
   }
-  // Measure the anchor before the close calls below, which re-render the menu list
-  // and detach this button — a detached node reports a 0,0 rect (top-left popup).
+
   const rect = btnElement.getBoundingClientRect();
   closeAddItemDropdown();
   closeMenuStylePopover();
   closeColorPopover();
   closeItemSettingsPopover();
+  closeMenuBehaviorPopover();
 
-  activeBehaviorMenuIndex = menuIndex;
-  activeBehaviorBtn = btnElement;
+  activeWebpageSetsMenuIndex = menuIndex;
+  activeWebpageSetsBtn = btnElement;
 
   const menu = menus[menuIndex];
   if (!menu) return;
 
-  menuBehaviorTitle.textContent = t("menuBehavior.title", { n: menuIndex + 1 });
-  menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
-  menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
-  menuSettingTabMode.value = menu.tabMode ?? "replace";
-  renderMenuBehaviorWebpageSets(menu);
+  menuWebpageSetsTitle.textContent = `${t("menu.title", { n: menuIndex + 1 })} - ${t("menuBehavior.webpageSetsTitle")}`;
+  renderMenuWebpageSetsContent(menu, btnElement);
 
-  const popoverWidth = 320;
+  const popoverWidth = 260;
   let top = rect.bottom + window.scrollY + 6;
   let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
 
@@ -1726,16 +1821,16 @@ function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): vo
     left = window.innerWidth - popoverWidth - 10;
   }
 
-  menuBehaviorPopover.style.position = "absolute";
-  menuBehaviorPopover.style.top = `${top}px`;
-  menuBehaviorPopover.style.left = `${left}px`;
-  menuBehaviorPopover.style.display = "flex";
+  menuWebpageSetsPopover.style.position = "absolute";
+  menuWebpageSetsPopover.style.top = `${top}px`;
+  menuWebpageSetsPopover.style.left = `${left}px`;
+  menuWebpageSetsPopover.style.display = "flex";
 }
 
-function closeMenuBehaviorPopover(): void {
-  menuBehaviorPopover.style.display = "none";
-  activeBehaviorMenuIndex = -1;
-  activeBehaviorBtn = null;
+function closeMenuWebpageSetsPopover(): void {
+  menuWebpageSetsPopover.style.display = "none";
+  activeWebpageSetsMenuIndex = -1;
+  activeWebpageSetsBtn = null;
   renderMenus();
 }
 
@@ -1906,6 +2001,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     return;
   }
   closeAddItemDropdown();
+  closeMenuWebpageSetsPopover();
 
   const menu = menus[menuIndex];
   const item = menu?.items[itemIndex];
@@ -2030,6 +2126,7 @@ function openAddItemDropdown(menuIndex: number, btnElement: HTMLElement): void {
   const rect = btnElement.getBoundingClientRect();
   closeMenuStylePopover();
   closeMenuBehaviorPopover();
+  closeMenuWebpageSetsPopover();
   closeColorPopover();
   closeItemSettingsPopover();
 
@@ -2113,22 +2210,10 @@ function renderMenus(): void {
 
       const webpageBadge = document.createElement("button");
       webpageBadge.type = "button";
-      const uids = menu.webpageSetUids ?? [];
-      const hasSets = uids.length > 0;
-      webpageBadge.className = `item-tag ${hasSets ? "item-tag-webpage-set" : "item-tag-all-webpages"}`;
-      webpageBadge.textContent = hasSets
-        ? t("menu.webpageSetsBadge", { count: uids.length })
-        : t("menu.allWebpagesBadge");
-      if (hasSets) {
-        const names = uids
-          .map((uid) => webpageSets.find((ws) => ws.uid === uid)?.name || uid)
-          .filter(Boolean);
-        webpageBadge.title = t("menu.webpageSetsBadgeTitle", { names: names.join(", ") });
-      } else {
-        webpageBadge.title = t("menuBehavior.allWebpages");
-      }
-      webpageBadge.addEventListener("click", () => {
-        openMenuBehaviorPopover(menuIndex, behaviorBtn);
+      updateWebpageBadge(menu, webpageBadge);
+      webpageBadge.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openMenuWebpageSetsPopover(menuIndex, webpageBadge);
       });
 
       titleRow.append(title, toggleLabel, disabledBadge, webpageBadge);
@@ -2168,6 +2253,9 @@ function renderMenus(): void {
         }
         if (activeBehaviorMenuIndex === menuIndex) {
           closeMenuBehaviorPopover();
+        }
+        if (activeWebpageSetsMenuIndex === menuIndex) {
+          closeMenuWebpageSetsPopover();
         }
         if (activeColorTarget === menu) {
           closeColorPopover();
@@ -2674,11 +2762,7 @@ function renderWebpageSets(): void {
       markDirty();
     });
 
-    const syntaxHint = document.createElement("div");
-    syntaxHint.className = "webpage-set-syntax-hint";
-    syntaxHint.textContent = t("webpageSets.syntaxHint");
-
-    card.append(header, patternsTextarea, syntaxHint);
+    card.append(header, patternsTextarea);
     webpageSetsList.appendChild(card);
   });
 }

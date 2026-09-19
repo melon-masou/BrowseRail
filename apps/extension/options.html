@@ -139,6 +139,7 @@
             <button id="add-webpage-set-btn" class="menu-action-btn add-webpage-set-btn" type="button" data-i18n="btn.addWebpageSet">+ Add webpage set</button>
           </div>
           <div id="webpage-sets-list" class="webpage-sets-list"></div>
+          <p class="webpage-sets-syntax-guide" data-i18n="webpageSets.syntaxHint">Supports domain (github.com), wildcard (*.google.com), URL prefix, or /regex/, one per line</p>
         </section>
 
         <div class="form-actions-row">
@@ -248,10 +249,17 @@
               <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
             </select>
           </label>
-          <div class="menu-setting-field menu-setting-webpage-sets-field">
-            <span class="menu-setting-field-title" data-i18n="menuBehavior.webpageSetsTitle">Active on webpages</span>
-            <div id="menu-setting-webpage-sets-list" class="menu-setting-webpage-sets-list"></div>
-          </div>
+        </div>
+      </div>
+
+      <!-- Menu Webpage Sets Popover (Active on webpages) -->
+      <div id="menu-webpage-sets-popover" class="menu-settings-popover menu-webpage-sets-popover" style="display: none;">
+        <div class="menu-settings-header">
+          <span id="menu-webpage-sets-title" class="menu-settings-title" data-i18n="menuBehavior.webpageSetsTitle">Active on webpages</span>
+          <button type="button" id="menu-webpage-sets-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <div class="menu-webpage-sets-body">
+          <div id="menu-setting-webpage-sets-list" class="menu-setting-webpage-sets-list"></div>
         </div>
       </div>
 
