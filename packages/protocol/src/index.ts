@@ -1,6 +1,8 @@
 export const PROTOCOL_VERSION = 1 as const;
 export const SOCKET_URL = "ws://127.0.0.1:17654" as const;
 
+export const EXPORT_SCHEMA_VERSION = 1 as const;
+
 export type BrowserKind = "brave" | "chrome" | "edge" | "firefox" | "opera" | "vivaldi";
 export type AttachmentMode = "none" | "lastFocused" | "all";
 export type MenuAnchor = "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
@@ -186,4 +188,50 @@ function isMenuPlacement(value: unknown): value is MenuPlacement {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+export type TabOpenMode = "newTab" | "replace";
+export type ExportedItemType = "bookmark" | "folder" | "flattenFolder" | "space" | (string & {});
+
+export interface ExportedMenuItem {
+  type: ExportedItemType;
+  path?: string[];
+  bookmarkId?: string;
+  units?: number;
+  transparent?: boolean;
+  rename?: string;
+  color?: string;
+  expandDirection?: ExpandDirection;
+  expandOnHover?: boolean;
+  tabMode?: TabOpenMode;
+}
+
+export interface ExportedMenu {
+  uid?: string;
+  orientation: MenuOrientation;
+  fontSize?: MenuFontSize;
+  gap?: number;
+  color?: string;
+  expandDirection?: ExpandDirection;
+  attachmentMode?: AttachmentMode;
+  onTopMode?: OnTopMode;
+  tabMode?: TabOpenMode;
+  items: ExportedMenuItem[];
+}
+
+export interface ExportedSettingsData {
+  version: typeof EXPORT_SCHEMA_VERSION;
+  exportedAt: string;
+  menus: ExportedMenu[];
+}
+
+export function isExportedSettingsData(value: unknown): value is ExportedSettingsData {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    value.version === EXPORT_SCHEMA_VERSION &&
+    typeof value.exportedAt === "string" &&
+    Array.isArray(value.menus)
+  );
 }

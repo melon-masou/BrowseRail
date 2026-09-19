@@ -1,9 +1,13 @@
-import type {
-  AttachmentMode,
-  ExpandDirection,
-  MenuFontSize,
-  MenuOrientation,
-  OnTopMode,
+import {
+  type AttachmentMode,
+  EXPORT_SCHEMA_VERSION,
+  type ExportedMenuItem,
+  type ExportedSettingsData,
+  type ExpandDirection,
+  isExportedSettingsData,
+  type MenuFontSize,
+  type MenuOrientation,
+  type OnTopMode,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -2224,8 +2228,8 @@ function exportSettings(): void {
   // bookmark path and keeps its type + user settings. Browser-specific bookmarkId
   // and the re-derivable url are omitted; so are instance label, desktop address,
   // attachment mode, always-on-top, and language (per-install / per-environment).
-  const exportData = {
-    version: 1,
+  const exportData: ExportedSettingsData = {
+    version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     menus: menus.map((menu) => ({
       uid: menu.uid,
@@ -2249,7 +2253,7 @@ function exportSettings(): void {
         const isFolder = node ? (node.children !== undefined || node.url === undefined) : false;
         const itemType: string = item.type ?? (isFolder ? "folder" : "bookmark");
 
-        return {
+        const exportedItem: ExportedMenuItem = {
           type: itemType,
           ...(path && path.length > 0 ? { path } : {}),
           ...(typeof item.units === "number" ? { units: item.units } : {}),
@@ -2259,6 +2263,7 @@ function exportSettings(): void {
           ...(item.expandOnHover !== undefined ? { expandOnHover: item.expandOnHover } : {}),
           ...(item.tabMode ? { tabMode: item.tabMode } : {}),
         };
+        return exportedItem;
       }),
     })),
   };
@@ -2289,17 +2294,12 @@ async function importSettings(file: File): Promise<void> {
   try {
     const text = await file.text();
     const parsed = JSON.parse(text) as unknown;
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      !("menus" in parsed) ||
-      !Array.isArray((parsed as { menus: unknown }).menus)
-    ) {
+    if (!isExportedSettingsData(parsed)) {
       status.value = t("import.invalidJson");
       return;
     }
 
-    const menusSource = (parsed as { menus: unknown[] }).menus;
+    const menusSource = parsed.menus;
 
     // Rebuild each item from its portable fields: match the bookmark by path to
     // recover the browser-specific bookmarkId; omit url; keep type + settings.

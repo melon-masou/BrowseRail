@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { isServerMessage, PROTOCOL_VERSION } from "./index";
+import {
+  EXPORT_SCHEMA_VERSION,
+  isExportedSettingsData,
+  isServerMessage,
+  PROTOCOL_VERSION,
+} from "./index";
 
 describe("isServerMessage", () => {
   it("accepts an invocation with an explicit target window", () => {
@@ -30,3 +35,36 @@ describe("isServerMessage", () => {
     ).toBe(false);
   });
 });
+
+describe("isExportedSettingsData", () => {
+  it("validates valid exported settings structure", () => {
+    expect(
+      isExportedSettingsData({
+        version: EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-09-19T00:00:00.000Z",
+        menus: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects invalid version", () => {
+    expect(
+      isExportedSettingsData({
+        version: EXPORT_SCHEMA_VERSION + 1,
+        exportedAt: "2026-09-19T00:00:00.000Z",
+        menus: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects missing or invalid menus", () => {
+    expect(
+      isExportedSettingsData({
+        version: EXPORT_SCHEMA_VERSION,
+        exportedAt: "2026-09-19T00:00:00.000Z",
+        menus: "not-an-array",
+      }),
+    ).toBe(false);
+  });
+});
+
