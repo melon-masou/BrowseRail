@@ -136,18 +136,55 @@ describe("resolveMenuItems", () => {
         path: ["Mixed"],
         type: "flattenFolder",
         includeFolders: true,
-        color: "#22c55e",
+        cycleColors: ["#22c55e"],
       },
     ]);
     expect(withFolders).toHaveLength(2);
     expect(withFolders.map((e) => e.kind).sort()).toEqual(["bookmark", "folder"]);
-    // Both the flattened bookmark and the included folder take the item's color.
+    // Both the flattened bookmark and the included folder take the item's cycle color.
     for (const entry of withFolders) {
       expect(entry.color).toBe("#22c55e");
     }
     const folderEntry = withFolders.find((e) => e.kind === "folder");
     // Inside the expanded menu, children are not changed
     expect(folderEntry?.kind === "folder" && folderEntry.children[0]?.color).toBeUndefined();
+  });
+
+  it("cycles through cycleColors for flattened items and ignores the old color field", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-cycle",
+            title: "CycleTest",
+            children: [
+              { id: "bm-1", title: "Item 1", url: "https://item1.com" },
+              { id: "bm-2", title: "Item 2", url: "https://item2.com" },
+              { id: "bm-3", title: "Item 3", url: "https://item3.com" },
+              { id: "bm-4", title: "Item 4", url: "https://item4.com" },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const result = await resolveMenuItems([
+      {
+        bookmarkId: "folder-cycle",
+        path: ["CycleTest"],
+        type: "flattenFolder",
+        color: "#000000", // Old color field should be completely ignored
+        cycleColors: ["#ff0000", "#00ff00"],
+      },
+    ]);
+
+    expect(result).toHaveLength(4);
+    expect(result[0].color).toBe("#ff0000");
+    expect(result[1].color).toBe("#00ff00");
+    expect(result[2].color).toBe("#ff0000");
+    expect(result[3].color).toBe("#00ff00");
   });
 
   it("resolves a folder whose title contains a slash (path segment not re-split)", async () => {

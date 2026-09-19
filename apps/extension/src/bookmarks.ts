@@ -333,7 +333,7 @@ export async function resolveMenuItems(
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = null;
   const entryGroups = await Promise.all(
-    items.map(async ({ bookmarkId, path, url, color, emoji, rename, type, expandOnHover, includeFolders, tabMode, units, transparent }) => {
+    items.map(async ({ bookmarkId, path, url, color, cycleColors, emoji, rename, type, expandOnHover, includeFolders, tabMode, units, transparent }) => {
       if (type === "space") {
         const isTransparent = transparent !== false;
         const spaceEntry: LayoutEntry = {
@@ -397,11 +397,15 @@ export async function resolveMenuItems(
       }
 
       if (type === "flattenFolder") {
+        const colors = Array.isArray(cycleColors) && cycleColors.length > 0 ? cycleColors : [];
+        let flattenedIdx = 0;
         return (node.children ?? []).flatMap((child) => {
           if (child.url === undefined) {
             // Sub-folder: only emitted when "include folders" is on, as a folder
             // that inherits this flatten item's folder options.
             if (!includeFolders) return [];
+            const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
+            flattenedIdx++;
             const folderEntry = toLayoutEntry(
               child,
               effectiveHover,
@@ -409,19 +413,21 @@ export async function resolveMenuItems(
               undefined,
               menuExpandDirection,
             );
-            // Apply the flatten item's color to the outside folder button itself,
+            // Apply the flatten item's cycle color to the outside folder button itself,
             // matching the flattened bookmarks on the rail.
-            if (effectiveColor && folderEntry.kind !== "space") {
-              folderEntry.color = effectiveColor;
+            if (itemColor && folderEntry.kind !== "space") {
+              folderEntry.color = itemColor;
             }
             return [folderEntry];
           }
+          const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
+          flattenedIdx++;
           const rawTitle = child.title || child.url || "Untitled";
           const entry: LayoutEntry = {
             kind: "bookmark",
             uid: actionUid("bookmark", child.id, effectiveTabMode),
             label: rawTitle,
-            ...(effectiveColor ? { color: effectiveColor } : {}),
+            ...(itemColor ? { color: itemColor } : {}),
           };
           return [entry];
         });

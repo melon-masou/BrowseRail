@@ -279,6 +279,14 @@
                 <input type="checkbox" id="item-setting-include-folders" />
                 <span data-i18n="itemSettings.includeFolders">Include folders</span>
               </label>
+              <div id="item-setting-cycle-colors-container" class="item-setting-cycle-colors-container" style="display: none;">
+                <span class="item-setting-field-title" data-i18n="itemSettings.cycleColors">Cycle colors</span>
+                <div id="item-setting-cycle-colors-list" class="cycle-colors-list"></div>
+                <div class="cycle-colors-add-row">
+                  <input type="color" id="cycle-color-picker" class="cycle-color-picker" value="#3b82f6" />
+                  <button type="button" id="cycle-color-add-btn" class="action-btn cycle-color-add-btn" data-i18n="itemSettings.addColor">+ Add color</button>
+                </div>
+              </div>
             </div>
             <div class="item-settings-actions">
               <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>

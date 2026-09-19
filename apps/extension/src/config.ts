@@ -419,6 +419,9 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     : typeof (value as { emoji?: unknown }).emoji === "string" && (value as { emoji: string }).emoji
       ? (value as { emoji: string }).emoji
       : undefined;
+  const cycleColors = Array.isArray(value.cycleColors)
+    ? value.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
+    : undefined;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
   const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
   const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
@@ -429,6 +432,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     ...(rawType ? { type: rawType } : {}),
     ...(rename ? { rename } : {}),
     ...(color ? { color } : {}),
+    ...(cycleColors && cycleColors.length > 0 ? { cycleColors } : {}),
     ...(tabMode ? { tabMode } : {}),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
     ...(includeFolders ? { includeFolders } : {}),
@@ -442,6 +446,7 @@ function isStoredMenuItem(value: unknown): value is StoredMenuItem {
     (value.path === undefined || (Array.isArray(value.path) && value.path.every((p) => typeof p === "string"))) &&
     (value.url === undefined || typeof value.url === "string") &&
     (value.color === undefined || typeof value.color === "string") &&
+    (value.cycleColors === undefined || (Array.isArray(value.cycleColors) && value.cycleColors.every((c) => typeof c === "string"))) &&
     (value.rename === undefined || typeof value.rename === "string" || typeof (value as { emoji?: unknown }).emoji === "string") &&
     (value.expandOnHover === undefined || typeof value.expandOnHover === "boolean") &&
     (value.tabMode === undefined || value.tabMode === "replace" || value.tabMode === "newTab") &&

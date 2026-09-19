@@ -221,6 +221,7 @@ export interface StoredMenuItem {
   path?: string[];
   url?: string;
   color?: string;
+  cycleColors?: string[];
   emoji?: string;
   rename?: string;
   type?: MenuItemType;
@@ -319,6 +320,7 @@ export interface ExportedMenuItem {
   transparent?: boolean;
   rename?: string;
   color?: string;
+  cycleColors?: string[];
   expandDirection?: ExpandDirection;
   expandOnHover?: boolean;
   includeFolders?: boolean;

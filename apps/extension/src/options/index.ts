@@ -174,6 +174,10 @@ const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hove
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
 const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>("item-setting-include-folders-label");
 const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
+const itemSettingCycleColorsContainer = element<HTMLDivElement>("item-setting-cycle-colors-container");
+const itemSettingCycleColorsList = element<HTMLDivElement>("item-setting-cycle-colors-list");
+const cycleColorPicker = element<HTMLInputElement>("cycle-color-picker");
+const cycleColorAddBtn = element<HTMLButtonElement>("cycle-color-add-btn");
 const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
@@ -1509,16 +1513,43 @@ function initItemSettingsPopover(): void {
     // not change the hover checkbox.
     if (itemSettingFlatten.checked) {
       item.type = "flattenFolder";
+      delete item.color;
+      if (!Array.isArray(item.cycleColors)) {
+        item.cycleColors = [];
+      }
       itemSettingIncludeFoldersLabel.style.display = "inline-flex";
       itemSettingIncludeFolders.checked = item.includeFolders === true;
+      itemSettingCycleColorsContainer.style.display = "flex";
+      renderCycleColorsList(item);
     } else {
       item.type = "folder";
       delete item.includeFolders;
+      delete item.cycleColors;
       itemSettingIncludeFoldersLabel.style.display = "none";
       itemSettingIncludeFolders.checked = false;
+      itemSettingCycleColorsContainer.style.display = "none";
     }
     renderMenus();
     markDirty();
+  });
+
+  cycleColorAddBtn.addEventListener("click", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item) return;
+    if (!Array.isArray(item.cycleColors)) {
+      item.cycleColors = [];
+    }
+    const colorToAdd = cycleColorPicker.value || "#3b82f6";
+    item.cycleColors.push(colorToAdd);
+    const nextPreset = PALETTE_COLORS[item.cycleColors.length % PALETTE_COLORS.length];
+    if (nextPreset) {
+      cycleColorPicker.value = nextPreset;
+    }
+    renderCycleColorsList(item);
+    markDirty();
+    renderMenus();
   });
 
   itemSettingIncludeFolders.addEventListener("change", () => {
@@ -1654,13 +1685,17 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
       itemSettingHoverExpand.checked = item.expandOnHover !== false;
       itemSettingIncludeFoldersLabel.style.display = isFlatten ? "inline-flex" : "none";
       itemSettingIncludeFolders.checked = isFlatten && item.includeFolders === true;
+      itemSettingCycleColorsContainer.style.display = isFlatten ? "flex" : "none";
+      if (isFlatten) {
+        renderCycleColorsList(item);
+      }
     } else {
       itemSettingsFolderControls.style.display = "none";
     }
   }
 
   const rect = anchorEl.getBoundingClientRect();
-  const popoverWidth = 220;
+  const popoverWidth = 250;
   let top = rect.bottom + window.scrollY + 6;
   let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
 
@@ -1673,6 +1708,57 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
   itemSettingsPopover.style.top = `${top}px`;
   itemSettingsPopover.style.left = `${left}px`;
   itemSettingsPopover.style.display = "flex";
+}
+
+function renderCycleColorsList(item: StoredMenuItem): void {
+  if (!Array.isArray(item.cycleColors)) {
+    item.cycleColors = [];
+  }
+  itemSettingCycleColorsList.replaceChildren();
+
+  if (item.cycleColors.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "cycle-colors-empty-hint";
+    hint.textContent = t("itemSettings.noCycleColors");
+    itemSettingCycleColorsList.appendChild(hint);
+    return;
+  }
+
+  item.cycleColors.forEach((color, idx) => {
+    const chip = document.createElement("div");
+    chip.className = "cycle-color-chip";
+
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.className = "cycle-color-chip-input";
+    colorInput.value = color;
+    colorInput.title = color;
+    colorInput.addEventListener("input", () => {
+      item.cycleColors![idx] = colorInput.value;
+      hexSpan.textContent = colorInput.value.toUpperCase();
+      markDirty();
+      renderMenus();
+    });
+
+    const hexSpan = document.createElement("span");
+    hexSpan.className = "cycle-color-chip-hex";
+    hexSpan.textContent = color.toUpperCase();
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "cycle-color-chip-del";
+    delBtn.textContent = "✕";
+    delBtn.title = t("common.close");
+    delBtn.addEventListener("click", () => {
+      item.cycleColors!.splice(idx, 1);
+      renderCycleColorsList(item);
+      markDirty();
+      renderMenus();
+    });
+
+    chip.append(colorInput, hexSpan, delBtn);
+    itemSettingCycleColorsList.appendChild(chip);
+  });
 }
 
 function closeItemSettingsPopover(): void {
@@ -2219,15 +2305,41 @@ function renderMenus(): void {
           // Color swatch button
           const swatch = document.createElement("button");
           swatch.type = "button";
-          swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
-          updateSwatchAppearance(swatch, item.color);
-          if (!item.color && menu.color) {
-            swatch.title = t("item.followMenuColor", { color: menu.color });
+          if (isFlatten) {
+            swatch.className = "item-color-swatch";
+            const colors = item.cycleColors;
+            if (colors && colors.length > 0) {
+              if (colors.length === 1) {
+                swatch.style.backgroundColor = colors[0];
+                swatch.style.borderColor = colors[0];
+              } else {
+                swatch.style.background = `linear-gradient(135deg, ${colors.join(", ")})`;
+                swatch.style.borderColor = "transparent";
+              }
+              swatch.classList.remove("has-no-color");
+              swatch.title = t("item.cycleColorsTitle", { count: colors.length });
+            } else {
+              swatch.style.background = "";
+              swatch.style.backgroundColor = "transparent";
+              swatch.style.borderColor = "#cbd5e1";
+              swatch.classList.add("has-no-color");
+              swatch.title = t("item.cycleColorsEmpty");
+            }
+            swatch.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openItemSettingsPopover(menuIndex, itemIndex, swatch);
+            });
+          } else {
+            swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
+            updateSwatchAppearance(swatch, item.color);
+            if (!item.color && menu.color) {
+              swatch.title = t("item.followMenuColor", { color: menu.color });
+            }
+            swatch.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openColorPopover(item, swatch);
+            });
           }
-          swatch.addEventListener("click", (e) => {
-            e.stopPropagation();
-            openColorPopover(item, swatch);
-          });
 
           // Centered minus button for remove item
           const removeBtn = document.createElement("button");
@@ -2383,7 +2495,9 @@ function exportSettings(): void {
           ...(typeof item.units === "number" ? { units: item.units } : {}),
           ...(item.transparent !== undefined ? { transparent: item.transparent } : {}),
           ...(item.rename ? { rename: item.rename } : {}),
-          ...(item.color ? { color: item.color } : {}),
+          ...(itemType === "flattenFolder"
+            ? (item.cycleColors && item.cycleColors.length > 0 ? { cycleColors: item.cycleColors } : {})
+            : (item.color ? { color: item.color } : {})),
           ...(item.expandOnHover !== undefined ? { expandOnHover: item.expandOnHover } : {}),
           ...(item.includeFolders ? { includeFolders: true } : {}),
           ...(item.tabMode ? { tabMode: item.tabMode } : {}),
@@ -2470,6 +2584,10 @@ async function importSettings(file: File): Promise<void> {
             ? (itemRecord.expandDirection as ExpandDirection)
             : undefined;
 
+        const cycleColors = Array.isArray(itemRecord.cycleColors)
+          ? itemRecord.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
+          : undefined;
+
         items.push({
           bookmarkId,
           type,
@@ -2477,9 +2595,9 @@ async function importSettings(file: File): Promise<void> {
           ...(typeof itemRecord.units === "number" ? { units: itemRecord.units } : {}),
           ...(typeof itemRecord.transparent === "boolean" ? { transparent: itemRecord.transparent } : {}),
           ...(rename ? { rename } : {}),
-          ...(typeof itemRecord.color === "string" && itemRecord.color
-            ? { color: itemRecord.color }
-            : {}),
+          ...(type === "flattenFolder"
+            ? (cycleColors && cycleColors.length > 0 ? { cycleColors } : {})
+            : (typeof itemRecord.color === "string" && itemRecord.color ? { color: itemRecord.color } : {})),
           ...(expandDirection ? { expandDirection } : {}),
           ...(typeof itemRecord.expandOnHover === "boolean"
             ? { expandOnHover: itemRecord.expandOnHover }

@@ -1294,7 +1294,7 @@ output {
 .item-settings-popover {
   position: fixed;
   z-index: 10000;
-  width: 220px;
+  width: 250px;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -1402,6 +1402,120 @@ output {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.item-setting-cycle-colors-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.cycle-colors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.cycle-colors-empty-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 2px 0;
+}
+
+.cycle-color-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+
+.cycle-color-chip-input {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+}
+
+.cycle-color-chip-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.cycle-color-chip-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.cycle-color-chip-hex {
+  font-size: 11px;
+  font-family: monospace;
+  color: #334155;
+  flex-grow: 1;
+}
+
+.cycle-color-chip-del {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px 5px;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.cycle-color-chip-del:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+.cycle-colors-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cycle-color-picker {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+}
+
+.cycle-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.cycle-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+}
+
+.cycle-color-add-btn {
+  flex-grow: 1;
+  font-size: 12px;
+  padding: 4px 8px;
+  height: 26px;
+  min-height: 26px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .item-setting-check-label {
