@@ -19,7 +19,7 @@ use windows::core::PWSTR;
 
 use crate::panel::{
     PopupRegistry, PopupRequest, SurfaceRegistry, instance_surface_prefix, menu_label,
-    menu_position, popup_label, set_window_always_on_top, set_window_no_activate, set_window_owner,
+    popup_label, set_window_always_on_top, set_window_no_activate, set_window_owner,
     set_window_visible_without_activation, surface_prefix,
 };
 use crate::protocol::{
@@ -136,8 +136,7 @@ pub enum NativeCommand {
 struct MenuSyncItem {
     label: String,
     url: String,
-    target_pos: tauri::LogicalPosition<f64>,
-    placement: MenuPlacement,
+    geometry: crate::protocol::ComputedMenuGeometry,
     always_on_top: bool,
     owner_hwnd: Option<isize>,
     should_be_visible: bool,
@@ -152,27 +151,6 @@ struct PendingWindowPairing {
     window_uid: String,
     hwnd: isize,
     outgoing: UnboundedSender<ServerMessage>,
-}
-
-/// The bar's total width/height is derived from the remembered per-button size
-/// (item_width/item_height) and the current item count — the extension no longer
-/// computes or transmits the total. Recompute it here, at the single point where an
-/// incoming sync is received, before anything downstream sizes the window or renders.
-fn recompute_menu_total_size(menu: &mut MenuSnapshot) {
-    let count = crate::protocol::menu_track_count(&menu.items);
-    let item_width = menu.placement.item_width.unwrap_or(84.0);
-    let item_height = menu.placement.item_height.unwrap_or(36.0);
-    let gap = crate::protocol::menu_gap(menu);
-    match menu.orientation {
-        crate::protocol::MenuOrientation::Row => {
-            menu.placement.width = count * item_width + (count - 1.0) * gap;
-            menu.placement.height = item_height;
-        }
-        crate::protocol::MenuOrientation::Column => {
-            menu.placement.height = count * item_height + (count - 1.0) * gap;
-            menu.placement.width = item_width;
-        }
-    }
 }
 
 pub struct NativeReactor {
@@ -393,12 +371,6 @@ impl NativeReactor {
                     attachment_mode,
                     panels,
                 } => {
-                    let mut panels = panels;
-                    for panel in panels.iter_mut() {
-                        for menu in panel.menus.iter_mut() {
-                            recompute_menu_total_size(menu);
-                        }
-                    }
                     if let Ok(Some(outcome)) =
                         self.registry
                             .sync(connection_uid, revision, attachment_mode, panels)
@@ -943,16 +915,16 @@ impl NativeReactor {
 
             for menu in &panel.menus {
                 let label = menu_label(&instance_uid, &panel.window.uid, &menu.uid);
-                let target_pos = menu_position(&panel.window, &menu.placement);
+                let geometry = crate::protocol::compute_menu_geometry(&panel.window, menu);
                 let is_customizing = self.surfaces.is_customizing(&label);
                 let effective_always_on_top =
                     menu.on_top_mode == crate::protocol::OnTopMode::AlwaysOnTop;
                 let geometry_changed = self.surfaces.update_geometry(
                     &label,
-                    target_pos.x,
-                    target_pos.y,
-                    menu.placement.width,
-                    menu.placement.height,
+                    geometry.x,
+                    geometry.y,
+                    geometry.width,
+                    geometry.height,
                     effective_always_on_top,
                 );
                 let url = format!(
@@ -974,8 +946,7 @@ impl NativeReactor {
                 sync_items.push(MenuSyncItem {
                     label,
                     url,
-                    target_pos,
-                    placement: menu.placement.clone(),
+                    geometry,
                     always_on_top: effective_always_on_top,
                     owner_hwnd: owner,
                     should_be_visible,
@@ -1026,8 +997,8 @@ impl NativeReactor {
                             WebviewUrl::App(item.url.into()),
                         )
                         .title("BrowseRail")
-                        .inner_size(item.placement.width, item.placement.height)
-                        .position(item.target_pos.x, item.target_pos.y)
+                        .inner_size(item.geometry.width, item.geometry.height)
+                        .position(item.geometry.x, item.geometry.y)
                         .decorations(false)
                         .focused(false)
                         .focusable(false)
@@ -1112,10 +1083,13 @@ impl NativeReactor {
                     let _ = window.set_ignore_cursor_events(false);
                     if !item.is_customizing {
                         let _ = window.set_size(LogicalSize::new(
-                            item.placement.width,
-                            item.placement.height,
+                            item.geometry.width,
+                            item.geometry.height,
                         ));
-                        let _ = window.set_position(item.target_pos);
+                        let _ = window.set_position(tauri::LogicalPosition::new(
+                            item.geometry.x,
+                            item.geometry.y,
+                        ));
                     }
                 }
 

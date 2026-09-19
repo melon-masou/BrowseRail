@@ -688,18 +688,20 @@ fn place_popup(
 pub fn menu_position(
     window: &BrowserWindowSnapshot,
     placement: &MenuPlacement,
+    width: f64,
+    height: f64,
 ) -> LogicalPosition<f64> {
     let bounds = &window.bounds;
     let x = match placement.anchor {
         MenuAnchor::TopLeft | MenuAnchor::BottomLeft => bounds.x + placement.offset_x,
         MenuAnchor::TopRight | MenuAnchor::BottomRight => {
-            bounds.x + bounds.width - placement.width - placement.offset_x
+            bounds.x + bounds.width - width - placement.offset_x
         }
     };
     let y = match placement.anchor {
         MenuAnchor::TopLeft | MenuAnchor::TopRight => bounds.y + placement.offset_y,
         MenuAnchor::BottomLeft | MenuAnchor::BottomRight => {
-            bounds.y + bounds.height - placement.height - placement.offset_y
+            bounds.y + bounds.height - height - placement.offset_y
         }
     };
     LogicalPosition::new(x, y)

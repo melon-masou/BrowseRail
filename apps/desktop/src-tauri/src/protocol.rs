@@ -234,19 +234,15 @@ impl<'de> Deserialize<'de> for MenuOrientation {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuPlacement {
     #[serde(default)]
     pub anchor: MenuAnchor,
     #[serde(default)]
-    pub height: f64,
-    #[serde(default)]
     pub offset_x: f64,
     #[serde(default)]
     pub offset_y: f64,
-    #[serde(default)]
-    pub width: f64,
     #[serde(default)]
     pub item_width: Option<f64>,
     #[serde(default)]
@@ -255,6 +251,18 @@ pub struct MenuPlacement {
     pub font_size: Option<serde_json::Value>,
     #[serde(default)]
     pub gap: Option<f64>,
+}
+
+/// Internal derived geometry for positioning and sizing a menu window in Tauri.
+/// Total width/height and screen coordinates are computed dynamically from
+/// item count, item dimensions (item_width / item_height), gap, and anchor offsets.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ComputedMenuGeometry {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, Default)]
@@ -359,6 +367,45 @@ pub fn menu_track_count(items: &[LayoutEntry]) -> f64 {
 /// else 4. Both the resize derivation and the total recompute must use this.
 pub fn menu_gap(menu: &MenuSnapshot) -> f64 {
     menu.placement.gap.or(menu.gap).unwrap_or(4.0)
+}
+
+/// Derives the internal total window dimensions (width, height) from the menu snapshot.
+pub fn menu_total_size(menu: &MenuSnapshot) -> (f64, f64) {
+    let count = menu_track_count(&menu.items);
+    let item_width = menu.placement.item_width.unwrap_or(84.0);
+    let item_height = menu.placement.item_height.unwrap_or(36.0);
+    let gap = menu_gap(menu);
+    match menu.orientation {
+        MenuOrientation::Row => (count * item_width + (count - 1.0) * gap, item_height),
+        MenuOrientation::Column => (item_width, count * item_height + (count - 1.0) * gap),
+    }
+}
+
+/// Derives the full window geometry (x, y, width, height) relative to the browser window.
+pub fn compute_menu_geometry(
+    window: &BrowserWindowSnapshot,
+    menu: &MenuSnapshot,
+) -> ComputedMenuGeometry {
+    let (width, height) = menu_total_size(menu);
+    let bounds = &window.bounds;
+    let x = match menu.placement.anchor {
+        MenuAnchor::TopLeft | MenuAnchor::BottomLeft => bounds.x + menu.placement.offset_x,
+        MenuAnchor::TopRight | MenuAnchor::BottomRight => {
+            bounds.x + bounds.width - width - menu.placement.offset_x
+        }
+    };
+    let y = match menu.placement.anchor {
+        MenuAnchor::TopLeft | MenuAnchor::TopRight => bounds.y + menu.placement.offset_y,
+        MenuAnchor::BottomLeft | MenuAnchor::BottomRight => {
+            bounds.y + bounds.height - height - menu.placement.offset_y
+        }
+    };
+    ComputedMenuGeometry {
+        x,
+        y,
+        width,
+        height,
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]

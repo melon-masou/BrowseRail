@@ -91,28 +91,22 @@ export function getItemDimensions(fontSize: MenuFontSize = DEFAULT_FONT_SIZE): {
 
 export function defaultMenuPlacement(
   index = 0,
-  orientation: MenuOrientation = "row",
-  itemCount = 1,
+  _orientation: MenuOrientation = "row",
+  _itemCount = 1,
   fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
   gapPercent = DEFAULT_MENU_GAP_PERCENT,
 ): MenuPlacement {
   const { itemWidth, itemHeight } = getItemDimensions(fontSize);
-  const count = Math.max(1, itemCount);
-  const buttonDim = itemHeight;
-  const gapPx = calculateGapPx(buttonDim, gapPercent);
-  const width = orientation === "row" ? count * itemWidth + (count - 1) * gapPx : itemWidth;
-  const height = orientation === "column" ? count * itemHeight + (count - 1) * gapPx : itemHeight;
+  const gapPx = calculateGapPx(itemHeight, gapPercent);
 
   return {
     anchor: "topLeft",
     fontSize: normalizeFontSize(fontSize),
     gap: gapPx,
-    height,
     itemHeight,
     itemWidth,
     offsetX: 12,
-    offsetY: 12 + index * (height + 12),
-    width,
+    offsetY: 12 + index * (itemHeight + 12),
   };
 }
 
@@ -141,9 +135,8 @@ export function resolveMenuPlacement(
       : defaultDim.itemHeight;
 
   // The extension only carries the per-button size + placement. The TOTAL width/height
-  // is NOT computed or stored here — the desktop derives it from itemWidth/itemHeight ×
-  // item count on sync (and overwrites these zeros), so a stale total can never squeeze
-  // the buttons or drift when items are added/removed.
+  // is NOT computed or stored here — the desktop derives it dynamically from
+  // itemWidth/itemHeight × item count.
   return {
     anchor: base.anchor,
     offsetX: base.offsetX,
@@ -152,8 +145,6 @@ export function resolveMenuPlacement(
     gap: effectiveGapPx,
     itemWidth,
     itemHeight,
-    width: 0,
-    height: 0,
   };
 }
 
@@ -349,7 +340,6 @@ function normalizePlacement(value: unknown): MenuPlacement | undefined {
   if (!isRecord(value) || !isAnchor(value.anchor)) {
     return undefined;
   }
-  const CUSTOMIZE_ICON_SIZE = 26;
   const itemWidth = typeof value.itemWidth === "number" && Number.isFinite(value.itemWidth)
     ? boundedNumber(value.itemWidth, 1, 400, DEFAULT_ITEM_WIDTH)
     : undefined;
@@ -364,12 +354,10 @@ function normalizePlacement(value: unknown): MenuPlacement | undefined {
     anchor: value.anchor,
     ...(fontSize !== undefined ? { fontSize } : {}),
     ...(gap !== undefined ? { gap } : {}),
-    height: boundedNumber(value.height, CUSTOMIZE_ICON_SIZE, 1_600, DEFAULT_ITEM_HEIGHT),
     ...(itemHeight !== undefined ? { itemHeight } : {}),
     ...(itemWidth !== undefined ? { itemWidth } : {}),
     offsetX: boundedNumber(value.offsetX, -10_000, 10_000, 12),
     offsetY: boundedNumber(value.offsetY, -10_000, 10_000, 12),
-    width: boundedNumber(value.width, CUSTOMIZE_ICON_SIZE, 2_000, DEFAULT_ITEM_WIDTH),
   };
 }
 

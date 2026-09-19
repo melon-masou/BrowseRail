@@ -30,14 +30,20 @@ export interface BrowserWindowSnapshot {
   focused?: boolean;
 }
 
-export type MenuFontSize = number | "small" | "medium" | "large";
+export type MenuFontSize = number;
 
+/**
+ * Placement configuration for positioning a menu relative to the browser window.
+ *
+ * NOTE: Total window dimensions (`width` and `height`) are intentionally excluded from
+ * this protocol contract. The total bounding dimensions of the menu bar are derived
+ * dynamically at runtime by Tauri (from `itemWidth`, `itemHeight`, `gap`, orientation,
+ * and item count) and belong to internal window geometry rather than user placement config.
+ */
 export interface MenuPlacement {
   anchor: MenuAnchor;
-  height: number;
   offsetX: number;
   offsetY: number;
-  width: number;
   itemWidth?: number;
   itemHeight?: number;
   fontSize?: MenuFontSize;
@@ -183,7 +189,7 @@ function isMenuPlacement(value: unknown): value is MenuPlacement {
       value.anchor === "topRight" ||
       value.anchor === "bottomLeft" ||
       value.anchor === "bottomRight") &&
-    [value.height, value.offsetX, value.offsetY, value.width].every(
+    [value.offsetX, value.offsetY].every(
       (part) => typeof part === "number" && Number.isFinite(part),
     )
   );

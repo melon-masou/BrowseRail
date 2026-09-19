@@ -306,8 +306,7 @@ fn begin_menu_customization(
         let position = window.outer_position().map_err(|error| error.to_string())?;
         (f64::from(position.x) / scale, f64::from(position.y) / scale)
     };
-    let current_w = orig_menu.placement.width;
-    let current_h = orig_menu.placement.height;
+    let (current_w, current_h) = protocol::menu_total_size(orig_menu);
     if !toolbar_space.is_finite()
         || toolbar_space < 0.0
         || !customize_width.is_finite()
@@ -457,10 +456,8 @@ fn save_menu_placement(
 
     let placement = MenuPlacement {
         anchor,
-        height,
         offset_x,
         offset_y,
-        width,
         item_width,
         item_height,
         font_size: orig_menu.placement.font_size.clone(),
@@ -498,15 +495,12 @@ fn cancel_menu_customization(
 ) -> Result<(), String> {
     if let Some(panel) = state.registry.panel(&instance_uid, &window_uid) {
         if let Some(menu) = panel.menus.iter().find(|m| m.uid == menu_uid) {
-            let target_pos = panel::menu_position(&panel.window, &menu.placement);
+            let geo = protocol::compute_menu_geometry(&panel.window, menu);
             window
-                .set_size(tauri::LogicalSize::new(
-                    menu.placement.width,
-                    menu.placement.height,
-                ))
+                .set_size(tauri::LogicalSize::new(geo.width, geo.height))
                 .map_err(|error| error.to_string())?;
             window
-                .set_position(target_pos)
+                .set_position(tauri::LogicalPosition::new(geo.x, geo.y))
                 .map_err(|error| error.to_string())?;
         }
     }

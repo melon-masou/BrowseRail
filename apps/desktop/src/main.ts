@@ -169,20 +169,35 @@ async function initializeSurface(): Promise<void> {
     return 13;
   }
 
+  function computeMenuDimensions(menu: MenuSnapshot): { width: number; height: number } {
+    const totalUnits = menu.items.reduce((acc, item) => {
+      if (item.kind === "space") {
+        return acc + Math.max(0.1, item.units ?? 1);
+      }
+      return acc + 1;
+    }, 0);
+    const count = Math.max(1, Math.round(totalUnits));
+    const itemWidth = menu.placement.itemWidth ?? 84;
+    const itemHeight = menu.placement.itemHeight ?? 36;
+    const gap = menu.placement.gap ?? menu.gap ?? 4;
+    if (menu.orientation === "row") {
+      return {
+        width: count * itemWidth + (count - 1) * gap,
+        height: itemHeight,
+      };
+    }
+    return {
+      width: itemWidth,
+      height: count * itemHeight + (count - 1) * gap,
+    };
+  }
+
   function calculateButtonFontSize(
     configuredSize: number,
-    orientation: MenuOrientation,
-    placement: MenuPlacement,
-    itemCount: number,
+    placement: { itemWidth?: number; itemHeight?: number },
   ): number {
-    const count = Math.max(1, itemCount);
-    const btnHeight = orientation === "row"
-      ? placement.height
-      : (placement.itemHeight ?? Math.max(16, Math.floor(placement.height / count)));
-    const btnWidth = orientation === "column"
-      ? placement.width
-      : (placement.itemWidth ?? Math.max(20, Math.floor(placement.width / count)));
-
+    const btnHeight = placement.itemHeight ?? 36;
+    const btnWidth = placement.itemWidth ?? 84;
     const heightLimit = Math.max(8, Math.floor(btnHeight - 8));
     const widthLimit = Math.max(8, Math.floor(btnWidth * 0.45));
     return Math.min(configuredSize, heightLimit, widthLimit);
@@ -203,9 +218,7 @@ async function initializeSurface(): Promise<void> {
 
     const buttonFontSize = calculateButtonFontSize(
       theme.fontSize,
-      menu.orientation,
       menu.placement,
-      menu.items.length,
     );
 
     const gap = menu.placement.gap ?? menu.gap ?? 4;
@@ -224,8 +237,9 @@ async function initializeSurface(): Promise<void> {
     menuBar.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
     menuBar.style.setProperty("--menu-gap", `${gap}px`);
-    menuBar.style.width = `${menu.placement.width}px`;
-    menuBar.style.height = `${menu.placement.height}px`;
+    const dims = computeMenuDimensions(menu);
+    menuBar.style.width = `${dims.width}px`;
+    menuBar.style.height = `${dims.height}px`;
 
     menuBar.addEventListener("pointerenter", cancelClose);
     menuBar.addEventListener("pointerleave", (event) => {
@@ -260,7 +274,7 @@ async function initializeSurface(): Promise<void> {
         const toolbar = renderCustomize(menuToCustomize);
         const toolbarSpace = customizationToolbarSpace(toolbar);
         const customizeWidth = toolbar.parentElement?.getBoundingClientRect().width
-          ?? menuToCustomize.placement.width;
+          ?? computeMenuDimensions(menuToCustomize).width;
         void invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
           customizeWidth,
           instanceUid,
@@ -396,8 +410,9 @@ async function initializeSurface(): Promise<void> {
     const btnTop = anchorButton.offsetTop;
     const btnWidth = anchorButton.offsetWidth;
     const btnHeight = anchorButton.offsetHeight;
-    const menuWidth = currentMenu?.placement.width ?? menuBar.offsetWidth;
-    const menuHeight = currentMenu?.placement.height ?? menuBar.offsetHeight;
+    const dims = currentMenu ? computeMenuDimensions(currentMenu) : undefined;
+    const menuWidth = dims?.width ?? menuBar.offsetWidth;
+    const menuHeight = dims?.height ?? menuBar.offsetHeight;
 
     const theme = applyMenuTheme(currentMenu ?? initial.menu!);
 
@@ -608,20 +623,21 @@ async function initializeSurface(): Promise<void> {
     }
 
     if (restoreNativeSize && currentMenu && !customizing) {
+      const { width, height } = computeMenuDimensions(currentMenu);
       nativeAllocated = {
-        height: currentMenu.placement.height,
+        height,
         offsetX: 0,
         offsetY: 0,
-        width: currentMenu.placement.width,
+        width,
       };
       try {
         await invoke("resize_popup", {
-          height: currentMenu.placement.height,
+          height,
           instanceUid,
           menuUid,
           offsetX: 0,
           offsetY: 0,
-          width: currentMenu.placement.width,
+          width,
           windowUid,
         });
       } catch {}
@@ -641,8 +657,9 @@ async function initializeSurface(): Promise<void> {
   ): HTMLElement {
     const theme = applyMenuTheme(menu);
     let anchor = menu.placement.anchor;
-    let targetWidth = menu.placement.width;
-    let targetHeight = menu.placement.height;
+    const initialDims = computeMenuDimensions(menu);
+    let targetWidth = initialDims.width;
+    let targetHeight = initialDims.height;
     root.className = "customize-mode";
     root.dataset.toolbarPosition = toolbarPosition;
     root.dataset.orientation = menu.orientation;
@@ -662,11 +679,16 @@ async function initializeSurface(): Promise<void> {
     railContainer.style.setProperty("--menu-gap", `${gap}px`);
 
     function updateCustomizeButtonSize(): void {
+      const count = Math.max(1, Math.round(totalUnits));
+      const itemWidth = menu.orientation === "column"
+        ? targetWidth
+        : Math.max(20, (targetWidth - (count - 1) * gap) / count);
+      const itemHeight = menu.orientation === "row"
+        ? targetHeight
+        : Math.max(16, (targetHeight - (count - 1) * gap) / count);
       const btnFontSize = calculateButtonFontSize(
         theme.fontSize,
-        menu.orientation,
-        { ...menu.placement, width: targetWidth, height: targetHeight },
-        Math.max(1, Math.round(totalUnits)),
+        { itemWidth, itemHeight },
       );
       railContainer.style.setProperty("--button-font-size", `${btnFontSize}px`);
     }
