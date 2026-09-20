@@ -20,6 +20,7 @@ import {
   loadFreePlacements,
   loadMenuPlacements,
   loadWidgetEnabled,
+  removeMenuPlacements,
   resolveMenuPlacement,
   saveFreePlacement,
   saveMenuPlacement,
@@ -91,6 +92,7 @@ let reconnectAttempts = 0;
 let revision = 0;
 let syncRequested = false;
 let syncRunning = false;
+const resetMenuUids = new Set<string>();
 let connectionGeneration = 0;
 let connectionEnabled = false;
 let desiredInstanceLabel = "";
@@ -320,6 +322,13 @@ browser.runtime.onMessage.addListener((message: unknown) => {
   }
   if (isResyncWindowsMessage(message)) {
     return rebuildDesktopWindows();
+  }
+  if (isResetMenuLayoutMessage(message)) {
+    return removeMenuPlacements(message.menuUid).then(() => {
+      resetMenuUids.add(message.menuUid);
+      requestSync();
+      return { ok: true };
+    });
   }
   if (isConfigSavedMessage(message)) {
     previewConfigOverride = null;
@@ -631,19 +640,19 @@ async function syncOnce(): Promise<void> {
   );
   updateLastFocusedWindow(windows);
 
-  const webpageSets = config.panel.webpageSets ?? config.webpageSets ?? [];
-  const webpageSetMap = new Map(webpageSets.map((ws) => [ws.uid, ws]));
+  const urlRules = config.urlRules;
+  const urlRuleMap = new Map(urlRules.map((ws) => [ws.uid, ws]));
   const origByUid = new Map(activeMenus.map((m) => [m.uid, m]));
 
-  // A menu with no webpage sets is always visible; otherwise it must match the
-  // given tab URL against at least one of its sets.
+  // A menu with no URL rules is always visible; otherwise it must match the
+  // given tab URL against at least one of its rules.
   const menuVisibleForUrl = (menuUid: string, activeTabUrl: string | undefined): boolean => {
-    const setUids = origByUid.get(menuUid)?.webpageSetUids;
+    const setUids = origByUid.get(menuUid)?.urlRuleUids;
     if (!setUids || setUids.length === 0) return true;
     return (
       Boolean(activeTabUrl) &&
       setUids.some((setUid) => {
-        const ws = webpageSetMap.get(setUid);
+        const ws = urlRuleMap.get(setUid);
         return ws ? isUrlMatchingSet(activeTabUrl!, ws.patterns) : false;
       })
     );
@@ -674,7 +683,7 @@ async function syncOnce(): Promise<void> {
   });
 
   // A single free surface per free menu. It exists only when the instance has at
-  // least one browser window, and (if webpage-set-restricted) when the current
+  // least one browser window, and (if url-rule-restricted) when the current
   // lastFocused window's active tab matches.
   const lastFocusedWindow =
     windows.find((w) => w.uid === lastFocusedWindowUid) ?? windows.find((w) => w.focused);
@@ -707,7 +716,9 @@ async function syncOnce(): Promise<void> {
     attachmentMode: hasAllAttachment ? "all" : hasActiveAttachment ? "lastFocused" : "none",
     panels,
     ...(freeMenus.length > 0 ? { freeMenus } : {}),
+    ...(resetMenuUids.size > 0 ? { resetMenuUids: Array.from(resetMenuUids) } : {}),
   });
+  resetMenuUids.clear();
 
   if (hasActiveAttachment) {
     for (const panel of panels) {
@@ -843,6 +854,19 @@ function isManualReconnectMessage(value: unknown): value is { type: "manualRecon
 
 function isResyncWindowsMessage(value: unknown): value is { type: "resyncWindows" } {
   return typeof value === "object" && value !== null && "type" in value && value.type === "resyncWindows";
+}
+
+function isResetMenuLayoutMessage(
+  value: unknown,
+): value is { type: "resetMenuLayout"; menuUid: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "resetMenuLayout" &&
+    "menuUid" in value &&
+    typeof (value as { menuUid?: unknown }).menuUid === "string"
+  );
 }
 
 function isSetWidgetEnabledMessage(

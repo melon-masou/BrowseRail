@@ -55,6 +55,7 @@ pub enum NativeCommand {
         attachment_mode: crate::protocol::AttachmentMode,
         panels: Vec<PanelSnapshot>,
         free_menus: Vec<MenuSnapshot>,
+        reset_menu_uids: Vec<String>,
     },
     BeginWindowPairing {
         connection_uid: Uuid,
@@ -427,6 +428,7 @@ impl NativeReactor {
                     attachment_mode,
                     panels,
                     free_menus,
+                    reset_menu_uids,
                 } => {
                     if let Ok(Some(outcome)) = self.registry.sync(
                         connection_uid,
@@ -434,9 +436,11 @@ impl NativeReactor {
                         attachment_mode,
                         panels,
                         free_menus,
+                        reset_menu_uids,
                     ) {
                         let instance_uid = outcome.instance_uid.clone();
                         let free_menus = outcome.free_menus.clone();
+                        let reset_menu_uids = outcome.reset_menu_uids.clone();
                         // Center new free surfaces on the lastFocused browser window
                         // (else any window), falling back to the primary monitor.
                         let window_bounds = outcome
@@ -449,7 +453,7 @@ impl NativeReactor {
                                 (b.x, b.y, b.width, b.height)
                             });
                         self.handle_sync_outcome(outcome);
-                        self.handle_free_menus(&instance_uid, &free_menus, window_bounds);
+                        self.handle_free_menus(&instance_uid, &free_menus, &reset_menu_uids, window_bounds);
                         self.refresh_window_levels();
                         self.check_update_tray();
                     }
@@ -600,6 +604,7 @@ impl NativeReactor {
                                 panels,
                                 removed_window_uids: Vec::new(),
                                 free_menus: Vec::new(),
+                                reset_menu_uids: Vec::new(),
                             });
                         } else {
                             let window_uids = panels
@@ -766,6 +771,7 @@ impl NativeReactor {
                     panels: vec![panel],
                     removed_window_uids: Vec::new(),
                     free_menus: Vec::new(),
+                    reset_menu_uids: Vec::new(),
                 });
                 self.refresh_window_levels();
             } else {
@@ -895,7 +901,7 @@ impl NativeReactor {
 
     /// Reconcile the free (detached) surfaces for an instance to exactly match
     /// the `free_menus` in the latest sync. The extension only sends free menus
-    /// that should currently be shown (windows exist + webpage-set matches), so
+    /// that should currently be shown (windows exist + URL-rule matches), so
     /// the desktop just creates/keeps those and destroys the rest. Each free
     /// surface is a single non-owned, always-topmost, no-activate floating
     /// window keyed by instance + menu (never per browser window).
@@ -903,6 +909,7 @@ impl NativeReactor {
         &self,
         instance_uid: &str,
         free_menus: &[MenuSnapshot],
+        reset_menu_uids: &[String],
         // Bounds (x, y, w, h) of the lastFocused browser window, used to center a
         // free surface that has no saved position (or whose saved spot is now
         // off-screen). None → fall back to the primary monitor center.
@@ -917,6 +924,7 @@ impl NativeReactor {
             width: f64,
             height: f64,
             free_pos: Option<(f64, f64)>,
+            reset_position: bool,
             menu: MenuSnapshot,
         }
         let mut desired: Vec<FreeItem> = Vec::new();
@@ -942,6 +950,7 @@ impl NativeReactor {
                     width,
                     height,
                     free_pos: menu.free_position.map(|p| (p.x, p.y)),
+                    reset_position: reset_menu_uids.contains(&menu.uid),
                     menu: menu.clone(),
                 });
             }
@@ -978,6 +987,16 @@ impl NativeReactor {
                         // last dragged it (a fresh position arrives via freePosition
                         // on the next create, not by snapping an open surface).
                         let _ = window.set_size(LogicalSize::new(item.width, item.height));
+                        if item.reset_position {
+                            let (x, y) = resolve_free_position(
+                                &app,
+                                item.free_pos,
+                                item.width,
+                                item.height,
+                                window_bounds,
+                            );
+                            let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+                        }
                         window
                     }
                     None => {

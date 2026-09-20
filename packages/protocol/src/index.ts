@@ -121,6 +121,10 @@ export type ClientMessage =
       // builds exactly one floating surface per entry, regardless of how many
       // panels/windows exist. Omitted or empty when there are none.
       freeMenus?: MenuSnapshot[];
+      // Menu placements cleared by a user reset. This tells the desktop that an
+      // already-open free surface should move back to its unsaved default spot;
+      // ordinary syncs must preserve that window's current position.
+      resetMenuUids?: string[];
     }
   | { type: "pairWindow"; requestUid: string; windowUid: string }
   | { type: "confirmWindowPairing"; requestUid: string; windowUid: string }
@@ -254,7 +258,7 @@ export interface StoredMenuItem {
   transparent?: boolean;
 }
 
-export interface WebpageSet {
+export interface UrlRule {
   uid: string;
   name: string;
   patterns: string[];
@@ -272,7 +276,7 @@ export interface StoredMenu {
   orientation: MenuOrientation;
   tabMode?: TabMode;
   uid: string;
-  webpageSetUids?: string[];
+  urlRuleUids?: string[];
 }
 
 // Special Root Placeholders
@@ -371,14 +375,14 @@ export interface ExportedMenu {
   onTopMode?: OnTopMode;
   tabMode?: TabMode;
   items: ExportedMenuItem[];
-  webpageSetUids?: string[];
+  urlRuleUids?: string[];
 }
 
 export interface ExportedSettingsData {
   version: typeof EXPORT_SCHEMA_VERSION;
   exportedAt: string;
   menus: ExportedMenu[];
-  webpageSets?: WebpageSet[];
+  urlRules?: UrlRule[];
 }
 
 export function isExportedSettingsData(value: unknown): value is ExportedSettingsData {

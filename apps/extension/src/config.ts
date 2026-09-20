@@ -10,7 +10,7 @@ import type {
   StoredMenuItem,
   StoredMenuItemType,
   TabMode,
-  WebpageSet,
+  UrlRule,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -26,7 +26,7 @@ export type {
   TabMode,
   StoredMenuItem,
   StoredMenu,
-  WebpageSet,
+  UrlRule,
 };
 
 export interface ExtensionConfig {
@@ -36,9 +36,8 @@ export interface ExtensionConfig {
   instanceLabel: string;
   panel: {
     menus: StoredMenu[];
-    webpageSets?: WebpageSet[];
   };
-  webpageSets?: WebpageSet[];
+  urlRules: UrlRule[];
 }
 
 export const DEFAULT_FONT_SIZE = 13;
@@ -81,6 +80,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   panel: {
     menus: [createMenu()],
   },
+  urlRules: [],
 };
 
 export const DEFAULT_ITEM_WIDTH = 84;
@@ -211,7 +211,7 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
       await browser.storage.sync.set({
         [SYNC_CONFIG_KEY]: {
           menus: normalized.panel.menus,
-          webpageSets: normalized.panel.webpageSets ?? [],
+          urlRules: normalized.urlRules,
         },
       });
     } catch (e) {
@@ -266,15 +266,11 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     };
   });
 
-  const rawWebpageSets = Array.isArray(panel.webpageSets)
-    ? panel.webpageSets
-    : Array.isArray(value.webpageSets)
-      ? value.webpageSets
-      : [];
-  const webpageSets: WebpageSet[] = rawWebpageSets.flatMap((ws) => {
+  const rawUrlRules = Array.isArray(value.urlRules) ? value.urlRules : [];
+  const urlRules: UrlRule[] = rawUrlRules.flatMap((ws) => {
     if (!isRecord(ws)) return [];
     if (typeof ws.uid !== "string" || !ws.uid) return [];
-    const name = typeof ws.name === "string" && ws.name.trim() ? ws.name.trim() : "Webpage Set";
+    const name = typeof ws.name === "string" && ws.name.trim() ? ws.name.trim() : "URL rule";
     const patterns = Array.isArray(ws.patterns)
       ? ws.patterns
           .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
@@ -296,8 +292,8 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         : defaultInstanceLabel,
     panel: {
       menus: menus.length > 0 ? menus : [createMenu()],
-      webpageSets,
     },
+    urlRules,
   };
 }
 
@@ -351,8 +347,8 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const onTopMode: OnTopMode =
     value.onTopMode === "alwaysOnTop" ? "alwaysOnTop" : "aboveBrowser";
   const enabled = typeof value.enabled === "boolean" ? value.enabled : true;
-  const webpageSetUids = Array.isArray(value.webpageSetUids)
-    ? value.webpageSetUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+  const urlRuleUids = Array.isArray(value.urlRuleUids)
+    ? value.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
     : undefined;
   return {
     attachmentMode,
@@ -368,7 +364,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     orientation: value.orientation === "row" ? "row" : "column",
     ...(tabMode !== undefined ? { tabMode } : {}),
     uid,
-    ...(webpageSetUids && webpageSetUids.length > 0 ? { webpageSetUids } : {}),
+    ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
   };
 }
 
@@ -519,6 +515,19 @@ export async function saveMenuPlacement(menuUid: string, placement: MenuPlacemen
   });
 }
 
+export async function removeMenuPlacements(menuUid: string): Promise<void> {
+  const [placements, freePlacements] = await Promise.all([
+    loadMenuPlacements(),
+    loadFreePlacements(),
+  ]);
+  delete placements[menuUid];
+  delete freePlacements[menuUid];
+  await browser.storage.local.set({
+    [PLACEMENTS_STORAGE_KEY]: placements,
+    [FREE_PLACEMENTS_STORAGE_KEY]: freePlacements,
+  });
+}
+
 // Free (detached) menu surface positions: absolute screen coordinates, keyed by
 // menuUid. Kept separate from menu_placements (which stores anchor + window-
 // relative offsets that have no meaning off a browser window), so switching a
@@ -607,4 +616,3 @@ export async function saveBookmarkRootPrefix(prefix: string[]): Promise<void> {
 export async function initBookmarkRootPrefix(): Promise<string[]> {
   return DEFAULT_BOOKMARK_ROOT_PREFIX;
 }
-

@@ -19,6 +19,8 @@ pub enum ClientMessage {
         panels: Vec<PanelSnapshot>,
         #[serde(default, rename = "freeMenus")]
         free_menus: Vec<MenuSnapshot>,
+        #[serde(default, rename = "resetMenuUids")]
+        reset_menu_uids: Vec<String>,
     },
     #[serde(rename = "pairWindow")]
     PairWindow {
