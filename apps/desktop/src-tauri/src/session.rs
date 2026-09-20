@@ -5,7 +5,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use crate::protocol::{
-    AttachmentMode, BrowserInstance, MenuPlacement, MenuSnapshot, PanelSnapshot, ServerMessage,
+    AttachmentMode, BrowserInstance, FreePosition, MenuPlacement, MenuSnapshot, PanelSnapshot,
+    ServerMessage,
 };
 
 #[derive(Default)]
@@ -195,10 +196,15 @@ impl SessionRegistry {
         x: f64,
         y: f64,
     ) -> Result<(), String> {
-        let sessions = self.sessions.read().map_err(|_| "Session lock failed")?;
+        let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
-            .get(instance_uid)
+            .get_mut(instance_uid)
             .ok_or("The browser instance is disconnected")?;
+
+        if let Some(menu) = session.free_menus.get_mut(&menu_uid) {
+            menu.free_position = Some(FreePosition { x, y });
+        }
+
         session
             .outgoing
             .as_ref()
@@ -285,6 +291,14 @@ impl SessionRegistry {
         let session = sessions
             .get_mut(instance_uid)
             .ok_or("The browser instance is disconnected")?;
+
+        // A menu can appear both as bound panels and as a free (detached)
+        // surface; keep the stored free snapshot in sync so an endpoint save can
+        // fall back to the preserved global placement for its offsets/anchor.
+        if let Some(menu) = session.free_menus.get_mut(&menu_uid) {
+            menu.placement.item_width = placement.item_width;
+            menu.placement.item_height = placement.item_height;
+        }
 
         for panel in session.panels.values_mut() {
             for menu in &mut panel.menus {

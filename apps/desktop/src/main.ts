@@ -79,6 +79,11 @@ async function initializeSurface(): Promise<void> {
     const appWindow = getCurrentWindow();
     let moveReportTimer: ReturnType<typeof setTimeout> | undefined;
     void appWindow.onMoved(({ payload }) => {
+      // Only user drags (via the handle) persist a new position. While
+      // customizing, begin/save/cancel move the window programmatically — those
+      // moves must NOT overwrite free_position, or the toolbar-shifted spot gets
+      // saved and the bar drifts a notch every time.
+      if (customizing) return;
       clearTimeout(moveReportTimer);
       moveReportTimer = setTimeout(() => {
         void (async () => {
@@ -277,6 +282,8 @@ async function initializeSurface(): Promise<void> {
   function computeSurfaceDimensions(menu: MenuSnapshot): { width: number; height: number } {
     const dimensions = computeMenuDimensions(menu);
     if (!isFree) return dimensions;
+    // The drag handle lives in the flex flow next to the bar (see
+    // .free-drag-handle in CSS), so the surface is the menu plus that strip.
     return menu.orientation === "row"
       ? { width: dimensions.width + FREE_DRAG_HANDLE_SIZE, height: dimensions.height }
       : { width: dimensions.width, height: dimensions.height + FREE_DRAG_HANDLE_SIZE };
@@ -355,9 +362,6 @@ async function initializeSurface(): Promise<void> {
         event.preventDefault();
         event.stopPropagation();
         if (editingLocked) return;
-        // Free surfaces are moved via their drag handle; right-click customize
-        // (which is bound-window based) is not wired for them.
-        if (isFree) return;
         if (customizing) return;
 
         // If a popup is open, close it and wait for size and position to restore completely before customizing
@@ -999,7 +1003,13 @@ async function initializeSurface(): Promise<void> {
       }
     });
 
-    toolbar.append(anchorButton, moveButton, cancelButton, saveButton);
+    // A free (detached) menu has no owner window to anchor against — hide that
+    // control so the toolbar only shows actions that make sense off-window.
+    if (isFree) {
+      toolbar.append(moveButton, cancelButton, saveButton);
+    } else {
+      toolbar.append(anchorButton, moveButton, cancelButton, saveButton);
+    }
 
     const clampWidth = (width: number): number => menu.orientation === "column"
       ? Math.min(220, Math.max(26, width))

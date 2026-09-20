@@ -344,6 +344,12 @@ pub struct CustomizationStartInfo {
 #[cfg(target_os = "windows")]
 const CUSTOMIZE_ICON_SIZE: f64 = 26.0;
 
+/// A free (detached) surface reserves a strip for the drag handle: 10px on
+/// the left of a row bar / top of a column bar. The customize flow must keep
+/// that strip on restore so the drag handle doesn't eat the first item.
+#[cfg(target_os = "windows")]
+const FREE_DRAG_HANDLE: f64 = 10.0;
+
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
@@ -356,17 +362,30 @@ fn begin_menu_customization(
     toolbar_space: f64,
     customize_width: f64,
 ) -> Result<CustomizationStartInfo, String> {
-    state.popups.remove(&instance_uid, &window_uid, &menu_uid);
+    // Free (detached) surfaces live outside the per-window panel registry; the
+    // snapshot they need for sizing is stored on the session itself.
+    let is_free = window_uid.is_empty();
+    if !is_free {
+        state.popups.remove(&instance_uid, &window_uid, &menu_uid);
+    }
 
-    let panel = state
-        .registry
-        .panel(&instance_uid, &window_uid)
-        .ok_or("Panel state is unavailable")?;
-    let orig_menu = panel
-        .menus
-        .iter()
-        .find(|menu| menu.uid == menu_uid)
-        .ok_or("Menu state is unavailable")?;
+    let orig_menu = if is_free {
+        state
+            .registry
+            .free_menu(&instance_uid, &menu_uid)
+            .ok_or("Free menu state is unavailable")?
+    } else {
+        let panel = state
+            .registry
+            .panel(&instance_uid, &window_uid)
+            .ok_or("Panel state is unavailable")?;
+        panel
+            .menus
+            .iter()
+            .find(|menu| menu.uid == menu_uid)
+            .ok_or("Menu state is unavailable")?
+            .clone()
+    };
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let (current_x, current_y) = if let Some(geo) = state.surfaces.geometry(window.label()) {
@@ -375,7 +394,7 @@ fn begin_menu_customization(
         let position = window.outer_position().map_err(|error| error.to_string())?;
         (f64::from(position.x) / scale, f64::from(position.y) / scale)
     };
-    let (current_w, current_h) = protocol::menu_total_size(orig_menu);
+    let (current_w, current_h) = protocol::menu_total_size(&orig_menu);
     if !toolbar_space.is_finite()
         || toolbar_space < 0.0
         || !customize_width.is_finite()
@@ -469,15 +488,27 @@ fn save_menu_placement(
     toolbar_position: Option<String>,
     toolbar_space: Option<f64>,
 ) -> Result<MenuPlacement, String> {
-    let panel = state
-        .registry
-        .panel(&instance_uid, &window_uid)
-        .ok_or("Panel state is unavailable")?;
-    let orig_menu = panel
-        .menus
-        .iter()
-        .find(|menu| menu.uid == menu_uid)
-        .ok_or("Menu state is unavailable")?;
+    // Free (detached) menus have no owning window, so bounds/anchor math has no
+    // meaning for them. Use the session-stored free snapshot for the original
+    // placement, and simply persist the new size as a free placement.
+    let is_free = window_uid.is_empty();
+    let orig_menu = if is_free {
+        state
+            .registry
+            .free_menu(&instance_uid, &menu_uid)
+            .ok_or("Free menu state is unavailable")?
+    } else {
+        let panel = state
+            .registry
+            .panel(&instance_uid, &window_uid)
+            .ok_or("Panel state is unavailable")?;
+        panel
+            .menus
+            .iter()
+            .find(|menu| menu.uid == menu_uid)
+            .ok_or("Menu state is unavailable")?
+            .clone()
+    };
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
@@ -507,14 +538,26 @@ fn save_menu_placement(
         }
     }
 
-    let bounds = panel.window.bounds;
-    let offset_x = match anchor {
-        MenuAnchor::TopLeft | MenuAnchor::BottomLeft => x - bounds.x,
-        MenuAnchor::TopRight | MenuAnchor::BottomRight => bounds.x + bounds.width - x - width,
-    };
-    let offset_y = match anchor {
-        MenuAnchor::TopLeft | MenuAnchor::TopRight => y - bounds.y,
-        MenuAnchor::BottomLeft | MenuAnchor::BottomRight => bounds.y + bounds.height - y - height,
+    // Free mode has no owner rectangle to anchor against; reuse the saved
+    // placement's offsets and anchor unchanged, store the screen position as
+    // free_position instead.
+    let (offset_x, offset_y) = if is_free {
+        (orig_menu.placement.offset_x, orig_menu.placement.offset_y)
+    } else {
+        let bounds = state
+            .registry
+            .panel(&instance_uid, &window_uid)
+            .map(|panel| panel.window.bounds)
+            .ok_or("Panel state is unavailable")?;
+        let offset_x = match anchor {
+            MenuAnchor::TopLeft | MenuAnchor::BottomLeft => x - bounds.x,
+            MenuAnchor::TopRight | MenuAnchor::BottomRight => bounds.x + bounds.width - x - width,
+        };
+        let offset_y = match anchor {
+            MenuAnchor::TopLeft | MenuAnchor::TopRight => y - bounds.y,
+            MenuAnchor::BottomLeft | MenuAnchor::BottomRight => bounds.y + bounds.height - y - height,
+        };
+        (offset_x, offset_y)
     };
 
     // Derive the per-track size with the exact same track count and gap the
@@ -522,7 +565,7 @@ fn save_menu_placement(
     // so a save without a drag round-trips back to the same total instead of
     // growing every time.
     let track_count = protocol::menu_track_count(&orig_menu.items);
-    let item_gap = protocol::menu_gap(orig_menu);
+    let item_gap = protocol::menu_gap(&orig_menu);
     let (item_width, item_height) = match orig_menu.orientation {
         protocol::MenuOrientation::Row => {
             let iw = ((width - (track_count - 1.0) * item_gap) / track_count).max(1.0);
@@ -534,6 +577,11 @@ fn save_menu_placement(
         }
     };
 
+    let anchor = if is_free {
+        orig_menu.placement.anchor
+    } else {
+        anchor
+    };
     let placement = MenuPlacement {
         anchor,
         offset_x,
@@ -544,19 +592,40 @@ fn save_menu_placement(
         gap: orig_menu.placement.gap,
     };
 
-    window
-        .set_size(tauri::LogicalSize::new(width, height))
-        .map_err(|error| error.to_string())?;
-    window
-        .set_position(tauri::LogicalPosition::new(x, y))
-        .map_err(|error| error.to_string())?;
+    if is_free {
+        // Free surface size = menu + the drag-handle strip.
+        let (surface_w, surface_h) = match orig_menu.orientation {
+            protocol::MenuOrientation::Row => (width + FREE_DRAG_HANDLE, height),
+            protocol::MenuOrientation::Column => (width, height + FREE_DRAG_HANDLE),
+        };
+        window
+            .set_size(tauri::LogicalSize::new(surface_w, surface_h))
+            .map_err(|error| error.to_string())?;
+        // `y` was already normalized back to the pre-customize window top above
+        // (the `y += toolbar_space` for a top toolbar undoes begin's upward
+        // shift; a bottom toolbar never moved the top). So restore to `y`
+        // directly — subtracting/adding toolbar_space again would re-introduce
+        // the shift and make the bar creep a notch on every save.
+        window
+            .set_position(tauri::LogicalPosition::new(x, y))
+            .map_err(|error| error.to_string())?;
+        let _ = state
+            .registry
+            .update_free_placement(&instance_uid, menu_uid.clone(), x, y);
+    } else {
+        window
+            .set_size(tauri::LogicalSize::new(width, height))
+            .map_err(|error| error.to_string())?;
+        window
+            .set_position(tauri::LogicalPosition::new(x, y))
+            .map_err(|error| error.to_string())?;
+    }
 
-    state.surfaces.set_customizing(window.label(), false);
     let _ = state
         .native_sender
         .send(native::NativeCommand::SaveMenuPlacement {
             instance_uid,
-            window_uid,
+            window_uid: window_uid.clone(),
             menu_uid,
             anchor,
             placement: placement.clone(),
@@ -573,7 +642,28 @@ fn cancel_menu_customization(
     window_uid: String,
     menu_uid: String,
 ) -> Result<(), String> {
-    if let Some(panel) = state.registry.panel(&instance_uid, &window_uid) {
+    let is_free = window_uid.is_empty();
+    if is_free {
+        if let Some(menu) = state.registry.free_menu(&instance_uid, &menu_uid) {
+            let (mut width, mut height) = protocol::menu_total_size(&menu);
+            // Same handle strip the surface was originally opened with.
+            match menu.orientation {
+                protocol::MenuOrientation::Row => width += FREE_DRAG_HANDLE,
+                protocol::MenuOrientation::Column => height += FREE_DRAG_HANDLE,
+            }
+            window
+                .set_size(tauri::LogicalSize::new(width, height))
+                .map_err(|error| error.to_string())?;
+            if let Some(menu_pos) = menu.free_position {
+                // The free position is captured at drag-time without any
+                // toolbar involvement, so it *is* the pre-customize content
+                // spot. Restore it to undo whatever the toolbar did.
+                window
+                    .set_position(tauri::LogicalPosition::new(menu_pos.x, menu_pos.y))
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+    } else if let Some(panel) = state.registry.panel(&instance_uid, &window_uid) {
         if let Some(menu) = panel.menus.iter().find(|m| m.uid == menu_uid) {
             let geo = protocol::compute_menu_geometry(&panel.window, menu);
             window
