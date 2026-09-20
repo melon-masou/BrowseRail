@@ -1853,6 +1853,20 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     itemSettingsSpaceControls.style.display = "none";
     itemSettingsBookmarkControls.style.display = "block";
 
+    const isMenuToggle = item.type === "menuToggle";
+    const tabModeField = itemSettingTabMode.parentElement;
+    const changeActions = itemSettingChangeBtn.parentElement;
+    if (tabModeField) tabModeField.style.display = isMenuToggle ? "none" : "";
+    if (changeActions) changeActions.style.display = isMenuToggle ? "none" : "";
+
+    if (isMenuToggle) {
+      itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
+      itemSettingRename.value = item.rename ?? item.emoji ?? "";
+      itemSettingsFolderControls.style.display = "none";
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
+
     const node = getItemNode(item);
     const isFolderNode = node ? (node.children !== undefined || node.url === undefined) : (item.type === "folder" || item.type === "flattenFolder");
     const isFolder = item.type === "folder" || (!item.type && isFolderNode) || item.type === "flattenFolder";
@@ -2163,7 +2177,9 @@ function renderMenus(): void {
 
             const titleSpan = document.createElement("span");
             titleSpan.className = "item-title";
-            titleSpan.textContent = `⇕ ${t("menu.addMenuToggle")}`;
+            titleSpan.textContent = item.rename
+              ? `${item.rename} (${t("menu.addMenuToggle")})`
+              : `⇕ ${t("menu.addMenuToggle")}`;
             titleSpan.title = t("menu.addMenuToggle");
             label.appendChild(titleSpan);
 
@@ -2231,6 +2247,16 @@ function renderMenus(): void {
               });
             });
 
+            const settingsBtn = document.createElement("button");
+            settingsBtn.type = "button";
+            settingsBtn.className = "item-settings-btn";
+            settingsBtn.title = t("itemSettings.title");
+            settingsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83l.06-.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
+            settingsBtn.addEventListener("click", (event) => {
+              event.stopPropagation();
+              openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
+            });
+
             const removeBtn = document.createElement("button");
             removeBtn.type = "button";
             removeBtn.className = "remove-item-btn";
@@ -2242,7 +2268,7 @@ function renderMenus(): void {
               markDirty();
             });
 
-            controls.append(dragHandleBtn, removeBtn);
+            controls.append(dragHandleBtn, settingsBtn, removeBtn);
             row.append(label, controls);
             return row;
           }
@@ -2852,7 +2878,10 @@ function exportSettings(): void {
       ...(menu.tabMode ? { tabMode: menu.tabMode } : {}),
       items: menu.items.map((item) => {
         if (item.type === "menuToggle") {
-          return { type: "menuToggle" } satisfies ExportedMenuItem;
+          return {
+            type: "menuToggle",
+            ...(item.rename ? { rename: item.rename } : {}),
+          } satisfies ExportedMenuItem;
         }
 
         let path = item.path;
@@ -2972,6 +3001,7 @@ async function importSettings(file: File): Promise<void> {
           items.push({
             bookmarkId: `menu-toggle-${crypto.randomUUID()}`,
             type: "menuToggle",
+            ...(rename ? { rename } : {}),
           });
           continue;
         }

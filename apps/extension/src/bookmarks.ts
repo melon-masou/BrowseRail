@@ -378,7 +378,7 @@ export async function resolveMenuItems(
         const entry: LayoutEntry = {
           kind: "menuToggle",
           uid: `menu-toggle:${bookmarkId}`,
-          label: "Menu",
+          label: rename || emoji || t("menu.foldButton"),
         };
         return [entry];
       }

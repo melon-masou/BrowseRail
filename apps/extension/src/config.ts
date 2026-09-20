@@ -446,9 +446,18 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   }
 
   if (rawType === "menuToggle") {
+    const bookmarkId = typeof value.bookmarkId === "string" && value.bookmarkId
+      ? value.bookmarkId
+      : `menu-toggle-${crypto.randomUUID()}`;
+    const rename = typeof value.rename === "string" && value.rename
+      ? value.rename
+      : typeof (value as { emoji?: unknown }).emoji === "string" && (value as { emoji: string }).emoji
+        ? (value as { emoji: string }).emoji
+        : undefined;
     return {
-      bookmarkId: `menu-toggle-${crypto.randomUUID()}`,
+      bookmarkId,
       type: "menuToggle",
+      ...(rename ? { rename } : {}),
     };
   }
 

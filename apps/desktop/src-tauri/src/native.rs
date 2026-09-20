@@ -481,6 +481,7 @@ impl NativeReactor {
                             &current_panels,
                             &current_free_menus,
                         );
+                        self.reset_collapsed_menus(&instance_uid, &reset_menu_uids);
                         self.handle_sync_outcome(outcome);
                         self.handle_free_menus(
                             &instance_uid,
@@ -1506,6 +1507,38 @@ impl NativeReactor {
             crate::debug::log(
                 "Native:CollapsedMenus",
                 format!("Failed to persist collapsed menus: {error}"),
+            );
+        }
+    }
+
+    fn reset_collapsed_menus(&self, instance_uid: &str, reset_menu_uids: &[String]) {
+        if reset_menu_uids.is_empty() {
+            return;
+        }
+
+        let mut menus = match self.collapsed_menus.lock() {
+            Ok(menus) => menus,
+            Err(_) => return,
+        };
+        let before = menus.len();
+        menus.retain(|item| {
+            item.instance_uid != instance_uid
+                || !reset_menu_uids
+                    .iter()
+                    .any(|menu_uid| menu_uid == &item.menu_uid)
+        });
+        if menus.len() == before {
+            return;
+        }
+
+        let next = menus.clone();
+        drop(menus);
+        let mut settings = crate::settings::load(&self.app).unwrap_or_default();
+        settings.collapsed_menus = next;
+        if let Err(error) = crate::settings::save(&self.app, &settings) {
+            crate::debug::log(
+                "Native:CollapsedMenus",
+                format!("Failed to persist reset collapsed menus: {error}"),
             );
         }
     }

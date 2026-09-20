@@ -111,7 +111,21 @@ describe("resolveMenuItems", () => {
       {
         kind: "menuToggle",
         uid: "menu-toggle:menu-toggle-main",
-        label: "Menu",
+        label: "Fold",
+      },
+    ]);
+  });
+
+  it("uses a menu toggle rename as its button text", async () => {
+    const entries = await resolveMenuItems([
+      { bookmarkId: "menu-toggle-main", type: "menuToggle", rename: "收起" },
+    ]);
+
+    expect(entries).toEqual([
+      {
+        kind: "menuToggle",
+        uid: "menu-toggle:menu-toggle-main",
+        label: "收起",
       },
     ]);
   });
@@ -734,6 +748,21 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(menu?.items).toHaveLength(1);
     expect(menu?.items[0]?.type).toBe("menuToggle");
   });
+
+  it("preserves a menu toggle rename while normalizing settings", async () => {
+    const { normalizeStoredMenuItem } = await import("./config");
+    const item = normalizeStoredMenuItem({
+      bookmarkId: "toggle-1",
+      type: "menuToggle",
+      rename: "收起",
+    });
+
+    expect(item).toEqual({
+      bookmarkId: "toggle-1",
+      type: "menuToggle",
+      rename: "收起",
+    });
+  });
 });
 
 describe("combineRootAndItemPath and space resolution", () => {
@@ -961,4 +990,3 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(await loadBookmarkRootPrefix()).toEqual(["Work", "A/B"]);
   });
 });
-

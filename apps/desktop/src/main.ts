@@ -403,12 +403,21 @@ async function initializeSurface(): Promise<void> {
       }
       return acc + 1;
     }, 0);
-    menuBar.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
+    menuBar.style.setProperty(
+      "--item-count",
+      String(menuCollapsed ? 1 : Math.max(1, Math.round(totalUnits))),
+    );
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
     menuBar.style.setProperty("--menu-gap", `${gap}px`);
     const dims = computeMenuDimensions(menu);
-    menuBar.style.width = `${dims.width}px`;
-    menuBar.style.height = `${dims.height}px`;
+    const renderedDims = menuCollapsed
+      ? {
+          width: menu.placement.itemWidth ?? 84,
+          height: menu.placement.itemHeight ?? 36,
+        }
+      : dims;
+    menuBar.style.width = `${renderedDims.width}px`;
+    menuBar.style.height = `${renderedDims.height}px`;
 
     menuBar.addEventListener("pointerenter", cancelClose);
     menuBar.addEventListener("pointerleave", (event) => {
@@ -422,17 +431,6 @@ async function initializeSurface(): Promise<void> {
       const toggle = menu.items.find((entry) => entry.kind === "menuToggle");
       if (toggle && toggle.kind === "menuToggle") {
         const toggleEl = renderMenuEntry(toggle, menuBar);
-        let offsetUnits = 0;
-        for (const entry of menu.items) {
-          if (entry === toggle) break;
-          offsetUnits += entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1;
-        }
-        const itemSize = menu.orientation === "row"
-          ? (menu.placement.itemWidth ?? 84)
-          : (menu.placement.itemHeight ?? 36);
-        const offsetPx = Math.round(offsetUnits) * (gap + itemSize);
-        menuBar.style.left = menu.orientation === "row" ? `${-offsetPx}px` : "0";
-        menuBar.style.top = menu.orientation === "column" ? `${-offsetPx}px` : "0";
         menuBar.replaceChildren(toggleEl);
       } else {
         const empty = document.createElement("div");
@@ -591,7 +589,7 @@ async function initializeSurface(): Promise<void> {
     if (entry.kind === "menuToggle") {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "menu-button";
+      button.className = "menu-button menu-toggle-button";
       const labelSpan = document.createElement("span");
       labelSpan.className = "menu-button-label";
       labelSpan.textContent = entry.label;
@@ -607,7 +605,9 @@ async function initializeSurface(): Promise<void> {
             const menuSnapshot = currentMenu ?? initial.menu;
             if (!menuSnapshot) return;
             renderSurface(menuSnapshot);
-            const toggle = root.querySelector<HTMLElement>(".menu-bar .menu-button");
+            const toggle = root.querySelector<HTMLElement>(
+              ".menu-bar .menu-toggle-button",
+            );
             if (!toggle) return;
             await requestDoubleAnimationFrame();
             const { width, height } = computeSurfaceDimensions(menuSnapshot);
