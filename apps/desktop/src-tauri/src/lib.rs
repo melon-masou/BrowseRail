@@ -372,7 +372,7 @@ fn free_surface_state(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn surface_available_height(window: tauri::Window) -> Result<f64, String> {
+fn surface_available_height(window: tauri::Window, above: bool) -> Result<f64, String> {
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
     let top = f64::from(position.y) / scale;
@@ -381,8 +381,13 @@ fn surface_available_height(window: tauri::Window) -> Result<f64, String> {
         .map_err(|error| error.to_string())?
         .ok_or("Current monitor is unavailable")?;
     let work_area = monitor.work_area();
-    let bottom = (f64::from(work_area.position.y) + f64::from(work_area.size.height)) / scale;
-    Ok((bottom - top).max(0.0))
+    let work_top = f64::from(work_area.position.y) / scale;
+    let work_bottom = (f64::from(work_area.position.y) + f64::from(work_area.size.height)) / scale;
+    Ok(if above {
+        (top - work_top).max(0.0)
+    } else {
+        (work_bottom - top).max(0.0)
+    })
 }
 
 #[cfg(target_os = "windows")]

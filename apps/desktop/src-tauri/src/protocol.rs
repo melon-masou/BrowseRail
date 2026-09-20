@@ -171,7 +171,9 @@ impl<'de> Deserialize<'de> for OnTopMode {
 #[serde(rename_all = "camelCase")]
 pub enum ExpandDirection {
     Down,
+    Up,
     Right,
+    Left,
 }
 
 pub fn deserialize_optional_expand_direction<'de, D>(
@@ -183,7 +185,9 @@ where
     let opt: Option<String> = Option::deserialize(deserializer)?;
     match opt.as_deref() {
         Some("down") => Ok(Some(ExpandDirection::Down)),
+        Some("up") => Ok(Some(ExpandDirection::Up)),
         Some("right") => Ok(Some(ExpandDirection::Right)),
+        Some("left") => Ok(Some(ExpandDirection::Left)),
         _ => Ok(None),
     }
 }
@@ -207,6 +211,8 @@ pub struct MenuSnapshot {
     pub font_size: Option<serde_json::Value>,
     #[serde(default)]
     pub gap: Option<f64>,
+    #[serde(default)]
+    pub button_padding: Option<f64>,
     #[serde(default)]
     pub color: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
@@ -625,6 +631,33 @@ mod tests {
         } else {
             panic!("Expected ClientMessage::Sync");
         }
+    }
+
+    #[test]
+    fn reads_negative_popup_expansion_directions() {
+        let left: MenuSnapshot = serde_json::from_str(
+            r#"{
+                "uid": "menu-left",
+                "orientation": "column",
+                "expandDirection": "left",
+                "placement": { "anchor": "topLeft", "offsetX": 0, "offsetY": 0 },
+                "items": []
+            }"#,
+        )
+        .unwrap();
+        let up: MenuSnapshot = serde_json::from_str(
+            r#"{
+                "uid": "menu-up",
+                "orientation": "row",
+                "expandDirection": "up",
+                "placement": { "anchor": "topLeft", "offsetX": 0, "offsetY": 0 },
+                "items": []
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(left.expand_direction, Some(super::ExpandDirection::Left));
+        assert_eq!(up.expand_direction, Some(super::ExpandDirection::Up));
     }
 
     #[test]

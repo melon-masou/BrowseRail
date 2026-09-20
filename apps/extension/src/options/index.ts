@@ -155,6 +155,7 @@ const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientat
 const menuSettingExpandDirection = element<HTMLSelectElement>("menu-setting-expand-direction");
 const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
+const menuSettingButtonPadding = element<HTMLInputElement>("menu-setting-button-padding");
 
 const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
 const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
@@ -1510,7 +1511,11 @@ function initMenuSettingsDialog(): void {
     const menu = menus[activeMenuSettingsIndex];
     if (menu) {
       const val = menuSettingExpandDirection.value;
-      menu.expandDirection = val === "down" || val === "right" ? val : undefined;
+      if (val === "down" || val === "up" || val === "right" || val === "left") {
+        menu.expandDirection = val;
+      } else {
+        delete menu.expandDirection;
+      }
       markDirty();
     }
   });
@@ -1529,6 +1534,15 @@ function initMenuSettingsDialog(): void {
     const val = parseInt(menuSettingGap.value, 10);
     if (menu && !isNaN(val)) {
       menu.gap = Math.max(0, Math.min(100, val));
+      markDirty();
+    }
+  });
+
+  menuSettingButtonPadding.addEventListener("input", () => {
+    const menu = menus[activeMenuSettingsIndex];
+    const val = parseInt(menuSettingButtonPadding.value, 10);
+    if (menu && !isNaN(val)) {
+      menu.buttonPadding = Math.max(0, Math.min(20, val));
       markDirty();
     }
   });
@@ -1574,6 +1588,8 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   menuSettingExpandDirection.value = menu.expandDirection ?? "";
   menuSettingFontSize.value = String(fs);
   menuSettingGap.value = String(gapVal);
+  menuSettingButtonPadding.value =
+    menu.buttonPadding !== undefined ? String(menu.buttonPadding) : "";
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
   menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
   menuSettingTabMode.value = menu.tabMode ?? "replace";
@@ -2871,6 +2887,7 @@ function exportSettings(): void {
       ...(menu.enabled !== undefined ? { enabled: menu.enabled } : {}),
       ...(menu.fontSize !== undefined ? { fontSize: menu.fontSize } : {}),
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
+      ...(menu.buttonPadding !== undefined ? { buttonPadding: menu.buttonPadding } : {}),
       ...(menu.color ? { color: menu.color } : {}),
       ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
       ...(menu.attachmentMode ? { attachmentMode: menu.attachmentMode } : {}),
@@ -2987,7 +3004,9 @@ async function importSettings(file: File): Promise<void> {
 
         const expandDirection =
           itemRecord.expandDirection === "down" ||
-          itemRecord.expandDirection === "right"
+          itemRecord.expandDirection === "up" ||
+          itemRecord.expandDirection === "right" ||
+          itemRecord.expandDirection === "left"
             ? (itemRecord.expandDirection as ExpandDirection)
             : undefined;
 

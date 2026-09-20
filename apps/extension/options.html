@@ -219,7 +219,9 @@
                 <select id="menu-setting-expand-direction">
                   <option value="" data-i18n="expandDirection.default" selected>Default</option>
                   <option value="down" data-i18n="expandDirection.down">Down</option>
+                  <option value="up" data-i18n="expandDirection.up">Up</option>
                   <option value="right" data-i18n="expandDirection.right">Right</option>
+                  <option value="left" data-i18n="expandDirection.left">Left</option>
                 </select>
               </label>
               <label>
@@ -229,6 +231,10 @@
               <label>
                 <span data-i18n="menuSettings.gap">Button gap (%)</span>
                 <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
+              </label>
+              <label>
+                <span data-i18n="menuSettings.buttonPadding">Button padding (px)</span>
+                <input id="menu-setting-button-padding" type="number" min="0" max="20" step="1" />
               </label>
             </div>
           </section>

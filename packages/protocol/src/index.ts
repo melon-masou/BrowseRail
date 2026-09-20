@@ -65,7 +65,7 @@ export interface MenuToggleEntry {
 }
 
 export type OnTopMode = "aboveBrowser" | "alwaysOnTop";
-export type ExpandDirection = "down" | "right";
+export type ExpandDirection = "down" | "up" | "right" | "left";
 
 export interface FolderEntry {
   kind: "folder";
@@ -93,6 +93,7 @@ export interface MenuSnapshot {
   color?: string;
   enabled?: boolean;
   expandDirection?: ExpandDirection;
+  buttonPadding?: number;
   fontSize?: MenuFontSize;
   gap?: number;
   items: LayoutEntry[];
@@ -275,6 +276,7 @@ export interface StoredMenu {
   color?: string;
   enabled?: boolean;
   expandDirection?: ExpandDirection;
+  buttonPadding?: number;
   fontSize?: MenuFontSize;
   gap?: number;
   items: StoredMenuItem[];
@@ -373,6 +375,7 @@ export interface ExportedMenu {
   uid?: string;
   enabled?: boolean;
   orientation: MenuOrientation;
+  buttonPadding?: number;
   fontSize?: MenuFontSize;
   gap?: number;
   color?: string;

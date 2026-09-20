@@ -332,13 +332,20 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
     ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : DEFAULT_MENU_GAP;
+  const buttonPadding =
+    typeof value.buttonPadding === "number" && Number.isFinite(value.buttonPadding)
+      ? Math.min(20, Math.max(0, value.buttonPadding))
+      : undefined;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
   const tabMode: TabMode | undefined =
     value.tabMode === "newTab" || value.tabMode === "replace"
       ? value.tabMode
       : undefined;
   const expandDirection: ExpandDirection | undefined =
-    value.expandDirection === "down" || value.expandDirection === "right"
+    value.expandDirection === "down" ||
+    value.expandDirection === "up" ||
+    value.expandDirection === "right" ||
+    value.expandDirection === "left"
       ? value.expandDirection
       : undefined;
   const attachmentMode: AttachmentMode = isAttachmentMode(value.attachmentMode)
@@ -365,6 +372,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     attachmentMode,
     ...(color !== undefined ? { color } : {}),
     enabled,
+    ...(buttonPadding !== undefined ? { buttonPadding } : {}),
     ...(expandDirection !== undefined ? { expandDirection } : {}),
     ...(fontSize !== undefined ? { fontSize } : {}),
     gap,

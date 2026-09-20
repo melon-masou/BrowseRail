@@ -628,6 +628,7 @@ async function syncOnce(): Promise<void> {
         enabled: true,
         fontSize: menu.fontSize ?? DEFAULT_FONT_SIZE,
         gap: placement.gap ?? 0,
+        ...(menu.buttonPadding !== undefined ? { buttonPadding: menu.buttonPadding } : {}),
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
         items,
