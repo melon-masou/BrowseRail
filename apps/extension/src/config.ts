@@ -79,7 +79,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
     url: DEFAULT_DESKTOP_URL,
   },
   panel: {
-    menus: [createMenu("menu-main")],
+    menus: [createMenu()],
   },
 };
 
@@ -295,14 +295,14 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         ? value.instanceLabel.trim()
         : defaultInstanceLabel,
     panel: {
-      menus: menus.length > 0 ? menus : [createMenu("menu-main")],
+      menus: menus.length > 0 ? menus : [createMenu()],
       webpageSets,
     },
   };
 }
 
 function migrateLegacyMenu(panel: Record<string, unknown>): StoredMenu[] {
-  const menu = createMenu("menu-main");
+  const menu = createMenu();
   if (!Array.isArray(panel.layout)) {
     return [menu];
   }

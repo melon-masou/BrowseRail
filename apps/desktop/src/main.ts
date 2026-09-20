@@ -42,6 +42,7 @@ async function initializeSurface(): Promise<void> {
   // snapshot by instance+menu and dispatches actions without a windowUid.
   const isFree = query.get("free") === "1";
   const windowUid = isFree ? "" : requiredQuery("windowUid");
+  const surfaceLabel = getCurrentWindow().label;
   const initial = isFree
     ? await invoke<SurfaceState>("free_surface_state", { instanceUid, menuUid })
     : await invoke<SurfaceState>("surface_state", {
@@ -133,12 +134,17 @@ async function initializeSurface(): Promise<void> {
     width: 0,
   };
 
-  await listen<MenuSnapshot>("menu-state", ({ payload }) => {
-    if (payload.uid === menuUid && !customizing) {
-      currentMenu = payload;
-      renderSurface(payload);
+  await listen<MenuStateEvent>("menu-state", ({ payload }) => {
+    if (
+      payload.instanceUid === instanceUid &&
+      payload.windowUid === (isFree ? null : windowUid) &&
+      payload.menu?.uid === menuUid &&
+      !customizing
+    ) {
+      currentMenu = payload.menu;
+      renderSurface(payload.menu);
     }
-  });
+  }, { target: surfaceLabel });
 
   void invoke<boolean>("is_editing_locked")
     .then((locked) => {
@@ -1585,6 +1591,12 @@ async function initializeListenerSettings(): Promise<void> {
 
 interface SurfaceState {
   kind: "menu";
+  menu?: MenuSnapshot;
+}
+
+interface MenuStateEvent {
+  instanceUid: string;
+  windowUid?: string | null;
   menu?: MenuSnapshot;
 }
 

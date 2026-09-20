@@ -143,6 +143,14 @@ struct MenuSyncItem {
     menu: MenuSnapshot,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MenuStateEvent<'a> {
+    instance_uid: &'a str,
+    window_uid: Option<&'a str>,
+    menu: &'a MenuSnapshot,
+}
+
 struct PendingWindowPairing {
     connection_uid: Uuid,
     instance_uid: String,
@@ -1081,7 +1089,12 @@ impl NativeReactor {
                 }
                 // Push the latest content so an already-open free surface refreshes
                 // (mirrors the bound menu-state emit).
-                let _ = window.emit_to(&item.label, "menu-state", &item.menu);
+                let event = MenuStateEvent {
+                    instance_uid,
+                    window_uid: None,
+                    menu: &item.menu,
+                };
+                let _ = window.emit_to(&item.label, "menu-state", &event);
             }
         });
     }
@@ -1390,7 +1403,12 @@ impl NativeReactor {
                     surfaces.mark_hidden(&item.label);
                 }
 
-                let _ = window.emit_to(&item.label, "menu-state", &item.menu);
+                let event = MenuStateEvent {
+                    instance_uid: &instance_uid,
+                    window_uid: Some(&panel.window.uid),
+                    menu: &item.menu,
+                };
+                let _ = window.emit_to(&item.label, "menu-state", &event);
             }
         });
     }
