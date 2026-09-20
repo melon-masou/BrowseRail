@@ -2201,7 +2201,7 @@ function renderMenus(): void {
       const collapseBtn = document.createElement("button");
       collapseBtn.type = "button";
       collapseBtn.className = "menu-collapse-btn";
-      collapseBtn.textContent = isCollapsed ? "▸" : "▾";
+      collapseBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>`;
       collapseBtn.title = isCollapsed ? t("menu.expand") : t("menu.collapse");
       collapseBtn.setAttribute("aria-label", collapseBtn.title);
       collapseBtn.setAttribute("aria-expanded", String(!isCollapsed));
@@ -3259,4 +3259,3 @@ copyDebugBtn?.addEventListener("click", async () => {
     if (copyDebugBtn) copyDebugBtn.disabled = !debugLoggingToggle?.checked;
   }
 });
-
