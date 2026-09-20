@@ -81,15 +81,6 @@ pub enum NativeCommand {
     OpenPopup {
         request: PopupRequest,
     },
-    ResizePopup {
-        instance_uid: String,
-        window_uid: String,
-        menu_uid: String,
-        width: f64,
-        height: f64,
-        offset_x: Option<f64>,
-        offset_y: Option<f64>,
-    },
     SchedulePopupClose {
         instance_uid: String,
         window_uid: String,
@@ -214,6 +205,7 @@ fn install_foreground_event_hook(app: &AppHandle, sender: UnboundedSender<Native
             crate::debug::log("Native:Hook", format!("Installed foreground window event hook: {:?}", hook.0));
             let _ = FOREGROUND_EVENT_HOOK.set(hook.0 as isize);
         }
+
     });
 }
 
@@ -514,29 +506,6 @@ impl NativeReactor {
                     let popups = self.popups.clone();
                     let _ = self.app.run_on_main_thread(move || {
                         let _ = crate::panel::open_popup(&app, &surfaces, &popups, request);
-                    });
-                }
-                NativeCommand::ResizePopup {
-                    instance_uid,
-                    window_uid,
-                    menu_uid,
-                    width,
-                    height,
-                    ..
-                } => {
-                    let app = self.app.clone();
-                    let _ = self.app.run_on_main_thread(move || {
-                        let label = if window_uid.is_empty() {
-                            crate::panel::free_label(&instance_uid, &menu_uid)
-                        } else {
-                            crate::panel::menu_label(&instance_uid, &window_uid, &menu_uid)
-                        };
-                        if let Some(window) = app.get_webview_window(&label) {
-                            // Only down/right expansion: the window origin never moves, it
-                            // only grows. set_size keeps existing pixels and adds new area —
-                            // no origin move, no framebuffer shift, no flicker.
-                            let _ = window.set_size(LogicalSize::new(width, height));
-                        }
                     });
                 }
                 NativeCommand::SchedulePopupClose {

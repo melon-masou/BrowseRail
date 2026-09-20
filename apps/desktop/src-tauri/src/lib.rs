@@ -258,28 +258,24 @@ fn open_popup(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn resize_popup(
-    state: tauri::State<'_, AppState>,
-    instance_uid: String,
-    window_uid: String,
-    menu_uid: String,
+fn resize_and_position(
+    window: tauri::Window,
     width: f64,
     height: f64,
-    offset_x: Option<f64>,
-    offset_y: Option<f64>,
+    from_anchor_x: f64,
+    from_anchor_y: f64,
+    to_anchor_x: f64,
+    to_anchor_y: f64,
 ) -> Result<(), String> {
-    let _ = state
-        .native_sender
-        .send(native::NativeCommand::ResizePopup {
-            instance_uid,
-            window_uid,
-            menu_uid,
-            width,
-            height,
-            offset_x,
-            offset_y,
-        });
-    Ok(())
+    panel::apply_anchored_window_geometry(
+        &window,
+        width,
+        height,
+        from_anchor_x,
+        from_anchor_y,
+        to_anchor_x,
+        to_anchor_y,
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -344,13 +340,6 @@ pub struct CustomizationStartInfo {
 #[cfg(target_os = "windows")]
 const CUSTOMIZE_ICON_SIZE: f64 = 26.0;
 
-/// A free (detached) surface reserves a strip for the drag handle: 10px on
-/// the left of a row bar / top of a column bar. The customize flow must keep
-/// that strip on restore so the drag handle doesn't eat the first item.
-#[cfg(target_os = "windows")]
-const FREE_DRAG_HANDLE: f64 = 10.0;
-
-
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn begin_menu_customization(
@@ -360,62 +349,22 @@ fn begin_menu_customization(
     window_uid: String,
     menu_uid: String,
     toolbar_space: f64,
-    customize_width: f64,
+    anchor_offset_y: f64,
+    menu_height: f64,
 ) -> Result<CustomizationStartInfo, String> {
-    // Free (detached) surfaces live outside the per-window panel registry; the
-    // snapshot they need for sizing is stored on the session itself.
     let is_free = window_uid.is_empty();
     if !is_free {
         state.popups.remove(&instance_uid, &window_uid, &menu_uid);
     }
 
-    let orig_menu = if is_free {
-        state
-            .registry
-            .free_menu(&instance_uid, &menu_uid)
-            .ok_or("Free menu state is unavailable")?
-    } else {
-        let panel = state
-            .registry
-            .panel(&instance_uid, &window_uid)
-            .ok_or("Panel state is unavailable")?;
-        panel
-            .menus
-            .iter()
-            .find(|menu| menu.uid == menu_uid)
-            .ok_or("Menu state is unavailable")?
-            .clone()
-    };
-
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    // Bound menus are repositioned only via native sync, so the surface
-    // registry's cached geometry is always current. Free surfaces are moved by
-    // the user dragging and only the OS knows the up-to-date corner, so ask
-    // the OS directly instead of trusting a stale cache.
-    let (current_x, current_y) = if is_free {
-        let position = window.outer_position().map_err(|error| error.to_string())?;
-        (f64::from(position.x) / scale, f64::from(position.y) / scale)
-    } else if let Some(geo) = state.surfaces.geometry(window.label()) {
-        (geo.x, geo.y)
-    } else {
-        let position = window.outer_position().map_err(|error| error.to_string())?;
-        (f64::from(position.x) / scale, f64::from(position.y) / scale)
-    };
-    // Free surface window footprint = menu + drag-handle strip; bound menus
-    // occupy exactly menu_total_size.
-    let (base_w, base_h) = protocol::menu_total_size(&orig_menu);
-    let (current_w, current_h) = if is_free {
-        match orig_menu.orientation {
-            protocol::MenuOrientation::Row => (base_w + FREE_DRAG_HANDLE, base_h),
-            protocol::MenuOrientation::Column => (base_w, base_h + FREE_DRAG_HANDLE),
-        }
-    } else {
-        (base_w, base_h)
-    };
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let menu_y = f64::from(position.y) / scale + anchor_offset_y;
     if !toolbar_space.is_finite()
         || toolbar_space < 0.0
-        || !customize_width.is_finite()
-        || customize_width < 0.0
+        || !anchor_offset_y.is_finite()
+        || !menu_height.is_finite()
+        || menu_height <= 0.0
     {
         return Err("Invalid customization toolbar geometry".into());
     }
@@ -425,13 +374,13 @@ fn begin_menu_customization(
         let m_size = monitor.size();
         let m_top = f64::from(m_pos.y) / scale;
         let m_bottom = m_top + f64::from(m_size.height) / scale;
-        (current_y - m_top, m_bottom - (current_y + current_h))
+        (menu_y - m_top, m_bottom - (menu_y + menu_height))
     } else {
-        (current_y, 800.0)
+        (menu_y, 800.0)
     };
 
     let toolbar_position =
-        if space_above >= toolbar_space && (space_below < toolbar_space || current_y > 150.0) {
+        if space_above >= toolbar_space && (space_below < toolbar_space || menu_y > 150.0) {
             "top".to_string()
         } else if space_below >= toolbar_space {
             "bottom".to_string()
@@ -442,41 +391,6 @@ fn begin_menu_customization(
         };
 
     state.surfaces.set_customizing(window.label(), true);
-    let configure_result = (|| -> Result<(), String> {
-        let new_h = current_h + toolbar_space;
-        let mut final_x = current_x;
-        let mut final_y = if toolbar_position == "top" {
-            current_y - toolbar_space
-        } else {
-            current_y
-        };
-        if is_free {
-            // The drag handle leaves the DOM during customize (renderCustomize
-            // replaces the surface children), so the bar's content origin
-            // shifts from (handle, 0)/(0, handle) back to (0, toolbar_space).
-            // Counter-shift the window by the handle size so the bar keeps
-            // its pre-customize screen position.
-            match orig_menu.orientation {
-                protocol::MenuOrientation::Row => final_x += FREE_DRAG_HANDLE,
-                protocol::MenuOrientation::Column => final_y += FREE_DRAG_HANDLE,
-            }
-        }
-        window
-            .set_position(tauri::LogicalPosition::new(final_x, final_y))
-            .map_err(|error| error.to_string())?;
-        window
-            .set_size(tauri::LogicalSize::new(
-                current_w.max(customize_width),
-                new_h,
-            ))
-            .map_err(|error| error.to_string())
-    })();
-
-    if let Err(error) = configure_result {
-        state.surfaces.set_customizing(window.label(), false);
-        return Err(error);
-    }
-
     let _ = state
         .native_sender
         .send(native::NativeCommand::BeginCustomization {
@@ -514,8 +428,8 @@ fn save_menu_placement(
     anchor: MenuAnchor,
     width: f64,
     height: f64,
-    toolbar_position: Option<String>,
-    toolbar_space: Option<f64>,
+    anchor_offset_x: f64,
+    anchor_offset_y: f64,
 ) -> Result<MenuPlacement, String> {
     // Free (detached) menus have no owning window, so bounds/anchor math has no
     // meaning for them. Use the session-stored free snapshot for the original
@@ -541,23 +455,17 @@ fn save_menu_placement(
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
-    let x = f64::from(position.x) / scale;
-    let mut y = f64::from(position.y) / scale;
-    if !width.is_finite() || !height.is_finite() {
+    let x = f64::from(position.x) / scale + anchor_offset_x;
+    let y = f64::from(position.y) / scale + anchor_offset_y;
+    if !width.is_finite()
+        || !height.is_finite()
+        || !anchor_offset_x.is_finite()
+        || !anchor_offset_y.is_finite()
+    {
         return Err("Invalid menu size".into());
     }
     let mut width = width;
     let mut height = height;
-
-    let toolbar_space = toolbar_space.unwrap_or(0.0);
-    // begin_menu_customization moves the window up by toolbar_space when the
-    // toolbar sits on top; refund that shift so save restores the pre-begin
-    // bar position.
-    if let Some(pos) = toolbar_position.as_deref() {
-        if pos == "top" {
-            y += toolbar_space;
-        }
-    }
 
     match orig_menu.orientation {
         protocol::MenuOrientation::Row => {
@@ -624,37 +532,7 @@ fn save_menu_placement(
         gap: orig_menu.placement.gap,
     };
 
-    if is_free {
-        // Refund the begin-time handle-axis shift (the drag handle is back in
-        // the DOM after renderSurface, so the bar origin moves back to
-        // (handle, 0)/(0, handle) inside the surface). The pre-customize
-        // corner is what we want to persist.
-        let (target_x, target_y) = match orig_menu.orientation {
-            protocol::MenuOrientation::Row => (x - FREE_DRAG_HANDLE, y),
-            protocol::MenuOrientation::Column => (x, y - FREE_DRAG_HANDLE),
-        };
-        let (surface_w, surface_h) = match orig_menu.orientation {
-            protocol::MenuOrientation::Row => (width + FREE_DRAG_HANDLE, height),
-            protocol::MenuOrientation::Column => (width, height + FREE_DRAG_HANDLE),
-        };
-        window
-            .set_size(tauri::LogicalSize::new(surface_w, surface_h))
-            .map_err(|error| error.to_string())?;
-        window
-            .set_position(tauri::LogicalPosition::new(target_x, target_y))
-            .map_err(|error| error.to_string())?;
-        let _ = state
-            .registry
-            .update_free_placement(&instance_uid, menu_uid.clone(), target_x, target_y);
-    } else {
-        window
-            .set_size(tauri::LogicalSize::new(width, height))
-            .map_err(|error| error.to_string())?;
-        window
-            .set_position(tauri::LogicalPosition::new(x, y))
-            .map_err(|error| error.to_string())?;
-    }
-
+    state.surfaces.set_customizing(window.label(), false);
     let _ = state
         .native_sender
         .send(native::NativeCommand::SaveMenuPlacement {
@@ -676,38 +554,6 @@ fn cancel_menu_customization(
     window_uid: String,
     menu_uid: String,
 ) -> Result<(), String> {
-    let is_free = window_uid.is_empty();
-    if is_free {
-        // Mirror the bound-menu restore: shrink the customize-inflated window
-        // back to its footprint and place the corner back at the pre-begin
-        // position (free_position, captured by user drags, kept clean by the
-        // onMoved customizing guard).
-        if let Some(menu) = state.registry.free_menu(&instance_uid, &menu_uid) {
-            let (mut width, mut height) = protocol::menu_total_size(&menu);
-            match menu.orientation {
-                protocol::MenuOrientation::Row => width += FREE_DRAG_HANDLE,
-                protocol::MenuOrientation::Column => height += FREE_DRAG_HANDLE,
-            }
-            window
-                .set_size(tauri::LogicalSize::new(width, height))
-                .map_err(|error| error.to_string())?;
-            if let Some(menu_pos) = menu.free_position {
-                window
-                    .set_position(tauri::LogicalPosition::new(menu_pos.x, menu_pos.y))
-                    .map_err(|error| error.to_string())?;
-            }
-        }
-    } else if let Some(panel) = state.registry.panel(&instance_uid, &window_uid) {
-        if let Some(menu) = panel.menus.iter().find(|m| m.uid == menu_uid) {
-            let geo = protocol::compute_menu_geometry(&panel.window, menu);
-            window
-                .set_size(tauri::LogicalSize::new(geo.width, geo.height))
-                .map_err(|error| error.to_string())?;
-            window
-                .set_position(tauri::LogicalPosition::new(geo.x, geo.y))
-                .map_err(|error| error.to_string())?;
-        }
-    }
     state.surfaces.set_customizing(window.label(), false);
     let _ = state
         .native_sender
@@ -964,7 +810,7 @@ pub fn run() {
             set_listener_port,
             set_debug_enabled,
             open_popup,
-            resize_popup,
+            resize_and_position,
             cancel_popup_close,
             schedule_popup_close,
             close_popup,

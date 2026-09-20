@@ -4,7 +4,8 @@ use std::sync::{LazyLock, Mutex};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{
-    Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, Window,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
@@ -202,6 +203,49 @@ pub fn set_window_visible_without_activation(
             0,
             0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | visibility,
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+pub fn apply_anchored_window_geometry(
+    window: &Window,
+    width: f64,
+    height: f64,
+    from_anchor_x: f64,
+    from_anchor_y: f64,
+    to_anchor_x: f64,
+    to_anchor_y: f64,
+) -> Result<(), String> {
+    if !width.is_finite()
+        || !height.is_finite()
+        || width <= 0.0
+        || height <= 0.0
+        || !from_anchor_x.is_finite()
+        || !from_anchor_y.is_finite()
+        || !to_anchor_x.is_finite()
+        || !to_anchor_y.is_finite()
+    {
+        return Err("Invalid surface geometry".into());
+    }
+
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let x = position.x + ((from_anchor_x - to_anchor_x) * scale).round() as i32;
+    let y = position.y + ((from_anchor_y - to_anchor_y) * scale).round() as i32;
+    let physical_width = (width * scale).round().max(1.0) as i32;
+    let physical_height = (height * scale).round().max(1.0) as i32;
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            x,
+            y,
+            physical_width,
+            physical_height,
+            SWP_NOZORDER | SWP_NOACTIVATE,
         )
         .map_err(|error| error.to_string())
     }
@@ -591,23 +635,6 @@ pub fn open_popup(
     surfaces.mark_visible(&label);
     window
         .emit_to(&label, "popup-state", &popup.surface.payload)
-        .map_err(|error| error.to_string())
-}
-
-pub fn resize_popup(
-    app: &tauri::AppHandle,
-    instance_uid: &str,
-    window_uid: &str,
-    menu_uid: &str,
-    _anchor: &PopupAnchor,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
-    let menu_window = app
-        .get_webview_window(&menu_label(instance_uid, window_uid, menu_uid))
-        .ok_or("Menu window is unavailable")?;
-    menu_window
-        .set_size(LogicalSize::new(width, height))
         .map_err(|error| error.to_string())
 }
 

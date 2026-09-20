@@ -129,10 +129,45 @@ async function initializeSurface(): Promise<void> {
 
   let nativeAllocated = {
     height: 0,
-    offsetX: 0,
-    offsetY: 0,
     width: 0,
   };
+
+  interface SurfacePoint {
+    x: number;
+    y: number;
+  }
+
+  function elementOrigin(element: HTMLElement): SurfacePoint {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.left, y: rect.top };
+  }
+
+  async function windowOrigin(): Promise<SurfacePoint> {
+    const appWindow = getCurrentWindow();
+    const [position, scale] = await Promise.all([
+      appWindow.outerPosition(),
+      appWindow.scaleFactor(),
+    ]);
+    return { x: position.x / scale, y: position.y / scale };
+  }
+
+  let customizationStartPosition: SurfacePoint | null = null;
+
+  async function resizeAndPosition(
+    fromAnchor: SurfacePoint,
+    toAnchor: SurfacePoint,
+    width: number,
+    height: number,
+  ): Promise<void> {
+    await invoke("resize_and_position", {
+      fromAnchorX: fromAnchor.x,
+      fromAnchorY: fromAnchor.y,
+      height: Math.ceil(height),
+      toAnchorX: toAnchor.x,
+      toAnchorY: toAnchor.y,
+      width: Math.ceil(width),
+    });
+  }
 
   await listen<MenuStateEvent>("menu-state", ({ payload }) => {
     if (
@@ -373,26 +408,42 @@ async function initializeSurface(): Promise<void> {
         // If a popup is open, close it and wait for size and position to restore completely before customizing
         await closePopup(true);
 
+        const fromAnchor = elementOrigin(menuBar);
+        const menuHeight = menuBar.getBoundingClientRect().height;
+        customizationStartPosition = await windowOrigin();
         customizing = true;
         const menuToCustomize = currentMenu ?? menu;
         const toolbar = renderCustomize(menuToCustomize);
         const toolbarSpace = customizationToolbarSpace(toolbar);
-        const customizeWidth = toolbar.parentElement?.getBoundingClientRect().width
-          ?? computeMenuDimensions(menuToCustomize).width;
         void invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
-          customizeWidth,
+          anchorOffsetY: fromAnchor.y,
           instanceUid,
+          menuHeight,
           menuUid,
           toolbarSpace,
           windowUid,
         })
-          .then((info) => {
+          .then(async (info) => {
             if (info?.toolbarPosition === "top") {
               renderCustomize(menuToCustomize, "top");
             }
+            const rail = root.querySelector<HTMLElement>(".customize-rail");
+            const content = root.querySelector<HTMLElement>(".customize-content");
+            if (!rail || !content) return;
+            const contentRect = content.getBoundingClientRect();
+            await resizeAndPosition(
+              fromAnchor,
+              elementOrigin(rail),
+              contentRect.width,
+              contentRect.height,
+            );
+            delete root.dataset.error;
+            root.removeAttribute("title");
           })
           .catch((err) => {
             customizing = false;
+            customizationStartPosition = null;
+            renderSurface(menuToCustomize);
             showSurfaceError(err);
           });
       }
@@ -636,25 +687,16 @@ async function initializeSurface(): Promise<void> {
     root.appendChild(popupEl);
     renderLevels();
 
-    function ensureNativePopupSize(targetWidth: number, targetHeight: number, offX: number, offY: number): void {
+    function ensureNativePopupSize(targetWidth: number, targetHeight: number): void {
       const neededWidth = Math.max(nativeAllocated.width, targetWidth);
       const neededHeight = Math.max(nativeAllocated.height, targetHeight);
       if (
         neededWidth !== nativeAllocated.width ||
-        neededHeight !== nativeAllocated.height ||
-        offX !== nativeAllocated.offsetX ||
-        offY !== nativeAllocated.offsetY
+        neededHeight !== nativeAllocated.height
       ) {
-        nativeAllocated = { height: neededHeight, offsetX: offX, offsetY: offY, width: neededWidth };
-        void invoke("resize_popup", {
-          height: neededHeight,
-          instanceUid,
-          menuUid,
-          offsetX: offX,
-          offsetY: offY,
-          width: neededWidth,
-          windowUid,
-        });
+        nativeAllocated = { height: neededHeight, width: neededWidth };
+        const anchor = elementOrigin(menuBar);
+        void resizeAndPosition(anchor, anchor, neededWidth, neededHeight);
       }
     }
 
@@ -840,7 +882,7 @@ async function initializeSurface(): Promise<void> {
         totalHeight = Math.max(surfaceHeight, top + popupHeight);
       }
 
-      ensureNativePopupSize(totalWidth, totalHeight, 0, 0);
+      ensureNativePopupSize(totalWidth, totalHeight);
     }
   }
 
@@ -863,20 +905,11 @@ async function initializeSurface(): Promise<void> {
       const { width, height } = computeSurfaceDimensions(currentMenu);
       nativeAllocated = {
         height,
-        offsetX: 0,
-        offsetY: 0,
         width,
       };
       try {
-        await invoke("resize_popup", {
-          height,
-          instanceUid,
-          menuUid,
-          offsetX: 0,
-          offsetY: 0,
-          width,
-          windowUid,
-        });
+        const anchor = menuBarEl ? elementOrigin(menuBarEl) : { x: 0, y: 0 };
+        await resizeAndPosition(anchor, anchor, width, height);
       } catch {}
     }
   }
@@ -1032,22 +1065,23 @@ async function initializeSurface(): Promise<void> {
       updateCustomizeButtonSize();
     }
 
-    function growNativeCanvasIfNeeded(): void {
-      const requiredWidth = Math.ceil(content.getBoundingClientRect().width);
-      const requiredHeight = Math.ceil(
-        targetHeight + customizationToolbarSpace(toolbar),
-      );
-      const width = Math.max(window.innerWidth, requiredWidth);
-      const height = Math.max(window.innerHeight, requiredHeight);
-      if (width > window.innerWidth || height > window.innerHeight) {
-        void invoke("resize_popup", {
-          height,
-          instanceUid,
-          menuUid,
-          width,
-          windowUid,
-        });
-      }
+    let resizeFrame: number | undefined;
+    let pendingFromAnchor: SurfacePoint | undefined;
+    let pendingToAnchor: SurfacePoint | undefined;
+    function resizeNativeCanvas(fromAnchor: SurfacePoint, toAnchor: SurfacePoint): void {
+      pendingFromAnchor ??= fromAnchor;
+      pendingToAnchor = toAnchor;
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = undefined;
+        const from = pendingFromAnchor;
+        const to = pendingToAnchor;
+        pendingFromAnchor = undefined;
+        pendingToAnchor = undefined;
+        if (!from || !to) return;
+        const rect = content.getBoundingClientRect();
+        void resizeAndPosition(from, to, rect.width, rect.height);
+      });
     }
 
     function resizeHandle(direction: "east" | "south" | "southEast" | "north"): HTMLElement {
@@ -1067,6 +1101,12 @@ async function initializeSurface(): Promise<void> {
         handle.setPointerCapture(event.pointerId);
 
         const move = (moveEvent: PointerEvent): void => {
+          const fromResizeAnchor = direction === "north"
+            ? (() => {
+                const rect = railContainer.getBoundingClientRect();
+                return { x: rect.left, y: rect.bottom };
+              })()
+            : elementOrigin(railContainer);
           if (direction === "east" || direction === "southEast") {
             targetWidth = clampWidth(startWidth + moveEvent.screenX - startX);
           }
@@ -1077,7 +1117,13 @@ async function initializeSurface(): Promise<void> {
             targetHeight = clampHeight(startHeight - (moveEvent.screenY - startY));
           }
           applyTargetSize();
-          growNativeCanvasIfNeeded();
+          const toResizeAnchor = direction === "north"
+            ? (() => {
+                const rect = railContainer.getBoundingClientRect();
+                return { x: rect.left, y: rect.bottom };
+              })()
+            : elementOrigin(railContainer);
+          resizeNativeCanvas(fromResizeAnchor, toResizeAnchor);
         };
         const stop = (stopEvent: PointerEvent): void => {
           handle.removeEventListener("pointermove", move);
@@ -1111,29 +1157,53 @@ async function initializeSurface(): Promise<void> {
     applyTargetSize();
 
     async function cancelCustomization(): Promise<void> {
+      const restorePosition = customizationStartPosition;
       customizing = false;
       await invoke("cancel_menu_customization", { instanceUid, menuUid, windowUid });
       if (currentMenu) {
         renderSurface(currentMenu);
+        const menuBar = root.querySelector<HTMLElement>(".menu-bar");
+        if (menuBar) {
+          const { width, height } = computeSurfaceDimensions(currentMenu);
+          if (restorePosition) {
+            const currentPosition = await windowOrigin();
+            await resizeAndPosition(
+              {
+                x: restorePosition.x - currentPosition.x,
+                y: restorePosition.y - currentPosition.y,
+              },
+              { x: 0, y: 0 },
+              width,
+              height,
+            );
+          }
+        }
       }
+      customizationStartPosition = null;
     }
 
     async function saveCustomization(): Promise<void> {
-      const toolbarSpace = customizationToolbarSpace(toolbar);
+      const fromAnchor = elementOrigin(railContainer);
       const placement = await invoke<MenuPlacement>("save_menu_placement", {
         anchor,
+        anchorOffsetX: fromAnchor.x,
+        anchorOffsetY: fromAnchor.y,
         height: targetHeight,
         instanceUid,
         menuUid,
-        toolbarPosition,
-        toolbarSpace,
         width: targetWidth,
         windowUid,
       });
       customizing = false;
+      customizationStartPosition = null;
       if (currentMenu) {
         currentMenu = { ...currentMenu, placement };
         renderSurface(currentMenu);
+        const menuBar = root.querySelector<HTMLElement>(".menu-bar");
+        if (menuBar) {
+          const { width, height } = computeSurfaceDimensions(currentMenu);
+          await resizeAndPosition(fromAnchor, elementOrigin(menuBar), width, height);
+        }
       }
     }
 
