@@ -309,8 +309,8 @@
             <div id="item-settings-folder-controls" class="item-settings-folder-controls">
               <label class="item-setting-check-label">
                 <input type="checkbox" id="item-setting-flatten" />
-                <span data-i18n="itemSettings.flatten">Flatten folder</span>
-                <button type="button" id="flatten-space-help" class="flatten-space-help" data-i18n-title="itemSettings.flattenHelpTitle" title="Flatten space fields">[?]</button>
+                <span data-i18n="itemSettings.flatten">Flatten folder contents</span>
+                <button type="button" id="flatten-space-help" class="flatten-space-help" data-i18n-title="itemSettings.flattenHelpTitle" title="Flatten folder">[?]</button>
               </label>
               <label class="item-setting-check-label" id="item-setting-hover-expand-label">
                 <input type="checkbox" id="item-setting-hover-expand" checked />
@@ -318,7 +318,7 @@
               </label>
               <label class="item-setting-check-label" id="item-setting-include-folders-label" style="display: none;">
                 <input type="checkbox" id="item-setting-include-folders" />
-                <span data-i18n="itemSettings.includeFolders">Include folders</span>
+                <span data-i18n="itemSettings.includeFolders">Include subfolders when flattening</span>
               </label>
             </div>
             <div class="item-settings-actions">
@@ -331,10 +331,11 @@
       <!-- Flatten Space Directive Help -->
       <div id="flatten-space-popover" class="flatten-space-popover" style="display: none;">
         <div class="flatten-space-header">
-          <span data-i18n="itemSettings.flattenHelpTitle">Flatten space fields</span>
+          <span data-i18n="itemSettings.flattenHelpTitle">Flatten folder</span>
           <button type="button" id="flatten-space-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
-        <p class="flatten-space-syntax" data-i18n="itemSettings.flattenHelpBody">Name a bookmark in a flattened folder BrowseRailSpace:units=5:transparent=false:color=#cd123f to insert a space.
+        <p class="flatten-space-syntax" data-i18n="itemSettings.flattenHelpBody">Show the folder’s bookmarks as separate buttons on the rail.
+To insert a space, name a bookmark inside that folder BrowseRailSpace:units=5:transparent=false:color=#cd123f.
 Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
       </div>
 
@@ -364,18 +365,24 @@ Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
           <div class="picker-content" id="picker-content"></div>
           <div class="picker-footer">
             <div class="picker-actions">
-              <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
-                <input type="checkbox" id="picker-flatten-checkbox" />
-                <span data-i18n="picker.flatten">Flatten folder</span>
-              </label>
-              <label id="picker-hover-expand-label" class="picker-flatten-check" style="display: none;">
-                <input type="checkbox" id="picker-hover-expand-checkbox" checked />
-                <span data-i18n="picker.hoverExpand">Expand on hover</span>
-              </label>
-              <label id="picker-include-folders-label" class="picker-flatten-check" style="display: none;">
-                <input type="checkbox" id="picker-include-folders-checkbox" />
-                <span data-i18n="picker.includeFolders">Include folders</span>
-              </label>
+              <div class="picker-options">
+                <div class="picker-option-row">
+                  <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
+                    <input type="checkbox" id="picker-flatten-checkbox" />
+                    <span data-i18n="itemSettings.flatten">Flatten folder contents</span>
+                  </label>
+                  <label id="picker-hover-expand-label" class="picker-flatten-check" style="display: none;">
+                    <input type="checkbox" id="picker-hover-expand-checkbox" checked />
+                    <span data-i18n="itemSettings.hoverExpand">Expand on hover</span>
+                  </label>
+                </div>
+                <div class="picker-option-row">
+                  <label id="picker-include-folders-label" class="picker-flatten-check" style="display: none;">
+                    <input type="checkbox" id="picker-include-folders-checkbox" />
+                    <span data-i18n="itemSettings.includeFolders">Include subfolders when flattening</span>
+                  </label>
+                </div>
+              </div>
               <button id="picker-confirm-btn" type="button" class="picker-confirm-btn" data-i18n="picker.add">Add</button>
             </div>
           </div>

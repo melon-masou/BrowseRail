@@ -56,6 +56,8 @@ import {
   t,
 } from "@browserail/i18n";
 
+import { positionPopover } from "./popover-position";
+
 import "./styles.css";
 
 const PALETTE_COLORS = [
@@ -209,35 +211,6 @@ let webpageSets: WebpageSet[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let bookmarkOptions: BookmarkOption[] = [];
 let desktopTestGeneration = 0;
-
-// All option-page popovers are anchored to viewport coordinates. Absolute
-// positioning combines the anchor's viewport rect with scroll offsets, then
-// survives a re-render by pointing at detached coordinates; fixed positioning
-// avoids both failure modes.
-function positionPopover(
-  popover: HTMLDivElement,
-  anchor: DOMRect,
-  width: number,
-  align: "center" | "right" = "center",
-): void {
-  const margin = 10;
-  const gap = 6;
-  const top = anchor.bottom + gap;
-  let left =
-    align === "right"
-      ? anchor.right - width
-      : anchor.left + anchor.width / 2 - width / 2;
-
-  if (left < margin) left = margin;
-  if (left + width > window.innerWidth - margin) {
-    left = window.innerWidth - width - margin;
-  }
-
-  popover.style.position = "fixed";
-  popover.style.top = `${top}px`;
-  popover.style.left = `${left}px`;
-  popover.style.display = "flex";
-}
 
 // Popover state
 let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
@@ -1288,7 +1261,7 @@ function initColorPopover(): void {
     markDirty();
   });
 
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     if (colorPopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
@@ -1553,7 +1526,7 @@ function initMenuStylePopover(): void {
     }
   });
 
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     if (menuStylePopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
@@ -1641,7 +1614,7 @@ function initMenuBehaviorPopover(): void {
     }
   });
 
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     if (menuBehaviorPopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
@@ -1717,7 +1690,7 @@ function updateWebpageBadge(menu: StoredMenu, badgeElement: HTMLElement): void {
 function initMenuWebpageSetsPopover(): void {
   menuWebpageSetsClose.addEventListener("click", () => closeMenuWebpageSetsPopover());
 
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     if (menuWebpageSetsPopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
@@ -1979,7 +1952,7 @@ function initItemSettingsPopover(): void {
     void openBookmarkPicker("editItem", menuIndex, itemIndex);
   });
 
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     if (itemSettingsPopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
@@ -2083,7 +2056,7 @@ function initFlattenSpacePopover(): void {
 
   flattenSpaceClose.addEventListener("click", () => closeFlattenSpacePopover());
 
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     if (flattenSpacePopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
@@ -2134,7 +2107,7 @@ function initAddItemPopover(): void {
     }
   });
 
-  document.addEventListener("click", (e) => {
+  document.addEventListener("pointerdown", (e) => {
     if (addItemPopover.style.display === "none") return;
     const target = e.target as Node | null;
     if (
