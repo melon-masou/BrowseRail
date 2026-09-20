@@ -155,6 +155,17 @@ describe("URL pattern matching", () => {
     expect(matchUrlPattern("*://localhost:*/*", "https://remote.com/app")).toBe(false);
   });
 
+  it("matches special browser pages by exact URL", async () => {
+    const { matchUrlPattern, isUrlMatchingSet } = await import("./index");
+    expect(matchUrlPattern("about:blank", "about:blank")).toBe(true);
+    expect(matchUrlPattern("about:blank", "https://example.com")).toBe(false);
+    expect(matchUrlPattern("chrome://newtab/", "chrome://newtab/")).toBe(true);
+    expect(matchUrlPattern("chrome://new-tab-page/", "chrome://new-tab-page/")).toBe(true);
+
+    expect(isUrlMatchingSet("about:blank", ["about:blank"])).toBe(true);
+    expect(isUrlMatchingSet("about:blank", ["chrome://newtab/"])).toBe(false);
+  });
+
   it("matches regex patterns", async () => {
     const { matchUrlPattern } = await import("./index");
     expect(matchUrlPattern("/^https:\\/\\/.*\\.dev\\//", "https://app.dev/home")).toBe(true);

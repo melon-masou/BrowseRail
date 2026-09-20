@@ -448,6 +448,13 @@ export function matchUrlPattern(pattern: string, url: string): boolean {
     }
   }
 
+
+  // Opaque and browser-internal URLs (for example about:blank and chrome://newtab)
+  // have no usable hostname, so exact URL patterns are compared before host rules.
+  if (lowerPattern.includes(":") && !lowerPattern.includes("://")) {
+    return lowerUrl === lowerPattern;
+  }
+
   // 3. Domain / URL prefix matching
   try {
     const parsed = new URL(url);
@@ -457,6 +464,9 @@ export function matchUrlPattern(pattern: string, url: string): boolean {
     const pathAndQuery = `${parsed.pathname}${parsed.search}`;
 
     if (lowerPattern.includes("://")) {
+      if (parsed.protocol === "chrome:" || parsed.protocol === "about:") {
+        return lowerUrl === lowerPattern || lowerUrl.startsWith(`${lowerPattern}/`);
+      }
       return lowerUrl.startsWith(lowerPattern);
     }
 

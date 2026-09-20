@@ -330,8 +330,12 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     return Promise.resolve({ ok: true });
   }
 });
-// Clicking the toolbar icon toggles the widget on/off (was: open options).
-browser.action.onClicked.addListener(() => void toggleWidgetEnabled());
+// Clicking the toolbar icon toggles the widget on/off. Secondary clicks are
+// ignored so the browser can show its built-in extension menu.
+browser.action.onClicked.addListener((_tab, info) => {
+  if (info?.button !== undefined && info.button !== 0) return;
+  void toggleWidgetEnabled();
+});
 
 async function applyWidgetEnabled(enabled: boolean): Promise<void> {
   connectionEnabled = enabled;

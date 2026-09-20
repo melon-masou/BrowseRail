@@ -288,12 +288,16 @@ li span {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
 .menu-title-row {
   display: flex;
   align-items: center;
+  flex: 1 1 280px;
+  min-width: 0;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -612,6 +616,7 @@ output {
 .menu-header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -788,6 +793,7 @@ output {
 .menu-item-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 6px 10px;
   border-radius: 8px;
@@ -796,7 +802,7 @@ output {
 }
 
 .menu-item-row .item-label {
-  flex: 1 1 auto;
+  flex: 1 1 220px;
   min-width: 0;
   font-size: 13px;
   display: inline-flex;
@@ -824,8 +830,9 @@ output {
 .item-color-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Color swatch trigger */

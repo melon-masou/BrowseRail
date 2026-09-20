@@ -1463,6 +1463,9 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
     closeColorPopover();
     return;
   }
+  // Measure before close* calls below; they can re-render and detach this swatch,
+  // whose rect then reports 0,0 and moves the popover to the top-left corner.
+  const rect = swatchElement.getBoundingClientRect();
   closeAddItemDropdown();
   closeMenuWebpageSetsPopover();
   activeColorTarget = target;
@@ -1496,7 +1499,6 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
     popoverColorHex.value = target.color ? target.color.toUpperCase() : "";
   }
 
-  const rect = swatchElement.getBoundingClientRect();
   positionPopover(colorPopover, rect, 220);
 }
 
