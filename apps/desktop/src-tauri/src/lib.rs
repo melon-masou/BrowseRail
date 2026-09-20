@@ -388,13 +388,30 @@ fn begin_menu_customization(
     };
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let (current_x, current_y) = if let Some(geo) = state.surfaces.geometry(window.label()) {
+    // Bound menus are repositioned only via native sync, so the surface
+    // registry's cached geometry is always current. Free surfaces are moved by
+    // the user dragging and only the OS knows the up-to-date corner, so ask
+    // the OS directly instead of trusting a stale cache.
+    let (current_x, current_y) = if is_free {
+        let position = window.outer_position().map_err(|error| error.to_string())?;
+        (f64::from(position.x) / scale, f64::from(position.y) / scale)
+    } else if let Some(geo) = state.surfaces.geometry(window.label()) {
         (geo.x, geo.y)
     } else {
         let position = window.outer_position().map_err(|error| error.to_string())?;
         (f64::from(position.x) / scale, f64::from(position.y) / scale)
     };
-    let (current_w, current_h) = protocol::menu_total_size(&orig_menu);
+    // Free surface window footprint = menu + drag-handle strip; bound menus
+    // occupy exactly menu_total_size.
+    let (base_w, base_h) = protocol::menu_total_size(&orig_menu);
+    let (current_w, current_h) = if is_free {
+        match orig_menu.orientation {
+            protocol::MenuOrientation::Row => (base_w + FREE_DRAG_HANDLE, base_h),
+            protocol::MenuOrientation::Column => (base_w, base_h + FREE_DRAG_HANDLE),
+        }
+    } else {
+        (base_w, base_h)
+    };
     if !toolbar_space.is_finite()
         || toolbar_space < 0.0
         || !customize_width.is_finite()
@@ -427,13 +444,25 @@ fn begin_menu_customization(
     state.surfaces.set_customizing(window.label(), true);
     let configure_result = (|| -> Result<(), String> {
         let new_h = current_h + toolbar_space;
-        let final_y = if toolbar_position == "top" {
+        let mut final_x = current_x;
+        let mut final_y = if toolbar_position == "top" {
             current_y - toolbar_space
         } else {
             current_y
         };
+        if is_free {
+            // The drag handle leaves the DOM during customize (renderCustomize
+            // replaces the surface children), so the bar's content origin
+            // shifts from (handle, 0)/(0, handle) back to (0, toolbar_space).
+            // Counter-shift the window by the handle size so the bar keeps
+            // its pre-customize screen position.
+            match orig_menu.orientation {
+                protocol::MenuOrientation::Row => final_x += FREE_DRAG_HANDLE,
+                protocol::MenuOrientation::Column => final_y += FREE_DRAG_HANDLE,
+            }
+        }
         window
-            .set_position(tauri::LogicalPosition::new(current_x, final_y))
+            .set_position(tauri::LogicalPosition::new(final_x, final_y))
             .map_err(|error| error.to_string())?;
         window
             .set_size(tauri::LogicalSize::new(
@@ -521,6 +550,9 @@ fn save_menu_placement(
     let mut height = height;
 
     let toolbar_space = toolbar_space.unwrap_or(0.0);
+    // begin_menu_customization moves the window up by toolbar_space when the
+    // toolbar sits on top; refund that shift so save restores the pre-begin
+    // bar position.
     if let Some(pos) = toolbar_position.as_deref() {
         if pos == "top" {
             y += toolbar_space;
@@ -593,7 +625,14 @@ fn save_menu_placement(
     };
 
     if is_free {
-        // Free surface size = menu + the drag-handle strip.
+        // Refund the begin-time handle-axis shift (the drag handle is back in
+        // the DOM after renderSurface, so the bar origin moves back to
+        // (handle, 0)/(0, handle) inside the surface). The pre-customize
+        // corner is what we want to persist.
+        let (target_x, target_y) = match orig_menu.orientation {
+            protocol::MenuOrientation::Row => (x - FREE_DRAG_HANDLE, y),
+            protocol::MenuOrientation::Column => (x, y - FREE_DRAG_HANDLE),
+        };
         let (surface_w, surface_h) = match orig_menu.orientation {
             protocol::MenuOrientation::Row => (width + FREE_DRAG_HANDLE, height),
             protocol::MenuOrientation::Column => (width, height + FREE_DRAG_HANDLE),
@@ -601,17 +640,12 @@ fn save_menu_placement(
         window
             .set_size(tauri::LogicalSize::new(surface_w, surface_h))
             .map_err(|error| error.to_string())?;
-        // `y` was already normalized back to the pre-customize window top above
-        // (the `y += toolbar_space` for a top toolbar undoes begin's upward
-        // shift; a bottom toolbar never moved the top). So restore to `y`
-        // directly — subtracting/adding toolbar_space again would re-introduce
-        // the shift and make the bar creep a notch on every save.
         window
-            .set_position(tauri::LogicalPosition::new(x, y))
+            .set_position(tauri::LogicalPosition::new(target_x, target_y))
             .map_err(|error| error.to_string())?;
         let _ = state
             .registry
-            .update_free_placement(&instance_uid, menu_uid.clone(), x, y);
+            .update_free_placement(&instance_uid, menu_uid.clone(), target_x, target_y);
     } else {
         window
             .set_size(tauri::LogicalSize::new(width, height))
@@ -644,9 +678,12 @@ fn cancel_menu_customization(
 ) -> Result<(), String> {
     let is_free = window_uid.is_empty();
     if is_free {
+        // Mirror the bound-menu restore: shrink the customize-inflated window
+        // back to its footprint and place the corner back at the pre-begin
+        // position (free_position, captured by user drags, kept clean by the
+        // onMoved customizing guard).
         if let Some(menu) = state.registry.free_menu(&instance_uid, &menu_uid) {
             let (mut width, mut height) = protocol::menu_total_size(&menu);
-            // Same handle strip the surface was originally opened with.
             match menu.orientation {
                 protocol::MenuOrientation::Row => width += FREE_DRAG_HANDLE,
                 protocol::MenuOrientation::Column => height += FREE_DRAG_HANDLE,
@@ -655,9 +692,6 @@ fn cancel_menu_customization(
                 .set_size(tauri::LogicalSize::new(width, height))
                 .map_err(|error| error.to_string())?;
             if let Some(menu_pos) = menu.free_position {
-                // The free position is captured at drag-time without any
-                // toolbar involvement, so it *is* the pre-customize content
-                // spot. Restore it to undo whatever the toolbar did.
                 window
                     .set_position(tauri::LogicalPosition::new(menu_pos.x, menu_pos.y))
                     .map_err(|error| error.to_string())?;
