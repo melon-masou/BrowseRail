@@ -62,7 +62,14 @@ jobs:
 
       - name: Build exe and extensions
         shell: pwsh
+        env:
+          # Extension public key (base64 DER) kept as a repo secret so the
+          # Chrome extension ID stays stable wherever users unzip the build.
+          EXTENSION_PUBKEY: ${{ secrets.EXTENSION_PUBKEY }}
         run: |
+          if (-not $env:EXTENSION_PUBKEY) {
+            throw "EXTENSION_PUBKEY secret is not set; release builds would ship a path-derived Chrome extension ID. Store the base64 extension public key as this repository secret before releasing."
+          }
           $env:BROWSERAIL_RELEASE_TAG = "v${{ steps.version.outputs.version }}"
           pnpm build:release "${{ steps.version.outputs.manifest_version }}"
 

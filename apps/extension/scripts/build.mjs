@@ -59,6 +59,23 @@ const manifestJson = JSON.parse(manifestRaw);
 if (isRelease) {
   manifestJson.version = releaseVersion;
 }
+// Chrome derives an unpacked extension's ID from its load directory unless the
+// manifest pins an identity with a public-key "key". Releases must stay the
+// same extension no matter where users unzip them, so the public key is
+// injected for release builds via EXTENSION_PUBKEY. Dev builds are
+// path-scoped on purpose and omit the key entirely.
+if (target === "chrome") {
+  const extensionKey = (process.env.EXTENSION_PUBKEY || "").trim();
+  if (extensionKey) {
+    if (!isRelease) {
+      console.warn("[build:chrome] EXTENSION_PUBKEY is set on a dev build; ignoring it so the dev build stays path-scoped.");
+    } else {
+      manifestJson.key = extensionKey;
+    }
+  } else if (isRelease) {
+    console.warn("[build:chrome] EXTENSION_PUBKEY is not set; the release build will get a path-derived ID and will not share an identity across machines.");
+  }
+}
 await writeFile(resolve(outDir, "manifest.json"), JSON.stringify(manifestJson, null, 2), "utf8");
 
 await cp(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
