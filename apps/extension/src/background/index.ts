@@ -348,30 +348,6 @@ async function toggleWidgetEnabled(): Promise<void> {
   await applyWidgetEnabled(!enabled);
 }
 
-// Right-click the toolbar icon → open the options page.
-const OPEN_SETTINGS_MENU_ID = "browserail-open-settings";
-
-async function setupActionContextMenu(): Promise<void> {
-  if (!browser.contextMenus) return;
-  try {
-    await browser.contextMenus.removeAll();
-    browser.contextMenus.create({
-      id: OPEN_SETTINGS_MENU_ID,
-      title: t("action.openSettings"),
-      contexts: ["action"],
-    });
-  } catch {
-    // Ignore: menu may already exist, or contexts unsupported on this browser.
-  }
-}
-
-browser.runtime.onInstalled.addListener(() => void setupActionContextMenu());
-browser.contextMenus?.onClicked.addListener((info) => {
-  if (info.menuItemId === OPEN_SETTINGS_MENU_ID) {
-    void browser.runtime.openOptionsPage();
-  }
-});
-
 async function reconcileConnection(): Promise<void> {
   clearTimeout(reconcileTimer);
   const generation = ++connectionGeneration;
