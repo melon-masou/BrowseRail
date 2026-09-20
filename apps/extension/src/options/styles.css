@@ -1404,7 +1404,7 @@ output {
 
 /* Menu Settings Popover (Style & Behavior) */
 .menu-settings-popover {
-  position: absolute;
+  position: fixed;
   z-index: 10000;
   width: 320px;
   background: #ffffff;
@@ -2086,6 +2086,7 @@ output {
 
 /* Menu Webpage Sets Popover */
 .menu-webpage-sets-popover {
+  position: fixed;
   width: 260px;
 }
 

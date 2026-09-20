@@ -207,6 +207,35 @@ let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let bookmarkOptions: BookmarkOption[] = [];
 let desktopTestGeneration = 0;
 
+// All option-page popovers are anchored to viewport coordinates. Absolute
+// positioning combines the anchor's viewport rect with scroll offsets, then
+// survives a re-render by pointing at detached coordinates; fixed positioning
+// avoids both failure modes.
+function positionPopover(
+  popover: HTMLDivElement,
+  anchor: DOMRect,
+  width: number,
+  align: "center" | "right" = "center",
+): void {
+  const margin = 10;
+  const gap = 6;
+  const top = anchor.bottom + gap;
+  let left =
+    align === "right"
+      ? anchor.right - width
+      : anchor.left + anchor.width / 2 - width / 2;
+
+  if (left < margin) left = margin;
+  if (left + width > window.innerWidth - margin) {
+    left = window.innerWidth - width - margin;
+  }
+
+  popover.style.position = "fixed";
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+  popover.style.display = "flex";
+}
+
 // Popover state
 let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
 let activeColorSwatchElement: HTMLElement | null = null;
@@ -1468,19 +1497,7 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
   }
 
   const rect = swatchElement.getBoundingClientRect();
-  const popoverWidth = 220;
-  let top = rect.bottom + window.scrollY + 6;
-  let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
-
-  if (left < 10) left = 10;
-  if (left + popoverWidth > window.innerWidth - 10) {
-    left = window.innerWidth - popoverWidth - 10;
-  }
-
-  colorPopover.style.position = "absolute";
-  colorPopover.style.top = `${top}px`;
-  colorPopover.style.left = `${left}px`;
-  colorPopover.style.display = "flex";
+  positionPopover(colorPopover, rect, 220);
 }
 
 function closeColorPopover(): void {
@@ -1580,19 +1597,7 @@ function openMenuStylePopover(menuIndex: number, btnElement: HTMLElement): void 
   menuSettingFontSize.value = String(fs);
   menuSettingGap.value = String(gapVal);
 
-  const popoverWidth = 320;
-  let top = rect.bottom + window.scrollY + 6;
-  let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
-
-  if (left < 10) left = 10;
-  if (left + popoverWidth > window.innerWidth - 10) {
-    left = window.innerWidth - popoverWidth - 10;
-  }
-
-  menuStylePopover.style.position = "absolute";
-  menuStylePopover.style.top = `${top}px`;
-  menuStylePopover.style.left = `${left}px`;
-  menuStylePopover.style.display = "flex";
+  positionPopover(menuStylePopover, rect, 320);
 }
 
 function closeMenuStylePopover(): void {
@@ -1676,19 +1681,7 @@ function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): vo
   menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
   menuSettingTabMode.value = menu.tabMode ?? "replace";
 
-  const popoverWidth = 320;
-  let top = rect.bottom + window.scrollY + 6;
-  let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
-
-  if (left < 10) left = 10;
-  if (left + popoverWidth > window.innerWidth - 10) {
-    left = window.innerWidth - popoverWidth - 10;
-  }
-
-  menuBehaviorPopover.style.position = "absolute";
-  menuBehaviorPopover.style.top = `${top}px`;
-  menuBehaviorPopover.style.left = `${left}px`;
-  menuBehaviorPopover.style.display = "flex";
+  positionPopover(menuBehaviorPopover, rect, 320);
 }
 
 function closeMenuBehaviorPopover(): void {
@@ -1834,19 +1827,7 @@ function openMenuWebpageSetsPopover(menuIndex: number, btnElement: HTMLElement):
   menuWebpageSetsTitle.textContent = `${t("menu.title", { n: menuIndex + 1 })} - ${t("menuBehavior.webpageSetsTitle")}`;
   renderMenuWebpageSetsContent(menu, btnElement);
 
-  const popoverWidth = 260;
-  let top = rect.bottom + window.scrollY + 6;
-  let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
-
-  if (left < 10) left = 10;
-  if (left + popoverWidth > window.innerWidth - 10) {
-    left = window.innerWidth - popoverWidth - 10;
-  }
-
-  menuWebpageSetsPopover.style.position = "absolute";
-  menuWebpageSetsPopover.style.top = `${top}px`;
-  menuWebpageSetsPopover.style.left = `${left}px`;
-  menuWebpageSetsPopover.style.display = "flex";
+  positionPopover(menuWebpageSetsPopover, rect, 260);
 }
 
 function closeMenuWebpageSetsPopover(): void {
@@ -2073,19 +2054,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     }
   }
 
-  const popoverWidth = 250;
-  let top = rect.bottom + window.scrollY + 6;
-  let left = rect.left + window.scrollX - popoverWidth / 2 + rect.width / 2;
-
-  if (left < 10) left = 10;
-  if (left + popoverWidth > window.innerWidth - 10) {
-    left = window.innerWidth - popoverWidth - 10;
-  }
-
-  itemSettingsPopover.style.position = "absolute";
-  itemSettingsPopover.style.top = `${top}px`;
-  itemSettingsPopover.style.left = `${left}px`;
-  itemSettingsPopover.style.display = "flex";
+  positionPopover(itemSettingsPopover, rect, 250);
 }
 
 function closeItemSettingsPopover(): void {
@@ -2157,19 +2126,7 @@ function openAddItemDropdown(menuIndex: number, btnElement: HTMLElement): void {
   activeAddMenuIndex = menuIndex;
   activeAddBtn = btnElement;
 
-  const popoverWidth = 170;
-  let top = rect.bottom + window.scrollY + 4;
-  let left = rect.right + window.scrollX - popoverWidth;
-
-  if (left < 10) left = 10;
-  if (left + popoverWidth > window.innerWidth - 10) {
-    left = window.innerWidth - popoverWidth - 10;
-  }
-
-  addItemPopover.style.position = "absolute";
-  addItemPopover.style.top = `${top}px`;
-  addItemPopover.style.left = `${left}px`;
-  addItemPopover.style.display = "flex";
+  positionPopover(addItemPopover, rect, 170, "right");
 }
 
 function closeAddItemDropdown(): void {
