@@ -183,11 +183,13 @@ const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-se
 const colorPopoverCycleList = element<HTMLDivElement>("color-popover-cycle-list");
 const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
 const flattenSpaceHelp = element<HTMLButtonElement>("flatten-space-help");
+const flattenSpaceSyntax = element<HTMLParagraphElement>("flatten-space-syntax");
 const flattenSpacePopover = element<HTMLDivElement>("flatten-space-popover");
 const flattenSpaceClose = element<HTMLButtonElement>("flatten-space-close");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
+const addPopoverMenuToggleBtn = element<HTMLButtonElement>("add-popover-menu-toggle-btn");
 const menusCardTabs = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"),
 );
@@ -1802,6 +1804,7 @@ function initItemSettingsPopover(): void {
     if (
       target &&
       !itemSettingsPopover.contains(target) &&
+      !flattenSpacePopover.contains(target) &&
       activeItemSettingsBtn &&
       !activeItemSettingsBtn.contains(target)
     ) {
@@ -1889,6 +1892,7 @@ function closeItemSettingsPopover(): void {
 
 function initFlattenSpacePopover(): void {
   flattenSpaceHelp.addEventListener("click", (e) => {
+    e.preventDefault();
     e.stopPropagation();
     if (flattenSpacePopover.style.display !== "none") {
       closeFlattenSpacePopover();
@@ -1897,6 +1901,9 @@ function initFlattenSpacePopover(): void {
     const rect = flattenSpaceHelp.getBoundingClientRect();
     positionPopover(flattenSpacePopover, rect, 260);
   });
+
+  flattenSpaceSyntax.addEventListener("pointerdown", (e) => e.stopPropagation());
+  flattenSpaceSyntax.addEventListener("click", (e) => e.stopPropagation());
 
   flattenSpaceClose.addEventListener("click", () => closeFlattenSpacePopover());
 
@@ -1949,6 +1956,24 @@ function initAddItemPopover(): void {
         markDirty();
       }
     }
+  });
+
+  addPopoverMenuToggleBtn.addEventListener("click", () => {
+    const menuIdx = activeAddMenuIndex;
+    closeAddItemDropdown();
+    if (menuIdx < 0 || menuIdx >= menus.length) return;
+    const menu = menus[menuIdx];
+    if (!menu) return;
+    if (menu.items.some((item) => item.type === "menuToggle")) {
+      status.value = t("menu.menuToggleAlreadyExists");
+      return;
+    }
+    menu.items.push({
+      bookmarkId: `menu-toggle-${crypto.randomUUID()}`,
+      type: "menuToggle",
+    });
+    renderMenus();
+    markDirty();
   });
 
   document.addEventListener("pointerdown", (e) => {
@@ -2131,6 +2156,96 @@ function renderMenus(): void {
         ...menu.items.map((item, itemIndex) => {
           const row = document.createElement("li");
           row.className = "menu-item-row";
+
+          if (item.type === "menuToggle") {
+            const label = document.createElement("span");
+            label.className = "item-label";
+
+            const titleSpan = document.createElement("span");
+            titleSpan.className = "item-title";
+            titleSpan.textContent = `⇕ ${t("menu.addMenuToggle")}`;
+            titleSpan.title = t("menu.addMenuToggle");
+            label.appendChild(titleSpan);
+
+            const controls = document.createElement("div");
+            controls.className = "item-color-controls";
+
+            const dragHandleBtn = document.createElement("button");
+            dragHandleBtn.type = "button";
+            dragHandleBtn.className = "drag-handle-btn";
+            dragHandleBtn.title = t("item.dragHandleTitle");
+            dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
+            dragHandleBtn.addEventListener("mousedown", () => {
+              row.draggable = true;
+            });
+            dragHandleBtn.addEventListener("mouseup", () => {
+              if (!row.classList.contains("is-dragging")) row.draggable = false;
+            });
+            dragHandleBtn.addEventListener("mouseleave", () => {
+              if (!row.classList.contains("is-dragging")) row.draggable = false;
+            });
+
+            row.addEventListener("dragstart", (event) => {
+              draggingItem = { menuIndex, itemIndex };
+              if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", `${menuIndex}:${itemIndex}`);
+              }
+              requestAnimationFrame(() => row.classList.add("is-dragging"));
+            });
+            row.addEventListener("dragover", (event) => {
+              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
+              event.preventDefault();
+              if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+              const rect = row.getBoundingClientRect();
+              const isAfter = event.clientY > rect.top + rect.height / 2;
+              row.classList.toggle("drag-over-top", !isAfter);
+              row.classList.toggle("drag-over-bottom", isAfter);
+            });
+            row.addEventListener("dragleave", () => {
+              row.classList.remove("drag-over-top", "drag-over-bottom");
+            });
+            row.addEventListener("drop", (event) => {
+              event.preventDefault();
+              row.classList.remove("drag-over-top", "drag-over-bottom");
+              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
+              const sourceIndex = draggingItem.itemIndex;
+              const rect = row.getBoundingClientRect();
+              const isAfter = event.clientY > rect.top + rect.height / 2;
+              let targetIndex = isAfter ? itemIndex + 1 : itemIndex;
+              if (sourceIndex < targetIndex) targetIndex--;
+              if (sourceIndex !== targetIndex) {
+                const [moved] = menu.items.splice(sourceIndex, 1);
+                menu.items.splice(targetIndex, 0, moved);
+                renderMenus();
+                markDirty();
+              }
+              draggingItem = null;
+            });
+            row.addEventListener("dragend", () => {
+              row.draggable = false;
+              row.classList.remove("is-dragging");
+              draggingItem = null;
+              items.querySelectorAll(".menu-item-row").forEach((element) => {
+                element.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
+              });
+            });
+
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "remove-item-btn";
+            removeBtn.title = t("menu.removeItem");
+            removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
+            removeBtn.addEventListener("click", () => {
+              menu.items.splice(itemIndex, 1);
+              renderMenus();
+              markDirty();
+            });
+
+            controls.append(dragHandleBtn, removeBtn);
+            row.append(label, controls);
+            return row;
+          }
 
           if (item.type === "space") {
             const units = item.units ?? 1;
@@ -2736,6 +2851,10 @@ function exportSettings(): void {
       ...(menu.onTopMode ? { onTopMode: menu.onTopMode } : {}),
       ...(menu.tabMode ? { tabMode: menu.tabMode } : {}),
       items: menu.items.map((item) => {
+        if (item.type === "menuToggle") {
+          return { type: "menuToggle" } satisfies ExportedMenuItem;
+        }
+
         let path = item.path;
         if (!path || path.length === 0) {
           if (item.bookmarkId && !item.bookmarkId.startsWith("space-")) {
@@ -2745,7 +2864,7 @@ function exportSettings(): void {
         }
         const node = item.bookmarkId ? findBookmarkNode(item.bookmarkId, rawBookmarkTree) : undefined;
         const isFolder = node ? (node.children !== undefined || node.url === undefined) : false;
-        const itemType: string = item.type ?? (isFolder ? "folder" : "bookmark");
+          const itemType: string = item.type ?? (isFolder ? "folder" : "bookmark");
 
         const exportedItem: ExportedMenuItem = {
           type: itemType,
@@ -2760,7 +2879,7 @@ function exportSettings(): void {
           ...(item.includeFolders ? { includeFolders: true } : {}),
           ...(item.tabMode ? { tabMode: item.tabMode } : {}),
         };
-        return exportedItem;
+          return exportedItem;
       }),
     })),
   };
@@ -2807,6 +2926,7 @@ async function importSettings(file: File): Promise<void> {
       const rawItems = Array.isArray(menuRecord.items) ? menuRecord.items : [];
 
       const items: StoredMenuItem[] = [];
+      let hasMenuToggle = false;
       for (const rawItem of rawItems) {
         if (typeof rawItem !== "object" || rawItem === null) continue;
         const itemRecord = rawItem as Record<string, unknown>;
@@ -2845,6 +2965,16 @@ async function importSettings(file: File): Promise<void> {
         const cycleColors = Array.isArray(itemRecord.cycleColors)
           ? itemRecord.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
           : undefined;
+
+        if (type === "menuToggle") {
+          if (hasMenuToggle) continue;
+          hasMenuToggle = true;
+          items.push({
+            bookmarkId: `menu-toggle-${crypto.randomUUID()}`,
+            type: "menuToggle",
+          });
+          continue;
+        }
 
         items.push({
           bookmarkId,

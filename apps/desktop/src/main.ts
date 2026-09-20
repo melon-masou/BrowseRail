@@ -16,6 +16,14 @@ import "./styles.css";
 const root = requiredElement("app");
 const query = new URLSearchParams(location.search);
 const FREE_DRAG_HANDLE_SIZE = 10;
+const DEFAULT_FONT_FAMILY = "Inter, ui-sans-serif, system-ui, sans-serif";
+
+let currentFontFamily = DEFAULT_FONT_FAMILY;
+
+function applyFontFamily(fontFamily: string): void {
+  currentFontFamily = fontFamily;
+  document.documentElement.style.setProperty("--desktop-font-family", fontFamily);
+}
 
 // Keep the Rust-rendered tray/menu and window titles in this webview's language.
 void invoke("set_ui_language", { language: getLanguage() }).catch(() => {});
@@ -52,6 +60,7 @@ async function initializeSurface(): Promise<void> {
         windowUid,
       });
 
+  applyFontFamily(initial.fontFamily);
   document.body.dataset.surface = "menu";
   if (isFree) {
     document.body.dataset.free = "1";
@@ -108,6 +117,7 @@ async function initializeSurface(): Promise<void> {
   // Global "lock editing" tray toggle: when on, right-click must not open customize.
   let editingLocked = false;
   let currentMenu = initial.menu;
+  let menuCollapsed = initial.collapsed;
 
   const POPUP_CLOSE_DELAY_MS = 50;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -140,6 +150,14 @@ async function initializeSurface(): Promise<void> {
   function elementOrigin(element: HTMLElement): SurfacePoint {
     const rect = element.getBoundingClientRect();
     return { x: rect.left, y: rect.top };
+  }
+
+  function requestDoubleAnimationFrame(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
   }
 
   async function windowOrigin(): Promise<SurfacePoint> {
@@ -177,6 +195,7 @@ async function initializeSurface(): Promise<void> {
       !customizing
     ) {
       currentMenu = payload.menu;
+      menuCollapsed = payload.collapsed ?? menuCollapsed;
       renderSurface(payload.menu);
     }
   }, { target: surfaceLabel });
@@ -188,6 +207,9 @@ async function initializeSurface(): Promise<void> {
     .catch(() => {});
   await listen<boolean>("editing-lock-changed", ({ payload }) => {
     editingLocked = payload;
+  });
+  await listen<string>("font-family-changed", ({ payload }) => {
+    applyFontFamily(payload);
   });
 
   if (initial.menu) {
@@ -233,7 +255,7 @@ async function initializeSurface(): Promise<void> {
     if (!ctx) {
       return text.length * fontSize * 1.0;
     }
-    ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif`;
+    ctx.font = `${fontSize}px ${currentFontFamily}`;
     return ctx.measureText(text).width;
   }
 
@@ -259,6 +281,7 @@ async function initializeSurface(): Promise<void> {
     let maxContentWidth = 0;
     for (const entry of entries) {
       if (entry.kind === "space") continue;
+      if (entry.kind === "menuToggle") continue;
       const displayText =
         entry.rename && entry.rename !== entry.label && !entry.label.startsWith(entry.rename)
           ? `${entry.rename} (${entry.label})`
@@ -322,7 +345,15 @@ async function initializeSurface(): Promise<void> {
 
   function computeSurfaceDimensions(menu: MenuSnapshot): { width: number; height: number } {
     const dimensions = computeMenuDimensions(menu);
-    if (!isFree) return dimensions;
+    if (menuCollapsed) {
+      return {
+        width: menu.placement.itemWidth ?? 84,
+        height: menu.placement.itemHeight ?? 36,
+      };
+    }
+    if (!isFree) {
+      return dimensions;
+    }
     // The drag handle lives in the flex flow next to the bar (see
     // .free-drag-handle in CSS), so the surface is the menu plus that strip.
     return menu.orientation === "row"
@@ -387,7 +418,29 @@ async function initializeSurface(): Promise<void> {
       }
     });
 
-    if (menu.items.length === 0) {
+    if (menuCollapsed) {
+      const toggle = menu.items.find((entry) => entry.kind === "menuToggle");
+      if (toggle && toggle.kind === "menuToggle") {
+        const toggleEl = renderMenuEntry(toggle, menuBar);
+        let offsetUnits = 0;
+        for (const entry of menu.items) {
+          if (entry === toggle) break;
+          offsetUnits += entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1;
+        }
+        const itemSize = menu.orientation === "row"
+          ? (menu.placement.itemWidth ?? 84)
+          : (menu.placement.itemHeight ?? 36);
+        const offsetPx = Math.round(offsetUnits) * (gap + itemSize);
+        menuBar.style.left = menu.orientation === "row" ? `${-offsetPx}px` : "0";
+        menuBar.style.top = menu.orientation === "column" ? `${-offsetPx}px` : "0";
+        menuBar.replaceChildren(toggleEl);
+      } else {
+        const empty = document.createElement("div");
+        empty.className = "empty-menu";
+        empty.textContent = t("menu.empty");
+        menuBar.replaceChildren(empty);
+      }
+    } else if (menu.items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty-menu";
       empty.textContent = t("menu.empty");
@@ -402,6 +455,7 @@ async function initializeSurface(): Promise<void> {
       if (event.button === 2) {
         event.preventDefault();
         event.stopPropagation();
+        if (menuCollapsed) return;
         if (editingLocked) return;
         if (customizing) return;
 
@@ -450,7 +504,7 @@ async function initializeSurface(): Promise<void> {
     };
     menuBar.oncontextmenu = (event) => event.preventDefault();
 
-    if (isFree) {
+    if (isFree && !(menuCollapsed && menu.items.some((entry) => entry.kind === "menuToggle"))) {
       // Dedicated drag handle: the only way to move a free surface (buttons stay
       // clickable). Position updates preserve the no-activate window contract;
       // onMoved persists the settled spot.
@@ -532,6 +586,41 @@ async function initializeSurface(): Promise<void> {
         }
       });
       return spaceEl;
+    }
+
+    if (entry.kind === "menuToggle") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "menu-button";
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "menu-button-label";
+      labelSpan.textContent = entry.label;
+      button.append(labelSpan);
+      button.title = menuCollapsed ? t("menu.expand") : t("menu.collapse");
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const beforeAnchor = elementOrigin(button);
+        void invoke<boolean>("toggle_menu_collapsed", { instanceUid, menuUid })
+          .then(async (collapsed) => {
+            menuCollapsed = collapsed;
+            const menuSnapshot = currentMenu ?? initial.menu;
+            if (!menuSnapshot) return;
+            renderSurface(menuSnapshot);
+            const toggle = root.querySelector<HTMLElement>(".menu-bar .menu-button");
+            if (!toggle) return;
+            await requestDoubleAnimationFrame();
+            const { width, height } = computeSurfaceDimensions(menuSnapshot);
+            await resizeAndPosition(
+              beforeAnchor,
+              elementOrigin(toggle),
+              width,
+              height,
+            );
+          })
+          .catch(() => undefined);
+      });
+      return button;
     }
 
     const button = menuButton(entry, false);
@@ -720,7 +809,7 @@ async function initializeSurface(): Promise<void> {
         column.style.borderColor = menuColor;
       }
       for (const item of entries) {
-        if (item.kind === "space") continue;
+        if (item.kind === "space" || item.kind === "menuToggle") continue;
         const button = menuButton(item, true);
         if (menuColor) {
           button.style.setProperty("--button-custom-color", menuColor);
@@ -988,6 +1077,16 @@ async function initializeSurface(): Promise<void> {
             }
             return spaceEl;
           }
+          if (entry.kind === "menuToggle") {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "menu-button";
+            const labelSpan = document.createElement("span");
+            labelSpan.className = "menu-button-label";
+            labelSpan.textContent = entry.label;
+            button.append(labelSpan);
+            return button;
+          }
           return menuButton(entry, false);
         }),
       );
@@ -1211,7 +1310,10 @@ async function initializeSurface(): Promise<void> {
   }
 }
 
-function menuButton(entry: Exclude<LayoutEntry, { kind: "space" }>, popup: boolean): HTMLButtonElement {
+  function menuButton(
+    entry: Exclude<LayoutEntry, { kind: "space" } | { kind: "menuToggle" }>,
+    popup: boolean,
+  ): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "menu-button";
@@ -1236,14 +1338,13 @@ function menuButton(entry: Exclude<LayoutEntry, { kind: "space" }>, popup: boole
           : `${displayText} (${entry.label})`;
     } else {
       labelSpan.textContent = displayText;
-      const isEmojiOnly = /^\p{Extended_Pictographic}+$/u.test(displayText.trim());
-      if (isEmojiOnly) {
-        labelSpan.classList.add("menu-button-emoji");
-        button.dataset.hasEmoji = "true";
-      }
     }
   } else {
     labelSpan.textContent = entry.label;
+  }
+  if (!popup && /^\p{Extended_Pictographic}+$/u.test(labelSpan.textContent.trim())) {
+    labelSpan.classList.add("menu-button-emoji");
+    button.dataset.hasEmoji = "true";
   }
   button.append(labelSpan);
 
@@ -1404,7 +1505,7 @@ async function initializeListenerSettings(): Promise<void> {
   portLabel.textContent = t("settings.listenPort");
 
   const portRow = document.createElement("form");
-  portRow.className = "settings-port-row";
+  portRow.className = "settings-inline-row";
 
   const portInput = document.createElement("input");
   portInput.id = "settings-port-input";
@@ -1436,6 +1537,21 @@ async function initializeListenerSettings(): Promise<void> {
   debugLabel.append(debugCheckbox, debugText);
   debugSection.append(debugLabel);
 
+  const fontSection = document.createElement("div");
+  fontSection.className = "settings-section";
+
+  const fontLabel = document.createElement("label");
+  fontLabel.className = "settings-label";
+  fontLabel.htmlFor = "settings-font-input";
+  fontLabel.textContent = t("settings.fontFamily");
+
+  const fontSelect = document.createElement("select");
+  fontSelect.id = "settings-font-input";
+  fontSelect.className = "settings-language-select";
+  fontSelect.style.width = "100%";
+
+  fontSection.append(fontLabel, fontSelect);
+
   const langSection = document.createElement("div");
   langSection.className = "settings-section";
 
@@ -1464,14 +1580,16 @@ async function initializeListenerSettings(): Promise<void> {
   const statusCard = document.createElement("div");
   statusCard.className = "settings-status-card";
 
-  root.append(portSection, debugSection, langSection, statusCard);
+  root.append(portSection, debugSection, fontSection, langSection, statusCard);
 
   let currentState: ListenerState | null = null;
   let isSubmitting = false;
+  let fontOptionsPromise: Promise<string[]> | null = null;
 
   onLanguageChange(() => {
     portLabel.textContent = t("settings.listenPort");
     applyBtn.textContent = t("settings.apply");
+    fontLabel.textContent = t("settings.fontFamily");
     debugText.textContent = t("settings.debug");
     langLabel.textContent = t("language.label");
     for (const opt of langSelect.options) {
@@ -1484,12 +1602,50 @@ async function initializeListenerSettings(): Promise<void> {
     }
   });
 
+  function renderFontOptions(fonts: string[], selectedFont: string): void {
+    fontSelect.replaceChildren();
+    for (const font of fonts) {
+      const option = document.createElement("option");
+      option.value = font;
+      option.textContent = font;
+      if (font === selectedFont) {
+        option.selected = true;
+      }
+      fontSelect.append(option);
+    }
+  }
+
+  function syncFontSelection(fontFamily: string): void {
+    if (![...fontSelect.options].some((option) => option.value === fontFamily)) {
+      const option = document.createElement("option");
+      option.value = fontFamily;
+      option.textContent = fontFamily;
+      fontSelect.append(option);
+    }
+    fontSelect.value = fontFamily;
+  }
+
+  function loadFontOptions(): Promise<string[]> {
+    fontOptionsPromise ??= invoke<string[]>("installed_fonts")
+      .catch((error) => {
+        fontOptionsPromise = null;
+        throw error;
+      });
+    return fontOptionsPromise;
+  }
+
+  void loadFontOptions()
+    .then((fonts) => renderFontOptions(fonts, currentState?.fontFamily ?? fontSelect.value))
+    .catch(() => undefined);
+
   function renderStatus(state: ListenerState): void {
     currentState = state;
     if (!portInput.matches(":focus")) {
       portInput.value = String(state.port);
     }
     debugCheckbox.checked = Boolean(state.debugEnabled);
+    applyFontFamily(state.fontFamily);
+    syncFontSelection(state.fontFamily);
 
     statusCard.replaceChildren();
 
@@ -1643,6 +1799,31 @@ async function initializeListenerSettings(): Promise<void> {
     }
   }
 
+  fontSelect.addEventListener("focus", () => {
+    void loadFontOptions()
+      .then((fonts) => renderFontOptions(fonts, currentState?.fontFamily ?? fontSelect.value))
+      .catch(() => undefined);
+  });
+
+  fontSelect.addEventListener("change", () => {
+    const fontFamily = fontSelect.value;
+    if (!fontFamily) return;
+    isSubmitting = true;
+    void invoke<ListenerState>("set_font_family", { fontFamily })
+      .then(renderStatus)
+      .catch((error) => {
+        if (currentState) {
+          renderStatus({
+            ...currentState,
+            error: String(error),
+          });
+        }
+      })
+      .finally(() => {
+        isSubmitting = false;
+      });
+  });
+
   debugCheckbox.addEventListener("change", () => {
     const enabled = debugCheckbox.checked;
     void invoke<ListenerState>("set_debug_enabled", { enabled })
@@ -1662,12 +1843,15 @@ async function initializeListenerSettings(): Promise<void> {
 interface SurfaceState {
   kind: "menu";
   menu?: MenuSnapshot;
+  collapsed?: boolean;
+  fontFamily: string;
 }
 
 interface MenuStateEvent {
   instanceUid: string;
   windowUid?: string | null;
   menu?: MenuSnapshot;
+  collapsed?: boolean;
 }
 
 interface ConnectedExtension {
@@ -1683,6 +1867,7 @@ interface ListenerState {
   listening: boolean;
   port: number;
   debugEnabled: boolean;
+  fontFamily: string;
   extensions: ConnectedExtension[];
 }
 

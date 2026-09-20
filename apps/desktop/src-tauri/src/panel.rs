@@ -512,9 +512,7 @@ impl SurfaceRegistry {
                 set.remove(label)
             };
             if changed {
-                eprintln!(
-                    "[BrowseRail:Tauri:Surface:{label}] customizing -> {customizing}",
-                );
+                eprintln!("[BrowseRail:Tauri:Surface:{label}] customizing -> {customizing}",);
             }
         }
     }
@@ -544,11 +542,7 @@ impl SurfaceRegistry {
     }
 
     pub fn summary(&self) -> (usize, usize, usize) {
-        let customizing = self
-            .customizing
-            .lock()
-            .map(|set| set.len())
-            .unwrap_or(0);
+        let customizing = self.customizing.lock().map(|set| set.len()).unwrap_or(0);
         if let Ok(states) = self.states.lock() {
             let mut visible: usize = 0;
             let mut hidden: usize = 0;

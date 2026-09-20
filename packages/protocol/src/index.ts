@@ -58,6 +58,12 @@ export interface BookmarkEntry {
   rename?: string;
 }
 
+export interface MenuToggleEntry {
+  kind: "menuToggle";
+  uid: string;
+  label: string;
+}
+
 export type OnTopMode = "aboveBrowser" | "alwaysOnTop";
 export type ExpandDirection = "down" | "right";
 
@@ -80,7 +86,7 @@ export interface SpaceEntry {
   transparent?: boolean;
 }
 
-export type LayoutEntry = BookmarkEntry | FolderEntry | SpaceEntry;
+export type LayoutEntry = BookmarkEntry | FolderEntry | MenuToggleEntry | SpaceEntry;
 
 export interface MenuSnapshot {
   attachmentMode?: AttachmentMode;
@@ -225,7 +231,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "space"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuToggle", "space"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export type StoredMenuItemType = MenuItemType;
 export type ExportedItemType = MenuItemType;

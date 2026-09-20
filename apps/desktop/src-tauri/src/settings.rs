@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 pub const DEFAULT_LISTENER_PORT: u16 = 17654;
+pub const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +17,10 @@ pub struct DesktopSettings {
     pub debug_enabled: bool,
     #[serde(default)]
     pub lock_editing: bool,
+    #[serde(default = "font_family_by_default")]
+    pub font_family: String,
+    #[serde(default)]
+    pub collapsed_menus: Vec<CollapsedMenu>,
 }
 
 impl Default for DesktopSettings {
@@ -25,8 +30,17 @@ impl Default for DesktopSettings {
             display_panels: true,
             debug_enabled: false,
             lock_editing: false,
+            font_family: DEFAULT_FONT_FAMILY.into(),
+            collapsed_menus: Vec::new(),
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollapsedMenu {
+    pub instance_uid: String,
+    pub menu_uid: String,
 }
 
 pub fn load(app: &tauri::AppHandle) -> Result<DesktopSettings, String> {
@@ -56,6 +70,10 @@ pub fn save(app: &tauri::AppHandle, settings: &DesktopSettings) -> Result<(), St
 
 fn display_panels_by_default() -> bool {
     true
+}
+
+fn font_family_by_default() -> String {
+    DEFAULT_FONT_FAMILY.into()
 }
 
 pub fn validate_listener_port(port: u16) -> Result<(), String> {

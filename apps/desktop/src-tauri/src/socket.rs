@@ -154,7 +154,10 @@ async fn handle_http_debug(mut stream: TcpStream) -> Result<(), String> {
             body.len(),
             body
         );
-        stream.write_all(response.as_bytes()).await.map_err(|e| e.to_string())?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
         stream.flush().await.map_err(|e| e.to_string())?;
         return Ok(());
     }
@@ -173,7 +176,10 @@ async fn handle_http_debug(mut stream: TcpStream) -> Result<(), String> {
         json.len(),
         json
     );
-    stream.write_all(response.as_bytes()).await.map_err(|e| e.to_string())?;
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
     stream.flush().await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -183,7 +189,10 @@ async fn handle_connection(
     stream: TcpStream,
 ) -> Result<(), String> {
     let mut peek_buf = [0u8; 1024];
-    let n = stream.peek(&mut peek_buf).await.map_err(|e| e.to_string())?;
+    let n = stream
+        .peek(&mut peek_buf)
+        .await
+        .map_err(|e| e.to_string())?;
     if n > 0 {
         let peek_str = String::from_utf8_lossy(&peek_buf[..n]);
         let lower = peek_str.to_ascii_lowercase();

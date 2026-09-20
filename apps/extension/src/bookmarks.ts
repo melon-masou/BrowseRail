@@ -325,12 +325,21 @@ export function getItemRelativePath(
 
 
 const FLATTEN_SPACE_PREFIX = "BrowseRailSpace:";
+const FLATTEN_SPACE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/)?browserail\.local\/?#Space:(.*)$/i;
 
 function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
-  if (child.url === undefined || !child.title.startsWith(FLATTEN_SPACE_PREFIX)) return null;
+  if (child.url === undefined) return null;
+
+  const titleDirective = child.title.startsWith(FLATTEN_SPACE_PREFIX)
+    ? child.title.slice(FLATTEN_SPACE_PREFIX.length)
+    : undefined;
+  const urlMatch = FLATTEN_SPACE_URL_PATTERN.exec(child.url);
+  const urlDirective = urlMatch ? decodeURIComponent(urlMatch[1]) : undefined;
+  const directive = titleDirective ?? urlDirective;
+  if (directive === undefined) return null;
 
   const fields = new Map<string, string>();
-  for (const part of child.title.slice(FLATTEN_SPACE_PREFIX.length).split(":")) {
+  for (const part of directive.split(":")) {
     const [key, ...rawValue] = part.split("=");
     if (!key) continue;
     fields.set(key.toLowerCase(), rawValue.join("="));
@@ -365,6 +374,15 @@ export async function resolveMenuItems(
   let treeCache: BookmarkNode[] | null = null;
   const entryGroups = await Promise.all(
     items.map(async ({ bookmarkId, path, url, color, cycleColors, emoji, rename, type, expandOnHover, includeFolders, tabMode, units, transparent }) => {
+      if (type === "menuToggle") {
+        const entry: LayoutEntry = {
+          kind: "menuToggle",
+          uid: `menu-toggle:${bookmarkId}`,
+          label: "Menu",
+        };
+        return [entry];
+      }
+
       if (type === "space") {
         const isTransparent = transparent !== false;
         const spaceEntry: LayoutEntry = {
@@ -513,4 +531,3 @@ function toLayoutEntry(
     ...(expandDirection !== undefined ? { expandDirection } : {}),
   };
 }
-

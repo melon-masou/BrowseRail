@@ -17,7 +17,11 @@ pub mod settings;
 pub mod socket;
 
 #[cfg(target_os = "windows")]
+use std::collections::BTreeSet;
+#[cfg(target_os = "windows")]
 use std::sync::Arc;
+#[cfg(target_os = "windows")]
+use std::sync::Mutex;
 #[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -34,9 +38,15 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 #[cfg(target_os = "windows")]
 use tauri::tray::TrayIconBuilder;
 #[cfg(target_os = "windows")]
-use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, RunEvent, WebviewUrl, WebviewWindowBuilder};
 #[cfg(target_os = "windows")]
 use tokio::sync::mpsc::UnboundedSender;
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::LPARAM;
+#[cfg(target_os = "windows")]
+use windows::Win32::Graphics::Gdi::{
+    DEFAULT_CHARSET, EnumFontFamiliesExW, FONTENUMPROCW, GetDC, LOGFONTW, ReleaseDC, TEXTMETRICW,
+};
 
 #[cfg(target_os = "windows")]
 pub const TRAY_ID: &str = "browserail";
@@ -45,10 +55,12 @@ pub const TRAY_ID: &str = "browserail";
 pub struct AppState {
     pub display_panels: Arc<AtomicBool>,
     pub lock_editing: Arc<AtomicBool>,
+    pub font_family: Arc<Mutex<String>>,
     pub popups: Arc<panel::PopupRegistry>,
     pub registry: Arc<SessionRegistry>,
     pub socket: Arc<socket::SocketServer>,
     pub surfaces: Arc<panel::SurfaceRegistry>,
+    pub collapsed_menus: Arc<Mutex<Vec<settings::CollapsedMenu>>>,
     pub native_sender: UnboundedSender<native::NativeCommand>,
 }
 
@@ -61,6 +73,7 @@ struct ListenerState {
     listening: bool,
     port: u16,
     debug_enabled: bool,
+    font_family: String,
     extensions: Vec<session::ConnectedExtension>,
 }
 
@@ -71,6 +84,8 @@ struct SurfaceState {
     kind: String,
     menu: Option<MenuSnapshot>,
     payload: Option<serde_json::Value>,
+    collapsed: bool,
+    font_family: String,
 }
 
 #[cfg(target_os = "windows")]
@@ -83,6 +98,11 @@ fn listener_state(state: tauri::State<'_, AppState>) -> ListenerState {
         listening: status.listening,
         port: status.port,
         debug_enabled: crate::debug::is_debug_enabled(),
+        font_family: state
+            .font_family
+            .lock()
+            .map(|font| font.clone())
+            .unwrap_or_else(|_| settings::DEFAULT_FONT_FAMILY.into()),
         extensions: state.registry.active_extensions(),
     }
 }
@@ -123,6 +143,89 @@ fn set_debug_enabled(
 }
 
 #[cfg(target_os = "windows")]
+unsafe extern "system" fn collect_font_name(
+    log_font: *const LOGFONTW,
+    _metric: *const TEXTMETRICW,
+    _font_type: u32,
+    lparam: LPARAM,
+) -> i32 {
+    let Some(log_font) = (unsafe { log_font.as_ref() }) else {
+        return 1;
+    };
+    let end = log_font
+        .lfFaceName
+        .iter()
+        .position(|char| *char == 0)
+        .unwrap_or(log_font.lfFaceName.len());
+    let name = String::from_utf16_lossy(&log_font.lfFaceName[..end]);
+    let fonts = unsafe { &mut *(lparam.0 as *mut BTreeSet<String>) };
+    if name.starts_with('@') {
+        fonts.insert(name[1..].into());
+    } else {
+        fonts.insert(name);
+    }
+    1
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn installed_fonts() -> Vec<String> {
+    enumerate_installed_fonts()
+}
+
+#[cfg(target_os = "windows")]
+fn enumerate_installed_fonts() -> Vec<String> {
+    let mut fonts = BTreeSet::new();
+    let dc = unsafe { GetDC(None) };
+    if dc.is_invalid() {
+        return Vec::new();
+    }
+
+    let log_font = LOGFONTW {
+        lfCharSet: DEFAULT_CHARSET,
+        ..Default::default()
+    };
+    let callback: FONTENUMPROCW = Some(collect_font_name);
+    unsafe {
+        EnumFontFamiliesExW(
+            dc,
+            &log_font,
+            callback,
+            LPARAM(&mut fonts as *mut BTreeSet<String> as isize),
+            0,
+        );
+        ReleaseDC(None, dc);
+    }
+    fonts.into_iter().collect()
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_font_family(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    font_family: String,
+) -> Result<ListenerState, String> {
+    let font_family = font_family.trim().to_string();
+    if !enumerate_installed_fonts().contains(&font_family) {
+        return Err("Font is not installed".into());
+    }
+
+    let mut settings = settings::load(&app).unwrap_or_default();
+    settings.font_family = font_family.clone();
+    settings.display_panels = state.display_panels.load(Ordering::Relaxed);
+    settings.lock_editing = state.lock_editing.load(Ordering::Relaxed);
+    settings::save(&app, &settings)?;
+
+    *state
+        .font_family
+        .lock()
+        .map_err(|_| "Font family lock failed")? = font_family.clone();
+    let _ = app.emit("font-family-changed", font_family);
+    Ok(listener_state(state))
+}
+
+#[cfg(target_os = "windows")]
 #[tauri::command]
 fn invoke_action(
     state: tauri::State<'_, AppState>,
@@ -139,6 +242,79 @@ fn invoke_action(
 #[tauri::command]
 fn is_editing_locked(state: tauri::State<'_, AppState>) -> bool {
     state.lock_editing.load(Ordering::Relaxed)
+}
+
+#[cfg(target_os = "windows")]
+fn is_menu_collapsed(
+    state: &tauri::State<'_, AppState>,
+    instance_uid: &str,
+    menu_uid: &str,
+) -> bool {
+    state
+        .collapsed_menus
+        .lock()
+        .map(|collapsed| {
+            collapsed
+                .iter()
+                .any(|item| item.instance_uid == instance_uid && item.menu_uid == menu_uid)
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn set_menu_collapsed(
+    app: &tauri::AppHandle,
+    collapsed_menus: &Arc<Mutex<Vec<settings::CollapsedMenu>>>,
+    instance_uid: &str,
+    menu_uid: &str,
+    collapsed: bool,
+) -> Result<(), String> {
+    let mut menus = collapsed_menus
+        .lock()
+        .map_err(|_| "Collapsed menu lock failed")?;
+    let index = menus
+        .iter()
+        .position(|item| item.instance_uid == instance_uid && item.menu_uid == menu_uid);
+    if collapsed {
+        if index.is_none() {
+            menus.push(settings::CollapsedMenu {
+                instance_uid: instance_uid.into(),
+                menu_uid: menu_uid.into(),
+            });
+        }
+    } else if let Some(index) = index {
+        menus.remove(index);
+    }
+
+    drop(menus);
+    persist_collapsed_menus(app, collapsed_menus)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn toggle_menu_collapsed(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    instance_uid: String,
+    menu_uid: String,
+) -> Result<bool, String> {
+    let next = !is_menu_collapsed(&state, &instance_uid, &menu_uid);
+    set_menu_collapsed(&app, &state.collapsed_menus, &instance_uid, &menu_uid, next)?;
+    Ok(next)
+}
+
+#[cfg(target_os = "windows")]
+fn persist_collapsed_menus(
+    app: &tauri::AppHandle,
+    collapsed_menus: &Arc<Mutex<Vec<settings::CollapsedMenu>>>,
+) -> Result<(), String> {
+    let menus = collapsed_menus
+        .lock()
+        .map_err(|_| "Collapsed menu lock failed")?
+        .clone();
+    let mut settings = settings::load(app).unwrap_or_default();
+    settings.collapsed_menus = menus;
+    settings::save(app, &settings)
 }
 
 #[cfg(target_os = "windows")]
@@ -178,13 +354,19 @@ fn free_surface_state(
     let menu = state.registry.free_menu(&instance_uid, &menu_uid);
     crate::debug::log(
         "Native:Free",
-        format!("free_surface_state inst={instance_uid} menu={menu_uid} found={}", menu.is_some()),
+        format!(
+            "free_surface_state inst={instance_uid} menu={menu_uid} found={}",
+            menu.is_some()
+        ),
     );
     let menu = menu.ok_or("Free menu state is unavailable")?;
+    let collapsed = is_menu_collapsed(&state, &instance_uid, &menu_uid);
     Ok(SurfaceState {
         kind: "menu".into(),
         menu: Some(menu),
         payload: None,
+        collapsed,
+        font_family: current_font_family(&state),
     })
 }
 
@@ -223,10 +405,13 @@ fn surface_state(
                 .into_iter()
                 .find(|entry| entry.uid == menu_uid)
                 .ok_or("Menu state is unavailable")?;
+            let collapsed = is_menu_collapsed(&state, &instance_uid, &menu_uid);
             Ok(SurfaceState {
                 kind: surface,
                 menu: Some(menu),
                 payload: None,
+                collapsed,
+                font_family: current_font_family(&state),
             })
         }
         "popup" => {
@@ -238,10 +423,21 @@ fn surface_state(
                 kind: surface,
                 menu: None,
                 payload: Some(popup.payload),
+                collapsed: false,
+                font_family: current_font_family(&state),
             })
         }
         _ => Err("Unknown surface type".into()),
     }
+}
+
+#[cfg(target_os = "windows")]
+fn current_font_family(state: &tauri::State<'_, AppState>) -> String {
+    state
+        .font_family
+        .lock()
+        .map(|font| font.clone())
+        .unwrap_or_else(|_| settings::DEFAULT_FONT_FAMILY.into())
 }
 
 #[cfg(target_os = "windows")]
@@ -495,7 +691,9 @@ fn save_menu_placement(
         };
         let offset_y = match anchor {
             MenuAnchor::TopLeft | MenuAnchor::TopRight => y - bounds.y,
-            MenuAnchor::BottomLeft | MenuAnchor::BottomRight => bounds.y + bounds.height - y - height,
+            MenuAnchor::BottomLeft | MenuAnchor::BottomRight => {
+                bounds.y + bounds.height - y - height
+            }
         };
         (offset_x, offset_y)
     };
@@ -580,13 +778,7 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
 
     let mut ext_items = Vec::new();
     for (i, line) in state.extension_lines.iter().enumerate() {
-        let item = MenuItem::with_id(
-            manager,
-            format!("ext_item_{i}"),
-            line,
-            false,
-            None::<&str>,
-        )?;
+        let item = MenuItem::with_id(manager, format!("ext_item_{i}"), line, false, None::<&str>)?;
         ext_items.push(item);
     }
 
@@ -620,7 +812,13 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
         true,
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(manager, "quit", i18n::Msg::Quit.localized(), true, None::<&str>)?;
+    let quit = MenuItem::with_id(
+        manager,
+        "quit",
+        i18n::Msg::Quit.localized(),
+        true,
+        None::<&str>,
+    )?;
 
     let mut menu_items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
     menu_items.push(&server_item);
@@ -733,25 +931,34 @@ fn set_ui_language(language: String, state: tauri::State<'_, AppState>) {
 pub fn run() {
     let display_panels = Arc::new(AtomicBool::new(true));
     let lock_editing = Arc::new(AtomicBool::new(false));
+    let font_family = Arc::new(Mutex::new(settings::DEFAULT_FONT_FAMILY.into()));
     let popups = Arc::new(panel::PopupRegistry::default());
     let registry = Arc::new(SessionRegistry::default());
     let socket = Arc::new(socket::SocketServer::default());
     let surfaces = Arc::new(panel::SurfaceRegistry::default());
+    let collapsed_menus = Arc::new(Mutex::new(Vec::new()));
 
     let app = tauri::Builder::default()
         .setup({
             let display_panels = display_panels.clone();
             let lock_editing = lock_editing.clone();
+            let font_family = font_family.clone();
             let popups = popups.clone();
             let registry = registry.clone();
             let socket = socket.clone();
             let surfaces = surfaces.clone();
+            let collapsed_menus = collapsed_menus.clone();
 
             move |app| {
                 create_lifecycle_host(app)?;
                 let settings = settings::load(app.handle()).unwrap_or_default();
+                *collapsed_menus
+                    .lock()
+                    .expect("collapsed menu lock poisoned") = settings.collapsed_menus.clone();
                 display_panels.store(settings.display_panels, Ordering::Relaxed);
                 lock_editing.store(settings.lock_editing, Ordering::Relaxed);
+                *font_family.lock().expect("font family lock poisoned") =
+                    settings.font_family.clone();
                 crate::debug::set_debug_enabled(settings.debug_enabled);
                 i18n::set_language(i18n::detect_system_lang());
 
@@ -765,15 +972,18 @@ pub fn run() {
                     registry.clone(),
                     socket.clone(),
                     surfaces.clone(),
+                    collapsed_menus.clone(),
                 );
 
                 app.manage(AppState {
                     display_panels,
                     lock_editing,
+                    font_family,
                     popups,
                     registry,
                     socket: socket.clone(),
                     surfaces,
+                    collapsed_menus: collapsed_menus.clone(),
                     native_sender: native_sender.clone(),
                 });
 
@@ -800,6 +1010,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             surface_state,
+            toggle_menu_collapsed,
             surface_available_height,
             invoke_action,
             invoke_free_action,
@@ -809,6 +1020,8 @@ pub fn run() {
             listener_state,
             set_listener_port,
             set_debug_enabled,
+            installed_fonts,
+            set_font_family,
             open_popup,
             resize_and_position,
             cancel_popup_close,

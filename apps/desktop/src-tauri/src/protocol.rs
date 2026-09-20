@@ -340,6 +340,10 @@ pub enum LayoutEntry {
         #[serde(default)]
         rename: Option<String>,
     },
+    MenuToggle {
+        uid: String,
+        label: String,
+    },
     Folder {
         uid: String,
         label: String,
@@ -402,25 +406,128 @@ pub fn menu_total_size(menu: &MenuSnapshot) -> (f64, f64) {
     }
 }
 
+pub fn menu_total_size_for_state(menu: &MenuSnapshot, collapsed: bool) -> (f64, f64) {
+    if collapsed {
+        (
+            menu.placement.item_width.unwrap_or(84.0),
+            menu.placement.item_height.unwrap_or(36.0),
+        )
+    } else {
+        menu_total_size(menu)
+    }
+}
+
+/// Geometry for a detached menu surface in its current state. The full state
+/// includes the drag handle; the collapsed state places the MenuToggle at its
+/// absolute full-state position.
+pub fn free_menu_geometry_for_state(menu: &MenuSnapshot, collapsed: bool) -> ComputedMenuGeometry {
+    const FREE_DRAG_HANDLE_SIZE: f64 = 10.0;
+    let (mut width, mut height) = menu_total_size_for_state(menu, collapsed);
+    let Some(position) = menu.free_position else {
+        return ComputedMenuGeometry {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+        };
+    };
+    let (x, y) = (position.x, position.y);
+
+    if collapsed {
+        let (toggle_x, toggle_y) = menu_toggle_position(menu);
+        let handle_offset_x = if matches!(menu.orientation, MenuOrientation::Row) {
+            FREE_DRAG_HANDLE_SIZE
+        } else {
+            0.0
+        };
+        let handle_offset_y = if matches!(menu.orientation, MenuOrientation::Column) {
+            FREE_DRAG_HANDLE_SIZE
+        } else {
+            0.0
+        };
+        let x = x + handle_offset_x + toggle_x;
+        let y = y + handle_offset_y + toggle_y;
+        return ComputedMenuGeometry {
+            x,
+            y,
+            width,
+            height,
+        };
+    }
+
+    match menu.orientation {
+        MenuOrientation::Row => width += FREE_DRAG_HANDLE_SIZE,
+        MenuOrientation::Column => height += FREE_DRAG_HANDLE_SIZE,
+    }
+    ComputedMenuGeometry {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+/// Position of the MenuToggle button inside the full menu grid.
+pub fn menu_toggle_position(menu: &MenuSnapshot) -> (f64, f64) {
+    let mut units = 0.0;
+    for item in &menu.items {
+        if matches!(item, LayoutEntry::MenuToggle { .. }) {
+            break;
+        }
+        units += match item {
+            LayoutEntry::Space { units: value, .. } => value.unwrap_or(1.0).max(0.1),
+            _ => 1.0,
+        };
+    }
+
+    let track = units.round().max(0.0);
+    let gap = menu_gap(menu);
+    match menu.orientation {
+        MenuOrientation::Row => (
+            track * (menu.placement.item_width.unwrap_or(84.0) + gap),
+            0.0,
+        ),
+        MenuOrientation::Column => (
+            0.0,
+            track * (menu.placement.item_height.unwrap_or(36.0) + gap),
+        ),
+    }
+}
+
 /// Derives the full window geometry (x, y, width, height) relative to the browser window.
 pub fn compute_menu_geometry(
     window: &BrowserWindowSnapshot,
     menu: &MenuSnapshot,
 ) -> ComputedMenuGeometry {
-    let (width, height) = menu_total_size(menu);
+    compute_menu_geometry_for_state(window, menu, false)
+}
+
+/// Derives geometry for the menu's current state. In the collapsed state, the
+/// MenuToggle keeps the absolute position it occupies in the full menu, so
+/// right/bottom anchors must first resolve against the full-menu size.
+pub fn compute_menu_geometry_for_state(
+    window: &BrowserWindowSnapshot,
+    menu: &MenuSnapshot,
+    collapsed: bool,
+) -> ComputedMenuGeometry {
+    let (full_width, full_height) = menu_total_size(menu);
+    let (width, height) = menu_total_size_for_state(menu, collapsed);
+    let (toggle_x, toggle_y) = menu_toggle_position(menu);
     let bounds = &window.bounds;
-    let x = match menu.placement.anchor {
+    let full_x = match menu.placement.anchor {
         MenuAnchor::TopLeft | MenuAnchor::BottomLeft => bounds.x + menu.placement.offset_x,
         MenuAnchor::TopRight | MenuAnchor::BottomRight => {
-            bounds.x + bounds.width - width - menu.placement.offset_x
+            bounds.x + bounds.width - full_width - menu.placement.offset_x
         }
     };
-    let y = match menu.placement.anchor {
+    let full_y = match menu.placement.anchor {
         MenuAnchor::TopLeft | MenuAnchor::TopRight => bounds.y + menu.placement.offset_y,
         MenuAnchor::BottomLeft | MenuAnchor::BottomRight => {
-            bounds.y + bounds.height - height - menu.placement.offset_y
+            bounds.y + bounds.height - full_height - menu.placement.offset_y
         }
     };
+    let x = full_x + if collapsed { toggle_x } else { 0.0 };
+    let y = full_y + if collapsed { toggle_y } else { 0.0 };
     ComputedMenuGeometry {
         x,
         y,
@@ -431,7 +538,10 @@ pub fn compute_menu_geometry(
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientMessage, ServerMessage};
+    use super::{
+        BrowserWindowSnapshot, ClientMessage, MenuSnapshot, ServerMessage,
+        compute_menu_geometry_for_state, free_menu_geometry_for_state,
+    };
 
     #[test]
     fn reads_the_extension_hello_contract() {
@@ -494,8 +604,14 @@ mod tests {
             }]
         }"#;
 
-        let message = serde_json::from_str::<ClientMessage>(json).expect("should parse resiliently");
-        if let ClientMessage::Sync { attachment_mode, panels, .. } = message {
+        let message =
+            serde_json::from_str::<ClientMessage>(json).expect("should parse resiliently");
+        if let ClientMessage::Sync {
+            attachment_mode,
+            panels,
+            ..
+        } = message
+        {
             assert_eq!(attachment_mode, super::AttachmentMode::LastFocused);
             assert_eq!(panels.len(), 1);
             let panel = &panels[0];
@@ -545,5 +661,68 @@ mod tests {
                 "menuUid": "menu-1"
             })
         );
+    }
+
+    #[test]
+    fn collapsed_menu_keeps_the_toggle_button_at_its_expanded_position() {
+        let menu_json = r#"{
+            "uid": "menu-1",
+            "orientation": "row",
+            "placement": {
+                "anchor": "topRight",
+                "offsetX": 10,
+                "itemWidth": 50,
+                "itemHeight": 20,
+                "gap": 5
+            },
+            "items": [
+                { "kind": "bookmark", "uid": "a", "label": "A" },
+                { "kind": "bookmark", "uid": "b", "label": "B" },
+                { "kind": "menuToggle", "uid": "toggle", "label": "D" },
+                { "kind": "bookmark", "uid": "e", "label": "E" }
+            ]
+        }"#;
+        let menu: MenuSnapshot = serde_json::from_str(menu_json).unwrap();
+        let window = BrowserWindowSnapshot {
+            uid: "window-a".into(),
+            bounds: crate::protocol::WindowBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 1000.0,
+                height: 600.0,
+            },
+            focused: true,
+        };
+
+        let expanded = compute_menu_geometry_for_state(&window, &menu, false);
+        let collapsed = compute_menu_geometry_for_state(&window, &menu, true);
+
+        assert_eq!((expanded.x + 110.0, expanded.y), (collapsed.x, collapsed.y));
+        assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));
+    }
+
+    #[test]
+    fn collapsed_free_menu_keeps_the_toggle_button_at_its_expanded_position() {
+        let menu_json = r#"{
+            "uid": "menu-free",
+            "orientation": "row",
+            "freePosition": { "x": 100, "y": 200 },
+            "placement": {
+                "itemWidth": 50,
+                "itemHeight": 20,
+                "gap": 5
+            },
+            "items": [
+                { "kind": "bookmark", "uid": "a", "label": "A" },
+                { "kind": "menuToggle", "uid": "toggle", "label": "D" }
+            ]
+        }"#;
+        let menu: MenuSnapshot = serde_json::from_str(menu_json).unwrap();
+
+        let expanded = free_menu_geometry_for_state(&menu, false);
+        let collapsed = free_menu_geometry_for_state(&menu, true);
+
+        assert_eq!((expanded.x + 65.0, expanded.y), (collapsed.x, collapsed.y));
+        assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));
     }
 }

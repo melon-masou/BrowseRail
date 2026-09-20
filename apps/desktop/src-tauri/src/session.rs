@@ -415,7 +415,9 @@ mod tests {
                 connection_a,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")], vec![], Vec::new(),
+                vec![panel("window-a")],
+                vec![],
+                Vec::new(),
             )
             .unwrap();
         registry
@@ -423,7 +425,9 @@ mod tests {
                 connection_b,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")], vec![], Vec::new(),
+                vec![panel("window-b")],
+                vec![],
+                Vec::new(),
             )
             .unwrap();
 
@@ -455,7 +459,9 @@ mod tests {
                 connection_a,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")], vec![], Vec::new(),
+                vec![panel("window-a")],
+                vec![],
+                Vec::new(),
             )
             .unwrap();
         registry
@@ -463,7 +469,9 @@ mod tests {
                 connection_b,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")], vec![], Vec::new(),
+                vec![panel("window-b")],
+                vec![],
+                Vec::new(),
             )
             .unwrap();
 
@@ -484,7 +492,14 @@ mod tests {
         let (sender, _) = unbounded_channel();
         registry.register(connection, instance("instance-a"), sender);
         registry
-            .sync(connection, 1, AttachmentMode::All, vec![panel("window-a")], vec![], Vec::new())
+            .sync(
+                connection,
+                1,
+                AttachmentMode::All,
+                vec![panel("window-a")],
+                vec![],
+                Vec::new(),
+            )
             .unwrap();
 
         let disconnected = registry.disconnect_all();
@@ -509,7 +524,9 @@ mod tests {
                 old_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")], vec![], Vec::new(),
+                vec![panel("window-a")],
+                vec![],
+                Vec::new(),
             )
             .unwrap();
 
@@ -521,7 +538,9 @@ mod tests {
                 new_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")], vec![], Vec::new(),
+                vec![panel("window-b")],
+                vec![],
+                Vec::new(),
             )
             .unwrap()
             .expect("sync outcome");
@@ -543,7 +562,9 @@ mod tests {
                 old_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-a")], vec![], Vec::new(),
+                vec![panel("window-a")],
+                vec![],
+                Vec::new(),
             )
             .unwrap();
 
@@ -560,7 +581,9 @@ mod tests {
                 new_connection,
                 1,
                 AttachmentMode::All,
-                vec![panel("window-b")], vec![], Vec::new(),
+                vec![panel("window-b")],
+                vec![],
+                Vec::new(),
             )
             .unwrap()
             .expect("sync outcome");
@@ -576,19 +599,40 @@ mod tests {
         registry.register(connection, instance("instance-a"), sender);
         assert!(
             registry
-                .sync(connection, 2, AttachmentMode::All, vec![panel("window-a")], vec![], Vec::new())
+                .sync(
+                    connection,
+                    2,
+                    AttachmentMode::All,
+                    vec![panel("window-a")],
+                    vec![],
+                    Vec::new()
+                )
                 .unwrap()
                 .is_some()
         );
         assert!(
             registry
-                .sync(connection, 2, AttachmentMode::All, vec![panel("window-a")], vec![], Vec::new())
+                .sync(
+                    connection,
+                    2,
+                    AttachmentMode::All,
+                    vec![panel("window-a")],
+                    vec![],
+                    Vec::new()
+                )
                 .unwrap()
                 .is_none()
         );
         assert!(
             registry
-                .sync(connection, 1, AttachmentMode::All, vec![panel("window-a")], vec![], Vec::new())
+                .sync(
+                    connection,
+                    1,
+                    AttachmentMode::All,
+                    vec![panel("window-a")],
+                    vec![],
+                    Vec::new()
+                )
                 .unwrap()
                 .is_none()
         );
@@ -619,17 +663,25 @@ mod tests {
             connection_a,
             1,
             AttachmentMode::All,
-            vec![panel("window-1"), panel("window-2")], vec![], Vec::new(),
+            vec![panel("window-1"), panel("window-2")],
+            vec![],
+            Vec::new(),
         );
 
         let exts = registry.active_extensions();
         assert_eq!(exts.len(), 2);
-        let ext_a = exts.iter().find(|e| e.instance_uid == "instance-a").unwrap();
+        let ext_a = exts
+            .iter()
+            .find(|e| e.instance_uid == "instance-a")
+            .unwrap();
         assert_eq!(ext_a.browser.as_deref(), Some("chrome"));
         assert_eq!(ext_a.label.as_deref(), Some("Work Profile"));
         assert_eq!(ext_a.windows_count, 2);
 
-        let ext_b = exts.iter().find(|e| e.instance_uid == "instance-b").unwrap();
+        let ext_b = exts
+            .iter()
+            .find(|e| e.instance_uid == "instance-b")
+            .unwrap();
         assert_eq!(ext_b.browser.as_deref(), Some("edge"));
         assert_eq!(ext_b.label, None);
         assert_eq!(ext_b.windows_count, 0);

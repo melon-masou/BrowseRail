@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  --desktop-font-family: Segoe UI;
+  font-family: var(--desktop-font-family);
   --menu-font-size: 13px;
   --menu-item-height: 36px;
   --min-column-width: 84px;
@@ -526,7 +527,7 @@ body[data-view="settings"] {
   color-scheme: light;
   color: #172033;
   background: #f4f6fb;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--desktop-font-family);
   margin: 0;
   padding: 0;
   overflow-y: auto;
@@ -552,13 +553,13 @@ body[data-view="settings"] {
   color: #3b4861;
 }
 
-.settings-port-row {
+.settings-inline-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.settings-port-row input {
+.settings-inline-row input {
   flex: 1 1 auto;
   min-height: 34px;
   box-sizing: border-box;
@@ -571,12 +572,12 @@ body[data-view="settings"] {
   font-family: inherit;
 }
 
-.settings-port-row input:focus {
+.settings-inline-row input:focus {
   outline: 2px solid #3b82f6;
   outline-offset: -1px;
 }
 
-.settings-port-row button {
+.settings-inline-row button {
   min-height: 34px;
   padding: 0 16px;
   box-sizing: border-box;
@@ -590,11 +591,11 @@ body[data-view="settings"] {
   font-family: inherit;
 }
 
-.settings-port-row button:hover:not(:disabled) {
+.settings-inline-row button:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.settings-port-row button:disabled {
+.settings-inline-row button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

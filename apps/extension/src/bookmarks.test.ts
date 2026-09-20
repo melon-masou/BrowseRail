@@ -102,6 +102,20 @@ describe("resolveMenuItems", () => {
     expect(entries[1].kind).toBe("bookmark");
   });
 
+  it("resolves a configured menu toggle entry", async () => {
+    const entries = await resolveMenuItems([
+      { bookmarkId: "menu-toggle-main", type: "menuToggle" },
+    ]);
+
+    expect(entries).toEqual([
+      {
+        kind: "menuToggle",
+        uid: "menu-toggle:menu-toggle-main",
+        label: "Menu",
+      },
+    ]);
+  });
+
   it("turns flattened BrowseRailSpace bookmarks into configured spaces", async () => {
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
@@ -119,8 +133,13 @@ describe("resolveMenuItems", () => {
               },
               {
                 id: "space-default",
-                title: "BrowseRailSpace:",
-                url: "https://example.com/default-space",
+                title: "Space",
+                url: "browserail.local#Space:",
+              },
+              {
+                id: "space-url",
+                title: "Space",
+                url: "https://browserail.local/#Space:units%3D2%3Atransparent%3Dfalse%3Acolor%3D%23234567",
               },
             ],
           },
@@ -129,7 +148,7 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems([{ path: ["Spaces"], type: "flattenFolder" }]);
-    expect(entries).toHaveLength(2);
+    expect(entries).toHaveLength(3);
     expect(entries[0]).toEqual({
       kind: "space",
       uid: "space:bookmark-space-full",
@@ -142,6 +161,13 @@ describe("resolveMenuItems", () => {
       uid: "space:bookmark-space-default",
       units: 1,
       transparent: true,
+    });
+    expect(entries[2]).toEqual({
+      kind: "space",
+      uid: "space:bookmark-space-url",
+      units: 2,
+      color: "#234567",
+      transparent: false,
     });
   });
 
@@ -694,6 +720,20 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.transparent).toBe(false);
     expect(item?.bookmarkId).toMatch(/^space-/);
   });
+
+  it("keeps only the first menu toggle when normalizing a menu", async () => {
+    const { normalizeMenu } = await import("./config");
+    const menu = normalizeMenu({
+      uid: "menu-toggle-menu",
+      items: [
+        { bookmarkId: "toggle-1", type: "menuToggle" },
+        { bookmarkId: "toggle-2", type: "menuToggle" },
+      ],
+    });
+
+    expect(menu?.items).toHaveLength(1);
+    expect(menu?.items[0]?.type).toBe("menuToggle");
+  });
 });
 
 describe("combineRootAndItemPath and space resolution", () => {
@@ -921,5 +961,4 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(await loadBookmarkRootPrefix()).toEqual(["Work", "A/B"]);
   });
 });
-
 

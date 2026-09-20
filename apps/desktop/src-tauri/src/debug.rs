@@ -106,15 +106,15 @@ pub fn get_recent_logs() -> Vec<DebugLogEntry> {
 
 #[cfg(target_os = "windows")]
 pub fn inspect_foreground_window() -> Option<ForegroundDebugInfo> {
-    use windows::core::PWSTR;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-        PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        QueryFullProcessImageNameW,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
     };
+    use windows::core::PWSTR;
 
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.0.is_null() {

@@ -350,6 +350,17 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const urlRuleUids = Array.isArray(value.urlRuleUids)
     ? value.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
     : undefined;
+  const normalizedItems = Array.isArray(value.items)
+    ? value.items.map(normalizeStoredMenuItem).filter((i): i is StoredMenuItem => i !== undefined)
+    : [];
+  let hasMenuToggle = false;
+  const items = normalizedItems.filter((item) => {
+    if (item.type !== "menuToggle") return true;
+    if (hasMenuToggle) return false;
+    hasMenuToggle = true;
+    return true;
+  });
+
   return {
     attachmentMode,
     ...(color !== undefined ? { color } : {}),
@@ -357,9 +368,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ...(expandDirection !== undefined ? { expandDirection } : {}),
     ...(fontSize !== undefined ? { fontSize } : {}),
     gap,
-    items: Array.isArray(value.items)
-      ? value.items.map(normalizeStoredMenuItem).filter((i): i is StoredMenuItem => i !== undefined)
-      : [],
+    items,
     onTopMode,
     orientation: value.orientation === "row" ? "row" : "column",
     ...(tabMode !== undefined ? { tabMode } : {}),
@@ -433,6 +442,13 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
       ...(units !== undefined ? { units } : {}),
       ...(color ? { color } : {}),
       transparent,
+    };
+  }
+
+  if (rawType === "menuToggle") {
+    return {
+      bookmarkId: `menu-toggle-${crypto.randomUUID()}`,
+      type: "menuToggle",
     };
   }
 

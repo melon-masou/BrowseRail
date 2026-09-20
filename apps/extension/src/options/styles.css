@@ -1697,6 +1697,8 @@ output {
   color: #475569;
   white-space: pre-line;
   overflow-wrap: anywhere;
+  user-select: text;
+  cursor: text;
 }
 
 .item-setting-change-btn {
