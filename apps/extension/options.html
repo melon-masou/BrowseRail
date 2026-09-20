@@ -114,15 +114,15 @@
         </div>
       </form>
 
-      <!-- Card 2: Menus + Webpage Sets -->
+      <!-- Card 2: Menus + URL rules -->
       <form id="menus-form" class="options-card menus-card">
         <div class="menus-card-tabs" role="tablist">
           <button type="button" id="menus-tab" class="menus-card-tab" role="tab"
             data-tab-target="menus-panel" aria-selected="true" aria-controls="menus-panel"
             data-i18n="section.menus">Menus</button>
-          <button type="button" id="webpage-sets-tab" class="menus-card-tab" role="tab"
-            data-tab-target="webpage-sets-panel" aria-selected="false" aria-controls="webpage-sets-panel"
-            data-i18n="section.webpageSets">Webpage Sets</button>
+          <button type="button" id="url-rules-tab" class="menus-card-tab" role="tab"
+            data-tab-target="url-rules-panel" aria-selected="false" aria-controls="url-rules-panel"
+            data-i18n="section.urlRules">URL rules</button>
         </div>
 
         <section id="menus-panel" class="menus-section" role="tabpanel" aria-labelledby="menus-tab">
@@ -135,16 +135,16 @@
           </div>
         </section>
 
-        <!-- Webpage Sets Panel -->
-        <section id="webpage-sets-panel" class="webpage-sets-section" role="tabpanel" aria-labelledby="webpage-sets-tab" hidden>
-          <div class="webpage-sets-header">
-            <div class="webpage-sets-title-row">
-              <span class="webpage-sets-hint" data-i18n="webpageSets.hint">Define URL patterns to only show menus on specific sites</span>
+        <!-- URL Rules Panel -->
+        <section id="url-rules-panel" class="url-rules-section" role="tabpanel" aria-labelledby="url-rules-tab" hidden>
+          <div class="url-rules-header">
+            <div class="url-rules-title-row">
+              <span class="url-rules-hint" data-i18n="urlRules.hint">Define URL patterns to only show menus on specific sites</span>
             </div>
-            <button id="add-webpage-set-btn" class="menu-action-btn add-webpage-set-btn" type="button" data-i18n="btn.addWebpageSet">+ Add webpage set</button>
+            <button id="add-url-rule-btn" class="menu-action-btn add-url-rule-btn" type="button" data-i18n="btn.addUrlRule">+ Add URL rule</button>
           </div>
-          <div id="webpage-sets-list" class="webpage-sets-list"></div>
-          <p class="webpage-sets-syntax-guide" data-i18n="webpageSets.syntaxHint">Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line</p>
+          <div id="url-rules-list" class="url-rules-list"></div>
+          <p class="url-rules-syntax-guide" data-i18n="urlRules.syntaxHint">Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line</p>
         </section>
 
         <div class="form-actions-row">
@@ -193,81 +193,76 @@
         </div>
       </div>
 
-      <!-- Menu Style Popover (Direction, Folder expand direction, FontSize, Gap) -->
-      <div id="menu-style-popover" class="menu-settings-popover" style="display: none;">
-        <div class="menu-settings-header">
-          <span id="menu-style-title" class="menu-settings-title" data-i18n="menuStyle.title">Menu Style</span>
-          <button type="button" id="menu-style-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+      <!-- Menu Settings Dialog -->
+      <dialog id="menu-settings-dialog" class="menu-settings-dialog">
+        <div class="menu-settings-dialog-header">
+          <span id="menu-settings-dialog-title" data-i18n="menu.settings">⚙️ Settings</span>
+          <button type="button" id="menu-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
-        <div class="menu-settings-body">
-          <label>
-            <span data-i18n="menuSettings.direction">Direction</span>
-            <select id="menu-setting-orientation">
-              <option value="column" data-i18n="menuSettings.column" selected>Column</option>
-              <option value="row" data-i18n="menuSettings.row">Row</option>
-            </select>
-          </label>
-          <label>
-            <span data-i18n="menuSettings.expandDirection">Folder expand direction</span>
-            <select id="menu-setting-expand-direction">
-              <option value="" data-i18n="expandDirection.default" selected>Default</option>
-              <option value="down" data-i18n="expandDirection.down">Down</option>
-              <option value="right" data-i18n="expandDirection.right">Right</option>
-            </select>
-          </label>
-          <label>
-            <span data-i18n="menuSettings.fontSize">Font size (px)</span>
-            <input id="menu-setting-font-size" type="number" min="8" max="48" step="1" />
-          </label>
-          <label>
-            <span data-i18n="menuSettings.gap">Button gap (%)</span>
-            <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
-          </label>
+        <div class="menu-settings-tabs" role="tablist" aria-label="menu.settings">
+          <button type="button" id="menu-style-tab" class="menu-settings-tab is-active" role="tab" aria-selected="true" aria-controls="menu-style-panel" data-i18n="menu.style">🎨 Style</button>
+          <button type="button" id="menu-behavior-tab" class="menu-settings-tab" role="tab" aria-selected="false" aria-controls="menu-behavior-panel" data-i18n="menu.behavior">⚙️ Behavior</button>
+          <button type="button" id="menu-url-rules-tab" class="menu-settings-tab" role="tab" aria-selected="false" aria-controls="menu-url-rules-panel" data-i18n="menuBehavior.urlRulesTitle">🌐 Active URLs</button>
         </div>
-      </div>
-
-      <!-- Menu Behavior Popover (Attach to, On-top mode, Open in) -->
-      <div id="menu-behavior-popover" class="menu-settings-popover" style="display: none;">
-        <div class="menu-settings-header">
-          <span id="menu-behavior-title" class="menu-settings-title" data-i18n="menuBehavior.title">Menu Behavior</span>
-          <button type="button" id="menu-behavior-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        <div class="menu-settings-dialog-body">
+          <section id="menu-style-panel" class="menu-settings-panel is-active" role="tabpanel" aria-labelledby="menu-style-tab">
+            <div class="menu-settings-body">
+              <label>
+                <span data-i18n="menuSettings.direction">Direction</span>
+                <select id="menu-setting-orientation">
+                  <option value="column" data-i18n="menuSettings.column" selected>Column</option>
+                  <option value="row" data-i18n="menuSettings.row">Row</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="menuSettings.expandDirection">Folder expand direction</span>
+                <select id="menu-setting-expand-direction">
+                  <option value="" data-i18n="expandDirection.default" selected>Default</option>
+                  <option value="down" data-i18n="expandDirection.down">Down</option>
+                  <option value="right" data-i18n="expandDirection.right">Right</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="menuSettings.fontSize">Font size (px)</span>
+                <input id="menu-setting-font-size" type="number" min="8" max="48" step="1" />
+              </label>
+              <label>
+                <span data-i18n="menuSettings.gap">Button gap (%)</span>
+                <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
+              </label>
+            </div>
+          </section>
+          <section id="menu-behavior-panel" class="menu-settings-panel" role="tabpanel" aria-labelledby="menu-behavior-tab" hidden>
+            <div class="menu-settings-body">
+              <label>
+                <span data-i18n="form.attachTo">Attach menu to</span>
+                <select id="menu-setting-attachment-mode">
+                  <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
+                  <option value="all" data-i18n="form.attach.all">All windows</option>
+                  <option value="free" data-i18n="form.attach.free">Free floating bar</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="form.onTopMode">On-top mode</span>
+                <select id="menu-setting-on-top-mode">
+                  <option value="aboveBrowser" data-i18n="form.onTopMode.aboveBrowser">Above browser</option>
+                  <option value="alwaysOnTop" data-i18n="form.onTopMode.alwaysOnTop">Always on top</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="menuSettings.openIn">Open in</span>
+                <select id="menu-setting-tab-mode">
+                  <option value="replace" data-i18n="menuSettings.replaceTab">Replace current tab</option>
+                  <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
+                </select>
+              </label>
+            </div>
+          </section>
+          <section id="menu-url-rules-panel" class="menu-settings-panel" role="tabpanel" aria-labelledby="menu-url-rules-tab" hidden>
+            <div class="menu-setting-url-rules-list" id="menu-setting-url-rules-list"></div>
+          </section>
         </div>
-        <div class="menu-settings-body">
-          <label>
-            <span data-i18n="form.attachTo">Attach menu to</span>
-            <select id="menu-setting-attachment-mode">
-              <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
-              <option value="all" data-i18n="form.attach.all">All windows</option>
-              <option value="free" data-i18n="form.attach.free">Free floating bar</option>
-            </select>
-          </label>
-          <label>
-            <span data-i18n="form.onTopMode">On-top mode</span>
-            <select id="menu-setting-on-top-mode">
-              <option value="aboveBrowser" data-i18n="form.onTopMode.aboveBrowser">Above browser</option>
-              <option value="alwaysOnTop" data-i18n="form.onTopMode.alwaysOnTop">Always on top</option>
-            </select>
-          </label>
-          <label>
-            <span data-i18n="menuSettings.openIn">Open in</span>
-            <select id="menu-setting-tab-mode">
-              <option value="replace" data-i18n="menuSettings.replaceTab">Replace current tab</option>
-              <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <!-- Menu Webpage Sets Popover (Active on webpages) -->
-      <div id="menu-webpage-sets-popover" class="menu-settings-popover menu-webpage-sets-popover" style="display: none;">
-        <div class="menu-settings-header">
-          <span id="menu-webpage-sets-title" class="menu-settings-title" data-i18n="menuBehavior.webpageSetsTitle">Active on webpages</span>
-          <button type="button" id="menu-webpage-sets-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
-        </div>
-        <div class="menu-webpage-sets-body">
-          <div id="menu-setting-webpage-sets-list" class="menu-setting-webpage-sets-list"></div>
-        </div>
-      </div>
+      </dialog>
 
       <!-- Item Settings Popover -->
       <div id="item-settings-popover" class="item-settings-popover" style="display: none;">

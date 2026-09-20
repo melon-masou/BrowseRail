@@ -31,7 +31,7 @@ import {
   type StoredMenu,
   type StoredMenuItem,
   type StoredMenuItemType,
-  type WebpageSet,
+  type UrlRule,
 } from "../config";
 import {
   type BookmarkNode,
@@ -144,19 +144,18 @@ const colorPopoverPresets = element<HTMLDivElement>("color-popover-presets");
 const popoverRandomBtn = element<HTMLButtonElement>("popover-random-btn");
 const popoverDefaultBtn = element<HTMLButtonElement>("popover-default-btn");
 
-// Menu Style popover elements
-const menuStylePopover = element<HTMLDivElement>("menu-style-popover");
-const menuStyleTitle = element<HTMLSpanElement>("menu-style-title");
-const menuStyleClose = element<HTMLButtonElement>("menu-style-close");
+// Menu settings dialog elements
+const menuSettingsDialog = element<HTMLDialogElement>("menu-settings-dialog");
+const menuSettingsDialogTitle = element<HTMLSpanElement>("menu-settings-dialog-title");
+const menuSettingsClose = element<HTMLButtonElement>("menu-settings-close");
+const menuSettingsTabs = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".menu-settings-tab"),
+);
 const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientation");
 const menuSettingExpandDirection = element<HTMLSelectElement>("menu-setting-expand-direction");
 const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
 
-// Menu Behavior popover elements
-const menuBehaviorPopover = element<HTMLDivElement>("menu-behavior-popover");
-const menuBehaviorTitle = element<HTMLSpanElement>("menu-behavior-title");
-const menuBehaviorClose = element<HTMLButtonElement>("menu-behavior-close");
 const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
 const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
 const menuSettingTabMode = element<HTMLSelectElement>("menu-setting-tab-mode");
@@ -192,12 +191,9 @@ const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
 const menusCardTabs = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"),
 );
-const addWebpageSetBtn = element<HTMLButtonElement>("add-webpage-set-btn");
-const webpageSetsList = element<HTMLDivElement>("webpage-sets-list");
-const menuWebpageSetsPopover = element<HTMLDivElement>("menu-webpage-sets-popover");
-const menuWebpageSetsTitle = element<HTMLSpanElement>("menu-webpage-sets-title");
-const menuWebpageSetsClose = element<HTMLButtonElement>("menu-webpage-sets-close");
-const menuSettingWebpageSetsList = element<HTMLDivElement>("menu-setting-webpage-sets-list");
+const addUrlRuleBtn = element<HTMLButtonElement>("add-url-rule-btn");
+const urlRulesList = element<HTMLDivElement>("url-rules-list");
+const menuSettingUrlRulesList = element<HTMLDivElement>("menu-setting-url-rules-list");
 const syncEnabledToggle = document.getElementById("sync-enabled-toggle") as HTMLInputElement | null;
 const bookmarkRootInput = document.getElementById("bookmark-root-input") as HTMLInputElement | null;
 const pickBookmarkRootBtn = document.getElementById("pick-bookmark-root-btn") as HTMLButtonElement | null;
@@ -207,7 +203,7 @@ let isConnectionDirty = false;
 let isMenusDirty = false;
 let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
-let webpageSets: WebpageSet[] = [];
+let urlRules: UrlRule[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let bookmarkOptions: BookmarkOption[] = [];
 let desktopTestGeneration = 0;
@@ -216,14 +212,7 @@ let desktopTestGeneration = 0;
 let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
 let activeColorSwatchElement: HTMLElement | null = null;
 
-let activeStyleMenuIndex = -1;
-let activeStyleBtn: HTMLElement | null = null;
-
-let activeBehaviorMenuIndex = -1;
-let activeBehaviorBtn: HTMLElement | null = null;
-
-let activeWebpageSetsMenuIndex = -1;
-let activeWebpageSetsBtn: HTMLElement | null = null;
+let activeMenuSettingsIndex = -1;
 
 let activeItemSettings: { menuIndex: number; itemIndex: number } | null = null;
 let activeItemSettingsBtn: HTMLElement | null = null;
@@ -976,7 +965,7 @@ function rerenderForLanguage(): void {
   }
   languageSelect.value = getLanguage();
   renderMenus();
-  renderWebpageSets();
+  renderUrlRules();
   updateDesktopControls();
   renderDesktopState(stateCard.dataset.state ?? "disconnected");
   if (pickerDialog.open) {
@@ -1013,9 +1002,7 @@ async function initialize(): Promise<void> {
   onLanguageChange(rerenderForLanguage);
   initMenusCardTabs();
   initColorPopover();
-  initMenuStylePopover();
-  initMenuBehaviorPopover();
-  initMenuWebpageSetsPopover();
+  initMenuSettingsDialog();
   initItemSettingsPopover();
 initFlattenSpacePopover();
   initAddItemPopover();
@@ -1045,10 +1032,10 @@ initFlattenSpacePopover();
     });
   }
   menus = structuredClone(config.panel.menus);
-  webpageSets = structuredClone(config.panel.webpageSets ?? config.webpageSets ?? []);
+  urlRules = structuredClone(config.urlRules);
   updateDesktopControls();
   renderMenus();
-  renderWebpageSets();
+  renderUrlRules();
   clearDirty();
 }
 
@@ -1112,8 +1099,8 @@ async function persistMenus(): Promise<void> {
     ...currentConfig,
     panel: {
       menus,
-      webpageSets,
     },
+    urlRules,
   });
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearMenusDirty();
@@ -1137,8 +1124,8 @@ async function previewCurrentConfig(): Promise<void> {
     instanceLabel: instanceLabel.value,
     panel: {
       menus,
-      webpageSets,
     },
+    urlRules,
   };
 
   try {
@@ -1444,7 +1431,7 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
   // whose rect then reports 0,0 and moves the popover to the top-left corner.
   const rect = swatchElement.getBoundingClientRect();
   closeAddItemDropdown();
-  closeMenuWebpageSetsPopover();
+  closeMenuSettingsDialog();
   activeColorTarget = target;
   activeColorSwatchElement = swatchElement;
 
@@ -1483,16 +1470,34 @@ function closeColorPopover(): void {
   colorPopover.style.display = "none";
   activeColorTarget = null;
   activeColorSwatchElement = null;
-  if (activeStyleMenuIndex < 0 && activeBehaviorMenuIndex < 0 && !activeItemSettings) {
+  if (activeMenuSettingsIndex < 0 && !activeItemSettings) {
     renderMenus();
   }
 }
 
-function initMenuStylePopover(): void {
-  menuStyleClose.addEventListener("click", () => closeMenuStylePopover());
+function initMenuSettingsDialog(): void {
+  menuSettingsClose.addEventListener("click", () => closeMenuSettingsDialog());
+  menuSettingsDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeMenuSettingsDialog();
+  });
+
+  menuSettingsTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const panel = document.getElementById(tab.getAttribute("aria-controls") || "");
+      if (!panel) return;
+      menuSettingsTabs.forEach((candidate) => {
+        const candidatePanel = document.getElementById(candidate.getAttribute("aria-controls") || "");
+        const selected = candidate === tab;
+        candidate.classList.toggle("is-active", selected);
+        candidate.setAttribute("aria-selected", String(selected));
+        if (candidatePanel) candidatePanel.hidden = !selected;
+      });
+    });
+  });
 
   menuSettingOrientation.addEventListener("change", () => {
-    const menu = menus[activeStyleMenuIndex];
+    const menu = menus[activeMenuSettingsIndex];
     if (menu) {
       menu.orientation = menuSettingOrientation.value as MenuOrientation;
       markDirty();
@@ -1500,7 +1505,7 @@ function initMenuStylePopover(): void {
   });
 
   menuSettingExpandDirection.addEventListener("change", () => {
-    const menu = menus[activeStyleMenuIndex];
+    const menu = menus[activeMenuSettingsIndex];
     if (menu) {
       const val = menuSettingExpandDirection.value;
       menu.expandDirection = val === "down" || val === "right" ? val : undefined;
@@ -1509,7 +1514,7 @@ function initMenuStylePopover(): void {
   });
 
   menuSettingFontSize.addEventListener("input", () => {
-    const menu = menus[activeStyleMenuIndex];
+    const menu = menus[activeMenuSettingsIndex];
     const val = parseInt(menuSettingFontSize.value, 10);
     if (menu && !isNaN(val)) {
       menu.fontSize = Math.max(8, Math.min(48, val));
@@ -1518,7 +1523,7 @@ function initMenuStylePopover(): void {
   });
 
   menuSettingGap.addEventListener("input", () => {
-    const menu = menus[activeStyleMenuIndex];
+    const menu = menus[activeMenuSettingsIndex];
     const val = parseInt(menuSettingGap.value, 10);
     if (menu && !isNaN(val)) {
       menu.gap = Math.max(0, Math.min(100, val));
@@ -1526,71 +1531,8 @@ function initMenuStylePopover(): void {
     }
   });
 
-  document.addEventListener("pointerdown", (e) => {
-    if (menuStylePopover.style.display === "none") return;
-    const target = e.target as Node | null;
-    if (
-      target &&
-      !menuStylePopover.contains(target) &&
-      !colorPopover.contains(target) &&
-      activeStyleBtn &&
-      !activeStyleBtn.contains(target)
-    ) {
-      closeMenuStylePopover();
-    }
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && menuStylePopover.style.display !== "none") {
-      closeMenuStylePopover();
-    }
-  });
-}
-
-function openMenuStylePopover(menuIndex: number, btnElement: HTMLElement): void {
-  if (activeStyleMenuIndex === menuIndex && menuStylePopover.style.display !== "none") {
-    closeMenuStylePopover();
-    return;
-  }
-  // Measure the anchor before the close calls below, which re-render the menu list
-  // and detach this button — a detached node reports a 0,0 rect (top-left popup).
-  const rect = btnElement.getBoundingClientRect();
-  closeAddItemDropdown();
-  closeMenuBehaviorPopover();
-  closeMenuWebpageSetsPopover();
-  closeColorPopover();
-  closeItemSettingsPopover();
-
-  activeStyleMenuIndex = menuIndex;
-  activeStyleBtn = btnElement;
-
-  const menu = menus[menuIndex];
-  if (!menu) return;
-
-  const fs = menu.fontSize !== undefined ? normalizeFontSize(menu.fontSize) : DEFAULT_FONT_SIZE;
-  const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
-
-  menuStyleTitle.textContent = t("menuStyle.title", { n: menuIndex + 1 });
-  menuSettingOrientation.value = menu.orientation;
-  menuSettingExpandDirection.value = menu.expandDirection ?? "";
-  menuSettingFontSize.value = String(fs);
-  menuSettingGap.value = String(gapVal);
-
-  positionPopover(menuStylePopover, rect, 320);
-}
-
-function closeMenuStylePopover(): void {
-  menuStylePopover.style.display = "none";
-  activeStyleMenuIndex = -1;
-  activeStyleBtn = null;
-  renderMenus();
-}
-
-function initMenuBehaviorPopover(): void {
-  menuBehaviorClose.addEventListener("click", () => closeMenuBehaviorPopover());
-
   menuSettingAttachmentMode.addEventListener("change", () => {
-    const menu = menus[activeBehaviorMenuIndex];
+    const menu = menus[activeMenuSettingsIndex];
     if (menu) {
       menu.attachmentMode = menuSettingAttachmentMode.value as AttachmentMode;
       markDirty();
@@ -1598,7 +1540,7 @@ function initMenuBehaviorPopover(): void {
   });
 
   menuSettingOnTopMode.addEventListener("change", () => {
-    const menu = menus[activeBehaviorMenuIndex];
+    const menu = menus[activeMenuSettingsIndex];
     if (menu) {
       menu.onTopMode = menuSettingOnTopMode.value as OnTopMode;
       markDirty();
@@ -1606,214 +1548,116 @@ function initMenuBehaviorPopover(): void {
   });
 
   menuSettingTabMode.addEventListener("change", () => {
-    const menu = menus[activeBehaviorMenuIndex];
+    const menu = menus[activeMenuSettingsIndex];
     if (menu) {
       menu.tabMode = menuSettingTabMode.value === "newTab" ? "newTab" : "replace";
-      renderMenus();
       markDirty();
     }
   });
-
-  document.addEventListener("pointerdown", (e) => {
-    if (menuBehaviorPopover.style.display === "none") return;
-    const target = e.target as Node | null;
-    if (
-      target &&
-      !menuBehaviorPopover.contains(target) &&
-      !colorPopover.contains(target) &&
-      activeBehaviorBtn &&
-      !activeBehaviorBtn.contains(target)
-    ) {
-      closeMenuBehaviorPopover();
-    }
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && menuBehaviorPopover.style.display !== "none") {
-      closeMenuBehaviorPopover();
-    }
-  });
 }
 
-function openMenuBehaviorPopover(menuIndex: number, btnElement: HTMLElement): void {
-  if (activeBehaviorMenuIndex === menuIndex && menuBehaviorPopover.style.display !== "none") {
-    closeMenuBehaviorPopover();
-    return;
-  }
-  // Measure the anchor before the close calls below, which re-render the menu list
-  // and detach this button — a detached node reports a 0,0 rect (top-left popup).
-  const rect = btnElement.getBoundingClientRect();
+function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   closeAddItemDropdown();
-  closeMenuStylePopover();
   closeColorPopover();
   closeItemSettingsPopover();
-  closeMenuWebpageSetsPopover();
 
-  activeBehaviorMenuIndex = menuIndex;
-  activeBehaviorBtn = btnElement;
-
+  activeMenuSettingsIndex = menuIndex;
   const menu = menus[menuIndex];
   if (!menu) return;
 
-  menuBehaviorTitle.textContent = t("menuBehavior.title", { n: menuIndex + 1 });
+  const fs = menu.fontSize !== undefined ? normalizeFontSize(menu.fontSize) : DEFAULT_FONT_SIZE;
+  const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
+  menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
+  menuSettingOrientation.value = menu.orientation;
+  menuSettingExpandDirection.value = menu.expandDirection ?? "";
+  menuSettingFontSize.value = String(fs);
+  menuSettingGap.value = String(gapVal);
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
   menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
   menuSettingTabMode.value = menu.tabMode ?? "replace";
+  renderMenuUrlRulesContent(menu);
 
-  positionPopover(menuBehaviorPopover, rect, 320);
+  const tabButton = menuSettingsTabs[tab];
+  if (tabButton) tabButton.click();
+  menuSettingsDialog.showModal();
 }
 
-function closeMenuBehaviorPopover(): void {
-  menuBehaviorPopover.style.display = "none";
-  activeBehaviorMenuIndex = -1;
-  activeBehaviorBtn = null;
+function closeMenuSettingsDialog(): void {
+  menuSettingsDialog.close();
+  activeMenuSettingsIndex = -1;
   renderMenus();
 }
 
-function updateWebpageBadge(menu: StoredMenu, badgeElement: HTMLElement): void {
-  const uids = menu.webpageSetUids ?? [];
-  const hasSets = uids.length > 0;
-  badgeElement.className = `item-tag ${hasSets ? "item-tag-webpage-set" : "item-tag-all-webpages"}`;
-  badgeElement.textContent = hasSets
-    ? t("menu.webpageSetsBadge", { count: uids.length })
-    : t("menu.allWebpagesBadge");
-  if (hasSets) {
-    const names = uids
-      .map((uid) => webpageSets.find((ws) => ws.uid === uid)?.name || uid)
-      .filter(Boolean);
-    badgeElement.title = t("menu.webpageSetsBadgeTitle", { names: names.join(", ") });
-  } else {
-    badgeElement.title = t("menuBehavior.allWebpages");
-  }
-}
-
-function initMenuWebpageSetsPopover(): void {
-  menuWebpageSetsClose.addEventListener("click", () => closeMenuWebpageSetsPopover());
-
-  document.addEventListener("pointerdown", (e) => {
-    if (menuWebpageSetsPopover.style.display === "none") return;
-    const target = e.target as Node | null;
-    if (
-      target &&
-      !menuWebpageSetsPopover.contains(target) &&
-      activeWebpageSetsBtn &&
-      !activeWebpageSetsBtn.contains(target)
-    ) {
-      closeMenuWebpageSetsPopover();
-    }
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && menuWebpageSetsPopover.style.display !== "none") {
-      closeMenuWebpageSetsPopover();
-    }
-  });
-}
-
-function renderMenuWebpageSetsContent(menu: StoredMenu, badgeBtn: HTMLElement): void {
-  menuSettingWebpageSetsList.replaceChildren();
+function renderMenuUrlRulesContent(menu: StoredMenu): void {
+  menuSettingUrlRulesList.replaceChildren();
 
   const allRow = document.createElement("label");
-  allRow.className = "menu-setting-webpage-set-item";
+  allRow.className = "menu-setting-url-rule-item";
   const allRadio = document.createElement("input");
   allRadio.type = "checkbox";
-  const hasSpecificSets = Array.isArray(menu.webpageSetUids) && menu.webpageSetUids.length > 0;
+  const hasSpecificSets = Array.isArray(menu.urlRuleUids) && menu.urlRuleUids.length > 0;
   allRadio.checked = !hasSpecificSets;
 
   const allSpan = document.createElement("span");
-  allSpan.textContent = t("menuBehavior.allWebpages");
+  allSpan.textContent = t("menuBehavior.allUrls");
   allRow.append(allRadio, allSpan);
-  menuSettingWebpageSetsList.appendChild(allRow);
+  menuSettingUrlRulesList.appendChild(allRow);
 
   allRadio.addEventListener("change", () => {
     if (allRadio.checked) {
-      delete menu.webpageSetUids;
+      delete menu.urlRuleUids;
     } else {
-      if (webpageSets.length > 0) {
-        menu.webpageSetUids = [webpageSets[0].uid];
+      if (urlRules.length > 0) {
+        menu.urlRuleUids = [urlRules[0].uid];
       }
     }
-    renderMenuWebpageSetsContent(menu, badgeBtn);
-    updateWebpageBadge(menu, badgeBtn);
+    renderMenuUrlRulesContent(menu);
     markDirty();
   });
 
-  if (webpageSets.length === 0) {
+  if (urlRules.length === 0) {
     const hint = document.createElement("div");
-    hint.className = "webpage-set-empty-hint";
+    hint.className = "url-rule-empty-hint";
     hint.style.fontSize = "11px";
     hint.style.padding = "6px";
-    hint.textContent = t("menuBehavior.noWebpageSets");
-    menuSettingWebpageSetsList.appendChild(hint);
+    hint.textContent = t("menuBehavior.noUrlRules");
+    menuSettingUrlRulesList.appendChild(hint);
   } else {
-    webpageSets.forEach((ws) => {
+    urlRules.forEach((ws) => {
       const row = document.createElement("label");
-      row.className = "menu-setting-webpage-set-item";
+      row.className = "menu-setting-url-rule-item";
 
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = Array.isArray(menu.webpageSetUids) && menu.webpageSetUids.includes(ws.uid);
+      cb.checked = Array.isArray(menu.urlRuleUids) && menu.urlRuleUids.includes(ws.uid);
       cb.addEventListener("change", () => {
-        if (!Array.isArray(menu.webpageSetUids)) {
-          menu.webpageSetUids = [];
+        if (!Array.isArray(menu.urlRuleUids)) {
+          menu.urlRuleUids = [];
         }
         if (cb.checked) {
-          if (!menu.webpageSetUids.includes(ws.uid)) {
-            menu.webpageSetUids.push(ws.uid);
+          if (!menu.urlRuleUids.includes(ws.uid)) {
+            menu.urlRuleUids.push(ws.uid);
           }
         } else {
-          menu.webpageSetUids = menu.webpageSetUids.filter((u) => u !== ws.uid);
+          menu.urlRuleUids = menu.urlRuleUids.filter((u) => u !== ws.uid);
         }
-        if (menu.webpageSetUids.length === 0) {
-          delete menu.webpageSetUids;
+        if (menu.urlRuleUids.length === 0) {
+          delete menu.urlRuleUids;
         }
-        renderMenuWebpageSetsContent(menu, badgeBtn);
-        updateWebpageBadge(menu, badgeBtn);
+        renderMenuUrlRulesContent(menu);
         markDirty();
       });
 
       const span = document.createElement("span");
-      span.textContent = ws.name || t("webpageSets.defaultName");
+      span.textContent = ws.name || t("urlRules.defaultName");
       if (ws.patterns.length > 0) {
         span.title = ws.patterns.join("\n");
       }
 
       row.append(cb, span);
-      menuSettingWebpageSetsList.appendChild(row);
+      menuSettingUrlRulesList.appendChild(row);
     });
   }
-}
-
-function openMenuWebpageSetsPopover(menuIndex: number, btnElement: HTMLElement): void {
-  if (activeWebpageSetsMenuIndex === menuIndex && menuWebpageSetsPopover.style.display !== "none") {
-    closeMenuWebpageSetsPopover();
-    return;
-  }
-
-  const rect = btnElement.getBoundingClientRect();
-  closeAddItemDropdown();
-  closeMenuStylePopover();
-  closeColorPopover();
-  closeItemSettingsPopover();
-  closeMenuBehaviorPopover();
-
-  activeWebpageSetsMenuIndex = menuIndex;
-  activeWebpageSetsBtn = btnElement;
-
-  const menu = menus[menuIndex];
-  if (!menu) return;
-
-  menuWebpageSetsTitle.textContent = `${t("menu.title", { n: menuIndex + 1 })} - ${t("menuBehavior.webpageSetsTitle")}`;
-  renderMenuWebpageSetsContent(menu, btnElement);
-
-  positionPopover(menuWebpageSetsPopover, rect, 260);
-}
-
-function closeMenuWebpageSetsPopover(): void {
-  menuWebpageSetsPopover.style.display = "none";
-  activeWebpageSetsMenuIndex = -1;
-  activeWebpageSetsBtn = null;
-  renderMenus();
 }
 
 function initItemSettingsPopover(): void {
@@ -1986,7 +1830,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
   // and detach this button — a detached node reports a 0,0 rect (top-left popup).
   const rect = anchorEl.getBoundingClientRect();
   closeAddItemDropdown();
-  closeMenuWebpageSetsPopover();
+  closeMenuSettingsDialog();
 
   const menu = menus[menuIndex];
   const item = menu?.items[itemIndex];
@@ -2133,9 +1977,7 @@ function openAddItemDropdown(menuIndex: number, btnElement: HTMLElement): void {
     return;
   }
   const rect = btnElement.getBoundingClientRect();
-  closeMenuStylePopover();
-  closeMenuBehaviorPopover();
-  closeMenuWebpageSetsPopover();
+  closeMenuSettingsDialog();
   closeColorPopover();
   closeItemSettingsPopover();
 
@@ -2183,9 +2025,7 @@ function renderMenus(): void {
           collapsedMenuUids.delete(menu.uid);
         } else {
           collapsedMenuUids.add(menu.uid);
-          if (activeStyleMenuIndex === menuIndex) closeMenuStylePopover();
-          if (activeBehaviorMenuIndex === menuIndex) closeMenuBehaviorPopover();
-          if (activeWebpageSetsMenuIndex === menuIndex) closeMenuWebpageSetsPopover();
+          if (activeMenuSettingsIndex === menuIndex) closeMenuSettingsDialog();
           if (activeColorTarget === menu) closeColorPopover();
           if (activeAddMenuIndex === menuIndex) closeAddItemDropdown();
         }
@@ -2216,24 +2056,25 @@ function renderMenus(): void {
 
       toggleLabel.append(toggleInput, toggleSlider);
 
-      const behaviorBtn = document.createElement("button");
-      behaviorBtn.type = "button";
-      behaviorBtn.className = "action-btn menu-header-btn";
-      behaviorBtn.textContent = t("menu.behavior");
-      behaviorBtn.title = t("menu.behaviorTitle");
-      behaviorBtn.addEventListener("click", () => {
-        openMenuBehaviorPopover(menuIndex, behaviorBtn);
+      const settingsBtn = document.createElement("button");
+      settingsBtn.type = "button";
+      settingsBtn.className = "action-btn menu-header-btn";
+      settingsBtn.textContent = t("menu.settings");
+      settingsBtn.title = t("menu.settingsTitle");
+      settingsBtn.addEventListener("click", () => {
+        openMenuSettingsDialog(menuIndex);
       });
 
-      const webpageBadge = document.createElement("button");
-      webpageBadge.type = "button";
-      updateWebpageBadge(menu, webpageBadge);
-      webpageBadge.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openMenuWebpageSetsPopover(menuIndex, webpageBadge);
+      const resetPositionBtn = document.createElement("button");
+      resetPositionBtn.type = "button";
+      resetPositionBtn.className = "action-btn menu-header-btn";
+      resetPositionBtn.textContent = t("menu.resetPosition");
+      resetPositionBtn.title = t("menu.resetPositionTitle");
+      resetPositionBtn.addEventListener("click", () => {
+        void browser.runtime.sendMessage({ type: "resetMenuLayout", menuUid: menu.uid });
       });
 
-      titleRow.append(collapseBtn, title, toggleLabel, webpageBadge);
+      titleRow.append(collapseBtn, title, toggleLabel, resetPositionBtn);
 
       const headerActions = document.createElement("div");
       headerActions.className = "menu-header-actions";
@@ -2251,15 +2092,6 @@ function renderMenus(): void {
         openColorPopover(menu, menuColorSwatch);
       });
 
-      const styleBtn = document.createElement("button");
-      styleBtn.type = "button";
-      styleBtn.className = "action-btn menu-header-btn";
-      styleBtn.textContent = t("menu.style");
-      styleBtn.title = t("menu.styleTitle");
-      styleBtn.addEventListener("click", () => {
-        openMenuStylePopover(menuIndex, styleBtn);
-      });
-
       const removeMenu = document.createElement("button");
       removeMenu.type = "button";
       removeMenu.className = "remove-item-btn menu-remove-btn";
@@ -2267,14 +2099,8 @@ function renderMenus(): void {
       removeMenu.setAttribute("aria-label", t("menu.removeMenu"));
       removeMenu.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("menu.remove")}</span>`;
       removeMenu.addEventListener("click", () => {
-        if (activeStyleMenuIndex === menuIndex) {
-          closeMenuStylePopover();
-        }
-        if (activeBehaviorMenuIndex === menuIndex) {
-          closeMenuBehaviorPopover();
-        }
-        if (activeWebpageSetsMenuIndex === menuIndex) {
-          closeMenuWebpageSetsPopover();
+        if (activeMenuSettingsIndex === menuIndex) {
+          closeMenuSettingsDialog();
         }
         if (activeColorTarget === menu) {
           closeColorPopover();
@@ -2297,7 +2123,7 @@ function renderMenus(): void {
         openAddItemDropdown(menuIndex, addBtn);
       });
 
-      headerActions.append(menuColorSwatch, styleBtn, behaviorBtn, removeMenu, addBtn);
+      headerActions.append(menuColorSwatch, settingsBtn, removeMenu, addBtn);
       header.append(titleRow, headerActions);
 
       const items = document.createElement("ol");
@@ -2707,31 +2533,31 @@ function renderMenus(): void {
   );
 }
 
-function renderWebpageSets(): void {
-  webpageSetsList.replaceChildren();
+function renderUrlRules(): void {
+  urlRulesList.replaceChildren();
 
-  if (webpageSets.length === 0) {
+  if (urlRules.length === 0) {
     const emptyHint = document.createElement("div");
-    emptyHint.className = "webpage-set-empty-hint";
-    emptyHint.textContent = t("webpageSets.empty");
-    webpageSetsList.appendChild(emptyHint);
+    emptyHint.className = "url-rule-empty-hint";
+    emptyHint.textContent = t("urlRules.empty");
+    urlRulesList.appendChild(emptyHint);
     return;
   }
 
-  webpageSets.forEach((ws, setIndex) => {
+  urlRules.forEach((ws, setIndex) => {
     const card = document.createElement("div");
-    card.className = "webpage-set-card";
+    card.className = "url-rule-card";
 
     const header = document.createElement("div");
-    header.className = "webpage-set-header";
+    header.className = "url-rule-header";
 
     const titleGroup = document.createElement("div");
-    titleGroup.className = "webpage-set-title-group";
+    titleGroup.className = "url-rule-title-group";
 
     const nameInput = document.createElement("input");
     nameInput.type = "text";
-    nameInput.className = "webpage-set-name-input";
-    nameInput.placeholder = t("webpageSets.namePlaceholder");
+    nameInput.className = "url-rule-name-input";
+    nameInput.placeholder = t("urlRules.namePlaceholder");
     nameInput.value = ws.name;
     nameInput.addEventListener("input", () => {
       ws.name = nameInput.value;
@@ -2740,28 +2566,28 @@ function renderWebpageSets(): void {
     });
 
     const countPill = document.createElement("span");
-    countPill.className = "webpage-set-count-pill";
-    countPill.textContent = t("webpageSets.patternCount", { count: ws.patterns.length });
+    countPill.className = "url-rule-count-pill";
+    countPill.textContent = t("urlRules.patternCount", { count: ws.patterns.length });
 
     titleGroup.append(nameInput, countPill);
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
-    deleteBtn.className = "action-btn webpage-set-remove-btn";
-    deleteBtn.textContent = t("webpageSets.deleteSet");
+    deleteBtn.className = "action-btn url-rule-remove-btn";
+    deleteBtn.textContent = t("urlRules.deleteSet");
     deleteBtn.addEventListener("click", () => {
       const removedUid = ws.uid;
-      webpageSets.splice(setIndex, 1);
+      urlRules.splice(setIndex, 1);
       // Clean up references in menus
       menus.forEach((menu) => {
-        if (menu.webpageSetUids) {
-          menu.webpageSetUids = menu.webpageSetUids.filter((uid) => uid !== removedUid);
-          if (menu.webpageSetUids.length === 0) {
-            delete menu.webpageSetUids;
+        if (menu.urlRuleUids) {
+          menu.urlRuleUids = menu.urlRuleUids.filter((uid) => uid !== removedUid);
+          if (menu.urlRuleUids.length === 0) {
+            delete menu.urlRuleUids;
           }
         }
       });
-      renderWebpageSets();
+      renderUrlRules();
       renderMenus();
       markDirty();
     });
@@ -2769,35 +2595,35 @@ function renderWebpageSets(): void {
     header.append(titleGroup, deleteBtn);
 
     const patternsTextarea = document.createElement("textarea");
-    patternsTextarea.className = "webpage-set-patterns-input";
+    patternsTextarea.className = "url-rule-patterns-input";
     patternsTextarea.rows = 3;
-    patternsTextarea.placeholder = t("webpageSets.patternsPlaceholder");
+    patternsTextarea.placeholder = t("urlRules.patternsPlaceholder");
     patternsTextarea.value = ws.patterns.join("\n");
     patternsTextarea.addEventListener("input", () => {
       ws.patterns = patternsTextarea.value
         .split("\n")
         .map((p) => p.trim())
         .filter(Boolean);
-      countPill.textContent = t("webpageSets.patternCount", { count: ws.patterns.length });
+      countPill.textContent = t("urlRules.patternCount", { count: ws.patterns.length });
       markDirty();
     });
 
     card.append(header, patternsTextarea);
-    webpageSetsList.appendChild(card);
+    urlRulesList.appendChild(card);
   });
 }
 
-addWebpageSetBtn.addEventListener("click", () => {
-  const newSet: WebpageSet = {
+addUrlRuleBtn.addEventListener("click", () => {
+  const newSet: UrlRule = {
     uid: crypto.randomUUID(),
-    name: t("webpageSets.newSetName", { n: webpageSets.length + 1 }),
+    name: t("urlRules.newSetName", { n: urlRules.length + 1 }),
     patterns: [],
   };
-  webpageSets.push(newSet);
-  renderWebpageSets();
+  urlRules.push(newSet);
+  renderUrlRules();
   renderMenus();
   markDirty();
-  const nameInputs = webpageSetsList.querySelectorAll<HTMLInputElement>(".webpage-set-name-input");
+  const nameInputs = urlRulesList.querySelectorAll<HTMLInputElement>(".url-rule-name-input");
   const lastInput = nameInputs[nameInputs.length - 1];
   if (lastInput) {
     lastInput.focus();
@@ -2896,11 +2722,11 @@ function exportSettings(): void {
   const exportData: ExportedSettingsData = {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    ...(webpageSets.length > 0 ? { webpageSets: structuredClone(webpageSets) } : {}),
+    ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
     menus: menus.map((menu) => ({
       uid: menu.uid,
       orientation: menu.orientation,
-      ...(menu.webpageSetUids && menu.webpageSetUids.length > 0 ? { webpageSetUids: menu.webpageSetUids } : {}),
+      ...(menu.urlRuleUids && menu.urlRuleUids.length > 0 ? { urlRuleUids: menu.urlRuleUids } : {}),
       ...(menu.enabled !== undefined ? { enabled: menu.enabled } : {}),
       ...(menu.fontSize !== undefined ? { fontSize: menu.fontSize } : {}),
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
@@ -3049,17 +2875,17 @@ async function importSettings(file: File): Promise<void> {
       if (normalizedMenu) importedMenus.push(normalizedMenu);
     }
 
-    // Only the menus and webpage sets are imported; instance label, desktop address, attachment
+    // Only the menus and URL rules are imported; instance label, desktop address, attachment
     // mode, always-on-top, and language keep their current values.
     menus = importedMenus;
-    if (Array.isArray(parsed.webpageSets)) {
-      webpageSets = parsed.webpageSets
+    if (Array.isArray(parsed.urlRules)) {
+      urlRules = parsed.urlRules
         .filter(
-          (ws): ws is WebpageSet =>
+          (ws): ws is UrlRule =>
             typeof ws === "object" &&
             ws !== null &&
-            typeof (ws as WebpageSet).uid === "string" &&
-            typeof (ws as WebpageSet).name === "string",
+            typeof (ws as UrlRule).uid === "string" &&
+            typeof (ws as UrlRule).name === "string",
         )
         .map((ws) => ({
           uid: ws.uid,
@@ -3068,7 +2894,7 @@ async function importSettings(file: File): Promise<void> {
             ? ws.patterns.filter((p): p is string => typeof p === "string")
             : [],
         }));
-      renderWebpageSets();
+      renderUrlRules();
     }
     renderMenus();
     markDirty();

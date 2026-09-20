@@ -556,7 +556,7 @@ output {
   background: #dcf2e3;
 }
 
-/* Menus card tab switcher (Menus / Webpage Sets share one card and one Save) */
+/* Menus card tab switcher (Menus / URL rules share one card and one Save) */
 .menus-card-tabs {
   display: flex;
   gap: 4px;
@@ -1407,40 +1407,73 @@ output {
   border-color: #3b82f6;
 }
 
-/* Menu Settings Popover (Style & Behavior) */
-.menu-settings-popover {
-  position: fixed;
-  z-index: 10000;
-  width: 320px;
+/* Menu Settings Dialog */
+.menu-settings-dialog {
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 20px 40px rgb(0 0 0 / 25%);
+  width: min(560px, 92vw);
+  max-height: min(620px, 85vh);
   background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  animation: popoverFadeIn 0.12s ease-out;
+  color: #172033;
 }
 
-.menu-settings-header {
+.menu-settings-dialog::backdrop {
+  background: rgb(15 23 42 / 45%);
+  backdrop-filter: blur(2px);
+}
+
+.menu-settings-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 14px 18px 10px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
-.menu-settings-title {
+.menu-settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.menu-settings-tab {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 6px;
+  min-height: 30px;
+  padding: 0 12px;
   font-size: 13px;
-  font-weight: 700;
-  color: #1e293b;
+  font-weight: 600;
+}
+
+.menu-settings-tab.is-active {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.menu-settings-dialog-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.menu-settings-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.menu-settings-panel[hidden] {
+  display: none;
 }
 
 .menu-settings-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 10px;
+  gap: 12px 14px;
 }
 
 .menu-settings-body label {
@@ -1449,7 +1482,7 @@ output {
   color: #475569;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -1464,35 +1497,8 @@ output {
   min-height: 28px;
   height: 28px;
   font-size: 12px;
-  padding: 0 6px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.menu-setting-full-width {
-  grid-column: 1 / -1;
-}
-
-.menu-setting-color-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 4px;
-}
-
-.menu-setting-color-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.menu-settings-btn {
-  font-size: 12px;
-  padding: 4px 10px;
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
 }
 
 /* Item Settings Popover */
@@ -2026,18 +2032,18 @@ output {
   outline-offset: 2px;
 }
 
-/* Webpage Sets Section */
-.webpage-sets-section {
+/* URL rules section */
+.url-rules-section {
   margin-top: 0;
   padding-top: 0;
   border-top: none;
 }
 
-.webpage-sets-section[hidden] {
+.url-rules-section[hidden] {
   display: none;
 }
 
-.webpage-sets-header {
+.url-rules-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2045,24 +2051,24 @@ output {
   margin-bottom: 12px;
 }
 
-.webpage-sets-title-row {
+.url-rules-title-row {
   display: flex;
   align-items: baseline;
   gap: 12px;
 }
 
-.webpage-sets-hint {
+.url-rules-hint {
   font-size: 12px;
   color: #64748b;
 }
 
-.webpage-sets-list {
+.url-rules-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.webpage-set-empty-hint {
+.url-rule-empty-hint {
   font-size: 13px;
   color: #94a3b8;
   font-style: italic;
@@ -2073,7 +2079,7 @@ output {
   text-align: center;
 }
 
-.webpage-set-card {
+.url-rule-card {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -2084,26 +2090,26 @@ output {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.webpage-set-card:hover {
+.url-rule-card:hover {
   border-color: #cbd5e1;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.webpage-set-header {
+.url-rule-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
-.webpage-set-title-group {
+.url-rule-title-group {
   display: flex;
   align-items: center;
   gap: 10px;
   flex: 1;
 }
 
-.webpage-set-name-input {
+.url-rule-name-input {
   font-size: 13px;
   font-weight: 600;
   color: #1e293b;
@@ -2115,12 +2121,12 @@ output {
   transition: border-color 0.15s ease;
 }
 
-.webpage-set-name-input:focus {
+.url-rule-name-input:focus {
   border-color: #2563eb;
   outline: none;
 }
 
-.webpage-set-count-pill {
+.url-rule-count-pill {
   font-size: 11px;
   font-weight: 600;
   color: #475569;
@@ -2130,7 +2136,7 @@ output {
   white-space: nowrap;
 }
 
-.webpage-set-patterns-input {
+.url-rule-patterns-input {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -2146,12 +2152,12 @@ output {
   transition: border-color 0.15s ease;
 }
 
-.webpage-set-patterns-input:focus {
+.url-rule-patterns-input:focus {
   border-color: #2563eb;
   outline: none;
 }
 
-.webpage-sets-syntax-guide {
+.url-rules-syntax-guide {
   font-size: 12px;
   color: #64748b;
   margin-top: 10px;
@@ -2159,19 +2165,7 @@ output {
   line-height: 1.4;
 }
 
-/* Menu Webpage Sets Popover */
-.menu-webpage-sets-popover {
-  position: fixed;
-  width: 260px;
-}
-
-.menu-webpage-sets-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.menu-setting-webpage-sets-list {
+.menu-setting-url-rules-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -2183,7 +2177,7 @@ output {
   border-radius: 6px;
 }
 
-.menu-setting-webpage-set-item {
+.menu-setting-url-rule-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2196,31 +2190,19 @@ output {
   transition: background 0.1s ease;
 }
 
-.menu-setting-webpage-set-item:hover {
+.menu-setting-url-rule-item:hover {
   background: #eff6ff;
   color: #1d4ed8;
 }
 
-.menu-setting-webpage-set-item input[type="checkbox"],
-.menu-setting-webpage-set-item input[type="radio"] {
+.menu-setting-url-rule-item input[type="checkbox"],
+.menu-setting-url-rule-item input[type="radio"] {
   width: 14px;
   height: 14px;
   min-height: 14px;
   cursor: pointer;
   accent-color: #2563eb;
   margin: 0;
-}
-
-.item-tag-webpage-set {
-  background: #ede9fe;
-  color: #6d28d9;
-  border: 1px solid #ddd6fe;
-}
-
-.item-tag-all-webpages {
-  background: #f1f5f9;
-  color: #475569;
-  border: 1px solid #e2e8f0;
 }
 
 button.item-tag {
