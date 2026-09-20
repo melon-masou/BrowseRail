@@ -324,6 +324,37 @@ export function getItemRelativePath(
 }
 
 
+const FLATTEN_SPACE_PREFIX = "BrowseRailSpace:";
+
+function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
+  if (child.url === undefined || !child.title.startsWith(FLATTEN_SPACE_PREFIX)) return null;
+
+  const fields = new Map<string, string>();
+  for (const part of child.title.slice(FLATTEN_SPACE_PREFIX.length).split(":")) {
+    const [key, ...rawValue] = part.split("=");
+    if (!key) continue;
+    fields.set(key.toLowerCase(), rawValue.join("="));
+  }
+
+  const unitsValue = fields.get("units");
+  const transparentValue = fields.get("transparent");
+  const color = fields.get("color");
+
+  const units = unitsValue === undefined || !Number.isFinite(Number(unitsValue))
+    ? 1
+    : Math.max(0.1, Math.min(20, Number(unitsValue)));
+  const transparent = transparentValue === undefined || transparentValue.toLowerCase() !== "false";
+  const isColor = color !== undefined && /^#[0-9a-f]{6}$/i.test(color);
+
+  return {
+    kind: "space",
+    uid: `space:bookmark-${child.id}`,
+    units,
+    ...(isColor && !transparent ? { color } : {}),
+    transparent,
+  };
+}
+
 export async function resolveMenuItems(
   items: StoredMenuItem[],
   menuTabMode?: TabMode,
@@ -400,6 +431,8 @@ export async function resolveMenuItems(
         const colors = Array.isArray(cycleColors) && cycleColors.length > 0 ? cycleColors : [];
         let flattenedIdx = 0;
         return (node.children ?? []).flatMap((child) => {
+          const directive = parseFlattenSpaceDirective(child);
+          if (directive) return [directive];
           if (child.url === undefined) {
             // Sub-folder: only emitted when "include folders" is on, as a folder
             // that inherits this flatten item's folder options.

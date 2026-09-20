@@ -102,6 +102,49 @@ describe("resolveMenuItems", () => {
     expect(entries[1].kind).toBe("bookmark");
   });
 
+  it("turns flattened BrowseRailSpace bookmarks into configured spaces", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-spaces",
+            title: "Spaces",
+            children: [
+              {
+                id: "space-full",
+                title: "BrowseRailSpace:units=5:transparent=false:color=#cd123f",
+                url: "https://example.com/space",
+              },
+              {
+                id: "space-default",
+                title: "BrowseRailSpace:",
+                url: "https://example.com/default-space",
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([{ path: ["Spaces"], type: "flattenFolder" }]);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toEqual({
+      kind: "space",
+      uid: "space:bookmark-space-full",
+      units: 5,
+      color: "#cd123f",
+      transparent: false,
+    });
+    expect(entries[1]).toEqual({
+      kind: "space",
+      uid: "space:bookmark-space-default",
+      units: 1,
+      transparent: true,
+    });
+  });
+
   it("flatten skips sub-folders by default and includes them when includeFolders is set", async () => {
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {

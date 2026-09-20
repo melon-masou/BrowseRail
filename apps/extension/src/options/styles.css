@@ -1641,6 +1641,49 @@ output {
   border-top: 1px solid #f1f5f9;
 }
 
+.flatten-space-help {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.flatten-space-popover {
+  position: fixed;
+  z-index: 10000;
+  width: 300px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flatten-space-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.flatten-space-syntax {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #475569;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .item-setting-change-btn {
   width: 100%;
   font-size: 12px;

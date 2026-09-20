@@ -310,6 +310,7 @@
               <label class="item-setting-check-label">
                 <input type="checkbox" id="item-setting-flatten" />
                 <span data-i18n="itemSettings.flatten">Flatten folder</span>
+                <button type="button" id="flatten-space-help" class="flatten-space-help" data-i18n-title="itemSettings.flattenHelpTitle" title="Flatten space fields">[?]</button>
               </label>
               <label class="item-setting-check-label" id="item-setting-hover-expand-label">
                 <input type="checkbox" id="item-setting-hover-expand" checked />
@@ -325,6 +326,16 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Flatten Space Directive Help -->
+      <div id="flatten-space-popover" class="flatten-space-popover" style="display: none;">
+        <div class="flatten-space-header">
+          <span data-i18n="itemSettings.flattenHelpTitle">Flatten space fields</span>
+          <button type="button" id="flatten-space-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <p class="flatten-space-syntax" data-i18n="itemSettings.flattenHelpBody">Name a bookmark in a flattened folder BrowseRailSpace:units=5:transparent=false:color=#cd123f to insert a space.
+Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
       </div>
 
       <!-- Add Item Popover (Bookmark or Space) -->

@@ -181,6 +181,9 @@ const colorPopoverCycleToggle = element<HTMLInputElement>("color-popover-cycle-t
 const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-section");
 const colorPopoverCycleList = element<HTMLDivElement>("color-popover-cycle-list");
 const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
+const flattenSpaceHelp = element<HTMLButtonElement>("flatten-space-help");
+const flattenSpacePopover = element<HTMLDivElement>("flatten-space-popover");
+const flattenSpaceClose = element<HTMLButtonElement>("flatten-space-close");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
@@ -1041,6 +1044,7 @@ async function initialize(): Promise<void> {
   initMenuBehaviorPopover();
   initMenuWebpageSetsPopover();
   initItemSettingsPopover();
+initFlattenSpacePopover();
   initAddItemPopover();
   void refreshDesktopState();
   const [config, enabled, tree, rootPrefix] = await Promise.all([
@@ -2061,8 +2065,45 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
 
 function closeItemSettingsPopover(): void {
   itemSettingsPopover.style.display = "none";
+  closeFlattenSpacePopover();
   activeItemSettings = null;
   activeItemSettingsBtn = null;
+}
+
+function initFlattenSpacePopover(): void {
+  flattenSpaceHelp.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (flattenSpacePopover.style.display !== "none") {
+      closeFlattenSpacePopover();
+      return;
+    }
+    const rect = flattenSpaceHelp.getBoundingClientRect();
+    positionPopover(flattenSpacePopover, rect, 260);
+  });
+
+  flattenSpaceClose.addEventListener("click", () => closeFlattenSpacePopover());
+
+  document.addEventListener("click", (e) => {
+    if (flattenSpacePopover.style.display === "none") return;
+    const target = e.target as Node | null;
+    if (
+      target &&
+      !flattenSpacePopover.contains(target) &&
+      !flattenSpaceHelp.contains(target)
+    ) {
+      closeFlattenSpacePopover();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && flattenSpacePopover.style.display !== "none") {
+      closeFlattenSpacePopover();
+    }
+  });
+}
+
+function closeFlattenSpacePopover(): void {
+  flattenSpacePopover.style.display = "none";
 }
 
 function initAddItemPopover(): void {
