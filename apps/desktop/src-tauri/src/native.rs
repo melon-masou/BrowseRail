@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
+use serde::Serialize;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use uuid::Uuid;
 use windows::Win32::Foundation::{CloseHandle, HWND};
@@ -140,6 +141,7 @@ struct MenuSyncItem {
     should_be_visible: bool,
     is_customizing: bool,
     geometry_changed: bool,
+    window_uid: String,
     menu: MenuSnapshot,
 }
 
@@ -992,6 +994,7 @@ impl NativeReactor {
 
         let app = self.app.clone();
         let surfaces = self.surfaces.clone();
+        let instance_uid = instance_uid.to_string();
         let _ = self.app.run_on_main_thread(move || {
             for label in &to_destroy {
                 if let Some(window) = app.get_webview_window(label) {
@@ -1090,7 +1093,7 @@ impl NativeReactor {
                 // Push the latest content so an already-open free surface refreshes
                 // (mirrors the bound menu-state emit).
                 let event = MenuStateEvent {
-                    instance_uid,
+                    instance_uid: &instance_uid,
                     window_uid: None,
                     menu: &item.menu,
                 };
@@ -1246,6 +1249,7 @@ impl NativeReactor {
                     should_be_visible,
                     is_customizing,
                     geometry_changed,
+                    window_uid: panel.window.uid.clone(),
                     menu: menu.clone(),
                 });
             }
@@ -1405,7 +1409,7 @@ impl NativeReactor {
 
                 let event = MenuStateEvent {
                     instance_uid: &instance_uid,
-                    window_uid: Some(&panel.window.uid),
+                    window_uid: Some(&item.window_uid),
                     menu: &item.menu,
                 };
                 let _ = window.emit_to(&item.label, "menu-state", &event);
