@@ -844,6 +844,52 @@ async function initializeSurface(): Promise<void> {
         : availableHeight - popupTop - POPUP_SCREEN_MARGIN,
     );
 
+    interface PopupEnvelope {
+      height: number;
+      width: number;
+    }
+
+    function calculatePopupEnvelope(entries: LayoutEntry[]): PopupEnvelope {
+      const columnWidth = calculateColumnWidth(
+        entries,
+        theme.popupFontSize,
+        maxColumnHeight,
+      );
+      const visibleEntryCount = entries.filter(
+        (item) => item.kind !== "space" && item.kind !== "menuToggle",
+      ).length;
+      const naturalColumnHeight =
+        14 +
+        visibleEntryCount * theme.itemHeight +
+        Math.max(0, visibleEntryCount - 1) * 2;
+      const columnHeight = Math.min(maxColumnHeight, naturalColumnHeight);
+      let widestDescendant = 0;
+      let tallestDescendant = 0;
+      let hasDescendantColumn = false;
+
+      for (const item of entries) {
+        if (item.kind !== "folder") continue;
+        const child = calculatePopupEnvelope(item.children);
+        hasDescendantColumn = true;
+        widestDescendant = Math.max(widestDescendant, child.width);
+        tallestDescendant = Math.max(tallestDescendant, child.height);
+      }
+
+      const width =
+        columnWidth + (hasDescendantColumn ? 4 + widestDescendant : 0);
+      const height =
+        direction === "up"
+          ? Math.max(columnHeight, tallestDescendant)
+          : hasDescendantColumn
+            ? maxColumnHeight
+            : columnHeight;
+
+      return { height, width };
+    }
+
+    const popupEnvelope = calculatePopupEnvelope(entry.children);
+    let popupGeometryScheduled = false;
+
     root.appendChild(popupEl);
     renderLevels();
 
@@ -1095,7 +1141,10 @@ async function initializeSurface(): Promise<void> {
         popupWidth,
         popupEl.offsetHeight,
       );
-      schedulePopupGeometry();
+      if (!popupGeometryScheduled) {
+        popupGeometryScheduled = true;
+        schedulePopupGeometry();
+      }
     }
 
     function schedulePopupGeometry(): void {
@@ -1125,19 +1174,23 @@ async function initializeSurface(): Promise<void> {
       const popupHeight = popupEl.offsetHeight;
       const gap = popupGap;
       const requiredOffsetX = direction === "left"
-        ? Math.max(0, popupWidth + gap - (menuBarLeft + btnLeft))
+        ? Math.max(0, popupEnvelope.width + gap - (menuBarLeft + btnLeft))
         : 0;
       const requiredOffsetY = direction === "up"
-        ? Math.max(0, popupHeight + gap - (menuBarTop + btnTop))
+        ? Math.max(0, popupEnvelope.height + gap - (menuBarTop + btnTop))
         : 0;
       const contentOffsetX = Math.max(nativeContentOffset.x, requiredOffsetX);
       const contentOffsetY = Math.max(nativeContentOffset.y, requiredOffsetY);
       const totals = positionPopup(
         contentOffsetX,
         contentOffsetY,
-        popupWidth,
-        popupHeight,
+        popupEnvelope.width,
+        popupEnvelope.height,
       );
+      // Measuring the reserved envelope temporarily positions the real popup as
+      // if it filled that envelope. Restore the currently rendered levels before
+      // yielding so only the native surface keeps the reserved size.
+      positionPopup(contentOffsetX, contentOffsetY, popupWidth, popupHeight);
 
       await applyNativePopupGeometry(
         totals.width,
