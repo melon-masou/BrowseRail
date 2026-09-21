@@ -181,8 +181,10 @@ pub fn clear_window_owner(window: &WebviewWindow) -> Result<(), String> {
 }
 
 pub fn safely_destroy_window(window: &WebviewWindow) -> Result<(), String> {
-    let _ = set_window_visible_without_activation(window, false);
+    // Detach first so window managers never observe a hide/destroy transition
+    // on a window that still belongs to the external browser owner.
     let _ = clear_window_owner(window);
+    let _ = set_window_visible_without_activation(window, false);
     window.destroy().map_err(|error| error.to_string())
 }
 

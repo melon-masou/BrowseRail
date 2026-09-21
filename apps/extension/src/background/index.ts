@@ -632,7 +632,10 @@ async function syncOnce(): Promise<void> {
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
         items,
-        onTopMode: menu.onTopMode ?? "aboveBrowser",
+        onTopMode:
+          menu.attachmentMode === "free"
+            ? "alwaysOnTop"
+            : menu.onTopMode ?? "aboveBrowser",
         orientation: menu.orientation,
         placement,
         uid: menu.uid,

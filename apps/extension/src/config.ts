@@ -360,7 +360,9 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ? value.attachmentMode
     : "lastFocused";
   const onTopMode: OnTopMode =
-    value.onTopMode === "alwaysOnTop" ? "alwaysOnTop" : "aboveBrowser";
+    attachmentMode === "free" || value.onTopMode === "alwaysOnTop"
+      ? "alwaysOnTop"
+      : "aboveBrowser";
   const enabled = typeof value.enabled === "boolean" ? value.enabled : true;
   const urlRuleUids = Array.isArray(value.urlRuleUids)
     ? value.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)

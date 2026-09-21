@@ -89,6 +89,7 @@ export const en = {
   "btn.export": "Export",
   "btn.import": "Import",
   "status.saved": "Saved",
+  "status.saveFailed": "Save failed: {error}",
 
   // Desktop URL test
   "test.connecting": "Connecting…",
@@ -371,6 +372,7 @@ export const zhCN: Record<MessageKey, string> = {
   "btn.export": "导出",
   "btn.import": "导入",
   "status.saved": "已保存",
+  "status.saveFailed": "保存失败：{error}",
 
   // Desktop URL test
   "test.connecting": "连接中…",

@@ -1116,6 +1116,24 @@ async function persistMenus(): Promise<void> {
   }, 1_500);
 }
 
+async function persistMenuEnabled(menu: StoredMenu, enabled: boolean): Promise<boolean> {
+  const currentConfig = await loadConfig();
+  if (!currentConfig.panel.menus.some((storedMenu) => storedMenu.uid === menu.uid)) {
+    return false;
+  }
+
+  await saveConfig({
+    ...currentConfig,
+    panel: {
+      menus: currentConfig.panel.menus.map((storedMenu) =>
+        storedMenu.uid === menu.uid ? { ...storedMenu, enabled } : storedMenu,
+      ),
+    },
+  });
+  await browser.runtime.sendMessage({ type: "configSaved" });
+  return true;
+}
+
 
 async function previewCurrentConfig(): Promise<void> {
   await saveBookmarkRootPrefix(bookmarkRootPrefix);
@@ -1551,13 +1569,18 @@ function initMenuSettingsDialog(): void {
     const menu = menus[activeMenuSettingsIndex];
     if (menu) {
       menu.attachmentMode = menuSettingAttachmentMode.value as AttachmentMode;
+      if (menu.attachmentMode === "free") {
+        menu.onTopMode = "alwaysOnTop";
+        menuSettingOnTopMode.value = "alwaysOnTop";
+      }
+      menuSettingOnTopMode.disabled = menu.attachmentMode === "free";
       markDirty();
     }
   });
 
   menuSettingOnTopMode.addEventListener("change", () => {
     const menu = menus[activeMenuSettingsIndex];
-    if (menu) {
+    if (menu && menu.attachmentMode !== "free") {
       menu.onTopMode = menuSettingOnTopMode.value as OnTopMode;
       markDirty();
     }
@@ -1599,7 +1622,10 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   menuSettingPopupFontSize.value = String(popupFs);
   menuSettingGap.value = String(gapVal);
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
-  menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
+  const isFree = menuSettingAttachmentMode.value === "free";
+  if (isFree) menu.onTopMode = "alwaysOnTop";
+  menuSettingOnTopMode.value = isFree ? "alwaysOnTop" : menu.onTopMode ?? "aboveBrowser";
+  menuSettingOnTopMode.disabled = isFree;
   menuSettingTabMode.value = menu.tabMode ?? "replace";
   renderMenuUrlRulesContent(menu);
 
@@ -2107,11 +2133,19 @@ function renderMenus(): void {
       toggleInput.type = "checkbox";
       toggleInput.checked = isMenuEnabled;
       toggleInput.addEventListener("change", () => {
-        menu.enabled = toggleInput.checked;
-        card.dataset.enabled = String(menu.enabled);
-        toggleLabel.title = menu.enabled ? t("menu.disable") : t("menu.enable");
+        const enabled = toggleInput.checked;
+        menu.enabled = enabled;
+        card.dataset.enabled = String(enabled);
+        toggleLabel.title = enabled ? t("menu.disable") : t("menu.enable");
         toggleLabel.setAttribute("aria-label", toggleLabel.title);
-        markDirty();
+        void persistMenuEnabled(menu, enabled)
+          .then((saved) => {
+            if (!saved) markDirty();
+          })
+          .catch((error: unknown) => {
+            markDirty();
+            status.value = t("status.saveFailed", { error: String(error) });
+          });
       });
 
       const toggleSlider = document.createElement("span");
