@@ -120,7 +120,10 @@ async function initializeSurface(): Promise<void> {
   let menuCollapsed = initial.collapsed;
 
   const POPUP_CLOSE_DELAY_MS = 50;
+  const HOVER_OPEN_DELAY_MS = 60;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  let hoverOpenTimer: ReturnType<typeof setTimeout> | undefined;
+  let hoverOpenPending = false;
   let deferredCloseDelay: number | undefined;
   let popupGeometryPending = false;
   let popupGeometryRevision = 0;
@@ -253,6 +256,41 @@ async function initializeSurface(): Promise<void> {
     deferredCloseDelay = undefined;
   }
 
+  function cancelHoverOpen(): void {
+    clearTimeout(hoverOpenTimer);
+    hoverOpenTimer = undefined;
+    hoverOpenPending = false;
+  }
+
+  function scheduleHoverOpen(
+    target: HTMLElement,
+    open: () => void,
+    onEnter?: () => void,
+  ): void {
+    const schedule = (): void => {
+      clearTimeout(hoverOpenTimer);
+      hoverOpenPending = true;
+      hoverOpenTimer = setTimeout(() => {
+        hoverOpenPending = false;
+        hoverOpenTimer = undefined;
+        if (target.isConnected) {
+          open();
+        }
+      }, HOVER_OPEN_DELAY_MS);
+    };
+
+    target.addEventListener("pointerenter", () => {
+      onEnter?.();
+      schedule();
+    });
+    target.addEventListener("pointermove", () => {
+      if (hoverOpenPending) schedule();
+    });
+    target.addEventListener("pointerleave", cancelHoverOpen);
+    target.addEventListener("pointercancel", cancelHoverOpen);
+    target.addEventListener("pointerdown", cancelHoverOpen, { capture: true });
+  }
+
   // Any element that belongs to the open popup surface: the flyout itself or
   // the menu bar/anchor button.
   function isPopupInteractionTarget(el: Element | null): boolean {
@@ -283,7 +321,6 @@ async function initializeSurface(): Promise<void> {
     entries: LayoutEntry[],
     fontSize: number,
     maxColumnHeight: number,
-    buttonPadding?: number,
   ): number {
     if (entries.length === 0) {
       return MIN_COLUMN_WIDTH;
@@ -292,7 +329,7 @@ async function initializeSurface(): Promise<void> {
     // padding it sits in, so short labels do not inherit the slack of long ones.
     // Popup button padding is clamp(4px, fontSize * 0.75, 10px) per side and the
     // folder color block overlays the right edge, so only folders reserve it.
-    const paddingPerSide = buttonPadding ?? Math.min(10, Math.max(4, fontSize * 0.75));
+    const paddingPerSide = Math.min(10, Math.max(4, fontSize * 0.75));
     const totalButtonPadding = 2 * paddingPerSide;
     const folderBlock = Math.min(8, Math.max(6, fontSize * 0.5));
     let maxContentWidth = 0;
@@ -389,12 +426,13 @@ async function initializeSurface(): Promise<void> {
     return Math.min(configuredSize, heightLimit, widthLimit);
   }
 
-  function applyMenuTheme(menu: MenuSnapshot): { fontSize: number; itemHeight: number } {
-    const sizeNum = parseFontSize(menu.fontSize ?? menu.placement.fontSize);
-    const itemHeight = Math.max(24, Math.round(sizeNum * 2.7));
-    root.style.setProperty("--menu-font-size", `${sizeNum}px`);
+  function applyMenuTheme(menu: MenuSnapshot): { buttonFontSize: number; popupFontSize: number; itemHeight: number } {
+    const buttonFontSize = parseFontSize(menu.buttonFontSize ?? menu.placement.fontSize);
+    const popupFontSize = parseFontSize(menu.popupFontSize ?? menu.buttonFontSize ?? menu.placement.fontSize);
+    const itemHeight = Math.max(24, Math.round(buttonFontSize * 2.7));
+    root.style.setProperty("--menu-font-size", `${popupFontSize}px`);
     root.style.setProperty("--menu-item-height", `${itemHeight}px`);
-    return { fontSize: sizeNum, itemHeight };
+    return { buttonFontSize, popupFontSize, itemHeight };
   }
 
   function renderSurface(menu: MenuSnapshot): void {
@@ -403,7 +441,7 @@ async function initializeSurface(): Promise<void> {
     root.replaceChildren();
 
     const buttonFontSize = calculateButtonFontSize(
-      theme.fontSize,
+      theme.buttonFontSize,
       menu.placement,
     );
 
@@ -426,9 +464,6 @@ async function initializeSurface(): Promise<void> {
     );
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
     menuBar.style.setProperty("--menu-gap", `${gap}px`);
-    if (menu.buttonPadding !== undefined) {
-      menuBar.style.setProperty("--menu-button-padding", `${menu.buttonPadding}px`);
-    }
     const dims = computeMenuDimensions(menu);
     const renderedDims = menuCollapsed
       ? {
@@ -673,12 +708,15 @@ async function initializeSurface(): Promise<void> {
       const expandOnHover = entry.expandOnHover !== false;
       const hasChildren = Boolean(entry.children && entry.children.length > 0);
       if (expandOnHover) {
-        button.addEventListener("pointerenter", () => {
-          cancelClose();
-          if (hasChildren) {
-            openPopup(entry, button, menuBar);
-          }
-        });
+        scheduleHoverOpen(
+          button,
+          () => {
+            if (hasChildren) {
+              openPopup(entry, button, menuBar);
+            }
+          },
+          cancelClose,
+        );
         button.addEventListener("focus", () => {
           cancelClose();
           if (hasChildren) {
@@ -712,6 +750,7 @@ async function initializeSurface(): Promise<void> {
     }
 
     cancelClose();
+    cancelHoverOpen();
 
     // Mark anchor button as expanded
     for (const btn of menuBar.querySelectorAll(".menu-button")) {
@@ -873,7 +912,9 @@ async function initializeSurface(): Promise<void> {
           const subExpand = item.expandOnHover !== false;
           button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
           if (subExpand) {
-            button.addEventListener("pointerenter", () => {
+            scheduleHoverOpen(
+              button,
+              () => {
               cancelClose();
               // Already the open child → no-op, so scrolling this column (which slides
               // this folder back under the cursor) does not rebuild and reset scroll.
@@ -881,7 +922,9 @@ async function initializeSurface(): Promise<void> {
               levels = [...levels.slice(0, level + 1), item.children];
               expandedUids = [...expandedUids.slice(0, level), item.uid];
               renderLevels();
-            });
+              },
+              cancelClose,
+            );
           } else {
             button.addEventListener("pointerenter", () => {
               cancelClose();
@@ -983,12 +1026,7 @@ async function initializeSurface(): Promise<void> {
 
     function renderLevels(): void {
       const columnWidths = levels.map((entries) =>
-        calculateColumnWidth(
-          entries,
-          theme.fontSize,
-          maxColumnHeight,
-          currentMenu?.buttonPadding,
-        ),
+        calculateColumnWidth(entries, theme.popupFontSize, maxColumnHeight),
       );
 
       popupEl.style.flexDirection = direction === "left" ? "row-reverse" : "row";
@@ -1183,9 +1221,6 @@ async function initializeSurface(): Promise<void> {
     }, 0);
     railContainer.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
     railContainer.style.setProperty("--menu-gap", `${gap}px`);
-    if (menu.buttonPadding !== undefined) {
-      railContainer.style.setProperty("--menu-button-padding", `${menu.buttonPadding}px`);
-    }
 
     function updateCustomizeButtonSize(): void {
       const count = Math.max(1, Math.round(totalUnits));
@@ -1196,7 +1231,7 @@ async function initializeSurface(): Promise<void> {
         ? targetHeight
         : Math.max(16, (targetHeight - (count - 1) * gap) / count);
       const btnFontSize = calculateButtonFontSize(
-        theme.fontSize,
+        theme.buttonFontSize,
         { itemWidth, itemHeight },
       );
       railContainer.style.setProperty("--button-font-size", `${btnFontSize}px`);

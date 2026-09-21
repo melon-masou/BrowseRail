@@ -56,21 +56,15 @@ button {
 
 
 .menu-button {
-  --button-padding-left: var(
-    --menu-button-padding,
-    clamp(
-      1px,
-      calc(1px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.25),
-      6px
-    )
+  --button-padding-left: clamp(
+    1px,
+    calc(1px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.25),
+    6px
   );
-  --button-padding-right: var(
-    --menu-button-padding,
-    clamp(
-      1px,
-      calc(1px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.25),
-      6px
-    )
+  --button-padding-right: clamp(
+    1px,
+    calc(1px + (var(--button-font-size, var(--menu-font-size, 13px)) - 9px) * 1.25),
+    6px
   );
   position: relative;
   display: flex;

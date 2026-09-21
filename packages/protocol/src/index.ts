@@ -93,8 +93,8 @@ export interface MenuSnapshot {
   color?: string;
   enabled?: boolean;
   expandDirection?: ExpandDirection;
-  buttonPadding?: number;
-  fontSize?: MenuFontSize;
+  buttonFontSize?: MenuFontSize;
+  popupFontSize?: MenuFontSize;
   gap?: number;
   items: LayoutEntry[];
   onTopMode?: OnTopMode;
@@ -276,8 +276,8 @@ export interface StoredMenu {
   color?: string;
   enabled?: boolean;
   expandDirection?: ExpandDirection;
-  buttonPadding?: number;
-  fontSize?: MenuFontSize;
+  buttonFontSize?: MenuFontSize;
+  popupFontSize?: MenuFontSize;
   gap?: number;
   items: StoredMenuItem[];
   onTopMode?: OnTopMode;
@@ -375,8 +375,8 @@ export interface ExportedMenu {
   uid?: string;
   enabled?: boolean;
   orientation: MenuOrientation;
-  buttonPadding?: number;
-  fontSize?: MenuFontSize;
+  buttonFontSize?: MenuFontSize;
+  popupFontSize?: MenuFontSize;
   gap?: number;
   color?: string;
   expandDirection?: ExpandDirection;

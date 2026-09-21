@@ -64,7 +64,8 @@ export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
   return {
     attachmentMode: "lastFocused",
     enabled: true,
-    fontSize: DEFAULT_FONT_SIZE,
+    buttonFontSize: DEFAULT_FONT_SIZE,
+    popupFontSize: DEFAULT_FONT_SIZE,
     gap: DEFAULT_MENU_GAP_PERCENT,
     items: [],
     onTopMode: "aboveBrowser",
@@ -328,14 +329,21 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     : typeof (value as { id?: unknown }).id === "string" && (value as { id: string }).id
       ? (value as { id: string }).id
       : `menu-${Math.random().toString(36).slice(2, 9)}`;
-  const fontSize = value.fontSize !== undefined ? normalizeFontSize(value.fontSize) : undefined;
+  const buttonFontSize =
+    value.buttonFontSize !== undefined
+      ? normalizeFontSize(value.buttonFontSize)
+      : value.fontSize !== undefined
+        ? normalizeFontSize(value.fontSize)
+        : undefined;
+  const popupFontSize =
+    value.popupFontSize !== undefined
+      ? normalizeFontSize(value.popupFontSize)
+      : value.fontSize !== undefined
+        ? normalizeFontSize(value.fontSize)
+        : undefined;
   const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
     ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : DEFAULT_MENU_GAP;
-  const buttonPadding =
-    typeof value.buttonPadding === "number" && Number.isFinite(value.buttonPadding)
-      ? Math.min(20, Math.max(0, value.buttonPadding))
-      : undefined;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
   const tabMode: TabMode | undefined =
     value.tabMode === "newTab" || value.tabMode === "replace"
@@ -372,9 +380,9 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     attachmentMode,
     ...(color !== undefined ? { color } : {}),
     enabled,
-    ...(buttonPadding !== undefined ? { buttonPadding } : {}),
     ...(expandDirection !== undefined ? { expandDirection } : {}),
-    ...(fontSize !== undefined ? { fontSize } : {}),
+    ...(buttonFontSize !== undefined ? { buttonFontSize } : {}),
+    ...(popupFontSize !== undefined ? { popupFontSize } : {}),
     gap,
     items,
     onTopMode,

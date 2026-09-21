@@ -154,8 +154,8 @@ const menuSettingsTabs = Array.from(
 const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientation");
 const menuSettingExpandDirection = element<HTMLSelectElement>("menu-setting-expand-direction");
 const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
+const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
-const menuSettingButtonPadding = element<HTMLInputElement>("menu-setting-button-padding");
 
 const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
 const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
@@ -1524,7 +1524,16 @@ function initMenuSettingsDialog(): void {
     const menu = menus[activeMenuSettingsIndex];
     const val = parseInt(menuSettingFontSize.value, 10);
     if (menu && !isNaN(val)) {
-      menu.fontSize = Math.max(8, Math.min(48, val));
+      menu.buttonFontSize = Math.max(8, Math.min(48, val));
+      markDirty();
+    }
+  });
+
+  menuSettingPopupFontSize.addEventListener("input", () => {
+    const menu = menus[activeMenuSettingsIndex];
+    const val = parseInt(menuSettingPopupFontSize.value, 10);
+    if (menu && !isNaN(val)) {
+      menu.popupFontSize = Math.max(8, Math.min(48, val));
       markDirty();
     }
   });
@@ -1534,15 +1543,6 @@ function initMenuSettingsDialog(): void {
     const val = parseInt(menuSettingGap.value, 10);
     if (menu && !isNaN(val)) {
       menu.gap = Math.max(0, Math.min(100, val));
-      markDirty();
-    }
-  });
-
-  menuSettingButtonPadding.addEventListener("input", () => {
-    const menu = menus[activeMenuSettingsIndex];
-    const val = parseInt(menuSettingButtonPadding.value, 10);
-    if (menu && !isNaN(val)) {
-      menu.buttonPadding = Math.max(0, Math.min(20, val));
       markDirty();
     }
   });
@@ -1581,15 +1581,23 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   const menu = menus[menuIndex];
   if (!menu) return;
 
-  const fs = menu.fontSize !== undefined ? normalizeFontSize(menu.fontSize) : DEFAULT_FONT_SIZE;
+  const barFs = menu.buttonFontSize !== undefined
+    ? normalizeFontSize(menu.buttonFontSize)
+    : menu.fontSize !== undefined
+      ? normalizeFontSize(menu.fontSize)
+      : DEFAULT_FONT_SIZE;
+  const popupFs = menu.popupFontSize !== undefined
+    ? normalizeFontSize(menu.popupFontSize)
+    : menu.fontSize !== undefined
+      ? normalizeFontSize(menu.fontSize)
+      : DEFAULT_FONT_SIZE;
   const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
   menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
   menuSettingOrientation.value = menu.orientation;
   menuSettingExpandDirection.value = menu.expandDirection ?? "";
-  menuSettingFontSize.value = String(fs);
+  menuSettingFontSize.value = String(barFs);
+  menuSettingPopupFontSize.value = String(popupFs);
   menuSettingGap.value = String(gapVal);
-  menuSettingButtonPadding.value =
-    menu.buttonPadding !== undefined ? String(menu.buttonPadding) : "";
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
   menuSettingOnTopMode.value = menu.onTopMode ?? "aboveBrowser";
   menuSettingTabMode.value = menu.tabMode ?? "replace";
@@ -2885,9 +2893,9 @@ function exportSettings(): void {
       orientation: menu.orientation,
       ...(menu.urlRuleUids && menu.urlRuleUids.length > 0 ? { urlRuleUids: menu.urlRuleUids } : {}),
       ...(menu.enabled !== undefined ? { enabled: menu.enabled } : {}),
-      ...(menu.fontSize !== undefined ? { fontSize: menu.fontSize } : {}),
+      ...(menu.buttonFontSize !== undefined ? { buttonFontSize: menu.buttonFontSize } : {}),
+      ...(menu.popupFontSize !== undefined ? { popupFontSize: menu.popupFontSize } : {}),
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
-      ...(menu.buttonPadding !== undefined ? { buttonPadding: menu.buttonPadding } : {}),
       ...(menu.color ? { color: menu.color } : {}),
       ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
       ...(menu.attachmentMode ? { attachmentMode: menu.attachmentMode } : {}),
@@ -3048,6 +3056,12 @@ async function importSettings(file: File): Promise<void> {
 
       const normalizedMenu = normalizeMenu({
         ...menuRecord,
+        ...(menuRecord.fontSize !== undefined && menuRecord.buttonFontSize === undefined
+          ? { buttonFontSize: menuRecord.fontSize }
+          : {}),
+        ...(menuRecord.fontSize !== undefined && menuRecord.popupFontSize === undefined
+          ? { popupFontSize: menuRecord.fontSize }
+          : {}),
         uid: typeof menuRecord.uid === "string" && menuRecord.uid ? menuRecord.uid : crypto.randomUUID(),
         items,
       });

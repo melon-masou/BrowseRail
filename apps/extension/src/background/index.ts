@@ -620,15 +620,15 @@ async function syncOnce(): Promise<void> {
         index,
         menu.orientation,
         totalUnits,
-        menu.fontSize,
+        menu.buttonFontSize ?? menu.fontSize,
         menu.gap,
       );
       return {
         attachmentMode: menu.attachmentMode ?? "lastFocused",
         enabled: true,
-        fontSize: menu.fontSize ?? DEFAULT_FONT_SIZE,
+        buttonFontSize: menu.buttonFontSize ?? menu.fontSize ?? DEFAULT_FONT_SIZE,
+        popupFontSize: menu.popupFontSize ?? menu.fontSize ?? DEFAULT_FONT_SIZE,
         gap: placement.gap ?? 0,
-        ...(menu.buttonPadding !== undefined ? { buttonPadding: menu.buttonPadding } : {}),
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
         items,

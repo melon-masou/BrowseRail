@@ -749,23 +749,6 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(menu?.items[0]?.type).toBe("menuToggle");
   });
 
-  it("normalizes menu button padding and rejects out-of-range values", async () => {
-    const { normalizeMenu } = await import("./config");
-    const menu = normalizeMenu({
-      uid: "menu-padding",
-      buttonPadding: 7,
-      items: [],
-    });
-    const invalidMenu = normalizeMenu({
-      uid: "menu-invalid-padding",
-      buttonPadding: 31,
-      items: [],
-    });
-
-    expect(menu?.buttonPadding).toBe(7);
-    expect(invalidMenu?.buttonPadding).toBe(20);
-  });
-
   it("preserves up and left expansion directions", async () => {
     const { normalizeMenu } = await import("./config");
     const upMenu = normalizeMenu({
