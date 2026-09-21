@@ -459,6 +459,24 @@ fn open_popup(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn show_popup(
+    state: tauri::State<'_, AppState>,
+    instance_uid: String,
+    window_uid: String,
+    menu_uid: String,
+    request_uid: String,
+) -> Result<(), String> {
+    let _ = state.native_sender.send(native::NativeCommand::ShowPopup {
+        instance_uid,
+        window_uid,
+        menu_uid,
+        request_uid,
+    });
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn resize_and_position(
     window: tauri::Window,
     width: f64,
@@ -1028,6 +1046,7 @@ pub fn run() {
             installed_fonts,
             set_font_family,
             open_popup,
+            show_popup,
             resize_and_position,
             cancel_popup_close,
             schedule_popup_close,

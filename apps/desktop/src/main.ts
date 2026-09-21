@@ -11,6 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { getLanguage, type Lang, LANGUAGES, onLanguageChange, saveLanguage, t } from "@browserail/i18n";
+import { initializePopupSurface } from "./popup-surface";
 import "./styles.css";
 
 const root = requiredElement("app");
@@ -39,6 +40,8 @@ if (query.get("view") === "host") {
   document.body.replaceChildren();
 } else if (query.get("view") === "settings") {
   void initializeListenerSettings();
+} else if (query.get("surface") === "popup") {
+  void initializePopupSurface();
 } else {
   void initializeSurface();
 }
@@ -119,14 +122,9 @@ async function initializeSurface(): Promise<void> {
   let currentMenu = initial.menu;
   let menuCollapsed = initial.collapsed;
 
-  const POPUP_CLOSE_DELAY_MS = 50;
   const HOVER_OPEN_DELAY_MS = 60;
-  let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverOpenTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverOpenPending = false;
-  let deferredCloseDelay: number | undefined;
-  let popupGeometryPending = false;
-  let popupGeometryRevision = 0;
   let pendingMenuRender = false;
 
   window.addEventListener(
@@ -134,22 +132,13 @@ async function initializeSurface(): Promise<void> {
     (event) => {
       // Pointer left the window entirely (no relatedTarget) → close the popup.
       if (!event.relatedTarget) {
-        scheduleClose(POPUP_CLOSE_DELAY_MS);
+        scheduleClose();
       }
     },
     { passive: true },
   );
 
-  // Track active popup state inside this single window
-  let activePopupEl: HTMLElement | null = null;
   let activePopupFolderUid: string | null = null;
-
-  let nativeAllocated = {
-    height: 0,
-    width: 0,
-  };
-  let nativeContentOffset = { x: 0, y: 0 };
-  let popupGeometryQueue = Promise.resolve();
 
   interface SurfacePoint {
     x: number;
@@ -205,11 +194,22 @@ async function initializeSurface(): Promise<void> {
     ) {
       currentMenu = payload.menu;
       menuCollapsed = payload.collapsed ?? menuCollapsed;
-      if (activePopupEl || popupGeometryPending) {
+      if (activePopupFolderUid) {
         pendingMenuRender = true;
         return;
       }
       renderSurface(payload.menu);
+    }
+  }, { target: surfaceLabel });
+  await listen<string>("popup-closed", ({ payload }) => {
+    if (payload !== menuUid) return;
+    activePopupFolderUid = null;
+    for (const button of root.querySelectorAll(".menu-button[data-expanded]")) {
+      button.removeAttribute("data-expanded");
+    }
+    if (pendingMenuRender && currentMenu) {
+      pendingMenuRender = false;
+      renderSurface(currentMenu);
     }
   }, { target: surfaceLabel });
 
@@ -229,31 +229,17 @@ async function initializeSurface(): Promise<void> {
     renderSurface(initial.menu);
   }
 
-  function scheduleClose(delay = POPUP_CLOSE_DELAY_MS): void {
-    // While customizing there is no popup, and the window is deliberately
-    // enlarged to fit the customize toolbar. The window-level pointerout that
-    // fires when the cursor leaves the window must not schedule a popup close:
-    // closePopup restores the native window to the (small) bar placement size,
-    // which would shrink the customize window mid-edit.
+  function scheduleClose(): void {
+    // The native generation timer supplies the grace period needed to cross
+    // from the bar HWND into the separate popup HWND.
     if (customizing) return;
-    // Trust pointerenter(cancelClose)/pointerleave(scheduleClose): re-entering a
-    // column or the expanded folder button cancels this timer. The old
-    // elementFromPoint(lastPointer) re-check kept the popup open over the
-    // transparent gap between columns, because the pointer stops firing pointermove
-    // there (pointer-events:none), leaving the cached position stale inside a column.
-    clearTimeout(closeTimer);
-    if (popupGeometryPending) {
-      deferredCloseDelay = delay;
-      return;
-    }
-    closeTimer = setTimeout(() => {
-      void closePopup();
-    }, delay);
+    if (!activePopupFolderUid) return;
+    void invoke("schedule_popup_close", { instanceUid, menuUid, windowUid }).catch(() => {});
   }
 
   function cancelClose(): void {
-    clearTimeout(closeTimer);
-    deferredCloseDelay = undefined;
+    if (!activePopupFolderUid) return;
+    void invoke("cancel_popup_close", { instanceUid, menuUid, windowUid }).catch(() => {});
   }
 
   function cancelHoverOpen(): void {
@@ -478,7 +464,7 @@ async function initializeSurface(): Promise<void> {
     menuBar.addEventListener("pointerleave", (event) => {
       const related = event.relatedTarget as Element | null;
       if (!isPopupInteractionTarget(related)) {
-        scheduleClose(POPUP_CLOSE_DELAY_MS);
+        scheduleClose();
       }
     });
 
@@ -513,7 +499,7 @@ async function initializeSurface(): Promise<void> {
         if (customizing) return;
 
         // If a popup is open, close it and wait for size and position to restore completely before customizing
-        await closePopup(true);
+        await closePopup();
 
         const fromAnchor = elementOrigin(menuBar);
         const menuHeight = menuBar.getBoundingClientRect().height;
@@ -634,8 +620,8 @@ async function initializeSurface(): Promise<void> {
         spaceEl.classList.add("menu-space-solid");
       }
       spaceEl.addEventListener("pointerenter", () => {
-        if (activePopupEl) {
-          scheduleClose(POPUP_CLOSE_DELAY_MS);
+        if (activePopupFolderUid) {
+          scheduleClose();
         }
       });
       return spaceEl;
@@ -681,8 +667,8 @@ async function initializeSurface(): Promise<void> {
     const button = menuButton(entry, false);
     if (entry.kind === "bookmark") {
       button.addEventListener("pointerenter", () => {
-        if (activePopupEl) {
-          scheduleClose(POPUP_CLOSE_DELAY_MS);
+        if (activePopupFolderUid) {
+          scheduleClose();
         }
       });
       button.addEventListener("pointerdown", (event) => {
@@ -725,14 +711,14 @@ async function initializeSurface(): Promise<void> {
         });
       } else {
         button.addEventListener("pointerenter", () => {
-          if (activePopupFolderUid !== entry.uid && activePopupEl) {
-            scheduleClose(POPUP_CLOSE_DELAY_MS);
+          if (activePopupFolderUid !== entry.uid && activePopupFolderUid) {
+            scheduleClose();
           }
         });
         button.addEventListener("pointerdown", (event) => {
           if (event.button === 0) {
             event.preventDefault();
-            if (activePopupFolderUid === entry.uid && activePopupEl) {
+            if (activePopupFolderUid === entry.uid) {
               void closePopup();
             } else if (hasChildren) {
               openPopup(entry, button, menuBar);
@@ -745,495 +731,136 @@ async function initializeSurface(): Promise<void> {
   }
 
   async function openPopup(entry: LayoutEntry & { kind: "folder" }, anchorButton: HTMLElement, menuBar: HTMLElement): Promise<void> {
-    if (activePopupFolderUid === entry.uid && activePopupEl) {
-      return;
-    }
+    {
+      cancelClose();
+      cancelHoverOpen();
 
-    cancelClose();
-    cancelHoverOpen();
-
-    // Mark anchor button as expanded
-    for (const btn of menuBar.querySelectorAll(".menu-button")) {
-      btn.removeAttribute("data-expanded");
-    }
-    anchorButton.toggleAttribute("data-expanded", true);
-
-    if (activePopupEl) {
-      activePopupEl.remove();
-      activePopupEl = null;
-    }
-
-    activePopupFolderUid = entry.uid;
-
-    let levels: LayoutEntry[][] = [entry.children];
-    let expandedUids: string[] = [];
-    const columnEls: HTMLElement[] = [];
-    const renderedLevels: LayoutEntry[][] = [];
-
-    const menuColor = currentMenu?.color;
-    const popupEl = document.createElement("div");
-    popupEl.className = "popup-container";
-    popupEl.ariaLabel = t("aria.bookmarkMenu");
-    activePopupEl = popupEl;
-    // The container is hit-testable (pointer-events:auto) so it also owns the
-    // inter-column gaps and whatever menu-bar button sits underneath it.
-    // Listening here keeps "pointer left the flyout" honest across the anchor
-    // seam instead of only at column boundaries.
-    popupEl.addEventListener("pointerenter", cancelClose);
-    popupEl.addEventListener("pointerleave", (event) => {
-      const related = event.relatedTarget as Element | null;
-      if (!isPopupInteractionTarget(related)) {
-        scheduleClose(POPUP_CLOSE_DELAY_MS);
+      for (const button of menuBar.querySelectorAll(".menu-button")) {
+        button.removeAttribute("data-expanded");
       }
-    });
+      anchorButton.toggleAttribute("data-expanded", true);
+      activePopupFolderUid = entry.uid;
 
-    const configuredDirection =
-      (entry.expandDirection === "right" ||
-      entry.expandDirection === "left" ||
-      entry.expandDirection === "down" ||
-      entry.expandDirection === "up"
-        ? entry.expandDirection
-        : undefined) ??
-      (currentMenu?.expandDirection === "right" ||
-      currentMenu?.expandDirection === "left" ||
-      currentMenu?.expandDirection === "down" ||
-      currentMenu?.expandDirection === "up"
-        ? currentMenu.expandDirection
-        : undefined);
-    const direction: ExpandDirection =
-      configuredDirection ?? (currentMenu?.orientation === "column" ? "right" : "down");
-    popupEl.dataset.direction = direction;
-
-    // Use un-transformed layout offsets relative to menuBar, NOT viewport getBoundingClientRect!
-    // getBoundingClientRect is contaminated when menuBar has a previous translateY/X transform.
-    const btnLeft = anchorButton.offsetLeft;
-    const btnTop = anchorButton.offsetTop;
-    const btnWidth = anchorButton.offsetWidth;
-    const btnHeight = anchorButton.offsetHeight;
-    const dims = currentMenu ? computeSurfaceDimensions(currentMenu) : undefined;
-    const surfaceWidth = dims?.width ?? menuBar.offsetWidth;
-    const surfaceHeight = dims?.height ?? menuBar.offsetHeight;
-    const menuBarLeft = menuBar.offsetLeft;
-    const menuBarTop = menuBar.offsetTop;
-
-    const theme = applyMenuTheme(currentMenu ?? initial.menu!);
-    let availableHeight: number;
-    try {
-      availableHeight = await getSurfaceAvailableHeight(direction === "up");
-    } catch (error) {
-      showSurfaceError(error);
-      activePopupEl = null;
-      activePopupFolderUid = null;
-      popupEl.remove();
-      return;
-    }
-    if (activePopupEl !== popupEl) {
-      return;
-    }
-
-    const popupGap = 2;
-    const anchorTop = menuBarTop + nativeContentOffset.y + btnTop;
-    const popupTop =
-      direction === "down"
-        ? anchorTop + btnHeight + popupGap
-        : anchorTop;
-    const maxColumnHeight = Math.max(
-      MIN_COLUMN_HEIGHT,
-      direction === "up"
-        ? availableHeight + anchorTop - popupGap - POPUP_SCREEN_MARGIN
-        : availableHeight - popupTop - POPUP_SCREEN_MARGIN,
-    );
-
-    interface PopupEnvelope {
-      height: number;
-      width: number;
-    }
-
-    function calculatePopupEnvelope(entries: LayoutEntry[]): PopupEnvelope {
-      const columnWidth = calculateColumnWidth(
-        entries,
-        theme.popupFontSize,
-        maxColumnHeight,
-      );
-      const visibleEntryCount = entries.filter(
-        (item) => item.kind !== "space" && item.kind !== "menuToggle",
-      ).length;
-      const naturalColumnHeight =
-        14 +
-        visibleEntryCount * theme.itemHeight +
-        Math.max(0, visibleEntryCount - 1) * 2;
-      const columnHeight = Math.min(maxColumnHeight, naturalColumnHeight);
-      let widestDescendant = 0;
-      let tallestDescendant = 0;
-      let hasDescendantColumn = false;
-
-      for (const item of entries) {
-        if (item.kind !== "folder") continue;
-        const child = calculatePopupEnvelope(item.children);
-        hasDescendantColumn = true;
-        widestDescendant = Math.max(widestDescendant, child.width);
-        tallestDescendant = Math.max(tallestDescendant, child.height);
+      const menu = currentMenu ?? initial.menu;
+      if (!menu) return;
+      const configuredDirection =
+        (entry.expandDirection === "right" ||
+        entry.expandDirection === "left" ||
+        entry.expandDirection === "down" ||
+        entry.expandDirection === "up"
+          ? entry.expandDirection
+          : undefined) ??
+        (menu.expandDirection === "right" ||
+        menu.expandDirection === "left" ||
+        menu.expandDirection === "down" ||
+        menu.expandDirection === "up"
+          ? menu.expandDirection
+          : undefined);
+      const direction: ExpandDirection =
+        configuredDirection ?? (menu.orientation === "column" ? "right" : "down");
+      const theme = applyMenuTheme(menu);
+      const anchor = anchorButton.getBoundingClientRect();
+      const popupGap = 2;
+      let availableHeight: number;
+      try {
+        availableHeight = await getSurfaceAvailableHeight(direction === "up");
+      } catch (error) {
+        activePopupFolderUid = null;
+        anchorButton.removeAttribute("data-expanded");
+        showSurfaceError(error);
+        return;
       }
+      if (activePopupFolderUid !== entry.uid) return;
 
-      const width =
-        columnWidth + (hasDescendantColumn ? 4 + widestDescendant : 0);
-      const height =
+      const popupTop = direction === "down" ? anchor.bottom + popupGap : anchor.top;
+      const maxColumnHeight = Math.max(
+        MIN_COLUMN_HEIGHT,
         direction === "up"
-          ? Math.max(columnHeight, tallestDescendant)
-          : hasDescendantColumn
-            ? maxColumnHeight
-            : columnHeight;
+          ? availableHeight + anchor.top - popupGap - POPUP_SCREEN_MARGIN
+          : availableHeight - popupTop - POPUP_SCREEN_MARGIN,
+      );
 
-      return { height, width };
-    }
-
-    const popupEnvelope = calculatePopupEnvelope(entry.children);
-    let popupGeometryScheduled = false;
-
-    root.appendChild(popupEl);
-    renderLevels();
-
-    function setContentOffset(x: number, y: number): void {
-      const transform = x === 0 && y === 0 ? "" : `translate(${x}px, ${y}px)`;
-      menuBar.style.transform = transform;
-      const freeHandle = root.querySelector<HTMLElement>(".free-drag-handle");
-      if (freeHandle) {
-        freeHandle.style.transform = transform;
-      }
-    }
-
-    async function applyNativePopupGeometry(
-      targetWidth: number,
-      targetHeight: number,
-      targetOffsetX: number,
-      targetOffsetY: number,
-    ): Promise<void> {
-      const neededWidth = Math.max(nativeAllocated.width, targetWidth);
-      const neededHeight = Math.max(nativeAllocated.height, targetHeight);
-      const neededOffsetX = Math.max(nativeContentOffset.x, targetOffsetX);
-      const neededOffsetY = Math.max(nativeContentOffset.y, targetOffsetY);
-      if (
-        neededWidth === nativeAllocated.width &&
-        neededHeight === nativeAllocated.height &&
-        neededOffsetX === nativeContentOffset.x &&
-        neededOffsetY === nativeContentOffset.y
-      ) return;
-
-      const fromAnchor = elementOrigin(menuBar);
-      nativeAllocated = { height: neededHeight, width: neededWidth };
-      nativeContentOffset = { x: neededOffsetX, y: neededOffsetY };
-      setContentOffset(neededOffsetX, neededOffsetY);
-      const toAnchor = elementOrigin(menuBar);
-      await resizeAndPosition(fromAnchor, toAnchor, neededWidth, neededHeight);
-    }
-
-    function buildColumn(entries: LayoutEntry[], level: number, colWidth: number): HTMLElement {
-      const column = document.createElement("div");
-      column.className = "menu-column";
-      column.style.maxHeight = `${maxColumnHeight}px`;
-      column.addEventListener("pointerenter", cancelClose);
-      column.addEventListener("pointerleave", (event) => {
-        const related = event.relatedTarget as Element | null;
-        if (!isPopupInteractionTarget(related) && !menuBar.contains(related as Node | null)) {
-          scheduleClose(POPUP_CLOSE_DELAY_MS);
+      function popupEnvelope(entries: LayoutEntry[]): { height: number; width: number } {
+        const columnWidth = calculateColumnWidth(entries, theme.popupFontSize, maxColumnHeight);
+        const visibleEntries = entries.filter(
+          (item) => item.kind !== "space" && item.kind !== "menuToggle",
+        );
+        const columnHeight = Math.min(
+          maxColumnHeight,
+          14 + visibleEntries.length * theme.itemHeight + Math.max(0, visibleEntries.length - 1) * 2,
+        );
+        let descendantWidth = 0;
+        let descendantHeight = 0;
+        for (const item of visibleEntries) {
+          if (item.kind !== "folder") continue;
+          const child = popupEnvelope(item.children);
+          descendantWidth = Math.max(descendantWidth, child.width);
+          descendantHeight = Math.max(descendantHeight, child.height);
         }
+        return {
+          width: columnWidth + (descendantWidth > 0 ? 4 + descendantWidth : 0),
+          height:
+            direction === "up"
+              ? Math.max(columnHeight, descendantHeight)
+              : descendantWidth > 0
+                ? maxColumnHeight
+                : columnHeight,
+        };
+      }
+
+      const envelope = popupEnvelope(entry.children);
+      const x =
+        direction === "left"
+          ? anchor.left - popupGap - envelope.width
+          : direction === "right"
+            ? anchor.right + popupGap
+            : anchor.left;
+      const y =
+        direction === "up"
+          ? anchor.top - popupGap - envelope.height
+          : direction === "down"
+            ? anchor.bottom + popupGap
+            : anchor.top;
+      const requestUid = crypto.randomUUID();
+      await invoke("open_popup", {
+        request: {
+          anchor: { x, y },
+          height: envelope.height,
+          instanceUid,
+          menuUid,
+          parentLabel: surfaceLabel,
+          payload: {
+            color: menu.color,
+            direction,
+            editingLocked,
+            entries: entry.children,
+            isFree,
+            itemHeight: theme.itemHeight,
+            maxColumnHeight,
+            popupFontSize: theme.popupFontSize,
+            requestUid,
+          },
+          requestUid,
+          width: envelope.width,
+          windowUid,
+        },
+      }).catch((error) => {
+        if (activePopupFolderUid === entry.uid) {
+          activePopupFolderUid = null;
+          anchorButton.removeAttribute("data-expanded");
+        }
+        showSurfaceError(error);
       });
-      column.style.width = `${colWidth}px`;
-      column.style.minWidth = `${colWidth}px`;
-      column.style.maxWidth = `${colWidth}px`;
-      if (menuColor) {
-        column.dataset.accent = "true";
-        column.style.backgroundColor = menuColor;
-        column.style.borderColor = menuColor;
-      }
-      for (const item of entries) {
-        if (item.kind === "space" || item.kind === "menuToggle") continue;
-        const button = menuButton(item, true);
-        if (menuColor) {
-          button.style.setProperty("--button-custom-color", menuColor);
-          button.dataset.hasCustomColor = "true";
-        }
-        if (item.kind === "folder") {
-          button.dataset.uid = item.uid;
-          const subExpand = item.expandOnHover !== false;
-          button.toggleAttribute("data-expanded", expandedUids[level] === item.uid);
-          if (subExpand) {
-            scheduleHoverOpen(
-              button,
-              () => {
-              cancelClose();
-              // Already the open child → no-op, so scrolling this column (which slides
-              // this folder back under the cursor) does not rebuild and reset scroll.
-              if (expandedUids[level] === item.uid && levels.length > level + 1) return;
-              levels = [...levels.slice(0, level + 1), item.children];
-              expandedUids = [...expandedUids.slice(0, level), item.uid];
-              renderLevels();
-              },
-              cancelClose,
-            );
-          } else {
-            button.addEventListener("pointerenter", () => {
-              cancelClose();
-              if (levels.length > level + 1 && expandedUids[level] !== item.uid) {
-                levels = levels.slice(0, level + 1);
-                expandedUids = expandedUids.slice(0, level);
-                renderLevels();
-              }
-            });
-            button.addEventListener("pointerdown", (event) => {
-              if (event.button === 0) {
-                event.preventDefault();
-                if (expandedUids[level] === item.uid) {
-                  levels = levels.slice(0, level + 1);
-                  expandedUids = expandedUids.slice(0, level);
-                } else {
-                  levels = [...levels.slice(0, level + 1), item.children];
-                  expandedUids = [...expandedUids.slice(0, level), item.uid];
-                }
-                renderLevels();
-              }
-            });
-          }
-        } else {
-          button.addEventListener("pointerenter", () => {
-            cancelClose();
-            if (levels.length > level + 1) {
-              levels = levels.slice(0, level + 1);
-              expandedUids = expandedUids.slice(0, level);
-              renderLevels();
-            }
-          });
-          button.addEventListener("pointerdown", (event) => {
-            if (event.button === 0) {
-              void closePopup();
-              if (!item.uid.startsWith("noop")) {
-                dispatchAction(item.uid);
-              }
-            }
-          });
-          button.addEventListener("pointerdown", (event) => {
-            if (event.button === 2 && editingLocked) {
-              event.preventDefault();
-              event.stopPropagation();
-              void closePopup();
-              if (!item.uid.startsWith("noop")) {
-                dispatchAction(invertBookmarkActionUid(item.uid));
-              }
-            }
-          });
-        }
-        column.appendChild(button);
-      }
-      return column;
-    }
-
-    function positionPopup(
-      contentOffsetX: number,
-      contentOffsetY: number,
-      popupWidth: number,
-      popupHeight: number,
-    ): { width: number; height: number } {
-      const gap = popupGap;
-      let totalWidth = contentOffsetX + surfaceWidth;
-      let totalHeight = contentOffsetY + surfaceHeight;
-
-      if (direction === "right") {
-        const top = contentOffsetY + menuBarTop + btnTop;
-        const left = contentOffsetX + menuBarLeft + btnLeft + btnWidth + gap;
-        popupEl.style.top = `${top}px`;
-        popupEl.style.left = `${left}px`;
-        totalWidth = Math.max(totalWidth, left + popupWidth);
-        totalHeight = Math.max(totalHeight, top + popupHeight);
-      } else if (direction === "left") {
-        const top = contentOffsetY + menuBarTop + btnTop;
-        const left = contentOffsetX + menuBarLeft + btnLeft - gap - popupWidth;
-        popupEl.style.top = `${top}px`;
-        popupEl.style.left = `${left}px`;
-        totalWidth = Math.max(totalWidth, left + popupWidth);
-        totalHeight = Math.max(totalHeight, top + popupHeight);
-      } else if (direction === "up") {
-        const top = contentOffsetY + menuBarTop + btnTop - gap - popupHeight;
-        const left = contentOffsetX + menuBarLeft + btnLeft;
-        popupEl.style.top = `${top}px`;
-        popupEl.style.left = `${left}px`;
-        totalWidth = Math.max(totalWidth, left + popupWidth);
-        totalHeight = Math.max(totalHeight, top + popupHeight);
-      } else {
-        const top = contentOffsetY + menuBarTop + btnTop + btnHeight + gap;
-        const left = contentOffsetX + menuBarLeft + btnLeft;
-        popupEl.style.top = `${top}px`;
-        popupEl.style.left = `${left}px`;
-        totalWidth = Math.max(totalWidth, left + popupWidth);
-        totalHeight = Math.max(totalHeight, top + popupHeight);
-      }
-
-      return { width: totalWidth, height: totalHeight };
-    }
-
-    function renderLevels(): void {
-      const columnWidths = levels.map((entries) =>
-        calculateColumnWidth(entries, theme.popupFontSize, maxColumnHeight),
-      );
-
-      popupEl.style.flexDirection = direction === "left" ? "row-reverse" : "row";
-      popupEl.style.alignItems = direction === "up" ? "flex-end" : "flex-start";
-      popupEl.style.bottom = "";
-      popupEl.style.right = "";
-
-      // Incremental: keep columns whose level is unchanged (same entries ref) so
-      // their DOM — and scroll position — survive; rebuild only from the first change.
-      let diffFrom = 0;
-      while (
-        diffFrom < renderedLevels.length &&
-        diffFrom < levels.length &&
-        renderedLevels[diffFrom] === levels[diffFrom]
-      ) {
-        diffFrom++;
-      }
-      for (let i = columnEls.length - 1; i >= diffFrom; i--) {
-        columnEls[i]?.remove();
-      }
-      columnEls.length = diffFrom;
-      renderedLevels.length = diffFrom;
-
-      for (let level = diffFrom; level < levels.length; level++) {
-        const column = buildColumn(levels[level]!, level, columnWidths[level]!);
-        // A sub-column opens aligned with the parent item that was hovered (its
-        // current on-screen position, honoring the parent column's scroll), not the top.
-        if (level > 0 && direction !== "up") {
-          const parentBtn = columnEls[level - 1]?.querySelector<HTMLElement>(
-            `.menu-button[data-uid="${expandedUids[level - 1]}"]`,
-          );
-          if (parentBtn) {
-            const offset =
-              parentBtn.getBoundingClientRect().top - popupEl.getBoundingClientRect().top;
-            const marginTop = Math.min(
-              Math.max(0, offset),
-              Math.max(0, maxColumnHeight - MIN_COLUMN_HEIGHT),
-            );
-            column.style.marginTop = `${marginTop}px`;
-            column.style.maxHeight = `${Math.max(MIN_COLUMN_HEIGHT, maxColumnHeight - marginTop)}px`;
-          }
-        }
-        popupEl.appendChild(column);
-        columnEls[level] = column;
-        renderedLevels[level] = levels[level]!;
-      }
-
-      // Refresh the expanded highlight on the kept parent columns.
-      for (let level = 0; level < diffFrom; level++) {
-        const uid = expandedUids[level];
-        for (const btn of columnEls[level]!.querySelectorAll<HTMLElement>(".menu-button[data-uid]")) {
-          btn.toggleAttribute("data-expanded", btn.dataset.uid === uid);
-        }
-      }
-
-      // Width is set explicitly (analytical) — an abspos width:auto flex container
-      // can measure 0 and leave the popup clipped outside the window. Height is
-      // measured (offsetHeight is reliable regardless of container width) so it
-      // accounts for the sub-column top margins.
-      const gapTotal = Math.max(0, levels.length - 1) * 4;
-      const popupWidth = columnWidths.reduce((acc, w) => acc + w, 0) + gapTotal;
-      popupEl.style.width = `${popupWidth}px`;
-      positionPopup(
-        nativeContentOffset.x,
-        nativeContentOffset.y,
-        popupWidth,
-        popupEl.offsetHeight,
-      );
-      if (!popupGeometryScheduled) {
-        popupGeometryScheduled = true;
-        schedulePopupGeometry();
-      }
-    }
-
-    function schedulePopupGeometry(): void {
-      const revision = ++popupGeometryRevision;
-      popupGeometryPending = true;
-      void (async () => {
-        await requestDoubleAnimationFrame();
-        await popupGeometryQueue.catch(() => undefined);
-        if (revision !== popupGeometryRevision || activePopupEl !== popupEl) return;
-
-        const resize = commitPopupGeometry();
-        popupGeometryQueue = resize;
-        await resize;
-      })()
-        .catch(() => undefined)
-        .finally(() => {
-          if (revision !== popupGeometryRevision) return;
-          popupGeometryPending = false;
-          const delay = deferredCloseDelay;
-          deferredCloseDelay = undefined;
-          if (delay !== undefined) scheduleClose(delay);
-        });
-    }
-
-    async function commitPopupGeometry(): Promise<void> {
-      const popupWidth = popupEl.offsetWidth;
-      const popupHeight = popupEl.offsetHeight;
-      const gap = popupGap;
-      const requiredOffsetX = direction === "left"
-        ? Math.max(0, popupEnvelope.width + gap - (menuBarLeft + btnLeft))
-        : 0;
-      const requiredOffsetY = direction === "up"
-        ? Math.max(0, popupEnvelope.height + gap - (menuBarTop + btnTop))
-        : 0;
-      const contentOffsetX = Math.max(nativeContentOffset.x, requiredOffsetX);
-      const contentOffsetY = Math.max(nativeContentOffset.y, requiredOffsetY);
-      const totals = positionPopup(
-        contentOffsetX,
-        contentOffsetY,
-        popupEnvelope.width,
-        popupEnvelope.height,
-      );
-      // Measuring the reserved envelope temporarily positions the real popup as
-      // if it filled that envelope. Restore the currently rendered levels before
-      // yielding so only the native surface keeps the reserved size.
-      positionPopup(contentOffsetX, contentOffsetY, popupWidth, popupHeight);
-
-      await applyNativePopupGeometry(
-        totals.width,
-        totals.height,
-        contentOffsetX,
-        contentOffsetY,
-      );
+      return;
     }
   }
 
-  async function closePopup(restoreNativeSize = true): Promise<void> {
-    clearTimeout(closeTimer);
-    deferredCloseDelay = undefined;
-    popupGeometryRevision++;
-    popupGeometryPending = false;
-    if (activePopupEl) {
-      activePopupEl.remove();
-      activePopupEl = null;
-    }
+  async function closePopup(): Promise<void> {
     activePopupFolderUid = null;
-    const menuBarEl = root.querySelector<HTMLElement>(".menu-bar");
     for (const btn of root.querySelectorAll(".menu-button[data-expanded]")) {
       btn.removeAttribute("data-expanded");
     }
-
-    if (restoreNativeSize && currentMenu && !customizing) {
-      await popupGeometryQueue.catch(() => undefined);
-      const { width, height } = computeSurfaceDimensions(currentMenu);
-      const fromAnchor = menuBarEl ? elementOrigin(menuBarEl) : { x: 0, y: 0 };
-      if (menuBarEl) menuBarEl.style.transform = "";
-      const freeHandle = root.querySelector<HTMLElement>(".free-drag-handle");
-      if (freeHandle) freeHandle.style.transform = "";
-      nativeContentOffset = { x: 0, y: 0 };
-      nativeAllocated = {
-        height,
-        width,
-      };
-      try {
-        const toAnchor = menuBarEl ? elementOrigin(menuBarEl) : { x: 0, y: 0 };
-        popupGeometryQueue = resizeAndPosition(fromAnchor, toAnchor, width, height);
-        await popupGeometryQueue;
-      } catch {}
-    }
+    await invoke("close_popup", { instanceUid, menuUid, windowUid }).catch(() => {});
 
     if (pendingMenuRender && currentMenu) {
       pendingMenuRender = false;

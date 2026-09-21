@@ -30,6 +30,27 @@ button {
   pointer-events: none;
 }
 
+.popup-surface {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
+}
+
+.detached-popup {
+  top: 0;
+  left: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.detached-popup[data-direction="up"] {
+  height: 100%;
+}
+
 .menu-bar {
   position: absolute;
   top: 0;

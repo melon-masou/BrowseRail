@@ -31,6 +31,9 @@ use crate::session::SessionRegistry;
 use crate::settings::CollapsedMenu;
 use crate::socket::SocketServer;
 
+const POPUP_CLOSE_DELAY_MS: u64 = 0;
+const POPUP_HIDE_DELAY_MS: u64 = 500;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayStateSnapshot {
     pub server_text: String,
@@ -83,10 +86,22 @@ pub enum NativeCommand {
     OpenPopup {
         request: PopupRequest,
     },
+    ShowPopup {
+        instance_uid: String,
+        window_uid: String,
+        menu_uid: String,
+        request_uid: String,
+    },
     SchedulePopupClose {
         instance_uid: String,
         window_uid: String,
         menu_uid: String,
+    },
+    BeginPopupClose {
+        instance_uid: String,
+        window_uid: String,
+        menu_uid: String,
+        generation: u64,
     },
     CancelPopupClose {
         instance_uid: String,
@@ -541,10 +556,46 @@ impl NativeReactor {
                 }
                 NativeCommand::OpenPopup { request } => {
                     let app = self.app.clone();
-                    let surfaces = self.surfaces.clone();
                     let popups = self.popups.clone();
                     let _ = self.app.run_on_main_thread(move || {
-                        let _ = crate::panel::open_popup(&app, &surfaces, &popups, request);
+                        let _ = crate::panel::open_popup(&app, &popups, request);
+                    });
+                }
+                NativeCommand::ShowPopup {
+                    instance_uid,
+                    window_uid,
+                    menu_uid,
+                    request_uid,
+                } => {
+                    let app = self.app.clone();
+                    let surfaces = self.surfaces.clone();
+                    let popups = self.popups.clone();
+                    let sender = self.native_sender.clone();
+                    let _ = self.app.run_on_main_thread(move || {
+                        let should_reschedule_close = crate::panel::show_popup(
+                            &app,
+                            &surfaces,
+                            &popups,
+                            &instance_uid,
+                            &window_uid,
+                            &menu_uid,
+                            &request_uid,
+                        );
+                        if should_reschedule_close
+                            && let Ok(generation) =
+                                popups.schedule_close(&instance_uid, &window_uid, &menu_uid)
+                        {
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(POPUP_HIDE_DELAY_MS))
+                                    .await;
+                                let _ = sender.send(NativeCommand::ClosePopupIfGeneration {
+                                    instance_uid,
+                                    window_uid,
+                                    menu_uid,
+                                    generation,
+                                });
+                            });
+                        }
                     });
                 }
                 NativeCommand::SchedulePopupClose {
@@ -558,7 +609,29 @@ impl NativeReactor {
                     {
                         let sender = self.native_sender.clone();
                         tokio::spawn(async move {
-                            tokio::time::sleep(Duration::from_millis(250)).await;
+                            tokio::time::sleep(Duration::from_millis(POPUP_CLOSE_DELAY_MS)).await;
+                            let _ = sender.send(NativeCommand::BeginPopupClose {
+                                instance_uid,
+                                window_uid,
+                                menu_uid,
+                                generation,
+                            });
+                        });
+                    }
+                }
+                NativeCommand::BeginPopupClose {
+                    instance_uid,
+                    window_uid,
+                    menu_uid,
+                    generation,
+                } => {
+                    if let Some(generation) =
+                        self.popups
+                            .advance_close(&instance_uid, &window_uid, &menu_uid, generation)
+                    {
+                        let sender = self.native_sender.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_millis(POPUP_HIDE_DELAY_MS)).await;
                             let _ = sender.send(NativeCommand::ClosePopupIfGeneration {
                                 instance_uid,
                                 window_uid,
@@ -1132,12 +1205,19 @@ impl NativeReactor {
 
     fn hide_popup_window(&self, instance_uid: &str, window_uid: &str, menu_uid: &str) {
         let label = popup_label(instance_uid, window_uid, menu_uid);
+        let parent_label = if window_uid.is_empty() {
+            free_label(instance_uid, menu_uid)
+        } else {
+            menu_label(instance_uid, window_uid, menu_uid)
+        };
+        let closed_menu_uid = menu_uid.to_string();
         self.surfaces.mark_hidden(&label);
         let app = self.app.clone();
         let _ = self.app.run_on_main_thread(move || {
             if let Some(window) = app.get_webview_window(&label) {
                 let _ = set_window_visible_without_activation(&window, false);
             }
+            let _ = app.emit_to(&parent_label, "popup-closed", closed_menu_uid);
         });
     }
 

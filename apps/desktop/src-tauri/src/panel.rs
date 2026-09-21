@@ -4,8 +4,7 @@ use std::sync::{LazyLock, Mutex};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{
-    Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, Window,
+    Emitter, LogicalPosition, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
@@ -21,7 +20,7 @@ use windows::core::BOOL;
 use crate::protocol::{BrowserWindowSnapshot, MenuAnchor, MenuPlacement};
 use crate::state_machine::{SurfaceState, log_surface_transition};
 
-const POPUP_MIN_WIDTH: f64 = 180.0;
+const POPUP_MIN_WIDTH: f64 = 72.0;
 const POPUP_MAX_WIDTH: f64 = 1_600.0;
 const POPUP_MIN_HEIGHT: f64 = 48.0;
 const POPUP_MAX_HEIGHT: f64 = 900.0;
@@ -264,14 +263,15 @@ pub struct PopupRequest {
     pub height: f64,
     pub instance_uid: String,
     pub menu_uid: String,
+    pub parent_label: String,
     pub payload: Value,
+    pub request_uid: String,
     pub width: f64,
     pub window_uid: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct PopupAnchor {
-    pub height: f64,
     pub x: f64,
     pub y: f64,
 }
@@ -281,7 +281,9 @@ pub struct PopupAnchor {
 pub struct PopupSurface {
     pub instance_uid: String,
     pub menu_uid: String,
+    pub parent_label: String,
     pub payload: Value,
+    pub request_uid: String,
     pub window_uid: String,
 }
 
@@ -289,6 +291,7 @@ pub struct PopupSurface {
 struct StoredPopup {
     anchor: PopupAnchor,
     close_generation: u64,
+    close_pending: bool,
     height: f64,
     surface: PopupSurface,
     width: f64,
@@ -327,11 +330,14 @@ impl PopupRegistry {
         let popup = StoredPopup {
             anchor: request.anchor,
             close_generation,
+            close_pending: false,
             height: request.height.clamp(POPUP_MIN_HEIGHT, POPUP_MAX_HEIGHT),
             surface: PopupSurface {
                 instance_uid: request.instance_uid,
                 menu_uid: request.menu_uid,
+                parent_label: request.parent_label,
                 payload: request.payload,
+                request_uid: request.request_uid,
                 window_uid: request.window_uid,
             },
             width: request.width.clamp(POPUP_MIN_WIDTH, POPUP_MAX_WIDTH),
@@ -366,8 +372,29 @@ impl PopupRegistry {
         let mut entries = self.entries.lock().map_err(|_| "Popup lock failed")?;
         if let Some(popup) = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid)) {
             popup.close_generation = popup.close_generation.wrapping_add(1);
+            popup.close_pending = false;
         }
         Ok(())
+    }
+
+    pub fn prepare_show(
+        &self,
+        instance_uid: &str,
+        window_uid: &str,
+        menu_uid: &str,
+        request_uid: &str,
+    ) -> Option<bool> {
+        let mut entries = self.entries.lock().ok()?;
+        let popup = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid))?;
+        if popup.surface.request_uid != request_uid {
+            return None;
+        }
+        let close_pending = popup.close_pending;
+        if close_pending {
+            popup.close_generation = popup.close_generation.wrapping_add(1);
+            popup.close_pending = false;
+        }
+        Some(close_pending)
     }
 
     pub fn schedule_close(
@@ -381,7 +408,24 @@ impl PopupRegistry {
             .get_mut(&popup_label(instance_uid, window_uid, menu_uid))
             .ok_or("Popup is unavailable")?;
         popup.close_generation = popup.close_generation.wrapping_add(1);
+        popup.close_pending = true;
         Ok(popup.close_generation)
+    }
+
+    pub fn advance_close(
+        &self,
+        instance_uid: &str,
+        window_uid: &str,
+        menu_uid: &str,
+        generation: u64,
+    ) -> Option<u64> {
+        let mut entries = self.entries.lock().ok()?;
+        let popup = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid))?;
+        if !popup.close_pending || popup.close_generation != generation {
+            return None;
+        }
+        popup.close_generation = popup.close_generation.wrapping_add(1);
+        Some(popup.close_generation)
     }
 
     pub fn remove_if_generation(
@@ -576,7 +620,6 @@ impl SurfaceRegistry {
 
 pub fn open_popup(
     app: &tauri::AppHandle,
-    surfaces: &SurfaceRegistry,
     popups: &PopupRegistry,
     request: PopupRequest,
 ) -> Result<(), String> {
@@ -586,7 +629,7 @@ pub fn open_popup(
     let menu_uid = &popup.surface.menu_uid;
     let label = popup_label(instance_uid, window_uid, menu_uid);
     let parent = app
-        .get_webview_window(&menu_label(instance_uid, window_uid, menu_uid))
+        .get_webview_window(&popup.surface.parent_label)
         .ok_or("Menu window is unavailable")?;
     let (window, is_new) = match app.get_webview_window(&label) {
         Some(window) => (window, false),
@@ -625,11 +668,31 @@ pub fn open_popup(
     window
         .set_ignore_cursor_events(false)
         .map_err(|error| error.to_string())?;
-    set_window_visible_without_activation(&window, true)?;
-    surfaces.mark_visible(&label);
     window
         .emit_to(&label, "popup-state", &popup.surface.payload)
         .map_err(|error| error.to_string())
+}
+
+pub fn show_popup(
+    app: &tauri::AppHandle,
+    surfaces: &SurfaceRegistry,
+    popups: &PopupRegistry,
+    instance_uid: &str,
+    window_uid: &str,
+    menu_uid: &str,
+    request_uid: &str,
+) -> bool {
+    let Some(close_pending) = popups.prepare_show(instance_uid, window_uid, menu_uid, request_uid)
+    else {
+        return false;
+    };
+    let label = popup_label(instance_uid, window_uid, menu_uid);
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = set_window_visible_without_activation(&window, true);
+        surfaces.mark_visible(&label);
+        return close_pending;
+    }
+    false
 }
 
 pub fn close_popup(
@@ -657,38 +720,24 @@ fn place_popup(
 ) -> Result<(), String> {
     let scale = parent.scale_factor().map_err(|error| error.to_string())?;
     let parent_position = parent.outer_position().map_err(|error| error.to_string())?;
-    let parent_x = f64::from(parent_position.x) / scale;
-    let parent_y = f64::from(parent_position.y) / scale;
-    let mut x = parent_x + anchor.x;
-    let mut y = parent_y + anchor.y + anchor.height;
-    let mut visible_width = width;
-    let mut visible_height = height;
+    let x = parent_position.x + (anchor.x * scale).round() as i32;
+    let y = parent_position.y + (anchor.y * scale).round() as i32;
+    let physical_width = (width * scale).round().max(1.0) as i32;
+    let physical_height = (height * scale).round().max(1.0) as i32;
+    let hwnd = popup.hwnd().map_err(|error| error.to_string())?;
 
-    if let Some(monitor) = parent
-        .current_monitor()
-        .map_err(|error| error.to_string())?
-    {
-        let monitor_position = monitor.position();
-        let monitor_size = monitor.size();
-        let left = f64::from(monitor_position.x) / scale;
-        let top = f64::from(monitor_position.y) / scale;
-        let right = left + f64::from(monitor_size.width) / scale;
-        let bottom = top + f64::from(monitor_size.height) / scale;
-        visible_width = visible_width.min(right - left);
-        visible_height = visible_height.min(bottom - top);
-        if y + visible_height > bottom {
-            y = parent_y + anchor.y - visible_height;
-        }
-        x = x.clamp(left, (right - visible_width).max(left));
-        y = y.clamp(top, (bottom - visible_height).max(top));
-    }
-
-    popup
-        .set_size(LogicalSize::new(visible_width, visible_height))
-        .map_err(|error| error.to_string())?;
-    popup
-        .set_position(LogicalPosition::new(x, y))
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            x,
+            y,
+            physical_width,
+            physical_height,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        )
         .map_err(|error| error.to_string())
+    }
 }
 
 pub fn menu_position(
