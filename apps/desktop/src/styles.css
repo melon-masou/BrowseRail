@@ -45,10 +45,24 @@ button {
   left: 0;
   width: 100%;
   max-width: 100%;
+  pointer-events: none;
+}
+
+.detached-popup::before {
+  pointer-events: none;
 }
 
 .detached-popup[data-direction="up"] {
   height: 100%;
+}
+
+.popup-surface[data-popup-content-hidden] .detached-popup {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.popup-surface[data-popup-content-hidden] .menu-column {
+  pointer-events: none !important;
 }
 
 .menu-bar {
@@ -207,6 +221,20 @@ button {
   left: 0;
   border-right: 1px solid rgb(0 0 0 / 18%);
   border-left: 0;
+}
+
+.popup-container .menu-button[data-expand-direction="left"]::after {
+  right: auto;
+  left: 0;
+  border-right: 1px solid rgb(0 0 0 / 18%);
+  border-left: 0;
+}
+
+.popup-container .menu-button[data-expand-direction="right"]::after {
+  right: 0;
+  left: auto;
+  border-right: 0;
+  border-left: 1px solid rgb(0 0 0 / 18%);
 }
 
 .menu-button[data-folder]:hover::after,

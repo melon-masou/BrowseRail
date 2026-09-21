@@ -391,6 +391,49 @@ fn surface_available_height(window: tauri::Window, above: bool) -> Result<f64, S
 }
 
 #[cfg(target_os = "windows")]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HorizontalSpace {
+    anchor_left: f64,
+    anchor_right: f64,
+    left: f64,
+    right: f64,
+    window_left: f64,
+    work_left: f64,
+    work_right: f64,
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn surface_horizontal_space(
+    window: tauri::Window,
+    anchor_left: f64,
+    anchor_right: f64,
+) -> Result<HorizontalSpace, String> {
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .ok_or("Current monitor is unavailable")?;
+    let work_area = monitor.work_area();
+    let window_left = f64::from(position.x) / scale;
+    let work_left = f64::from(work_area.position.x) / scale;
+    let work_right = (f64::from(work_area.position.x) + f64::from(work_area.size.width)) / scale;
+    let anchor_left_screen = window_left + anchor_left;
+    let anchor_right_screen = window_left + anchor_right;
+    Ok(HorizontalSpace {
+        anchor_left: anchor_left_screen,
+        anchor_right: anchor_right_screen,
+        left: (anchor_left_screen - work_left).max(0.0),
+        right: (work_right - anchor_right_screen).max(0.0),
+        window_left,
+        work_left,
+        work_right,
+    })
+}
+
+#[cfg(target_os = "windows")]
 #[tauri::command]
 fn surface_state(
     state: tauri::State<'_, AppState>,
@@ -477,6 +520,15 @@ fn show_popup(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn set_popup_hit_regions(
+    window: tauri::Window,
+    rects: Vec<panel::PopupHitRect>,
+) -> Result<(), String> {
+    panel::set_popup_hit_regions(&window, &rects)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn resize_and_position(
     window: tauri::Window,
     width: f64,
@@ -529,6 +581,28 @@ fn schedule_popup_close(
             instance_uid,
             window_uid,
             menu_uid,
+        });
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_popup_pointer_inside(
+    state: tauri::State<'_, AppState>,
+    instance_uid: String,
+    window_uid: String,
+    menu_uid: String,
+    source: panel::PopupPointerSource,
+    inside: bool,
+) -> Result<(), String> {
+    let _ = state
+        .native_sender
+        .send(native::NativeCommand::SetPopupPointerInside {
+            instance_uid,
+            window_uid,
+            menu_uid,
+            source,
+            inside,
         });
     Ok(())
 }
@@ -1035,6 +1109,7 @@ pub fn run() {
             surface_state,
             toggle_menu_collapsed,
             surface_available_height,
+            surface_horizontal_space,
             invoke_action,
             invoke_free_action,
             update_free_placement,
@@ -1047,9 +1122,11 @@ pub fn run() {
             set_font_family,
             open_popup,
             show_popup,
+            set_popup_hit_regions,
             resize_and_position,
             cancel_popup_close,
             schedule_popup_close,
+            set_popup_pointer_inside,
             close_popup,
             begin_menu_customization,
             start_menu_drag,

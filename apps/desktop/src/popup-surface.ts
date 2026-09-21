@@ -17,6 +17,10 @@ interface PopupPayload {
   maxColumnHeight: number;
   popupFontSize: number;
   requestUid: string;
+  rootDirection: ExpandDirection;
+  rootOffsetX: number;
+  workLeft: number;
+  workRight: number;
 }
 
 interface PopupSurfaceState {
@@ -24,8 +28,19 @@ interface PopupSurfaceState {
   payload?: PopupPayload;
 }
 
+interface PointerSample {
+  time: number;
+  x: number;
+  y: number;
+}
+
 const HOVER_OPEN_DELAY_MS = 60;
+const SUBMENU_SWITCH_DELAY_MS = 180;
+const SUBMENU_AIM_DELAY_MS = 320;
+const POINTER_TRAIL_MAX_AGE_MS = 180;
 const MIN_COLUMN_HEIGHT = 48;
+const BASE_MAX_COLUMN_WIDTH = 420;
+const BASE_POPUP_FONT_SIZE = 13;
 
 export async function initializePopupSurface(): Promise<void> {
   const query = new URLSearchParams(location.search);
@@ -49,16 +64,26 @@ export async function initializePopupSurface(): Promise<void> {
   let currentPayload: PopupPayload | undefined;
   let editingLocked = false;
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  let hoverTarget: HTMLElement | undefined;
 
-  const cancelNativeClose = (): void => {
-    void invoke("cancel_popup_close", { instanceUid, menuUid, windowUid }).catch(() => {});
+  const setContentVisible = (visible: boolean): void => {
+    root.toggleAttribute("data-popup-content-hidden", !visible);
   };
-  const scheduleNativeClose = (): void => {
-    void invoke("schedule_popup_close", { instanceUid, menuUid, windowUid }).catch(() => {});
+  const setPopupPointerInside = (inside: boolean): void => {
+    void invoke("set_popup_pointer_inside", {
+      inside,
+      instanceUid,
+      menuUid,
+      source: "popup",
+      windowUid,
+    }).catch(() => {});
   };
 
   await listen<PopupPayload>("popup-state", ({ payload }) => {
     render(payload);
+  }, { target: surfaceLabel });
+  await listen<boolean>("popup-content-visibility", ({ payload }) => {
+    setContentVisible(payload);
   }, { target: surfaceLabel });
   await listen<boolean>("editing-lock-changed", ({ payload }) => {
     editingLocked = payload;
@@ -72,24 +97,80 @@ export async function initializePopupSurface(): Promise<void> {
   function render(payload: PopupPayload): void {
     currentPayload = payload;
     editingLocked = payload.editingLocked;
+    setContentVisible(true);
     clearTimeout(hoverTimer);
+    hoverTimer = undefined;
+    hoverTarget = undefined;
     root.className = "popup-surface";
     root.style.setProperty("--menu-font-size", `${payload.popupFontSize}px`);
     root.style.setProperty("--menu-item-height", `${payload.itemHeight}px`);
 
     const popup = document.createElement("div");
     popup.className = "popup-container detached-popup";
-    popup.dataset.direction = payload.direction;
+    popup.dataset.direction = payload.rootDirection;
     popup.ariaLabel = "BrowseRail bookmark menu";
-    popup.style.flexDirection = payload.direction === "left" ? "row-reverse" : "row";
-    popup.style.alignItems = payload.direction === "up" ? "flex-end" : "flex-start";
-    popup.addEventListener("pointerenter", cancelNativeClose);
-    popup.addEventListener("pointerleave", scheduleNativeClose);
-
+    const horizontal = payload.direction === "left" || payload.direction === "right";
+    if (horizontal) {
+      popup.dataset.horizontal = "true";
+      popup.style.display = "block";
+      popup.style.height = "100%";
+    } else {
+      popup.style.flexDirection = "row";
+      popup.style.alignItems = payload.direction === "up" ? "flex-end" : "flex-start";
+    }
     let levels: LayoutEntry[][] = [payload.entries];
     let expandedUids: string[] = [];
+    let expandedDirections: ExpandDirection[] = [];
     const columns: HTMLElement[] = [];
     const renderedLevels: LayoutEntry[][] = [];
+    const pointerTrail: PointerSample[] = [];
+    let hitRegionRevision = 0;
+
+    popup.addEventListener("pointermove", (event) => {
+      const sample = { time: event.timeStamp, x: event.clientX, y: event.clientY };
+      pointerTrail.push(sample);
+      const cutoff = sample.time - POINTER_TRAIL_MAX_AGE_MS;
+      while (pointerTrail.length > 2 && pointerTrail[0]!.time < cutoff) {
+        pointerTrail.shift();
+      }
+    }, { capture: true });
+
+    const applyHitRegions = async (revision: number): Promise<boolean> => {
+      if (revision !== hitRegionRevision || currentPayload?.requestUid !== payload.requestUid) {
+        return false;
+      }
+      const rects = columns
+        .filter((column) => column.isConnected)
+        .map((column) => {
+          const rect = column.getBoundingClientRect();
+          return {
+            bottom: rect.bottom,
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+          };
+        });
+      try {
+        await invoke("set_popup_hit_regions", { rects });
+        return revision === hitRegionRevision;
+      } catch {
+        return false;
+      }
+    };
+
+    const scheduleHitRegionUpdate = (): void => {
+      const revision = ++hitRegionRevision;
+      requestAnimationFrame(() => {
+        void applyHitRegions(revision);
+      });
+    };
+
+    const submenuSwitchDelay = (level: number): number => {
+      const child = columns[level + 1];
+      return child && isPointerHeadingToward(pointerTrail, child)
+        ? SUBMENU_AIM_DELAY_MS
+        : SUBMENU_SWITCH_DELAY_MS;
+    };
 
     const dispatchAction = (actionUid: string): void => {
       void invoke("close_popup", { instanceUid, menuUid, windowUid });
@@ -100,26 +181,45 @@ export async function initializePopupSurface(): Promise<void> {
       void action.catch(() => {});
     };
 
-    const scheduleHover = (target: HTMLElement, open: () => void): void => {
+    const scheduleHover = (
+      target: HTMLElement,
+      open: () => void,
+      delay: () => number = () => HOVER_OPEN_DELAY_MS,
+    ): void => {
+      const cancel = (): void => {
+        if (hoverTarget !== target) return;
+        clearTimeout(hoverTimer);
+        hoverTimer = undefined;
+        hoverTarget = undefined;
+      };
       const schedule = (): void => {
         clearTimeout(hoverTimer);
+        hoverTarget = target;
         hoverTimer = setTimeout(() => {
+          if (hoverTarget !== target) return;
           hoverTimer = undefined;
+          hoverTarget = undefined;
           if (target.isConnected && currentPayload?.requestUid === payload.requestUid) open();
-        }, HOVER_OPEN_DELAY_MS);
+        }, delay());
       };
       target.addEventListener("pointerenter", schedule);
       target.addEventListener("pointermove", () => {
-        if (hoverTimer) schedule();
+        if (hoverTarget === target && hoverTimer) schedule();
       });
-      target.addEventListener("pointerleave", () => clearTimeout(hoverTimer));
-      target.addEventListener("pointercancel", () => clearTimeout(hoverTimer));
-      target.addEventListener("pointerdown", () => clearTimeout(hoverTimer), { capture: true });
+      target.addEventListener("pointerleave", cancel);
+      target.addEventListener("pointercancel", cancel);
+      target.addEventListener("pointerdown", cancel, { capture: true });
     };
 
     const buildColumn = (entries: LayoutEntry[], level: number): HTMLElement => {
       const column = document.createElement("div");
       column.className = "menu-column";
+      column.addEventListener("pointerenter", () => setPopupPointerInside(true));
+      column.addEventListener("pointerleave", (event) => {
+        const related = event.relatedTarget as Element | null;
+        if (related?.closest(".menu-column")) return;
+        setPopupPointerInside(false);
+      });
       column.style.maxHeight = `${payload.maxColumnHeight}px`;
       column.style.width = `${calculateColumnWidth(
         entries,
@@ -127,6 +227,7 @@ export async function initializePopupSurface(): Promise<void> {
         payload.maxColumnHeight,
         payload.itemHeight,
       )}px`;
+      column.dataset.columnWidth = column.style.width;
       if (payload.color) {
         column.dataset.accent = "true";
         column.style.backgroundColor = payload.color;
@@ -142,16 +243,31 @@ export async function initializePopupSurface(): Promise<void> {
         }
         if (entry.kind === "folder") {
           button.dataset.uid = entry.uid;
+          const preferredDirection =
+            entry.expandDirection === "left" || entry.expandDirection === "right"
+              ? entry.expandDirection
+              : payload.direction;
+          button.dataset.expandDirection = preferredDirection;
           button.toggleAttribute("data-expanded", expandedUids[level] === entry.uid);
           const openChild = (): void => {
-            cancelNativeClose();
+            setPopupPointerInside(true);
             if (expandedUids[level] === entry.uid && levels.length > level + 1) return;
             levels = [...levels.slice(0, level + 1), entry.children];
             expandedUids = [...expandedUids.slice(0, level), entry.uid];
+            expandedDirections = [
+              ...expandedDirections.slice(0, level),
+              preferredDirection,
+            ];
             renderLevels();
           };
           if (entry.expandOnHover !== false) {
-            scheduleHover(button, openChild);
+            scheduleHover(
+              button,
+              openChild,
+              () => levels.length > level + 1
+                ? submenuSwitchDelay(level)
+                : HOVER_OPEN_DELAY_MS,
+            );
           } else {
             button.addEventListener("pointerdown", (event) => {
               if (event.button !== 0) return;
@@ -159,6 +275,7 @@ export async function initializePopupSurface(): Promise<void> {
               if (expandedUids[level] === entry.uid) {
                 levels = levels.slice(0, level + 1);
                 expandedUids = expandedUids.slice(0, level);
+                expandedDirections = expandedDirections.slice(0, level);
                 renderLevels();
               } else {
                 openChild();
@@ -167,12 +284,15 @@ export async function initializePopupSurface(): Promise<void> {
           }
         } else {
           button.addEventListener("pointerenter", () => {
-            cancelNativeClose();
+            setPopupPointerInside(true);
+          });
+          scheduleHover(button, () => {
             if (levels.length <= level + 1) return;
             levels = levels.slice(0, level + 1);
             expandedUids = expandedUids.slice(0, level);
+            expandedDirections = expandedDirections.slice(0, level);
             renderLevels();
-          });
+          }, () => submenuSwitchDelay(level));
           button.addEventListener("pointerdown", (event) => {
             if (event.button === 0) {
               event.preventDefault();
@@ -206,7 +326,45 @@ export async function initializePopupSurface(): Promise<void> {
 
       for (let level = diffFrom; level < levels.length; level++) {
         const column = buildColumn(levels[level]!, level);
-        if (level > 0 && payload.direction !== "up") {
+        column.style.zIndex = String(level + 1);
+        if (horizontal) {
+          column.style.position = "absolute";
+          if (level === 0) {
+            column.style.left = `${payload.rootOffsetX}px`;
+            column.style.top = "0px";
+          } else {
+            const parent = columns[level - 1]?.querySelector<HTMLElement>(
+              `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
+            );
+            if (parent) {
+              const popupRect = popup.getBoundingClientRect();
+              const parentRect = parent.getBoundingClientRect();
+              const parentLeft = parentRect.left - popupRect.left;
+              const parentRight = parentRect.right - popupRect.left;
+              const columnWidth = Number.parseFloat(column.dataset.columnWidth ?? "0");
+              const preferred = expandedDirections[level - 1] === "left" ? "left" : "right";
+              const fitsPreferred = preferred === "left"
+                ? parentLeft - columnWidth >= payload.workLeft
+                : parentRight + columnWidth <= payload.workRight;
+              const direction = fitsPreferred
+                ? preferred
+                : preferred === "left"
+                  ? "right"
+                  : "left";
+              parent.dataset.expandDirection = direction;
+              const left = direction === "left"
+                ? parentLeft - columnWidth
+                : parentRight;
+              const top = parentRect.top - popupRect.top;
+              column.style.left = `${left}px`;
+              column.style.top = `${Math.max(0, top)}px`;
+              column.style.maxHeight = `${Math.max(
+                MIN_COLUMN_HEIGHT,
+                payload.maxColumnHeight - Math.max(0, top),
+              )}px`;
+            }
+          }
+        } else if (level > 0 && payload.direction !== "up") {
           const parent = columns[level - 1]?.querySelector<HTMLElement>(
             `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
           );
@@ -231,6 +389,7 @@ export async function initializePopupSurface(): Promise<void> {
           button.toggleAttribute("data-expanded", button.dataset.uid === expandedUid);
         }
       }
+      scheduleHitRegionUpdate();
     };
 
     root.replaceChildren(popup);
@@ -238,11 +397,15 @@ export async function initializePopupSurface(): Promise<void> {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (currentPayload?.requestUid !== payload.requestUid) return;
-        void invoke("show_popup", {
-          instanceUid,
-          menuUid,
-          requestUid: payload.requestUid,
-          windowUid,
+        const revision = ++hitRegionRevision;
+        void applyHitRegions(revision).then((applied) => {
+          if (!applied || currentPayload?.requestUid !== payload.requestUid) return;
+          void invoke("show_popup", {
+            instanceUid,
+            menuUid,
+            requestUid: payload.requestUid,
+            windowUid,
+          });
         });
       });
     });
@@ -270,6 +433,41 @@ function menuButton(
     button.setAttribute("aria-haspopup", "menu");
   }
   return button;
+}
+
+function isPointerHeadingToward(
+  pointerTrail: PointerSample[],
+  child: HTMLElement,
+): boolean {
+  const current = pointerTrail.at(-1);
+  if (!current) return false;
+
+  let previous: PointerSample | undefined;
+  for (const sample of pointerTrail) {
+    if (sample === current) break;
+    if (Math.hypot(current.x - sample.x, current.y - sample.y) >= 4) {
+      previous = sample;
+      break;
+    }
+  }
+  if (!previous) return false;
+
+  const childRect = child.getBoundingClientRect();
+  const childIsRight = childRect.left >= current.x;
+  const childIsLeft = childRect.right <= current.x;
+  if (!childIsRight && !childIsLeft) return false;
+
+  const direction = childIsRight ? 1 : -1;
+  const movementX = (current.x - previous.x) * direction;
+  if (movementX <= 0) return false;
+
+  const nearEdgeX = childIsRight ? childRect.left : childRect.right;
+  const remainingX = (nearEdgeX - current.x) * direction;
+  const projectedY = current.y +
+    ((current.y - previous.y) / movementX) * Math.max(0, remainingX);
+  const tolerance = 8;
+  return projectedY >= childRect.top - tolerance &&
+    projectedY <= childRect.bottom + tolerance;
 }
 
 let measureCanvas: HTMLCanvasElement | undefined;
@@ -304,7 +502,10 @@ function calculateColumnWidth(
   }
   const contentHeight = 14 + entries.length * (itemHeight + 2);
   const scrollbarBuffer = contentHeight > maxColumnHeight ? 18 : 0;
-  return Math.min(420, Math.max(72, Math.ceil(width + 20) + scrollbarBuffer));
+  const maxWidth = Math.round(
+    BASE_MAX_COLUMN_WIDTH * Math.max(1, fontSize / BASE_POPUP_FONT_SIZE),
+  );
+  return Math.min(maxWidth, Math.max(72, Math.ceil(width + 20) + scrollbarBuffer));
 }
 
 function requiredQuery(query: URLSearchParams, name: string, allowEmpty = false): string {

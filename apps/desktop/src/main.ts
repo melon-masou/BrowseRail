@@ -126,13 +126,16 @@ async function initializeSurface(): Promise<void> {
   let hoverOpenTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverOpenPending = false;
   let pendingMenuRender = false;
+  let barPointerInside = false;
 
   window.addEventListener(
     "pointerout",
     (event) => {
-      // Pointer left the window entirely (no relatedTarget) → close the popup.
+      // Crossing into the popup is also a window-level pointerout. Only report
+      // this window's presence; native code closes after both windows are out.
       if (!event.relatedTarget) {
-        scheduleClose();
+        barPointerInside = false;
+        setPopupPointerInside("bar", false);
       }
     },
     { passive: true },
@@ -229,17 +232,26 @@ async function initializeSurface(): Promise<void> {
     renderSurface(initial.menu);
   }
 
-  function scheduleClose(): void {
-    // The native generation timer supplies the grace period needed to cross
-    // from the bar HWND into the separate popup HWND.
+  function scheduleIntentClose(): void {
     if (customizing) return;
     if (!activePopupFolderUid) return;
     void invoke("schedule_popup_close", { instanceUid, menuUid, windowUid }).catch(() => {});
   }
 
-  function cancelClose(): void {
+  function cancelIntentClose(): void {
     if (!activePopupFolderUid) return;
     void invoke("cancel_popup_close", { instanceUid, menuUid, windowUid }).catch(() => {});
+  }
+
+  function setPopupPointerInside(source: "bar" | "popup", inside: boolean): void {
+    if (!activePopupFolderUid) return;
+    void invoke("set_popup_pointer_inside", {
+      inside,
+      instanceUid,
+      menuUid,
+      source,
+      windowUid,
+    }).catch(() => {});
   }
 
   function cancelHoverOpen(): void {
@@ -277,14 +289,6 @@ async function initializeSurface(): Promise<void> {
     target.addEventListener("pointerdown", cancelHoverOpen, { capture: true });
   }
 
-  // Any element that belongs to the open popup surface: the flyout itself or
-  // the menu bar/anchor button.
-  function isPopupInteractionTarget(el: Element | null): boolean {
-    if (!el) return false;
-    if (!el.closest) return false;
-    return Boolean(el.closest(".popup-container, .menu-bar"));
-  }
-
   let measureCanvas: HTMLCanvasElement | null = null;
   function measureTextWidth(text: string, fontSize: number): number {
     if (!measureCanvas) {
@@ -299,9 +303,16 @@ async function initializeSurface(): Promise<void> {
   }
 
   const MIN_COLUMN_WIDTH = 72;
-  const MAX_COLUMN_WIDTH = 420;
+  const BASE_MAX_COLUMN_WIDTH = 420;
+  const BASE_POPUP_FONT_SIZE = 13;
   const MIN_COLUMN_HEIGHT = 48;
   const POPUP_SCREEN_MARGIN = 4;
+
+  function maxColumnWidth(fontSize: number): number {
+    return Math.round(
+      BASE_MAX_COLUMN_WIDTH * Math.max(1, fontSize / BASE_POPUP_FONT_SIZE),
+    );
+  }
 
   function calculateColumnWidth(
     entries: LayoutEntry[],
@@ -340,7 +351,10 @@ async function initializeSurface(): Promise<void> {
     const itemHeight = Math.max(24, Math.round(fontSize * 2.7));
     const contentHeight = 12 + 2 + entries.length * (itemHeight + 2);
     const scrollbarBuffer = contentHeight > maxColumnHeight ? 18 : 0;
-    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, neededWidth + scrollbarBuffer));
+    return Math.min(
+      maxColumnWidth(fontSize),
+      Math.max(MIN_COLUMN_WIDTH, neededWidth + scrollbarBuffer),
+    );
   }
 
   async function getSurfaceAvailableHeight(above: boolean): Promise<number> {
@@ -349,6 +363,24 @@ async function initializeSurface(): Promise<void> {
       throw new Error("Surface available height is unavailable");
     }
     return height;
+  }
+
+  async function getSurfaceHorizontalSpace(
+    anchorLeft: number,
+    anchorRight: number,
+  ): Promise<{
+    anchorLeft: number;
+    anchorRight: number;
+    left: number;
+    right: number;
+    windowLeft: number;
+    workLeft: number;
+    workRight: number;
+  }> {
+    return invoke("surface_horizontal_space", {
+      anchorLeft,
+      anchorRight,
+    });
   }
 
   function parseFontSize(value: unknown): number {
@@ -460,12 +492,13 @@ async function initializeSurface(): Promise<void> {
     menuBar.style.width = `${renderedDims.width}px`;
     menuBar.style.height = `${renderedDims.height}px`;
 
-    menuBar.addEventListener("pointerenter", cancelClose);
-    menuBar.addEventListener("pointerleave", (event) => {
-      const related = event.relatedTarget as Element | null;
-      if (!isPopupInteractionTarget(related)) {
-        scheduleClose();
-      }
+    menuBar.addEventListener("pointerenter", () => {
+      barPointerInside = true;
+      setPopupPointerInside("bar", true);
+    });
+    menuBar.addEventListener("pointerleave", () => {
+      barPointerInside = false;
+      setPopupPointerInside("bar", false);
     });
 
     if (menuCollapsed) {
@@ -621,7 +654,7 @@ async function initializeSurface(): Promise<void> {
       }
       spaceEl.addEventListener("pointerenter", () => {
         if (activePopupFolderUid) {
-          scheduleClose();
+          scheduleIntentClose();
         }
       });
       return spaceEl;
@@ -668,7 +701,7 @@ async function initializeSurface(): Promise<void> {
     if (entry.kind === "bookmark") {
       button.addEventListener("pointerenter", () => {
         if (activePopupFolderUid) {
-          scheduleClose();
+          scheduleIntentClose();
         }
       });
       button.addEventListener("pointerdown", (event) => {
@@ -701,10 +734,10 @@ async function initializeSurface(): Promise<void> {
               openPopup(entry, button, menuBar);
             }
           },
-          cancelClose,
+          cancelIntentClose,
         );
         button.addEventListener("focus", () => {
-          cancelClose();
+          cancelIntentClose();
           if (hasChildren) {
             openPopup(entry, button, menuBar);
           }
@@ -712,7 +745,7 @@ async function initializeSurface(): Promise<void> {
       } else {
         button.addEventListener("pointerenter", () => {
           if (activePopupFolderUid !== entry.uid && activePopupFolderUid) {
-            scheduleClose();
+            scheduleIntentClose();
           }
         });
         button.addEventListener("pointerdown", (event) => {
@@ -732,7 +765,7 @@ async function initializeSurface(): Promise<void> {
 
   async function openPopup(entry: LayoutEntry & { kind: "folder" }, anchorButton: HTMLElement, menuBar: HTMLElement): Promise<void> {
     {
-      cancelClose();
+      cancelIntentClose();
       cancelHoverOpen();
 
       for (const button of menuBar.querySelectorAll(".menu-button")) {
@@ -756,7 +789,7 @@ async function initializeSurface(): Promise<void> {
         menu.expandDirection === "up"
           ? menu.expandDirection
           : undefined);
-      const direction: ExpandDirection =
+      let direction: ExpandDirection =
         configuredDirection ?? (menu.orientation === "column" ? "right" : "down");
       const theme = applyMenuTheme(menu);
       const anchor = anchorButton.getBoundingClientRect();
@@ -809,12 +842,44 @@ async function initializeSurface(): Promise<void> {
       }
 
       const envelope = popupEnvelope(entry.children);
-      const x =
-        direction === "left"
-          ? anchor.left - popupGap - envelope.width
-          : direction === "right"
-            ? anchor.right + popupGap
-            : anchor.left;
+      const rootColumnWidth = calculateColumnWidth(
+        entry.children,
+        theme.popupFontSize,
+        maxColumnHeight,
+      );
+      let rootDirection = direction;
+      let popupWidth = envelope.width;
+      let popupX = anchor.left;
+      let rootOffsetX = 0;
+      let workLeft = 0;
+      let workRight = popupWidth;
+      if (direction === "left" || direction === "right") {
+        try {
+          const space = await getSurfaceHorizontalSpace(anchor.left, anchor.right);
+          const preferredSpace = direction === "left" ? space.left : space.right;
+          if (rootColumnWidth + popupGap > preferredSpace) {
+            rootDirection = direction === "left" ? "right" : "left";
+          }
+          const sideReserve = Math.max(0, envelope.width - rootColumnWidth);
+          popupWidth = sideReserve * 2 + rootColumnWidth;
+          rootOffsetX = sideReserve;
+          const rootX =
+            rootDirection === "left"
+              ? anchor.left - popupGap - rootColumnWidth
+              : anchor.right + popupGap;
+          popupX = rootX - rootOffsetX;
+          const popupScreenX = space.windowLeft + popupX;
+          workLeft = space.workLeft - popupScreenX;
+          workRight = space.workRight - popupScreenX;
+        } catch (error) {
+          activePopupFolderUid = null;
+          anchorButton.removeAttribute("data-expanded");
+          showSurfaceError(error);
+          return;
+        }
+      }
+      if (activePopupFolderUid !== entry.uid) return;
+      const x = direction === "left" || direction === "right" ? popupX : anchor.left;
       const y =
         direction === "up"
           ? anchor.top - popupGap - envelope.height
@@ -825,6 +890,7 @@ async function initializeSurface(): Promise<void> {
       await invoke("open_popup", {
         request: {
           anchor: { x, y },
+          barPointerInside,
           height: envelope.height,
           instanceUid,
           menuUid,
@@ -839,9 +905,13 @@ async function initializeSurface(): Promise<void> {
             maxColumnHeight,
             popupFontSize: theme.popupFontSize,
             requestUid,
+            rootDirection,
+            rootOffsetX,
+            workLeft,
+            workRight,
           },
           requestUid,
-          width: envelope.width,
+          width: popupWidth,
           windowUid,
         },
       }).catch((error) => {

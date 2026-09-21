@@ -7,6 +7,9 @@ use tauri::{
     Emitter, LogicalPosition, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    CombineRgn, CreateRectRgn, DeleteObject, HGDIOBJ, RGN_OR, SetWindowRgn,
+};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, EnumChildWindows, GWL_EXSTYLE, GWLP_HWNDPARENT, GetWindowLongPtrW,
@@ -21,7 +24,7 @@ use crate::protocol::{BrowserWindowSnapshot, MenuAnchor, MenuPlacement};
 use crate::state_machine::{SurfaceState, log_surface_transition};
 
 const POPUP_MIN_WIDTH: f64 = 72.0;
-const POPUP_MAX_WIDTH: f64 = 1_600.0;
+const POPUP_MAX_WIDTH: f64 = 16_384.0;
 const POPUP_MIN_HEIGHT: f64 = 48.0;
 const POPUP_MAX_HEIGHT: f64 = 900.0;
 const NO_ACTIVATE_SUBCLASS_ID: usize = 1;
@@ -260,6 +263,7 @@ fn is_window_always_on_top(window: &WebviewWindow) -> Result<bool, String> {
 #[serde(rename_all = "camelCase")]
 pub struct PopupRequest {
     pub anchor: PopupAnchor,
+    pub bar_pointer_inside: bool,
     pub height: f64,
     pub instance_uid: String,
     pub menu_uid: String,
@@ -276,6 +280,50 @@ pub struct PopupAnchor {
     pub y: f64,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PopupHitRect {
+    pub bottom: f64,
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+}
+
+fn apply_popup_hit_region(hwnd: HWND, scale: f64, rects: &[PopupHitRect]) -> Result<(), String> {
+    unsafe {
+        let combined = CreateRectRgn(0, 0, 0, 0);
+        for rect in rects {
+            let left = (rect.left * scale).floor() as i32;
+            let top = (rect.top * scale).floor() as i32;
+            let right = (rect.right * scale).ceil() as i32;
+            let bottom = (rect.bottom * scale).ceil() as i32;
+            if right <= left || bottom <= top {
+                continue;
+            }
+            let part = CreateRectRgn(left, top, right, bottom);
+            let _ = CombineRgn(Some(combined), Some(combined), Some(part), RGN_OR);
+            let _ = DeleteObject(HGDIOBJ(part.0));
+        }
+        if SetWindowRgn(hwnd, Some(combined), true) == 0 {
+            let _ = DeleteObject(HGDIOBJ(combined.0));
+            return Err("Failed to set popup hit region".into());
+        }
+    }
+    Ok(())
+}
+
+pub fn set_popup_hit_regions(window: &Window, rects: &[PopupHitRect]) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    apply_popup_hit_region(hwnd, scale, rects)
+}
+
+pub fn clear_popup_hit_region(window: &WebviewWindow) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    apply_popup_hit_region(hwnd, scale, &[])
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PopupSurface {
@@ -290,11 +338,34 @@ pub struct PopupSurface {
 #[derive(Clone)]
 struct StoredPopup {
     anchor: PopupAnchor,
+    bar_pointer_inside: bool,
     close_generation: u64,
-    close_pending: bool,
+    close_pending: Option<PopupCloseReason>,
+    content_closed: bool,
     height: f64,
+    popup_pointer_inside: bool,
     surface: PopupSurface,
     width: f64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PopupPointerSource {
+    Bar,
+    Popup,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PopupCloseReason {
+    Intent,
+    PointerExit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PopupPointerAction {
+    None,
+    Cancel,
+    Schedule(u64),
 }
 
 #[derive(Default)]
@@ -329,9 +400,12 @@ impl PopupRegistry {
             .unwrap_or_default();
         let popup = StoredPopup {
             anchor: request.anchor,
+            bar_pointer_inside: request.bar_pointer_inside,
             close_generation,
-            close_pending: false,
+            close_pending: None,
+            content_closed: false,
             height: request.height.clamp(POPUP_MIN_HEIGHT, POPUP_MAX_HEIGHT),
+            popup_pointer_inside: false,
             surface: PopupSurface {
                 instance_uid: request.instance_uid,
                 menu_uid: request.menu_uid,
@@ -368,33 +442,35 @@ impl PopupRegistry {
         instance_uid: &str,
         window_uid: &str,
         menu_uid: &str,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let mut entries = self.entries.lock().map_err(|_| "Popup lock failed")?;
         if let Some(popup) = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid)) {
+            if popup.content_closed {
+                return Ok(false);
+            }
             popup.close_generation = popup.close_generation.wrapping_add(1);
-            popup.close_pending = false;
+            popup.close_pending = None;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
-    pub fn prepare_show(
+    pub fn can_show(
         &self,
         instance_uid: &str,
         window_uid: &str,
         menu_uid: &str,
         request_uid: &str,
-    ) -> Option<bool> {
-        let mut entries = self.entries.lock().ok()?;
-        let popup = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid))?;
-        if popup.surface.request_uid != request_uid {
-            return None;
-        }
-        let close_pending = popup.close_pending;
-        if close_pending {
-            popup.close_generation = popup.close_generation.wrapping_add(1);
-            popup.close_pending = false;
-        }
-        Some(close_pending)
+    ) -> bool {
+        self.entries
+            .lock()
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .get(&popup_label(instance_uid, window_uid, menu_uid))
+                    .map(|popup| popup.surface.request_uid == request_uid && !popup.content_closed)
+            })
+            .unwrap_or(false)
     }
 
     pub fn schedule_close(
@@ -407,9 +483,50 @@ impl PopupRegistry {
         let popup = entries
             .get_mut(&popup_label(instance_uid, window_uid, menu_uid))
             .ok_or("Popup is unavailable")?;
+        if popup.content_closed {
+            return Err("Popup content is already closed".into());
+        }
         popup.close_generation = popup.close_generation.wrapping_add(1);
-        popup.close_pending = true;
+        popup.close_pending = Some(PopupCloseReason::Intent);
         Ok(popup.close_generation)
+    }
+
+    pub fn set_pointer_inside(
+        &self,
+        instance_uid: &str,
+        window_uid: &str,
+        menu_uid: &str,
+        source: PopupPointerSource,
+        inside: bool,
+    ) -> Result<PopupPointerAction, String> {
+        let mut entries = self.entries.lock().map_err(|_| "Popup lock failed")?;
+        let popup = entries
+            .get_mut(&popup_label(instance_uid, window_uid, menu_uid))
+            .ok_or("Popup is unavailable")?;
+        if popup.content_closed {
+            return Ok(PopupPointerAction::None);
+        }
+
+        match source {
+            PopupPointerSource::Bar => popup.bar_pointer_inside = inside,
+            PopupPointerSource::Popup => popup.popup_pointer_inside = inside,
+        }
+
+        if popup.bar_pointer_inside || popup.popup_pointer_inside {
+            if popup.close_pending == Some(PopupCloseReason::PointerExit) {
+                popup.close_generation = popup.close_generation.wrapping_add(1);
+                popup.close_pending = None;
+                return Ok(PopupPointerAction::Cancel);
+            }
+            return Ok(PopupPointerAction::None);
+        }
+
+        if popup.close_pending.is_none() {
+            popup.close_generation = popup.close_generation.wrapping_add(1);
+            popup.close_pending = Some(PopupCloseReason::PointerExit);
+            return Ok(PopupPointerAction::Schedule(popup.close_generation));
+        }
+        Ok(PopupPointerAction::None)
     }
 
     pub fn advance_close(
@@ -421,10 +538,12 @@ impl PopupRegistry {
     ) -> Option<u64> {
         let mut entries = self.entries.lock().ok()?;
         let popup = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid))?;
-        if !popup.close_pending || popup.close_generation != generation {
+        if popup.close_pending.is_none() || popup.close_generation != generation {
             return None;
         }
         popup.close_generation = popup.close_generation.wrapping_add(1);
+        popup.close_pending = None;
+        popup.content_closed = true;
         Some(popup.close_generation)
     }
 
@@ -657,6 +776,9 @@ pub fn open_popup(
         }
     };
 
+    if !is_new {
+        set_window_visible_without_activation(&window, false)?;
+    }
     place_popup(&parent, &window, &popup.anchor, popup.width, popup.height)?;
     if is_new {
         set_window_no_activate(&window)?;
@@ -682,15 +804,14 @@ pub fn show_popup(
     menu_uid: &str,
     request_uid: &str,
 ) -> bool {
-    let Some(close_pending) = popups.prepare_show(instance_uid, window_uid, menu_uid, request_uid)
-    else {
+    if !popups.can_show(instance_uid, window_uid, menu_uid, request_uid) {
         return false;
-    };
+    }
     let label = popup_label(instance_uid, window_uid, menu_uid);
     if let Some(window) = app.get_webview_window(&label) {
         let _ = set_window_visible_without_activation(&window, true);
         surfaces.mark_visible(&label);
-        return close_pending;
+        return true;
     }
     false
 }
