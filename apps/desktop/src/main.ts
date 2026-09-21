@@ -793,7 +793,7 @@ async function initializeSurface(): Promise<void> {
         configuredDirection ?? (menu.orientation === "column" ? "right" : "down");
       const theme = applyMenuTheme(menu);
       const anchor = anchorButton.getBoundingClientRect();
-      const popupGap = 2;
+      const popupGap = 0;
       let availableHeight: number;
       try {
         availableHeight = await getSurfaceAvailableHeight(direction === "up");
@@ -831,7 +831,7 @@ async function initializeSurface(): Promise<void> {
           descendantHeight = Math.max(descendantHeight, child.height);
         }
         return {
-          width: columnWidth + (descendantWidth > 0 ? 4 + descendantWidth : 0),
+          width: columnWidth + descendantWidth,
           height:
             direction === "up"
               ? Math.max(columnHeight, descendantHeight)

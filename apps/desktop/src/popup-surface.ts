@@ -364,18 +364,34 @@ export async function initializePopupSurface(): Promise<void> {
               )}px`;
             }
           }
-        } else if (level > 0 && payload.direction !== "up") {
+        } else if (level > 0) {
           const parent = columns[level - 1]?.querySelector<HTMLElement>(
             `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
           );
           if (parent) {
-            const offset = parent.getBoundingClientRect().top - popup.getBoundingClientRect().top;
-            const marginTop = Math.min(
-              Math.max(0, offset),
-              Math.max(0, payload.maxColumnHeight - MIN_COLUMN_HEIGHT),
-            );
-            column.style.marginTop = `${marginTop}px`;
-            column.style.maxHeight = `${Math.max(MIN_COLUMN_HEIGHT, payload.maxColumnHeight - marginTop)}px`;
+            const popupRect = popup.getBoundingClientRect();
+            const parentRect = parent.getBoundingClientRect();
+            if (payload.direction === "up") {
+              const marginBottom = Math.min(
+                Math.max(0, popupRect.bottom - parentRect.bottom),
+                Math.max(0, popupRect.height - MIN_COLUMN_HEIGHT),
+              );
+              column.style.marginBottom = `${marginBottom}px`;
+              column.style.maxHeight = `${Math.max(
+                MIN_COLUMN_HEIGHT,
+                popupRect.height - marginBottom,
+              )}px`;
+            } else {
+              const marginTop = Math.min(
+                Math.max(0, parentRect.top - popupRect.top),
+                Math.max(0, popupRect.height - MIN_COLUMN_HEIGHT),
+              );
+              column.style.marginTop = `${marginTop}px`;
+              column.style.maxHeight = `${Math.max(
+                MIN_COLUMN_HEIGHT,
+                popupRect.height - marginTop,
+              )}px`;
+            }
           }
         }
         popup.appendChild(column);

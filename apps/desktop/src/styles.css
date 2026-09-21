@@ -40,11 +40,12 @@ button {
   pointer-events: none;
 }
 
-.detached-popup {
+.popup-container.detached-popup {
   top: 0;
   left: 0;
   width: 100%;
   max-width: 100%;
+  gap: 0;
   pointer-events: none;
 }
 
