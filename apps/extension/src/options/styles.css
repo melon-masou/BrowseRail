@@ -1647,60 +1647,6 @@ output {
   border-top: 1px solid #f1f5f9;
 }
 
-.flatten-space-help {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  width: 18px;
-  height: 20px;
-  min-height: 20px;
-  box-sizing: border-box;
-  padding: 0;
-  cursor: pointer;
-}
-
-.flatten-space-popover {
-  position: fixed;
-  z-index: 10000;
-  width: 300px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.flatten-space-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.flatten-space-syntax {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #475569;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-  user-select: text;
-  cursor: text;
-}
-
 .item-setting-change-btn {
   width: 100%;
   font-size: 12px;
@@ -1952,6 +1898,138 @@ output {
 }
 
 /* Diagnostics Card */
+.toolkit-card {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid #dce1eb;
+  background: white;
+  box-shadow: 0 4px 16px rgb(26 35 54 / 5%);
+  box-sizing: border-box;
+}
+
+.toolkit-card-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolkit-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a2336;
+}
+
+.toolkit-status {
+  font-size: 13px;
+  font-weight: 500;
+  color: #2563eb;
+}
+
+.toolkit-status[data-state="success"] {
+  color: #237a45;
+}
+
+.toolkit-status[data-state="error"] {
+  color: #a52a2a;
+}
+
+.space-bookmark-dialog {
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 20px 40px rgb(0 0 0 / 25%);
+  width: min(480px, 92vw);
+  background: #ffffff;
+  color: #172033;
+}
+
+.space-bookmark-dialog::backdrop {
+  background: rgb(15 23 42 / 45%);
+  backdrop-filter: blur(2px);
+}
+
+.space-bookmark-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.space-bookmark-dialog-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 18px 18px;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.space-bookmark-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.space-bookmark-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.space-bookmark-check-label input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  min-height: 15px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
+#space-bookmark-color:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.space-bookmark-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.space-bookmark-folder-name {
+  font-weight: 500;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-bookmark-help {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #475569;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.space-bookmark-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .debug-card {
   margin-top: 24px;
   margin-bottom: 24px;

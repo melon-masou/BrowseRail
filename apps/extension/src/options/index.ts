@@ -34,6 +34,7 @@ import {
   type UrlRule,
 } from "../config";
 import {
+  buildSpaceDirectiveUrl,
   type BookmarkNode,
   combineRootAndItemPath,
   findBookmarkNodeByPath,
@@ -183,10 +184,17 @@ const colorPopoverCycleToggle = element<HTMLInputElement>("color-popover-cycle-t
 const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-section");
 const colorPopoverCycleList = element<HTMLDivElement>("color-popover-cycle-list");
 const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
-const flattenSpaceHelp = element<HTMLButtonElement>("flatten-space-help");
-const flattenSpaceSyntax = element<HTMLParagraphElement>("flatten-space-syntax");
-const flattenSpacePopover = element<HTMLDivElement>("flatten-space-popover");
-const flattenSpaceClose = element<HTMLButtonElement>("flatten-space-close");
+const addSpaceBookmarkBtn = element<HTMLButtonElement>("add-space-bookmark-btn");
+const spaceBookmarkDialog = element<HTMLDialogElement>("space-bookmark-dialog");
+const spaceBookmarkClose = element<HTMLButtonElement>("space-bookmark-close");
+const spaceBookmarkCloseBtn = element<HTMLButtonElement>("space-bookmark-close-btn");
+const spaceBookmarkForm = element<HTMLFormElement>("space-bookmark-form");
+const spaceBookmarkUnits = element<HTMLInputElement>("space-bookmark-units");
+const spaceBookmarkColor = element<HTMLInputElement>("space-bookmark-color");
+const spaceBookmarkTransparent = element<HTMLInputElement>("space-bookmark-transparent");
+const spaceBookmarkResult = element<HTMLOutputElement>("space-bookmark-result");
+const spaceBookmarkFolderBtn = element<HTMLButtonElement>("space-bookmark-folder-btn");
+const spaceBookmarkFolderDisplay = element<HTMLSpanElement>("space-bookmark-folder-display");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
@@ -226,9 +234,12 @@ let activeAddBtn: HTMLElement | null = null;
 // Picker state
 let pickerCurrentFolderId = "0";
 let pickerSelectedId: string | null = null;
-let pickerMode: "addItem" | "editItem" | "selectRoot" = "addItem";
+let pickerMode: "addItem" | "editItem" | "selectRoot" | "pickFolder" = "addItem";
 let pickerTargetMenuIndex = -1;
 let pickerTargetItemIndex = -1;
+// Remembers the destination folder chosen for the gap-bookmark tool so the next
+// open reuses it. Only the gap-bookmark dialog (pickFolder mode) reads this.
+let gapBookmarkFolderId = "0";
 
 void initialize();
 
@@ -241,9 +252,7 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     "state" in message &&
     typeof message.state === "string"
   ) {
-    const detail =
-      "detail" in message && typeof message.detail === "string" ? message.detail : undefined;
-    renderDesktopState(message.state, detail);
+    renderDesktopState(message.state);
   }
 });
 
@@ -391,7 +400,7 @@ function setBookmarkRootPrefix(segments: string[]): void {
 pickerUpBtn.addEventListener("click", () => {
   const currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree as BookmarkNode[]);
   if (currentPath.length > 1) {
-    const rootNode = pickerMode === "selectRoot" ? undefined : getRootNode();
+    const rootNode = pickerMode === "selectRoot" || pickerMode === "pickFolder" ? undefined : getRootNode();
     if (rootNode && pickerCurrentFolderId === rootNode.id) {
       return;
     }
@@ -412,6 +421,15 @@ pickerSelectCurrentBtn.addEventListener("click", () => {
 });
 
 pickerConfirmBtn.addEventListener("click", () => {
+  if (pickerMode === "pickFolder") {
+    const targetId =
+      pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : "0");
+    gapBookmarkFolderId = targetId;
+    updateGapBookmarkFolderDisplay();
+    pickerDialog.close();
+    return;
+  }
+
   if (pickerMode === "selectRoot") {
     const targetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
     const targetNode = targetId && targetId !== "0" ? findBookmarkNode(targetId, rawBookmarkTree) : undefined;
@@ -505,7 +523,7 @@ async function refreshBookmarkTree(): Promise<void> {
 }
 
 async function openBookmarkPicker(
-  mode: "addItem" | "editItem" | "selectRoot",
+  mode: "addItem" | "editItem" | "selectRoot" | "pickFolder",
   menuIndex = -1,
   itemIndex = -1,
 ): Promise<void> {
@@ -566,6 +584,22 @@ async function openBookmarkPicker(
         }
       }
     }
+  } else if (mode === "pickFolder") {
+    // Reuse the folder chosen last time; fall back to the configured root.
+    const remembered = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
+    const target = remembered ?? rootNode;
+    pickerSelectedId = target?.id ?? null;
+    if (target) {
+      const path = getFolderPath(target.id, rawBookmarkTree as BookmarkNode[]);
+      if (path.length > 1) {
+        const parent = path[path.length - 2];
+        if (parent) {
+          pickerCurrentFolderId = parent.id;
+        }
+      } else {
+        pickerCurrentFolderId = target.id;
+      }
+    }
   } else {
     pickerSelectedId = null;
   }
@@ -581,6 +615,9 @@ async function openBookmarkPicker(
   if (mode === "selectRoot") {
     pickerTitle.textContent = t("picker.selectRootTitle");
     pickerConfirmBtn.textContent = t("picker.selectRootConfirm");
+  } else if (mode === "pickFolder") {
+    pickerTitle.textContent = t("picker.pickFolderTitle");
+    pickerConfirmBtn.textContent = t("picker.pickFolderConfirm");
   } else if (mode === "editItem") {
     pickerTitle.textContent = t("picker.changeTitle");
     pickerConfirmBtn.textContent = t("picker.apply");
@@ -663,7 +700,7 @@ function enrichMenuItemPaths(
 }
 
 function renderPicker(): void {
-  const rootNode = pickerMode === "selectRoot" ? undefined : getRootNode();
+  const rootNode = pickerMode === "selectRoot" || pickerMode === "pickFolder" ? undefined : getRootNode();
   const currentFolder = findBookmarkNode(pickerCurrentFolderId, rawBookmarkTree);
   const currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree as BookmarkNode[]);
 
@@ -725,9 +762,10 @@ function renderPicker(): void {
     currentFolder?.children ??
     (rawBookmarkTree.length > 0 ? rawBookmarkTree[0].children ?? rawBookmarkTree : []);
 
-  const items = pickerMode === "selectRoot"
-    ? allItems.filter((node) => node.children !== undefined || node.url === undefined)
-    : allItems;
+  const items =
+    pickerMode === "selectRoot" || pickerMode === "pickFolder"
+      ? allItems.filter((node) => node.children !== undefined || node.url === undefined)
+      : allItems;
 
   pickerContent.replaceChildren();
 
@@ -801,6 +839,19 @@ function renderPicker(): void {
 }
 
 function updateSelectedInfo(): void {
+  if (pickerMode === "pickFolder") {
+    pickerFlattenLabel.style.display = "none";
+    pickerHoverExpandLabel.style.display = "none";
+    pickerIncludeFoldersLabel.style.display = "none";
+    // Mirror the select-root flow: an explicitly selected folder wins, otherwise
+    // the folder currently open can be confirmed directly.
+    const targetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
+    const targetNode = targetId ? findBookmarkNode(targetId, rawBookmarkTree) : undefined;
+    const isFolder = targetNode?.children !== undefined || targetNode?.url === undefined;
+    pickerConfirmBtn.disabled = !(targetId && isFolder);
+    return;
+  }
+
   if (pickerMode === "selectRoot") {
     pickerFlattenLabel.style.display = "none";
     pickerHoverExpandLabel.style.display = "none";
@@ -937,7 +988,7 @@ async function refreshDesktopState(): Promise<void> {
       type: "getDesktopState",
     })) as { state?: string; detail?: string } | undefined;
     if (response?.state) {
-      renderDesktopState(response.state, response.detail);
+      renderDesktopState(response.state);
     }
   } catch {
     // Ignore if background is unavailable
@@ -974,6 +1025,9 @@ function rerenderForLanguage(): void {
   if (pickerDialog.open) {
     updateSelectedInfo();
   }
+  if (spaceBookmarkDialog.open) {
+    updateGapBookmarkFolderDisplay();
+  }
 }
 
 function initHeaderLinks(): void {
@@ -1007,7 +1061,7 @@ async function initialize(): Promise<void> {
   initColorPopover();
   initMenuSettingsDialog();
   initItemSettingsPopover();
-initFlattenSpacePopover();
+  initSpaceBookmarkDialog();
   initAddItemPopover();
   void refreshDesktopState();
   const [config, enabled, tree, rootPrefix] = await Promise.all([
@@ -1023,6 +1077,9 @@ initFlattenSpacePopover();
   widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
   bookmarkRootPrefix = rootPrefix;
+  // Default the gap-bookmark destination to the configured root, matching the
+  // location gap bookmarks landed in before the picker existed.
+  gapBookmarkFolderId = getRootNode()?.id ?? "0";
   if (bookmarkRootInput) {
     // Read-only display: the root is set only via the "pick root" button, so a
     // folder title containing "/" can be represented (a typed string can't).
@@ -1854,7 +1911,6 @@ function initItemSettingsPopover(): void {
     if (
       target &&
       !itemSettingsPopover.contains(target) &&
-      !flattenSpacePopover.contains(target) &&
       activeItemSettingsBtn &&
       !activeItemSettingsBtn.contains(target)
     ) {
@@ -1949,49 +2005,65 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
 
 function closeItemSettingsPopover(): void {
   itemSettingsPopover.style.display = "none";
-  closeFlattenSpacePopover();
   activeItemSettings = null;
   activeItemSettingsBtn = null;
 }
 
-function initFlattenSpacePopover(): void {
-  flattenSpaceHelp.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (flattenSpacePopover.style.display !== "none") {
-      closeFlattenSpacePopover();
-      return;
-    }
-    const rect = flattenSpaceHelp.getBoundingClientRect();
-    positionPopover(flattenSpacePopover, rect, 260);
+function initSpaceBookmarkDialog(): void {
+  addSpaceBookmarkBtn.addEventListener("click", () => {
+    spaceBookmarkResult.textContent = "";
+    delete spaceBookmarkResult.dataset.state;
+    updateGapBookmarkFolderDisplay();
+    spaceBookmarkDialog.showModal();
+  });
+  spaceBookmarkClose.addEventListener("click", () => spaceBookmarkDialog.close());
+  spaceBookmarkCloseBtn.addEventListener("click", () => spaceBookmarkDialog.close());
+  spaceBookmarkTransparent.addEventListener("change", updateSpaceBookmarkColorState);
+  updateSpaceBookmarkColorState();
+  spaceBookmarkFolderBtn.addEventListener("click", () => {
+    void openBookmarkPicker("pickFolder");
   });
 
-  flattenSpaceSyntax.addEventListener("pointerdown", (e) => e.stopPropagation());
-  flattenSpaceSyntax.addEventListener("click", (e) => e.stopPropagation());
-
-  flattenSpaceClose.addEventListener("click", () => closeFlattenSpacePopover());
-
-  document.addEventListener("pointerdown", (e) => {
-    if (flattenSpacePopover.style.display === "none") return;
-    const target = e.target as Node | null;
-    if (
-      target &&
-      !flattenSpacePopover.contains(target) &&
-      !flattenSpaceHelp.contains(target)
-    ) {
-      closeFlattenSpacePopover();
-    }
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && flattenSpacePopover.style.display !== "none") {
-      closeFlattenSpacePopover();
-    }
+  spaceBookmarkForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void addSpaceBookmark();
   });
 }
 
-function closeFlattenSpacePopover(): void {
-  flattenSpacePopover.style.display = "none";
+function updateGapBookmarkFolderDisplay(): void {
+  const node = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
+  spaceBookmarkFolderDisplay.textContent =
+    gapBookmarkFolderId === "0"
+      ? t("toolkit.defaultLocation")
+      : node?.title || t("common.folder");
+}
+
+function updateSpaceBookmarkColorState(): void {
+  spaceBookmarkColor.disabled = spaceBookmarkTransparent.checked;
+}
+
+async function addSpaceBookmark(): Promise<void> {
+  const url = buildSpaceDirectiveUrl({
+    units: Number(spaceBookmarkUnits.value),
+    transparent: spaceBookmarkTransparent.checked,
+    color: spaceBookmarkColor.value,
+  });
+  try {
+    await browser.bookmarks.create({
+      title: "Space",
+      url,
+      ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
+    });
+    rawBookmarkTree = await browser.bookmarks.getTree();
+    bookmarkOptions = flattenBookmarks(rawBookmarkTree);
+    spaceBookmarkResult.textContent = t("toolkit.added");
+    spaceBookmarkResult.dataset.state = "success";
+  } catch (error) {
+    spaceBookmarkResult.textContent = t("toolkit.addFailed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    spaceBookmarkResult.dataset.state = "error";
+  }
 }
 
 function initAddItemPopover(): void {

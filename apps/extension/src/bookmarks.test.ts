@@ -17,7 +17,7 @@ vi.mock("webextension-polyfill", () => ({
 
 import browser from "webextension-polyfill";
 import type { FolderEntry } from "@browserail/protocol";
-import { findBookmarkNodeByPath, resolveMenuItems } from "./bookmarks";
+import { buildSpaceDirectiveUrl, findBookmarkNodeByPath, resolveMenuItems } from "./bookmarks";
 
 describe("resolveMenuItems", () => {
   it("resolves a folder with expandOnHover set to false", async () => {
@@ -183,6 +183,34 @@ describe("resolveMenuItems", () => {
       color: "#234567",
       transparent: false,
     });
+  });
+
+  it("creates Space bookmarks that flatten back into the configured space", async () => {
+    const url = buildSpaceDirectiveUrl({ units: 5, transparent: false, color: "#cd123f" });
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-spaces",
+            title: "Spaces",
+            children: [{ id: "space-created", title: "Space", url }],
+          },
+        ],
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems([{ path: ["Spaces"], type: "flattenFolder" }]);
+    expect(entries).toEqual([
+      {
+        kind: "space",
+        uid: "space:bookmark-space-created",
+        units: 5,
+        color: "#cd123f",
+        transparent: false,
+      },
+    ]);
   });
 
   it("flatten skips sub-folders by default and includes them when includeFolders is set", async () => {

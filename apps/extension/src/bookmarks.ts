@@ -327,6 +327,25 @@ export function getItemRelativePath(
 const FLATTEN_SPACE_PREFIX = "BrowseRailSpace:";
 const FLATTEN_SPACE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/)?browserail\.local\/?#Space:(.*)$/i;
 
+export interface SpaceDirectiveOptions {
+  units: number;
+  transparent: boolean;
+  color?: string;
+}
+
+/**
+ * Builds the bookmark URL that `parseFlattenSpaceDirective` understands for Space entries.
+ * Uses an explicit https:// scheme because bookmarks.create rejects schemeless URLs.
+ */
+export function buildSpaceDirectiveUrl({ units, transparent, color }: SpaceDirectiveOptions): string {
+  const normalizedUnits = Math.max(0.1, Math.min(20, Number.isFinite(units) ? units : 1));
+  const fields = [`units=${normalizedUnits}`, `transparent=${transparent}`];
+  if (!transparent && color && /^#[0-9a-f]{6}$/i.test(color)) {
+    fields.push(`color=${color}`);
+  }
+  return `https://browserail.local/#Space:${fields.join(":")}`;
+}
+
 function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
   if (child.url === undefined) return null;
 
