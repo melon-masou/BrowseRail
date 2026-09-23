@@ -1542,7 +1542,7 @@ function initMenuSettingsDialog(): void {
     const menu = menus[activeMenuSettingsIndex];
     const val = parseInt(menuSettingFontSize.value, 10);
     if (menu && !isNaN(val)) {
-      menu.buttonFontSize = Math.max(8, Math.min(48, val));
+      menu.buttonFontSize = Math.max(1, val);
       markDirty();
     }
   });
@@ -1551,7 +1551,7 @@ function initMenuSettingsDialog(): void {
     const menu = menus[activeMenuSettingsIndex];
     const val = parseInt(menuSettingPopupFontSize.value, 10);
     if (menu && !isNaN(val)) {
-      menu.popupFontSize = Math.max(8, Math.min(48, val));
+      menu.popupFontSize = Math.max(1, val);
       markDirty();
     }
   });

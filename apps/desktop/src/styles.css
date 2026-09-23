@@ -158,10 +158,6 @@ button {
     padding-left: min(var(--button-padding-left), 3px);
     padding-right: min(var(--button-padding-right), 3px);
   }
-  .menu-bar .menu-button .menu-button-label,
-  .customize-rail .menu-button .menu-button-label {
-    font-size: calc(var(--button-font-size, var(--menu-font-size, 13px)) - 1.5px);
-  }
 }
 
 @container (max-width: 50px) {
@@ -174,10 +170,6 @@ button {
   .customize-rail .menu-button[data-folder]::after {
     width: 5px;
   }
-  .menu-bar .menu-button .menu-button-label,
-  .customize-rail .menu-button .menu-button-label {
-    font-size: min(var(--button-font-size, var(--menu-font-size, 13px)), 10px);
-  }
 }
 
 @container (max-width: 32px) {
@@ -189,10 +181,6 @@ button {
   .menu-bar .menu-button[data-folder]::after,
   .customize-rail .menu-button[data-folder]::after {
     width: 3px;
-  }
-  .menu-bar .menu-button .menu-button-label,
-  .customize-rail .menu-button .menu-button-label {
-    font-size: min(var(--button-font-size, var(--menu-font-size, 13px)), 9px);
   }
 }
 

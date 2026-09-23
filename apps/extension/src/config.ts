@@ -44,7 +44,7 @@ export const DEFAULT_FONT_SIZE = 13;
 
 export function normalizeFontSize(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.max(8, Math.min(48, Math.round(value)));
+    return Math.max(1, Math.round(value));
   }
   if (value === "small") return 12;
   if (value === "large") return 15;
