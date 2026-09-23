@@ -890,12 +890,14 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
         state.display_panels,
         None::<&str>,
     )?;
+    // "Edit menus" shows the positive edit-mode state; internally lock_editing is
+    // its inverse (true = browsing), so the check reflects !lock_editing.
     let lock_editing = CheckMenuItem::with_id(
         manager,
         "lock_editing",
-        i18n::Msg::LockEditing.localized(),
+        i18n::Msg::EditMenus.localized(),
         true,
-        state.lock_editing,
+        !state.lock_editing,
         None::<&str>,
     )?;
     let settings = MenuItem::with_id(
@@ -1023,7 +1025,8 @@ fn set_ui_language(language: String, state: tauri::State<'_, AppState>) {
 #[cfg(target_os = "windows")]
 pub fn run() {
     let display_panels = Arc::new(AtomicBool::new(true));
-    let lock_editing = Arc::new(AtomicBool::new(false));
+    // Browsing by default; the persisted setting overwrites this during setup.
+    let lock_editing = Arc::new(AtomicBool::new(true));
     let font_family = Arc::new(Mutex::new(settings::DEFAULT_FONT_FAMILY.into()));
     let popups = Arc::new(panel::PopupRegistry::default());
     let registry = Arc::new(SessionRegistry::default());

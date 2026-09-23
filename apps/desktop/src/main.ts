@@ -123,8 +123,15 @@ async function initializeSurface(): Promise<void> {
   }
 
   let customizing = false;
-  // Global "lock editing" tray toggle: when on, right-click must not open customize.
-  let editingLocked = false;
+  // Global edit-mode toggle (the tray "Lock editing" item). `editingLocked`
+  // true = browsing: left-click opens, right-click opens in a new tab, no
+  // customize. false = edit mode: a left- OR right-click on a (non-collapsed)
+  // menu enters that menu's customize, committed with the ✓ button. Defaults to
+  // browsing; the real value arrives from is_editing_locked below.
+  let editingLocked = true;
+  // The in-progress customization's cancel hook, so turning edit mode off (or a
+  // fresh menu) discards an uncommitted edit instead of stranding its toolbar.
+  let cancelActiveCustomization: (() => Promise<void>) | null = null;
   let currentMenu = initial.menu;
   let menuCollapsed = initial.collapsed;
 
@@ -229,6 +236,10 @@ async function initializeSurface(): Promise<void> {
     .catch(() => {});
   await listen<boolean>("editing-lock-changed", ({ payload }) => {
     editingLocked = payload;
+    // Leaving edit mode mid-customize discards the uncommitted edit (only ✓ saves).
+    if (payload && customizing && cancelActiveCustomization) {
+      void cancelActiveCustomization();
+    }
   });
   await listen<string>("font-family-changed", ({ payload }) => {
     applyFontFamily(payload);
@@ -530,12 +541,16 @@ async function initializeSurface(): Promise<void> {
     }
 
     menuBar.onpointerdown = async (event) => {
-      if (event.button === 2) {
+      // In edit mode, any click (left or right) on a non-collapsed menu enters
+      // its customize; the child button handlers bail out in edit mode so the
+      // click falls through to here. In browsing mode the bar does nothing and
+      // the buttons handle open / new-tab themselves.
+      if (editingLocked) return;
+      if (menuCollapsed) return;
+      if (customizing) return;
+      {
         event.preventDefault();
         event.stopPropagation();
-        if (menuCollapsed) return;
-        if (editingLocked) return;
-        if (customizing) return;
 
         // If a popup is open, close it and wait for size and position to restore completely before customizing
         await closePopup();
@@ -677,6 +692,10 @@ async function initializeSurface(): Promise<void> {
       button.title = menuCollapsed ? t("menu.expand") : t("menu.collapse");
       button.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) return;
+        // In edit mode, clicking an expanded menu's toggle should enter customize
+        // (fall through to the bar), not collapse it. A collapsed menu still
+        // expands so it can be edited (collapsed itself is never editable).
+        if (!editingLocked && !menuCollapsed) return;
         event.preventDefault();
         const beforeAnchor = elementOrigin(button);
         void invoke<boolean>("toggle_menu_collapsed", { instanceUid, menuUid })
@@ -712,6 +731,8 @@ async function initializeSurface(): Promise<void> {
       });
       button.addEventListener("pointerdown", (event) => {
         if (event.button === 0) {
+          // In edit mode a left-click enters customize (via the bar), not open.
+          if (!editingLocked) return;
           event.preventDefault();
           void closePopup();
           if (!entry.uid.startsWith("noop")) {
@@ -770,6 +791,9 @@ async function initializeSurface(): Promise<void> {
   }
 
   async function openPopup(entry: LayoutEntry & { kind: "folder" }, anchorButton: HTMLElement, menuBar: HTMLElement): Promise<void> {
+    // Edit mode suppresses folder popups (hover/focus/click); a click on a folder
+    // enters customize via the bar instead.
+    if (!editingLocked) return;
     {
       cancelIntentClose();
       cancelHoverOpen();
@@ -1182,6 +1206,7 @@ async function initializeSurface(): Promise<void> {
     applyTargetSize();
 
     async function cancelCustomization(): Promise<void> {
+      cancelActiveCustomization = null;
       const restorePosition = customizationStartPosition;
       customizing = false;
       await invoke("cancel_menu_customization", { instanceUid, menuUid, windowUid });
@@ -1208,6 +1233,7 @@ async function initializeSurface(): Promise<void> {
     }
 
     async function saveCustomization(): Promise<void> {
+      cancelActiveCustomization = null;
       const fromAnchor = elementOrigin(railContainer);
       const placement = await invoke<MenuPlacement>("save_menu_placement", {
         anchor,
@@ -1231,6 +1257,9 @@ async function initializeSurface(): Promise<void> {
         }
       }
     }
+
+    // Expose the cancel hook so leaving edit mode mid-customize discards it.
+    cancelActiveCustomization = cancelCustomization;
 
     return toolbar;
   }

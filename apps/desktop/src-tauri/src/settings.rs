@@ -16,8 +16,10 @@ pub const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
 ///   listener_port   — native WS listener only; not sent to the webview.
 ///   display_panels  — native show/hide of all surfaces; not read by the webview.
 ///   debug_enabled   — native debug logging only.
-///   lock_editing    — disables right-click "customize" in the webview
-///                     (main.ts `editingLocked`), pushed via a Tauri event.
+///   lock_editing    — global edit-mode toggle (inverted): true = browsing
+///                     (open / new-tab, no customize), false = edit mode where
+///                     a click enters a menu's customize (main.ts `editingLocked`).
+///                     Pushed to the webview via the `editing-lock-changed` event.
 ///   font_family     — webview `--desktop-font-family` CSS var
 ///                     (main.ts `applyFontFamily`), delivered in SurfaceState.
 ///   collapsed_menus — per-menu collapsed state; drives native geometry and the
@@ -44,7 +46,8 @@ impl Default for DesktopSettings {
             listener_port: DEFAULT_LISTENER_PORT,
             display_panels: true,
             debug_enabled: false,
-            lock_editing: false,
+            // Default to browsing: edit mode is a deliberate, explicit toggle.
+            lock_editing: true,
             font_family: DEFAULT_FONT_FAMILY.into(),
             collapsed_menus: Vec::new(),
         }
