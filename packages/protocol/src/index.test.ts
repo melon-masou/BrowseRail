@@ -95,11 +95,11 @@ describe("actionUid wire protocol", () => {
 
   it("parses bookmark action uids", () => {
     expect(parseBookmarkAction("bookmark:123")).toEqual({
-      bookmarkId: "123",
+      uid: "123",
       tabMode: "replace",
     });
     expect(parseBookmarkAction("bookmark:123?tab=newTab")).toEqual({
-      bookmarkId: "123",
+      uid: "123",
       tabMode: "newTab",
     });
   });

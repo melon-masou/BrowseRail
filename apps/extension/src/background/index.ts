@@ -9,11 +9,11 @@ import {
 import { t } from "@browserail/i18n";
 import browser from "webextension-polyfill";
 
-import { resolveMenuItems } from "../bookmarks";
+import { type BookmarkNode, resolveMenuItems } from "../bookmarks";
+import { createBookmarkTargetDraft } from "../bookmark-registry";
 import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser-adapter";
 import {
   DEFAULT_FONT_SIZE,
-  DEFAULT_MENU_GAP,
   type ExtensionConfig,
   loadBookmarkRootPrefix,
   loadConfig,
@@ -83,8 +83,6 @@ updateActionBadge(connectionStateMachine.getState());
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const RECONNECT_DELAY_MS = 3_000;
-const MAX_RECONNECT_ATTEMPTS = 5;
-
 let socket: WebSocket | undefined;
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -591,15 +589,17 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [loadedConfig, windows, placements, rootPrefix, freePlacements] = await Promise.all([
+  const [loadedConfig, windows, placements, rootPrefix, freePlacements, bookmarkTree] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
     loadBookmarkRootPrefix(),
     loadFreePlacements(),
+    browser.bookmarks.getTree().catch(() => []),
   ]);
   const config = previewConfigOverride ?? loadedConfig;
   const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
+  const bookmarkTargets = createBookmarkTargetDraft();
   const menus = await Promise.all(
     activeMenus.map(async (menu, index) => {
       const items = await resolveMenuItems(
@@ -608,6 +608,10 @@ async function syncOnce(): Promise<void> {
         menu.color,
         menu.expandDirection,
         rootPrefix,
+        {
+          tree: bookmarkTree as BookmarkNode[],
+          registerTarget: (browserBookmarkId) => bookmarkTargets.register(browserBookmarkId),
+        },
       );
       const totalUnits = items.reduce((acc, item) => {
         if (item.kind === "space") {
@@ -620,14 +624,14 @@ async function syncOnce(): Promise<void> {
         index,
         menu.orientation,
         totalUnits,
-        menu.buttonFontSize ?? menu.fontSize,
+        menu.buttonFontSize,
         menu.gap,
       );
       return {
         attachmentMode: menu.attachmentMode ?? "lastFocused",
         enabled: true,
-        buttonFontSize: menu.buttonFontSize ?? menu.fontSize ?? DEFAULT_FONT_SIZE,
-        popupFontSize: menu.popupFontSize ?? menu.fontSize ?? DEFAULT_FONT_SIZE,
+        buttonFontSize: menu.buttonFontSize ?? DEFAULT_FONT_SIZE,
+        popupFontSize: menu.popupFontSize ?? DEFAULT_FONT_SIZE,
         gap: placement.gap ?? 0,
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
@@ -642,6 +646,7 @@ async function syncOnce(): Promise<void> {
       };
     }),
   );
+  bookmarkTargets.commit();
   updateLastFocusedWindow(windows);
 
   const urlRules = config.urlRules;

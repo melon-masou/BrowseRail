@@ -4,11 +4,13 @@ import {
   type TabMode,
 } from "@browserail/protocol";
 
+import { resolveBookmarkTarget } from "../bookmark-registry";
+
 export { parseBookmarkAction, type ParsedBookmarkAction, type TabMode };
 
 export interface TabActionBrowser {
   bookmarks: {
-    get(id: string): Promise<Array<{ url?: string }>>;
+    get(id: string): Promise<Array<{ id: string; url?: string }>>;
   };
   tabs: {
     create?(createProperties: { active?: boolean; url: string; windowId?: number }): Promise<unknown>;
@@ -34,17 +36,21 @@ export async function navigateBookmark(
     throw new Error("The bound browser window is invalid");
   }
 
-  const { bookmarkId, tabMode } = parseBookmarkAction(actionUid);
-  await api.windows.get(windowId);
-
-  const [bookmark] = await api.bookmarks.get(bookmarkId);
-  if (!bookmark?.url) {
+  const { uid, tabMode } = parseBookmarkAction(actionUid);
+  const browserBookmarkId = resolveBookmarkTarget(uid);
+  if (!browserBookmarkId) {
     throw new Error("The bookmark no longer exists");
   }
+  const [bookmark] = await api.bookmarks.get(browserBookmarkId);
+  const url = bookmark?.url;
+  if (!url) {
+    throw new Error("The bookmark no longer exists");
+  }
+  await api.windows.get(windowId);
 
   if (tabMode === "newTab") {
     if (api.tabs.create) {
-      await api.tabs.create({ active: true, url: bookmark.url, windowId });
+      await api.tabs.create({ active: true, url, windowId });
       return;
     }
   }
@@ -52,13 +58,11 @@ export async function navigateBookmark(
   const [tab] = await api.tabs.query({ active: true, windowId });
   if (tab?.id === undefined) {
     if (api.tabs.create) {
-      await api.tabs.create({ active: true, url: bookmark.url, windowId });
+      await api.tabs.create({ active: true, url, windowId });
       return;
     }
     throw new Error("The bound browser window has no active tab");
   }
 
-  await api.tabs.update(tab.id, { url: bookmark.url });
+  await api.tabs.update(tab.id, { url });
 }
-
-

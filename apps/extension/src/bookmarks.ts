@@ -1,9 +1,12 @@
 import { t } from "@browserail/i18n";
 import {
   actionUid,
+  type BookmarkEntry,
   type ExpandDirection,
+  type FolderEntry,
   type LayoutEntry,
   SPECIAL_ROOT_PLACEHOLDERS,
+  type SpaceEntry,
   type SpecialRootType,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
@@ -140,6 +143,19 @@ export function findBookmarkNodeByPath(
   path: string[],
   targetUrl?: string,
 ): BookmarkNode | undefined {
+  return resolveBookmarkNodeByPath(nodes, path, targetUrl).node;
+}
+
+export interface BookmarkPathResolution {
+  node?: BookmarkNode;
+  duplicatePath: boolean;
+}
+
+export function resolveBookmarkNodeByPath(
+  nodes: BookmarkNode[],
+  path: string[],
+  targetUrl?: string,
+): BookmarkPathResolution {
   const first = nodes[0];
   const actualNodes =
     nodes.length === 1 && first && (first.id === "0" || !first.title) && first.children
@@ -148,20 +164,22 @@ export function findBookmarkNodeByPath(
 
   if (!path || path.length === 0) {
     if (targetUrl) {
-      return findBookmarkByUrl(actualNodes, targetUrl);
+      const node = findBookmarkByUrl(actualNodes, targetUrl);
+      return node ? { node, duplicatePath: false } : { duplicatePath: false };
     }
-    return undefined;
+    return { duplicatePath: false };
   }
 
-  function search(currentList: BookmarkNode[], pathIndex: number): BookmarkNode | undefined {
-    if (pathIndex >= path.length) return undefined;
+  function search(currentList: BookmarkNode[], pathIndex: number): BookmarkNode[] {
+    if (pathIndex >= path.length) return [];
     const targetSegment = path[pathIndex];
-    if (!targetSegment) return undefined;
+    if (!targetSegment) return [];
     const isRootLevel = pathIndex === 0;
     const targetSpecial = isRootLevel ? getSpecialRootTypeFromTitle(targetSegment) : undefined;
     const targetNormalized = isRootLevel
       ? normalizeCategory(targetSegment)
       : targetSegment.trim().toLowerCase();
+    const matchedNodes: BookmarkNode[] = [];
 
     for (const node of currentList) {
       const nodeTitle = (node.title || "").trim().toLowerCase();
@@ -177,27 +195,41 @@ export function findBookmarkNodeByPath(
 
       if (matches) {
         if (pathIndex === path.length - 1) {
-          return node;
+          matchedNodes.push(node);
+          continue;
         }
         if (node.children) {
-          const found = search(node.children, pathIndex + 1);
-          if (found) return found;
+          matchedNodes.push(...search(node.children, pathIndex + 1));
         }
       }
     }
 
-    return undefined;
+    return matchedNodes;
   }
 
-  const found = search(actualNodes, 0);
-  if (found) return found;
+  const pathMatches = search(actualNodes, 0);
+  const duplicatePath = pathMatches.length > 1;
+  const onlyPathMatch = pathMatches.length === 1 ? pathMatches[0] : undefined;
+  if (onlyPathMatch) {
+    return { node: onlyPathMatch, duplicatePath: false };
+  }
+  if (duplicatePath && targetUrl) {
+    const urlMatches = pathMatches.filter((node) => node.url === targetUrl);
+    const urlMatch = urlMatches[0];
+    if (urlMatch) {
+      return { node: urlMatch, duplicatePath: true };
+    }
+  }
+  if (duplicatePath) {
+    return { duplicatePath: true };
+  }
 
   if (targetUrl) {
     const urlMatch = findBookmarkByUrl(actualNodes, targetUrl);
-    if (urlMatch) return urlMatch;
+    if (urlMatch) return { node: urlMatch, duplicatePath: false };
   }
 
-  return undefined;
+  return { duplicatePath: false };
 }
 
 function findBookmarkByUrl(nodes: BookmarkNode[], url: string): BookmarkNode | undefined {
@@ -353,7 +385,7 @@ function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
     ? child.title.slice(FLATTEN_SPACE_PREFIX.length)
     : undefined;
   const urlMatch = FLATTEN_SPACE_URL_PATTERN.exec(child.url);
-  const urlDirective = urlMatch ? decodeURIComponent(urlMatch[1]) : undefined;
+  const urlDirective = urlMatch && urlMatch[1] !== undefined ? decodeURIComponent(urlMatch[1]) : undefined;
   const directive = titleDirective ?? urlDirective;
   if (directive === undefined) return null;
 
@@ -376,7 +408,7 @@ function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
 
   return {
     kind: "space",
-    uid: `space:bookmark-${child.id}`,
+    uid: crypto.randomUUID(),
     units,
     ...(isColor && !transparent ? { color } : {}),
     transparent,
@@ -389,15 +421,20 @@ export async function resolveMenuItems(
   menuColor?: string,
   menuExpandDirection?: ExpandDirection,
   rootPrefix?: string[],
+  context: {
+    tree?: BookmarkNode[];
+    registerTarget?: (browserBookmarkId: string) => string;
+  } = {},
 ): Promise<LayoutEntry[]> {
-  let treeCache: BookmarkNode[] | null = null;
+  let treeCache: BookmarkNode[] | null = context.tree ?? null;
+  const registerTarget = context.registerTarget ?? (() => crypto.randomUUID());
   const entryGroups = await Promise.all(
-    items.map(async ({ bookmarkId, path, url, color, cycleColors, emoji, rename, type, expandOnHover, includeFolders, tabMode, units, transparent }) => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, expandOnHover, includeFolders, tabMode, units, transparent }): Promise<LayoutEntry[]> => {
       if (type === "menuToggle") {
         const entry: LayoutEntry = {
           kind: "menuToggle",
-          uid: `menu-toggle:${bookmarkId}`,
-          label: rename || emoji || t("menu.foldButton"),
+          uid,
+          label: rename || t("menu.foldButton"),
         };
         return [entry];
       }
@@ -406,7 +443,7 @@ export async function resolveMenuItems(
         const isTransparent = transparent !== false;
         const spaceEntry: LayoutEntry = {
           kind: "space",
-          uid: bookmarkId || `space-${Math.random().toString(36).slice(2, 9)}`,
+          uid,
           units: units !== undefined ? units : 1,
           ...(!isTransparent && (color || menuColor) ? { color: (color || menuColor) as string } : {}),
           transparent: isTransparent,
@@ -431,7 +468,7 @@ export async function resolveMenuItems(
       const effectiveTabMode: TabMode = tabMode || menuTabMode || "replace";
       const effectiveColor = color || menuColor;
       const effectiveHover = expandOnHover !== undefined ? expandOnHover : true;
-      const effectiveRename = rename || emoji;
+      const effectiveRename = rename;
 
       if (!node) {
         const lastSeg = path && path.length > 0 ? path[path.length - 1] : undefined;
@@ -439,14 +476,13 @@ export async function resolveMenuItems(
           (lastSeg ? formatSpecialRootForDisplay(lastSeg, treeCache ?? []) : undefined) ||
           (rootPrefix && rootPrefix.length > 0 ? rootPrefix[rootPrefix.length - 1] : undefined) ||
           url ||
-          bookmarkId ||
           "Untitled";
 
         const isFolder = type === "folder";
         const entry: LayoutEntry = isFolder
           ? {
               kind: "folder",
-              uid: `noop:folder-${Math.random().toString(36).slice(2, 9)}`,
+              uid: `noop:folder-${crypto.randomUUID()}`,
               label: fallbackTitle,
               children: [],
               ...(effectiveColor ? { color: effectiveColor } : {}),
@@ -456,7 +492,7 @@ export async function resolveMenuItems(
             }
           : {
               kind: "bookmark",
-              uid: `noop:bookmark-${Math.random().toString(36).slice(2, 9)}`,
+              uid: `noop:bookmark-${crypto.randomUUID()}`,
               label: fallbackTitle,
               ...(effectiveColor ? { color: effectiveColor } : {}),
               ...(effectiveRename ? { rename: effectiveRename } : {}),
@@ -467,7 +503,7 @@ export async function resolveMenuItems(
       if (type === "flattenFolder") {
         const colors = Array.isArray(cycleColors) && cycleColors.length > 0 ? cycleColors : [];
         let flattenedIdx = 0;
-        return (node.children ?? []).flatMap((child) => {
+        return (node.children ?? []).flatMap((child): LayoutEntry[] => {
           const directive = parseFlattenSpaceDirective(child);
           if (directive) return [directive];
           if (child.url === undefined) {
@@ -482,10 +518,11 @@ export async function resolveMenuItems(
               effectiveTabMode,
               undefined,
               menuExpandDirection,
+              registerTarget,
             );
             // Apply the flatten item's cycle color to the outside folder button itself,
             // matching the flattened bookmarks on the rail.
-            if (itemColor && folderEntry.kind !== "space") {
+            if (itemColor) {
               folderEntry.color = itemColor;
             }
             return [folderEntry];
@@ -493,9 +530,10 @@ export async function resolveMenuItems(
           const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
           flattenedIdx++;
           const rawTitle = child.title || child.url || "Untitled";
+          const childUid = registerTarget(child.id);
           const entry: LayoutEntry = {
             kind: "bookmark",
-            uid: actionUid("bookmark", child.id, effectiveTabMode),
+            uid: actionUid("bookmark", childUid, effectiveTabMode),
             label: rawTitle,
             ...(itemColor ? { color: itemColor } : {}),
           };
@@ -509,11 +547,12 @@ export async function resolveMenuItems(
         effectiveTabMode,
         effectiveColor,
         menuExpandDirection,
+        registerTarget,
       );
       if (effectiveColor) {
         entry.color = effectiveColor;
       }
-      if (effectiveRename && entry.kind !== "space") {
+      if (effectiveRename) {
         entry.rename = effectiveRename;
       }
       return [entry];
@@ -529,11 +568,13 @@ function toLayoutEntry(
   tabMode?: TabMode,
   defaultColor?: string,
   expandDirection?: ExpandDirection,
-): LayoutEntry {
+  registerTarget: (browserBookmarkId: string) => string = () => crypto.randomUUID(),
+): BookmarkEntry | FolderEntry {
+  const runtimeUid = registerTarget(node.id);
   if (node.url !== undefined) {
     return {
       kind: "bookmark",
-      uid: actionUid("bookmark", node.id, tabMode),
+      uid: actionUid("bookmark", runtimeUid, tabMode),
       label: node.title || node.url,
       ...(defaultColor ? { color: defaultColor } : {}),
     };
@@ -541,10 +582,17 @@ function toLayoutEntry(
 
   return {
     kind: "folder",
-    uid: actionUid("folder", node.id),
+    uid: actionUid("folder", runtimeUid),
     label: node.title || "Bookmarks",
     children: (node.children ?? []).map((child) =>
-      toLayoutEntry(child, expandOnHover, tabMode, defaultColor, expandDirection),
+      toLayoutEntry(
+        child,
+        expandOnHover,
+        tabMode,
+        defaultColor,
+        expandDirection,
+        registerTarget,
+      ),
     ),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
     ...(expandDirection !== undefined ? { expandDirection } : {}),

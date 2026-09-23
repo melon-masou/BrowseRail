@@ -16,10 +16,41 @@ vi.mock("webextension-polyfill", () => ({
 }));
 
 import browser from "webextension-polyfill";
-import type { FolderEntry } from "@browserail/protocol";
-import { buildSpaceDirectiveUrl, findBookmarkNodeByPath, resolveMenuItems } from "./bookmarks";
+import { parseBookmarkAction, type BookmarkEntry, type FolderEntry } from "@browserail/protocol";
+import {
+  buildSpaceDirectiveUrl,
+  findBookmarkNodeByPath,
+  resolveBookmarkNodeByPath,
+  resolveMenuItems,
+} from "./bookmarks";
 
 describe("resolveMenuItems", () => {
+  it("uses the sync bookmark snapshot and registers the browser id without re-reading the tree", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockClear();
+    const registerTarget = vi.fn(() => "runtime-bookmark");
+    const entries = await resolveMenuItems(
+      [{ uid: "item-docs", path: ["Docs"], url: "https://docs.example" }],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        tree: [
+          {
+            id: "browser-bookmark-id",
+            title: "Docs",
+            url: "https://docs.example",
+          },
+        ],
+        registerTarget,
+      },
+    );
+
+    expect(browser.bookmarks.getTree).not.toHaveBeenCalled();
+    expect(registerTarget).toHaveBeenCalledWith("browser-bookmark-id");
+    expect(entries[0]?.uid).toBe("bookmark:runtime-bookmark");
+  });
+
   it("resolves a folder with expandOnHover set to false", async () => {
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
@@ -38,7 +69,7 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems([
-      { path: ["Dev Tools"], type: "folder", expandOnHover: false },
+      { uid: "item-dev-tools", path: ["Dev Tools"], type: "folder", expandOnHover: false },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -66,7 +97,7 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems([
-      { path: ["Docs"], type: "folder" },
+      { uid: "item-docs", path: ["Docs"], type: "folder" },
     ]);
 
     expect(entries).toHaveLength(1);
@@ -94,23 +125,23 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems([
-      { path: ["Quick Links"], type: "flattenFolder" },
+      { uid: "item-quick-links", path: ["Quick Links"], type: "flattenFolder" },
     ]);
 
     expect(entries).toHaveLength(2);
-    expect(entries[0].kind).toBe("bookmark");
-    expect(entries[1].kind).toBe("bookmark");
+    expect(entries[0]?.kind).toBe("bookmark");
+    expect(entries[1]?.kind).toBe("bookmark");
   });
 
   it("resolves a configured menu toggle entry", async () => {
     const entries = await resolveMenuItems([
-      { bookmarkId: "menu-toggle-main", type: "menuToggle" },
+      { uid: "menu-toggle-main", type: "menuToggle" },
     ]);
 
     expect(entries).toEqual([
       {
         kind: "menuToggle",
-        uid: "menu-toggle:menu-toggle-main",
+        uid: "menu-toggle-main",
         label: "Fold",
       },
     ]);
@@ -118,13 +149,13 @@ describe("resolveMenuItems", () => {
 
   it("uses a menu toggle rename as its button text", async () => {
     const entries = await resolveMenuItems([
-      { bookmarkId: "menu-toggle-main", type: "menuToggle", rename: "收起" },
+      { uid: "menu-toggle-main", type: "menuToggle", rename: "收起" },
     ]);
 
     expect(entries).toEqual([
       {
         kind: "menuToggle",
-        uid: "menu-toggle:menu-toggle-main",
+        uid: "menu-toggle-main",
         label: "收起",
       },
     ]);
@@ -161,24 +192,23 @@ describe("resolveMenuItems", () => {
       },
     ] as any);
 
-    const entries = await resolveMenuItems([{ path: ["Spaces"], type: "flattenFolder" }]);
+    const entries = await resolveMenuItems([
+      { uid: "item-spaces", path: ["Spaces"], type: "flattenFolder" },
+    ]);
     expect(entries).toHaveLength(3);
-    expect(entries[0]).toEqual({
+    expect(entries[0]).toMatchObject({
       kind: "space",
-      uid: "space:bookmark-space-full",
       units: 5,
       color: "#cd123f",
       transparent: false,
     });
-    expect(entries[1]).toEqual({
+    expect(entries[1]).toMatchObject({
       kind: "space",
-      uid: "space:bookmark-space-default",
       units: 1,
       transparent: true,
     });
-    expect(entries[2]).toEqual({
+    expect(entries[2]).toMatchObject({
       kind: "space",
-      uid: "space:bookmark-space-url",
       units: 2,
       color: "#234567",
       transparent: false,
@@ -201,11 +231,12 @@ describe("resolveMenuItems", () => {
       },
     ] as any);
 
-    const entries = await resolveMenuItems([{ path: ["Spaces"], type: "flattenFolder" }]);
-    expect(entries).toEqual([
+    const entries = await resolveMenuItems([
+      { uid: "item-spaces", path: ["Spaces"], type: "flattenFolder" },
+    ]);
+    expect(entries).toMatchObject([
       {
         kind: "space",
-        uid: "space:bookmark-space-created",
         units: 5,
         color: "#cd123f",
         transparent: false,
@@ -236,14 +267,14 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const withoutFolders = await resolveMenuItems([
-      { bookmarkId: "folder-mix", path: ["Mixed"], type: "flattenFolder" },
+      { uid: "item-mixed", path: ["Mixed"], type: "flattenFolder" },
     ]);
     expect(withoutFolders).toHaveLength(1);
-    expect(withoutFolders[0].kind).toBe("bookmark");
+    expect(withoutFolders[0]?.kind).toBe("bookmark");
 
     const withFolders = await resolveMenuItems([
       {
-        bookmarkId: "folder-mix",
+        uid: "item-mixed",
         path: ["Mixed"],
         type: "flattenFolder",
         includeFolders: true,
@@ -254,11 +285,13 @@ describe("resolveMenuItems", () => {
     expect(withFolders.map((e) => e.kind).sort()).toEqual(["bookmark", "folder"]);
     // Both the flattened bookmark and the included folder take the item's cycle color.
     for (const entry of withFolders) {
-      expect(entry.color).toBe("#22c55e");
+      expect((entry as BookmarkEntry).color).toBe("#22c55e");
     }
     const folderEntry = withFolders.find((e) => e.kind === "folder");
     // Inside the expanded menu, children are not changed
-    expect(folderEntry?.kind === "folder" && folderEntry.children[0]?.color).toBeUndefined();
+    expect(
+      folderEntry?.kind === "folder" && (folderEntry.children[0] as BookmarkEntry | undefined)?.color,
+    ).toBeUndefined();
   });
 
   it("cycles through cycleColors for flattened items and ignores the old color field", async () => {
@@ -283,7 +316,7 @@ describe("resolveMenuItems", () => {
 
     const result = await resolveMenuItems([
       {
-        bookmarkId: "folder-cycle",
+        uid: "item-cycle",
         path: ["CycleTest"],
         type: "flattenFolder",
         color: "#000000", // Old color field should be completely ignored
@@ -292,10 +325,10 @@ describe("resolveMenuItems", () => {
     ]);
 
     expect(result).toHaveLength(4);
-    expect(result[0].color).toBe("#ff0000");
-    expect(result[1].color).toBe("#00ff00");
-    expect(result[2].color).toBe("#ff0000");
-    expect(result[3].color).toBe("#00ff00");
+    expect((result[0] as BookmarkEntry).color).toBe("#ff0000");
+    expect((result[1] as BookmarkEntry).color).toBe("#00ff00");
+    expect((result[2] as BookmarkEntry).color).toBe("#ff0000");
+    expect((result[3] as BookmarkEntry).color).toBe("#00ff00");
   });
 
   it("resolves a folder whose title contains a slash (path segment not re-split)", async () => {
@@ -314,13 +347,13 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems([
-      { bookmarkId: "slash-folder", path: ["A/B"], type: "flattenFolder" },
+      { uid: "item-slash", path: ["A/B"], type: "flattenFolder" },
     ]);
 
     // Must emit the folder's actual child, not a single fallback entry labelled "A/B".
     expect(entries).toHaveLength(1);
-    expect(entries[0].kind).toBe("bookmark");
-    expect(entries[0].label).toBe("GitHub");
+    expect(entries[0]?.kind).toBe("bookmark");
+    expect((entries[0] as BookmarkEntry).label).toBe("GitHub");
   });
 
   it("applies menuColor as default color to items without custom color", async () => {
@@ -335,13 +368,13 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ path: ["GitHub"], url: "https://github.com" }],
+      [{ uid: "item-github", path: ["GitHub"], url: "https://github.com" }],
       "replace",
       "#10b981",
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].color).toBe("#10b981");
+    expect((entries[0] as BookmarkEntry).color).toBe("#10b981");
   });
 
   it("preserves item custom color when menuColor is also provided", async () => {
@@ -356,13 +389,13 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ path: ["GitHub"], url: "https://github.com", color: "#f59e0b" }],
+      [{ uid: "item-github", path: ["GitHub"], url: "https://github.com", color: "#f59e0b" }],
       "replace",
       "#10b981",
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].color).toBe("#f59e0b");
+    expect((entries[0] as BookmarkEntry).color).toBe("#f59e0b");
   });
 
   it("applies menuColor to flattened folder children when no custom color is specified", async () => {
@@ -384,14 +417,14 @@ describe("resolveMenuItems", () => {
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ path: ["Links"], type: "flattenFolder" }],
+      [{ uid: "item-links", path: ["Links"], type: "flattenFolder" }],
       "replace",
       "#8b5cf6",
     );
 
     expect(entries).toHaveLength(2);
-    expect(entries[0].color).toBe("#8b5cf6");
-    expect(entries[1].color).toBe("#8b5cf6");
+    expect((entries[0] as BookmarkEntry).color).toBe("#8b5cf6");
+    expect((entries[1] as BookmarkEntry).color).toBe("#8b5cf6");
   });
 });
 
@@ -449,6 +482,30 @@ describe("findBookmarkNodeByPath", () => {
     expect(found?.id).toBe("bm-gh");
   });
 
+  it("uses the saved URL to disambiguate duplicate bookmark paths and reports the duplicate", () => {
+    const duplicateTree = [
+      {
+        id: "root",
+        title: "Bookmarks Toolbar",
+        children: [
+          { id: "first", title: "Docs", url: "https://first.example" },
+          { id: "second", title: "Docs", url: "https://second.example" },
+        ],
+      },
+    ];
+
+    expect(
+      resolveBookmarkNodeByPath(
+        duplicateTree,
+        ["Bookmarks Toolbar", "Docs"],
+        "https://second.example",
+      ),
+    ).toEqual({ node: duplicateTree[0]?.children?.[1], duplicatePath: true });
+    expect(
+      resolveBookmarkNodeByPath(duplicateTree, ["Bookmarks Toolbar", "Docs"]),
+    ).toEqual({ duplicatePath: true });
+  });
+
   it("strictly rejects folder path that does not exist without fuzzy searching other folders", () => {
     const found = findBookmarkNodeByPath(tree, ["Bookmarks Toolbar", "RandomFolder", "Dev"]);
     expect(found).toBeUndefined();
@@ -472,12 +529,12 @@ describe("rename and emoji support", () => {
     ] as any);
 
     const entries = await resolveMenuItems([
-      { path: ["Very Long GitHub Bookmark Title"], url: "https://github.com", rename: "GH" },
+      { uid: "item-rename", path: ["Very Long GitHub Bookmark Title"], url: "https://github.com", rename: "GH" },
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].rename).toBe("GH");
-    expect(entries[0].label).toBe("Very Long GitHub Bookmark Title");
+    expect((entries[0] as BookmarkEntry).rename).toBe("GH");
+    expect((entries[0] as BookmarkEntry).label).toBe("Very Long GitHub Bookmark Title");
   });
 
   it("uses custom rename with emoji on StoredMenuItem", async () => {
@@ -496,36 +553,12 @@ describe("rename and emoji support", () => {
     ] as any);
 
     const entries = await resolveMenuItems([
-      { path: ["GitHub"], url: "https://github.com", rename: "🐙" },
+      { uid: "item-rename-emoji", path: ["GitHub"], url: "https://github.com", rename: "🐙" },
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].rename).toBe("🐙");
-    expect(entries[0].label).toBe("GitHub");
-  });
-
-  it("uses custom emoji when configured on StoredMenuItem for backwards compatibility", async () => {
-    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
-      {
-        id: "0",
-        title: "",
-        children: [
-          {
-            id: "bm-custom-emoji",
-            title: "GitHub",
-            url: "https://github.com",
-          },
-        ],
-      },
-    ] as any);
-
-    const entries = await resolveMenuItems([
-      { path: ["GitHub"], url: "https://github.com", emoji: "🐙" },
-    ]);
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0].rename).toBe("🐙");
-    expect(entries[0].label).toBe("GitHub");
+    expect((entries[0] as BookmarkEntry).rename).toBe("🐙");
+    expect((entries[0] as BookmarkEntry).label).toBe("GitHub");
   });
 
   it("does not automatically extract leading emoji when no custom rename is configured", async () => {
@@ -544,12 +577,12 @@ describe("rename and emoji support", () => {
     ] as any);
 
     const entries = await resolveMenuItems([
-      { path: ["📁工作台"], url: "https://prod.example.com" },
+      { uid: "item-title-emoji", path: ["📁工作台"], url: "https://prod.example.com" },
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].rename).toBeUndefined();
-    expect(entries[0].label).toBe("📁工作台");
+    expect((entries[0] as BookmarkEntry).rename).toBeUndefined();
+    expect((entries[0] as BookmarkEntry).label).toBe("📁工作台");
   });
 });
 
@@ -569,12 +602,17 @@ describe("tabMode configuration", () => {
       },
     ] as any);
 
-    const entries = await resolveMenuItems([
-      { path: ["Example"], url: "https://example.com" },
-    ]);
+    const entries = await resolveMenuItems(
+      [{ uid: "item-replace", path: ["Example"], url: "https://example.com" }],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { registerTarget: (browserBookmarkId) => `runtime-${browserBookmarkId}` },
+    );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].uid).toBe("bookmark:bm-replace");
+    expect(entries[0]?.uid).toBe("bookmark:runtime-bm-replace");
   });
 
   it("inherits newTab tabMode from menuTabMode", async () => {
@@ -593,12 +631,12 @@ describe("tabMode configuration", () => {
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ path: ["Example"], url: "https://example.com" }],
+      [{ uid: "item-menu-tab", path: ["Example"], url: "https://example.com" }],
       "newTab",
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].uid).toBe("bookmark:bm-menu-tab?tab=newTab");
+    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("newTab");
   });
 
   it("allows individual item to override menuTabMode", async () => {
@@ -617,12 +655,12 @@ describe("tabMode configuration", () => {
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ path: ["Example 1"], url: "https://example.com/1", tabMode: "replace" }],
+      [{ uid: "item-override", path: ["Example 1"], url: "https://example.com/1", tabMode: "replace" }],
       "newTab",
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].uid).toBe("bookmark:bm-override-replace");
+    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("replace");
   });
 
   it("allows individual item to specify newTab when menu is replace", async () => {
@@ -641,12 +679,12 @@ describe("tabMode configuration", () => {
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ path: ["Example 2"], url: "https://example.com/2", tabMode: "newTab" }],
+      [{ uid: "item-item-newtab", path: ["Example 2"], url: "https://example.com/2", tabMode: "newTab" }],
       "replace",
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].uid).toBe("bookmark:bm-item-newtab?tab=newTab");
+    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("newTab");
   });
 
   it("preserves invalid items as noop entries when rootPrefix is /书签栏 and item path is 书签栏", async () => {
@@ -668,7 +706,7 @@ describe("tabMode configuration", () => {
 
     // /书签栏 + /书签栏 = /书签栏/书签栏 -> does not exist under 书签栏
     const entries = await resolveMenuItems(
-      [{ bookmarkId: "1", path: ["书签栏"], rename: "我的书签栏" }],
+      [{ uid: "item-root", path: ["书签栏"], rename: "我的书签栏" }],
       "replace",
       "#ff0000",
       undefined,
@@ -676,10 +714,10 @@ describe("tabMode configuration", () => {
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].label).toBe("书签栏");
-    expect(entries[0].rename).toBe("我的书签栏");
-    expect(entries[0].color).toBe("#ff0000");
-    expect(entries[0].uid).toMatch(/^noop:/);
+    expect((entries[0] as BookmarkEntry).label).toBe("书签栏");
+    expect((entries[0] as BookmarkEntry).rename).toBe("我的书签栏");
+    expect((entries[0] as BookmarkEntry).color).toBe("#ff0000");
+    expect(entries[0]?.uid).toMatch(/^noop:/);
   });
 
   it("resolves /书签栏/gbfsync when rootPrefix is /书签栏 and item is gbfsync", async () => {
@@ -700,7 +738,7 @@ describe("tabMode configuration", () => {
     ] as any);
 
     const entries = await resolveMenuItems(
-      [{ path: ["gbfsync"] }],
+      [{ uid: "item-gbfsync", path: ["gbfsync"] }],
       "replace",
       undefined,
       undefined,
@@ -708,12 +746,12 @@ describe("tabMode configuration", () => {
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].uid).toBe("bookmark:bm-gbf");
+    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("replace");
   });
 });
 
 describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
-  it("normalizes a portable item with path and type without requiring bookmarkId or url", async () => {
+  it("normalizes a portable item from its path, type, and settings", async () => {
     const { normalizeStoredMenuItem } = await import("./config");
     const item = normalizeStoredMenuItem({
       type: "flattenFolder",
@@ -721,7 +759,6 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
       rename: "Devs",
       color: "#2563eb",
       tabMode: "newTab",
-      url: "https://should-be-omitted.com",
     });
 
     expect(item).toBeDefined();
@@ -730,20 +767,17 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.rename).toBe("Devs");
     expect(item?.color).toBe("#2563eb");
     expect(item?.tabMode).toBe("newTab");
-    expect((item as any)?.url).toBeUndefined();
   });
 
-  it("preserves future custom types and migrates legacy emoji to rename", async () => {
+  it("preserves future custom types", async () => {
     const { normalizeStoredMenuItem } = await import("./config");
     const item = normalizeStoredMenuItem({
       type: "customPluginType",
       path: ["Tools"],
-      emoji: "🛠️",
     });
 
     expect(item).toBeDefined();
     expect(item?.type).toBe("customPluginType");
-    expect(item?.rename).toBe("🛠️");
   });
 
   it("normalizes a space item with units and transparency", async () => {
@@ -760,7 +794,8 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.units).toBe(2.5);
     expect(item?.color).toBe("#ff0000");
     expect(item?.transparent).toBe(false);
-    expect(item?.bookmarkId).toMatch(/^space-/);
+    expect(typeof item?.uid).toBe("string");
+    expect(item?.uid.length).toBeGreaterThan(0);
   });
 
   it("keeps only the first menu toggle when normalizing a menu", async () => {
@@ -768,8 +803,8 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     const menu = normalizeMenu({
       uid: "menu-toggle-menu",
       items: [
-        { bookmarkId: "toggle-1", type: "menuToggle" },
-        { bookmarkId: "toggle-2", type: "menuToggle" },
+        { uid: "toggle-1", type: "menuToggle" },
+        { uid: "toggle-2", type: "menuToggle" },
       ],
     });
 
@@ -799,13 +834,13 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
   it("preserves a menu toggle rename while normalizing settings", async () => {
     const { normalizeStoredMenuItem } = await import("./config");
     const item = normalizeStoredMenuItem({
-      bookmarkId: "toggle-1",
+      uid: "toggle-1",
       type: "menuToggle",
       rename: "收起",
     });
 
     expect(item).toEqual({
-      bookmarkId: "toggle-1",
+      uid: "toggle-1",
       type: "menuToggle",
       rename: "收起",
     });
@@ -828,13 +863,13 @@ describe("combineRootAndItemPath and space resolution", () => {
   it("resolves space items into SpaceEntry without querying bookmarks", async () => {
     const entries = await resolveMenuItems([
       {
-        bookmarkId: "space-1",
+        uid: "space-1",
         type: "space",
         units: 2,
         color: "#ffffff",
       },
       {
-        bookmarkId: "space-2",
+        uid: "space-2",
         type: "space",
         units: 1,
         color: "#ff0000",
@@ -952,15 +987,15 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(normalized?.path).toEqual([]);
 
     const entries = await resolveMenuItems(
-      [{ path: [], type: "folder" }],
+      [{ uid: "item-root-empty", path: [], type: "folder" }],
       undefined,
       undefined,
       undefined,
       ["书签栏"],
     );
     expect(entries).toHaveLength(1);
-    expect(entries[0].kind).toBe("folder");
-    expect(entries[0].label).toBe("书签栏");
+    expect(entries[0]?.kind).toBe("folder");
+    expect((entries[0] as FolderEntry).label).toBe("书签栏");
   });
 
   it("handles Chrome special root folder set: bookmarks-bar, other, mobile, managed", async () => {

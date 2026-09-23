@@ -825,6 +825,14 @@ output {
   white-space: nowrap;
 }
 
+.item-path-warning {
+  flex: 1 0 100%;
+  color: #b45309;
+  font-size: 11px;
+  line-height: 1.35;
+  padding-left: 34px;
+}
+
 .item-color-controls {
   display: flex;
   align-items: center;

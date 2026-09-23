@@ -248,12 +248,11 @@ export const MENU_ORIENTATIONS = ["row", "column"] as const;
 export const MENU_ANCHORS = ["topLeft", "topRight", "bottomLeft", "bottomRight"] as const;
 
 export interface StoredMenuItem {
-  bookmarkId: string;
+  uid: string;
   path?: string[];
   url?: string;
   color?: string;
   cycleColors?: string[];
-  emoji?: string;
   rename?: string;
   type?: MenuItemType;
   expandOnHover?: boolean;
@@ -311,10 +310,10 @@ export function isSpecialRootPlaceholder(value: unknown): value is string {
 // Action UID Wire Protocol
 export function formatActionUid(
   kind: "bookmark" | "folder",
-  bookmarkId: string,
+  uid: string,
   tabMode?: TabMode,
 ): string {
-  const base = `${kind}:${encodeURIComponent(bookmarkId)}`;
+  const base = `${kind}:${encodeURIComponent(uid)}`;
   if (kind === "bookmark" && tabMode === "newTab") {
     return `${base}?tab=newTab`;
   }
@@ -324,7 +323,7 @@ export function formatActionUid(
 export const actionUid = formatActionUid;
 
 export interface ParsedBookmarkAction {
-  bookmarkId: string;
+  uid: string;
   tabMode: TabMode;
 }
 
@@ -337,29 +336,30 @@ export function parseBookmarkAction(actionUid: string): ParsedBookmarkAction {
   const raw = actionUid.slice(prefix.length);
   const qIndex = raw.indexOf("?tab=");
   if (qIndex !== -1) {
-    const bookmarkId = decodeURIComponent(raw.slice(0, qIndex));
+    const uid = decodeURIComponent(raw.slice(0, qIndex));
     const mode = raw.slice(qIndex + 5);
     return {
-      bookmarkId,
+      uid,
       tabMode: mode === "newTab" ? "newTab" : "replace",
     };
   }
 
   return {
-    bookmarkId: decodeURIComponent(raw),
+    uid: decodeURIComponent(raw),
     tabMode: "replace",
   };
 }
 
 export function invertBookmarkActionUid(actionUid: string): string {
-  const { bookmarkId, tabMode } = parseBookmarkAction(actionUid);
-  return formatActionUid("bookmark", bookmarkId, tabMode === "newTab" ? "replace" : "newTab");
+  const { uid, tabMode } = parseBookmarkAction(actionUid);
+  return formatActionUid("bookmark", uid, tabMode === "newTab" ? "replace" : "newTab");
 }
 
 export interface ExportedMenuItem {
   type: MenuItemType;
+  uid: string;
   path?: string[];
-  bookmarkId?: string;
+  url?: string;
   units?: number;
   transparent?: boolean;
   rename?: string;

@@ -228,32 +228,13 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
 
   const desktopWidget = isRecord(value.desktopWidget) ? value.desktopWidget : {};
   const panel = isRecord(value.panel) ? value.panel : {};
-  const legacyAttachmentMode =
-    value.attachmentMode === "active"
-      ? "lastFocused"
-      : isAttachmentMode(value.attachmentMode)
-        ? value.attachmentMode
-        : undefined;
-  const legacyOnTopMode =
-    panel.onTopMode === "alwaysOnTop" || panel.onTopMode === "aboveBrowser"
-      ? (panel.onTopMode as OnTopMode)
-      : undefined;
 
   const rawMenus = Array.isArray(panel.menus)
     ? panel.menus.flatMap((menu) => {
         const norm = normalizeMenu(menu);
-        if (!norm) return [];
-        if (isRecord(menu)) {
-          if (!menu.attachmentMode && legacyAttachmentMode) {
-            norm.attachmentMode = legacyAttachmentMode;
-          }
-          if (!menu.onTopMode && legacyOnTopMode) {
-            norm.onTopMode = legacyOnTopMode;
-          }
-        }
-        return [norm];
+        return norm ? [norm] : [];
       })
-    : migrateLegacyMenu(Array.isArray(panel.layout) ? panel : value);
+    : [];
   const seenUids = new Set<string>();
   const menus = rawMenus.map((menu) => {
     let uid = menu.uid;
@@ -298,49 +279,19 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
   };
 }
 
-function migrateLegacyMenu(panel: Record<string, unknown>): StoredMenu[] {
-  const menu = createMenu();
-  if (!Array.isArray(panel.layout)) {
-    return [menu];
-  }
-
-  const cells = panel.layout.filter(isRecord).toSorted(
-    (left, right) =>
-      numericValue(left.row) - numericValue(right.row) ||
-      numericValue(left.column) - numericValue(right.column),
-  );
-  menu.items = cells.flatMap((cell) =>
-    typeof cell.bookmarkId === "string" ? [{ bookmarkId: cell.bookmarkId }] : [],
-  );
-  menu.orientation = "column";
-  return [menu];
-}
-
-function numericValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
 export function normalizeMenu(value: unknown): StoredMenu | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
   const uid = typeof value.uid === "string" && value.uid
     ? value.uid
-    : typeof (value as { id?: unknown }).id === "string" && (value as { id: string }).id
-      ? (value as { id: string }).id
-      : `menu-${Math.random().toString(36).slice(2, 9)}`;
-  const buttonFontSize =
-    value.buttonFontSize !== undefined
-      ? normalizeFontSize(value.buttonFontSize)
-      : value.fontSize !== undefined
-        ? normalizeFontSize(value.fontSize)
-        : undefined;
-  const popupFontSize =
-    value.popupFontSize !== undefined
-      ? normalizeFontSize(value.popupFontSize)
-      : value.fontSize !== undefined
-        ? normalizeFontSize(value.fontSize)
-        : undefined;
+    : crypto.randomUUID();
+  const buttonFontSize = value.buttonFontSize !== undefined
+    ? normalizeFontSize(value.buttonFontSize)
+    : undefined;
+  const popupFontSize = value.popupFontSize !== undefined
+    ? normalizeFontSize(value.popupFontSize)
+    : undefined;
   const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
     ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : DEFAULT_MENU_GAP;
@@ -444,18 +395,16 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   const rawType = typeof value.type === "string" && value.type
     ? (value.type as StoredMenuItemType)
     : undefined;
+  const uid = typeof value.uid === "string" && value.uid ? value.uid : crypto.randomUUID();
 
   if (rawType === "space") {
-    const bookmarkId = typeof value.bookmarkId === "string" && value.bookmarkId
-      ? value.bookmarkId
-      : `space-${crypto.randomUUID()}`;
     const units = typeof value.units === "number" && Number.isFinite(value.units)
       ? boundedNumber(value.units, 0.1, 20, 1)
       : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     const transparent = typeof value.transparent === "boolean" ? value.transparent : true;
     return {
-      bookmarkId,
+      uid,
       type: "space",
       ...(units !== undefined ? { units } : {}),
       ...(color ? { color } : {}),
@@ -464,33 +413,22 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   }
 
   if (rawType === "menuToggle") {
-    const bookmarkId = typeof value.bookmarkId === "string" && value.bookmarkId
-      ? value.bookmarkId
-      : `menu-toggle-${crypto.randomUUID()}`;
-    const rename = typeof value.rename === "string" && value.rename
-      ? value.rename
-      : typeof (value as { emoji?: unknown }).emoji === "string" && (value as { emoji: string }).emoji
-        ? (value as { emoji: string }).emoji
-        : undefined;
+    const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     return {
-      bookmarkId,
+      uid,
       type: "menuToggle",
       ...(rename ? { rename } : {}),
     };
   }
 
-  const bookmarkId = typeof value.bookmarkId === "string" ? value.bookmarkId : "";
   const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")
     ? value.path
     : undefined;
-  if (!bookmarkId && path === undefined) {
+  if (path === undefined) {
     return undefined;
   }
-  const rename = typeof value.rename === "string" && value.rename
-    ? value.rename
-    : typeof (value as { emoji?: unknown }).emoji === "string" && (value as { emoji: string }).emoji
-      ? (value as { emoji: string }).emoji
-      : undefined;
+  const url = typeof value.url === "string" && value.url ? value.url : undefined;
+  const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
   const cycleColors = Array.isArray(value.cycleColors)
     ? value.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
     : undefined;
@@ -499,8 +437,9 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
   const includeFolders = value.includeFolders === true ? true : undefined;
   return {
-    bookmarkId,
-    ...(path !== undefined ? { path } : {}),
+    uid,
+    path,
+    ...(url ? { url } : {}),
     ...(rawType ? { type: rawType } : {}),
     ...(rename ? { rename } : {}),
     ...(color ? { color } : {}),
@@ -509,21 +448,6 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
     ...(includeFolders ? { includeFolders } : {}),
   };
-}
-
-function isStoredMenuItem(value: unknown): value is StoredMenuItem {
-  return (
-    isRecord(value) &&
-    (typeof value.bookmarkId === "string" || Array.isArray(value.path)) &&
-    (value.path === undefined || (Array.isArray(value.path) && value.path.every((p) => typeof p === "string"))) &&
-    (value.url === undefined || typeof value.url === "string") &&
-    (value.color === undefined || typeof value.color === "string") &&
-    (value.cycleColors === undefined || (Array.isArray(value.cycleColors) && value.cycleColors.every((c) => typeof c === "string"))) &&
-    (value.rename === undefined || typeof value.rename === "string" || typeof (value as { emoji?: unknown }).emoji === "string") &&
-    (value.expandOnHover === undefined || typeof value.expandOnHover === "boolean") &&
-    (value.tabMode === undefined || value.tabMode === "replace" || value.tabMode === "newTab") &&
-    (value.type === undefined || typeof value.type === "string")
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

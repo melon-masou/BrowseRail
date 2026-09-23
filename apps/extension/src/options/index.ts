@@ -5,7 +5,6 @@ import {
   type ExportedSettingsData,
   type ExpandDirection,
   isExportedSettingsData,
-  type MenuFontSize,
   type MenuOrientation,
   type OnTopMode,
 } from "@browserail/protocol";
@@ -14,10 +13,8 @@ import browser from "webextension-polyfill";
 import {
   createMenu,
   DEFAULT_FONT_SIZE,
-  DEFAULT_MENU_GAP,
   DEFAULT_MENU_GAP_PERCENT,
   type ExtensionConfig,
-  getItemDimensions,
   loadBookmarkRootPrefix,
   loadConfig,
   loadSyncEnabled,
@@ -43,9 +40,10 @@ import {
   getItemRelativePath,
   getSpecialRootTypeFromNode,
   getSpecialRootTypeFromTitle,
+  resolveBookmarkNodeByPath,
   SPECIAL_ROOT_PLACEHOLDERS,
 } from "../bookmarks";
-import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
+import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
 import {
   applyStaticI18n,
@@ -85,12 +83,7 @@ const PALETTE_COLORS = [
 ];
 
 function getRandomPaletteColor(): string {
-  return PALETTE_COLORS[Math.floor(Math.random() * PALETTE_COLORS.length)];
-}
-
-interface BookmarkOption {
-  id: string;
-  label: string;
+  return PALETTE_COLORS[Math.floor(Math.random() * PALETTE_COLORS.length)] ?? PALETTE_COLORS[0]!;
 }
 
 const connectionForm = element<HTMLFormElement>("connection-form");
@@ -175,7 +168,6 @@ const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
 const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
 const itemSettingTabMode = element<HTMLSelectElement>("item-setting-tab-mode");
 const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
-const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hover-expand-label");
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
 const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>("item-setting-include-folders-label");
 const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
@@ -216,7 +208,6 @@ let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
 let urlRules: UrlRule[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
-let bookmarkOptions: BookmarkOption[] = [];
 let desktopTestGeneration = 0;
 
 // Popover state
@@ -472,7 +463,7 @@ pickerConfirmBtn.addEventListener("click", () => {
   );
 
   const newItem: StoredMenuItem = {
-    bookmarkId: pickerSelectedId,
+    uid: crypto.randomUUID(),
     type: itemType,
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
     ...(includeFolders ? { includeFolders } : {}),
@@ -490,18 +481,20 @@ pickerConfirmBtn.addEventListener("click", () => {
     pickerDialog.close();
   } else if (pickerMode === "editItem") {
     const menu = menus[pickerTargetMenuIndex];
-    if (menu && menu.items[pickerTargetItemIndex]) {
-      const existing = menu.items[pickerTargetItemIndex];
-      existing.bookmarkId = newItem.bookmarkId;
-      existing.type = newItem.type;
-      existing.expandOnHover = newItem.expandOnHover;
+    const existing = menu?.items[pickerTargetItemIndex];
+    if (existing) {
+      if (newItem.type !== undefined) existing.type = newItem.type;
+      if (newItem.expandOnHover !== undefined) existing.expandOnHover = newItem.expandOnHover;
+      else delete existing.expandOnHover;
       if (newItem.includeFolders) {
         existing.includeFolders = true;
       } else {
         delete existing.includeFolders;
       }
-      existing.path = newItem.path;
-      existing.url = newItem.url;
+      if (newItem.path !== undefined) existing.path = newItem.path;
+      else delete existing.path;
+      if (newItem.url !== undefined) existing.url = newItem.url;
+      else delete existing.url;
       renderMenus();
       markDirty();
     }
@@ -516,7 +509,6 @@ async function refreshBookmarkTree(): Promise<void> {
   try {
     const tree = await browser.bookmarks.getTree();
     rawBookmarkTree = tree;
-    bookmarkOptions = flattenBookmarks(tree);
   } catch {
     // Keep the previous cache if the read fails.
   }
@@ -544,8 +536,8 @@ async function openBookmarkPicker(
   if (mode === "editItem") {
     const existing = menus[menuIndex]?.items[itemIndex];
     if (existing) {
-      const node = getItemNode(existing) ?? (existing.bookmarkId ? findBookmarkNode(existing.bookmarkId, rawBookmarkTree) : undefined);
-      pickerSelectedId = node?.id ?? existing.bookmarkId ?? null;
+      const node = getItemNode(existing);
+      pickerSelectedId = node?.id ?? null;
       initialFlatten = existing.type === "flattenFolder";
       initialHover = existing.expandOnHover !== false;
       initialIncludeFolders = existing.includeFolders === true;
@@ -645,43 +637,24 @@ function findBookmarkNode(
 }
 
 function getItemNode(item: StoredMenuItem): browser.Bookmarks.BookmarkTreeNode | undefined {
+  return getItemResolution(item).node as browser.Bookmarks.BookmarkTreeNode | undefined;
+}
+
+function getItemResolution(item: StoredMenuItem) {
   const effectivePath = combineRootAndItemPath(bookmarkRootPrefix, item.path);
   if (effectivePath.length > 0 || item.url) {
-    return findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, item.url) as
-      | browser.Bookmarks.BookmarkTreeNode
-      | undefined;
+    return resolveBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, item.url);
   }
-  return undefined;
+  return { duplicatePath: false };
 }
 
-function getItemPathAndUrl(
-  bookmarkId: string,
-  nodes: browser.Bookmarks.BookmarkTreeNode[],
-  rootPrefix?: string[],
-): { path?: string[]; url?: string } {
-  const node = findBookmarkNode(bookmarkId, nodes);
-  const path = getItemRelativePath(bookmarkId, nodes as BookmarkNode[], rootPrefix);
-  return {
-    path,
-    url: node?.url,
-  };
-}
-
-function enrichMenuItemPaths(
+function enrichMenuItems(
   items: StoredMenuItem[],
   nodes: browser.Bookmarks.BookmarkTreeNode[],
-  rootPrefix?: string[],
 ): void {
   if (nodes.length === 0) return;
   for (const item of items) {
-    if (item.path === undefined) {
-      if (item.bookmarkId && !item.bookmarkId.startsWith("space-")) {
-        const { path } = getItemPathAndUrl(item.bookmarkId, nodes, rootPrefix);
-        if (path !== undefined) {
-          item.path = path;
-        }
-      }
-    } else if (item.path.length > 0) {
+    if (item.path && item.path.length > 0) {
       const firstSeg = item.path[0];
       if (firstSeg) {
         const special = getSpecialRootTypeFromTitle(firstSeg);
@@ -690,11 +663,24 @@ function enrichMenuItemPaths(
         }
       }
     }
+    if (item.type === "space" || item.type === "menuToggle") continue;
+    const node = getItemNode(item);
+    if (!node) continue;
+    const refreshedPath = getItemRelativePath(
+      node.id,
+      nodes as BookmarkNode[],
+      bookmarkRootPrefix,
+    );
+    if (refreshedPath !== undefined) {
+      item.path = refreshedPath;
+    }
     if (!item.type) {
-      const node = item.bookmarkId ? findBookmarkNode(item.bookmarkId, nodes) : undefined;
-      if (node) {
-        item.type = node.children !== undefined || node.url === undefined ? "folder" : "bookmark";
-      }
+      item.type = node.children !== undefined || node.url === undefined ? "folder" : "bookmark";
+    }
+    if (node.url !== undefined) {
+      item.url = node.url;
+    } else {
+      delete item.url;
     }
   }
 }
@@ -760,7 +746,7 @@ function renderPicker(): void {
   // Render list of items in current folder
   const allItems =
     currentFolder?.children ??
-    (rawBookmarkTree.length > 0 ? rawBookmarkTree[0].children ?? rawBookmarkTree : []);
+    (rawBookmarkTree[0]?.children ?? rawBookmarkTree);
 
   const items =
     pickerMode === "selectRoot" || pickerMode === "pickFolder"
@@ -1071,7 +1057,6 @@ async function initialize(): Promise<void> {
     loadBookmarkRootPrefix(),
   ]);
   rawBookmarkTree = tree;
-  bookmarkOptions = flattenBookmarks(tree);
 
   instanceLabel.value = config.instanceLabel;
   widgetEnabled = enabled;
@@ -1151,7 +1136,7 @@ function initMenusCardTabs(): void {
 
 async function persistMenus(): Promise<void> {
   for (const menu of menus) {
-    enrichMenuItemPaths(menu.items, rawBookmarkTree, bookmarkRootPrefix);
+    enrichMenuItems(menu.items, rawBookmarkTree);
   }
 
   const currentConfig = await loadConfig();
@@ -1261,8 +1246,9 @@ function initColorPopover(): void {
       colorPopoverCycleSection.style.display = "block";
       selectedCycleIndex = 0;
       renderPopoverCycleList();
-      popoverColorInput.value = item.cycleColors[0];
-      popoverColorHex.value = item.cycleColors[0].toUpperCase();
+      const firstColor = item.cycleColors[0] ?? "#3b82f6";
+      popoverColorInput.value = firstColor;
+      popoverColorHex.value = firstColor.toUpperCase();
     } else {
       delete item.cycleColors;
       delete item.color;
@@ -1302,7 +1288,7 @@ function initColorPopover(): void {
           item.cycleColors.splice(selectedCycleIndex, 1);
           selectedCycleIndex = Math.max(0, selectedCycleIndex - 1);
           renderPopoverCycleList();
-          const curColor = item.cycleColors[selectedCycleIndex];
+          const curColor = item.cycleColors[selectedCycleIndex] ?? "#3b82f6";
           popoverColorInput.value = curColor;
           popoverColorHex.value = curColor.toUpperCase();
         } else {
@@ -1393,7 +1379,7 @@ function renderPopoverCycleList(): void {
         popoverColorHex.value = "";
       } else {
         renderPopoverCycleList();
-        const curColor = item.cycleColors![selectedCycleIndex];
+        const curColor = item.cycleColors![selectedCycleIndex] ?? "#3b82f6";
         popoverColorInput.value = curColor;
         popoverColorHex.value = curColor.toUpperCase();
       }
@@ -1430,9 +1416,10 @@ function updateActiveTargetSwatch(): void {
     const colors = activeColorTarget.cycleColors;
     if (colors && colors.length > 0) {
       if (colors.length === 1) {
+        const onlyColor = colors[0] ?? "";
         activeColorSwatchElement.style.background = "";
-        activeColorSwatchElement.style.backgroundColor = colors[0];
-        activeColorSwatchElement.style.borderColor = colors[0];
+        activeColorSwatchElement.style.backgroundColor = onlyColor;
+        activeColorSwatchElement.style.borderColor = onlyColor;
       } else {
         activeColorSwatchElement.style.background = `linear-gradient(135deg, ${colors.join(", ")})`;
         activeColorSwatchElement.style.borderColor = "transparent";
@@ -1523,8 +1510,9 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
       colorPopoverCycleSection.style.display = "block";
       selectedCycleIndex = 0;
       renderPopoverCycleList();
-      popoverColorInput.value = target.cycleColors![0];
-      popoverColorHex.value = target.cycleColors![0].toUpperCase();
+      const firstColor = target.cycleColors![0] ?? "#3b82f6";
+      popoverColorInput.value = firstColor;
+      popoverColorHex.value = firstColor.toUpperCase();
     } else {
       colorPopoverCycleSection.style.display = "none";
       selectedCycleIndex = -1;
@@ -1663,14 +1651,10 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
 
   const barFs = menu.buttonFontSize !== undefined
     ? normalizeFontSize(menu.buttonFontSize)
-    : menu.fontSize !== undefined
-      ? normalizeFontSize(menu.fontSize)
-      : DEFAULT_FONT_SIZE;
+    : DEFAULT_FONT_SIZE;
   const popupFs = menu.popupFontSize !== undefined
     ? normalizeFontSize(menu.popupFontSize)
-    : menu.fontSize !== undefined
-      ? normalizeFontSize(menu.fontSize)
-      : DEFAULT_FONT_SIZE;
+    : DEFAULT_FONT_SIZE;
   const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
   menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
   menuSettingOrientation.value = menu.orientation;
@@ -1717,7 +1701,8 @@ function renderMenuUrlRulesContent(menu: StoredMenu): void {
       delete menu.urlRuleUids;
     } else {
       if (urlRules.length > 0) {
-        menu.urlRuleUids = [urlRules[0].uid];
+        const firstRule = urlRules[0];
+        if (firstRule) menu.urlRuleUids = [firstRule.uid];
       }
     }
     renderMenuUrlRulesContent(menu);
@@ -1781,10 +1766,8 @@ function initItemSettingsPopover(): void {
     const val = itemSettingRename.value.trim();
     if (val) {
       item.rename = val;
-      delete item.emoji;
     } else {
       delete item.rename;
-      delete item.emoji;
     }
     renderMenus();
     markDirty();
@@ -1798,7 +1781,6 @@ function initItemSettingsPopover(): void {
 
     itemSettingRename.value = "";
     delete item.rename;
-    delete item.emoji;
     renderMenus();
     markDirty();
   });
@@ -1967,7 +1949,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
 
     if (isMenuToggle) {
       itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
-      itemSettingRename.value = item.rename ?? item.emoji ?? "";
+      itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
       positionPopover(itemSettingsPopover, rect, 250);
       return;
@@ -1982,9 +1964,9 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
       node?.title ??
       (lastSeg
         ? formatSpecialRootForDisplay(lastSeg, rawBookmarkTree)
-        : (item.bookmarkId || ""));
+        : "");
     itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
-    itemSettingRename.value = item.rename ?? item.emoji ?? "";
+    itemSettingRename.value = item.rename ?? "";
     itemSettingTabMode.value = item.tabMode ?? "";
 
     if (isFolder) {
@@ -2055,7 +2037,6 @@ async function addSpaceBookmark(): Promise<void> {
       ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
     });
     rawBookmarkTree = await browser.bookmarks.getTree();
-    bookmarkOptions = flattenBookmarks(rawBookmarkTree);
     spaceBookmarkResult.textContent = t("toolkit.added");
     spaceBookmarkResult.dataset.state = "success";
   } catch (error) {
@@ -2082,7 +2063,7 @@ function initAddItemPopover(): void {
       const menu = menus[menuIdx];
       if (menu) {
         const newSpace: StoredMenuItem = {
-          bookmarkId: `space-${crypto.randomUUID()}`,
+          uid: crypto.randomUUID(),
           type: "space",
           units: 1,
           transparent: true,
@@ -2105,7 +2086,7 @@ function initAddItemPopover(): void {
       return;
     }
     menu.items.push({
-      bookmarkId: `menu-toggle-${crypto.randomUUID()}`,
+      uid: crypto.randomUUID(),
       type: "menuToggle",
     });
     renderMenus();
@@ -2362,7 +2343,7 @@ function renderMenus(): void {
               if (sourceIndex < targetIndex) targetIndex--;
               if (sourceIndex !== targetIndex) {
                 const [moved] = menu.items.splice(sourceIndex, 1);
-                menu.items.splice(targetIndex, 0, moved);
+                if (moved) menu.items.splice(targetIndex, 0, moved);
                 renderMenus();
                 markDirty();
               }
@@ -2499,7 +2480,7 @@ function renderMenus(): void {
               }
               if (sourceIndex !== targetIndex) {
                 const [moved] = menu.items.splice(sourceIndex, 1);
-                menu.items.splice(targetIndex, 0, moved);
+                if (moved) menu.items.splice(targetIndex, 0, moved);
                 renderMenus();
                 markDirty();
               }
@@ -2563,7 +2544,8 @@ function renderMenus(): void {
             return row;
           }
 
-          const node = getItemNode(item);
+          const pathResolution = getItemResolution(item);
+          const node = pathResolution.node;
           const isFolderNode = node ? (node.children !== undefined || node.url === undefined) : (item.type === "folder" || item.type === "flattenFolder");
           const isFlatten = item.type === "flattenFolder";
           const isFolder = item.type === "folder" || (!item.type && isFolderNode);
@@ -2576,8 +2558,8 @@ function renderMenus(): void {
             node?.title ??
             (lastSeg
               ? formatSpecialRootForDisplay(lastSeg, rawBookmarkTree)
-              : (item.bookmarkId || ""));
-          const customRename = item.rename || item.emoji;
+              : "");
+          const customRename = item.rename;
           const iconPrefix = isFolderNode ? "📁" : "🔖";
 
           const titleSpan = document.createElement("span");
@@ -2707,7 +2689,7 @@ function renderMenus(): void {
             }
             if (sourceIndex !== targetIndex) {
               const [moved] = menu.items.splice(sourceIndex, 1);
-              menu.items.splice(targetIndex, 0, moved);
+              if (moved) menu.items.splice(targetIndex, 0, moved);
               renderMenus();
               markDirty();
             }
@@ -2742,9 +2724,10 @@ function renderMenus(): void {
             const colors = item.cycleColors;
             if (colors && colors.length > 0) {
               if (colors.length === 1) {
+                const onlyColor = colors[0] ?? "";
                 swatch.style.background = "";
-                swatch.style.backgroundColor = colors[0];
-                swatch.style.borderColor = colors[0];
+                swatch.style.backgroundColor = onlyColor;
+                swatch.style.borderColor = onlyColor;
               } else {
                 swatch.style.background = `linear-gradient(135deg, ${colors.join(", ")})`;
                 swatch.style.borderColor = "transparent";
@@ -2794,6 +2777,12 @@ function renderMenus(): void {
 
           controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
           row.append(label, controls);
+          if (pathResolution.duplicatePath) {
+            const warning = document.createElement("div");
+            warning.className = "item-path-warning";
+            warning.textContent = t("item.duplicatePathWarning");
+            row.appendChild(warning);
+          }
           return row;
         }),
       );
@@ -2944,24 +2933,6 @@ function setDesktopTestStatus(
   desktopTestStatus.dataset.state = state;
 }
 
-function actionButton(label: string, action: () => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  button.addEventListener("click", action);
-  return button;
-}
-
-function flattenBookmarks(
-  nodes: browser.Bookmarks.BookmarkTreeNode[],
-  depth = 0,
-): BookmarkOption[] {
-  return nodes.flatMap((node) => {
-    const current = node.id === "0" ? [] : [{ id: node.id, label: `${"  ".repeat(depth)}${node.title || t("common.bookmarks")}` }];
-    return [...current, ...flattenBookmarks(node.children ?? [], depth + 1)];
-  });
-}
-
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id);
   if (!value) {
@@ -2983,13 +2954,12 @@ function exportSettings(): void {
   }
 
   for (const menu of menus) {
-    enrichMenuItemPaths(menu.items, rawBookmarkTree, bookmarkRootPrefix);
+    enrichMenuItems(menu.items, rawBookmarkTree);
   }
 
-  // Export only the menus, in a portable shape: each item is identified by its
-  // bookmark path and keeps its type + user settings. Browser-specific bookmarkId
-  // and the re-derivable url are omitted; so are instance label, desktop address,
-  // attachment mode, always-on-top, and language (per-install / per-environment).
+  // Export only the menus, in a portable shape: each item keeps its own uid,
+  // bookmark path, URL, type, and user settings. Instance label, desktop address,
+  // and language remain per-install.
   const exportData: ExportedSettingsData = {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
@@ -3010,25 +2980,21 @@ function exportSettings(): void {
       items: menu.items.map((item) => {
         if (item.type === "menuToggle") {
           return {
+            uid: item.uid,
             type: "menuToggle",
             ...(item.rename ? { rename: item.rename } : {}),
           } satisfies ExportedMenuItem;
         }
 
-        let path = item.path;
-        if (!path || path.length === 0) {
-          if (item.bookmarkId && !item.bookmarkId.startsWith("space-")) {
-            const { path: resolvedPath } = getItemPathAndUrl(item.bookmarkId, rawBookmarkTree, bookmarkRootPrefix);
-            path = resolvedPath;
-          }
-        }
-        const node = item.bookmarkId ? findBookmarkNode(item.bookmarkId, rawBookmarkTree) : undefined;
-        const isFolder = node ? (node.children !== undefined || node.url === undefined) : false;
-          const itemType: string = item.type ?? (isFolder ? "folder" : "bookmark");
+        const path = item.path;
+        const isFolder = item.type === "folder" || item.type === "flattenFolder";
+        const itemType: string = item.type ?? (isFolder ? "folder" : "bookmark");
 
         const exportedItem: ExportedMenuItem = {
+          uid: item.uid,
           type: itemType,
-          ...(path && path.length > 0 ? { path } : {}),
+          ...(path !== undefined ? { path } : {}),
+          ...(item.url ? { url: item.url } : {}),
           ...(typeof item.units === "number" ? { units: item.units } : {}),
           ...(item.transparent !== undefined ? { transparent: item.transparent } : {}),
           ...(item.rename ? { rename: item.rename } : {}),
@@ -3039,7 +3005,7 @@ function exportSettings(): void {
           ...(item.includeFolders ? { includeFolders: true } : {}),
           ...(item.tabMode ? { tabMode: item.tabMode } : {}),
         };
-          return exportedItem;
+        return exportedItem;
       }),
     })),
   };
@@ -3077,12 +3043,11 @@ async function importSettings(file: File): Promise<void> {
 
     const menusSource = parsed.menus;
 
-    // Rebuild each item from its portable fields: match the bookmark by path to
-    // recover the browser-specific bookmarkId; omit url; keep type + settings.
+    // Rebuild each item from its portable fields.
     const importedMenus: StoredMenu[] = [];
     for (const rawMenu of menusSource) {
       if (typeof rawMenu !== "object" || rawMenu === null) continue;
-      const menuRecord = rawMenu as Record<string, unknown>;
+      const menuRecord = rawMenu as unknown as Record<string, unknown>;
       const rawItems = Array.isArray(menuRecord.items) ? menuRecord.items : [];
 
       const items: StoredMenuItem[] = [];
@@ -3093,28 +3058,17 @@ async function importSettings(file: File): Promise<void> {
 
         const path = Array.isArray(itemRecord.path)
           ? itemRecord.path.filter((p): p is string => typeof p === "string")
-          : [];
+          : undefined;
         const type: StoredMenuItemType = typeof itemRecord.type === "string" && itemRecord.type
           ? itemRecord.type
           : "bookmark";
-
-        let bookmarkId = "";
-        let resolvedPath: string[] | undefined = path.length > 0 ? path : undefined;
-        if (rawBookmarkTree.length > 0 && path.length > 0) {
-          const effectivePath = combineRootAndItemPath(bookmarkRootPrefix, path);
-          const matched = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, undefined);
-          if (matched) {
-            bookmarkId = matched.id;
-          }
-        } else if (typeof itemRecord.bookmarkId === "string") {
-          bookmarkId = itemRecord.bookmarkId;
-        }
+        const uid = typeof itemRecord.uid === "string" && itemRecord.uid
+          ? itemRecord.uid
+          : crypto.randomUUID();
 
         const rename = typeof itemRecord.rename === "string" && itemRecord.rename
           ? itemRecord.rename
-          : typeof itemRecord.emoji === "string" && itemRecord.emoji
-            ? itemRecord.emoji
-            : undefined;
+          : undefined;
 
         const expandDirection =
           itemRecord.expandDirection === "down" ||
@@ -3132,7 +3086,7 @@ async function importSettings(file: File): Promise<void> {
           if (hasMenuToggle) continue;
           hasMenuToggle = true;
           items.push({
-            bookmarkId: `menu-toggle-${crypto.randomUUID()}`,
+            uid,
             type: "menuToggle",
             ...(rename ? { rename } : {}),
           });
@@ -3140,9 +3094,12 @@ async function importSettings(file: File): Promise<void> {
         }
 
         items.push({
-          bookmarkId,
+          uid,
           type,
-          ...(resolvedPath ? { path: resolvedPath } : {}),
+          ...(path !== undefined ? { path } : {}),
+          ...(typeof itemRecord.url === "string" && itemRecord.url
+            ? { url: itemRecord.url }
+            : {}),
           ...(typeof itemRecord.units === "number" ? { units: itemRecord.units } : {}),
           ...(typeof itemRecord.transparent === "boolean" ? { transparent: itemRecord.transparent } : {}),
           ...(rename ? { rename } : {}),
@@ -3162,12 +3119,6 @@ async function importSettings(file: File): Promise<void> {
 
       const normalizedMenu = normalizeMenu({
         ...menuRecord,
-        ...(menuRecord.fontSize !== undefined && menuRecord.buttonFontSize === undefined
-          ? { buttonFontSize: menuRecord.fontSize }
-          : {}),
-        ...(menuRecord.fontSize !== undefined && menuRecord.popupFontSize === undefined
-          ? { popupFontSize: menuRecord.fontSize }
-          : {}),
         uid: typeof menuRecord.uid === "string" && menuRecord.uid ? menuRecord.uid : crypto.randomUUID(),
         items,
       });

@@ -70,7 +70,7 @@ export async function listBrowserWindows(): Promise<BrowserWindowCandidate[]> {
       {
         uid: String(window.id),
         focused: window.focused ?? false,
-        activeTabUrl,
+        ...(activeTabUrl !== undefined ? { activeTabUrl } : {}),
         bounds: {
           x: window.left,
           y: window.top,

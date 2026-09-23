@@ -186,6 +186,7 @@ export const en = {
   "itemSettings.hoverExpand": "Expand on hover",
   "itemSettings.includeFolders": "Include subfolders when flattening",
   "itemSettings.change": "Change bookmark / folder…",
+  "item.duplicatePathWarning": "⚠ This path matches multiple bookmarks. BrowseRail uses the saved URL when possible; choose a unique path to avoid ambiguity.",
 
   // Menu card
   "menu.title": "Menu {n}",
@@ -484,6 +485,7 @@ export const zhCN: Record<MessageKey, string> = {
   "itemSettings.hoverExpand": "悬停展开",
   "itemSettings.includeFolders": "摊平时包含子文件夹",
   "itemSettings.change": "更换书签 / 目录…",
+  "item.duplicatePathWarning": "⚠ 这个路径匹配到多个书签。BrowseRail 会尽量用已保存的网址消歧；建议改用唯一路径。",
 
   // Menu card
   "menu.title": "菜单 {n}",
