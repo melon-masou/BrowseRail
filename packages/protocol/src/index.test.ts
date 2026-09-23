@@ -5,16 +5,16 @@ import {
   formatActionUid,
   invertBookmarkActionUid,
   isExportedSettingsData,
-  isServerMessage,
+  isNativeMessage,
   isSpecialRootPlaceholder,
   parseBookmarkAction,
   PROTOCOL_VERSION,
 } from "./index";
 
-describe("isServerMessage", () => {
+describe("isNativeMessage", () => {
   it("accepts an invocation with an explicit target window", () => {
     expect(
-      isServerMessage({
+      isNativeMessage({
         type: "invoke",
         actionUid: "bookmark-1",
         windowUid: "window-1",
@@ -26,7 +26,7 @@ describe("isServerMessage", () => {
     // A free (detached) surface omits windowUid; the extension resolves the
     // target as its current lastFocused window at dispatch time.
     expect(
-      isServerMessage({
+      isNativeMessage({
         type: "invoke",
         actionUid: "bookmark-1",
       }),
@@ -35,7 +35,7 @@ describe("isServerMessage", () => {
 
   it("rejects an invocation with a non-string target window", () => {
     expect(
-      isServerMessage({
+      isNativeMessage({
         type: "invoke",
         actionUid: "bookmark-1",
         windowUid: 42,
@@ -45,7 +45,10 @@ describe("isServerMessage", () => {
 
   it("rejects incompatible protocol versions", () => {
     expect(
-      isServerMessage({ type: "ready", protocolVersion: PROTOCOL_VERSION + 1 }),
+      isNativeMessage({
+        type: "ready",
+        protocolVersion: PROTOCOL_VERSION + 1,
+      }),
     ).toBe(false);
   });
 });

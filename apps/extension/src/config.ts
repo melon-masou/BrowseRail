@@ -1,6 +1,7 @@
 import type {
   AttachmentMode,
   ExpandDirection,
+  MenuAnchor,
   MenuFontSize,
   MenuItemType,
   MenuOrientation,
@@ -100,20 +101,28 @@ export function defaultMenuPlacement(
   _orientation: MenuOrientation = "column",
   _itemCount = 1,
   fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
-  gapPercent = DEFAULT_MENU_GAP_PERCENT,
 ): MenuPlacement {
   const { itemWidth, itemHeight } = getItemDimensions(fontSize);
-  const gapPx = calculateGapPx(itemHeight, gapPercent);
 
   return {
-    anchor: "topLeft",
-    fontSize: normalizeFontSize(fontSize),
-    gap: gapPx,
+    boundPosition: {
+      anchor: "topLeft",
+      offsetX: 12,
+      offsetY: 12 + index * (itemHeight + 12),
+    },
     itemHeight,
     itemWidth,
-    offsetX: 12,
-    offsetY: 12 + index * (itemHeight + 12),
   };
+}
+
+// Inter-item gap in px, resolved from the menu's gap percentage. Gap is
+// config-owned render appearance (it lives on MenuView, not MenuPlacement), so
+// it is derived here rather than carried on the desktop-owned placement.
+export function resolveGapPx(
+  fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
+  gapPercent = DEFAULT_MENU_GAP_PERCENT,
+): number {
+  return calculateGapPx(getItemDimensions(fontSize).itemHeight, gapPercent);
 }
 
 export function resolveMenuPlacement(
@@ -122,16 +131,12 @@ export function resolveMenuPlacement(
   orientation: MenuOrientation = "column",
   _itemCount = 1,
   fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
-  gapPercent = DEFAULT_MENU_GAP_PERCENT,
 ): MenuPlacement {
   const defaultDim = getItemDimensions(fontSize);
-  const effectiveGapPercent = gapPercent !== undefined ? gapPercent : DEFAULT_MENU_GAP_PERCENT;
-  const effectiveGapPx = calculateGapPx(defaultDim.itemHeight, effectiveGapPercent);
 
   // A never-customized menu still needs default anchor/offsets and a default per-button
   // size; a remembered placement supplies those from the last desktop customization.
-  const base =
-    storedPlacement ?? defaultMenuPlacement(index, orientation, 1, fontSize, effectiveGapPercent);
+  const base = storedPlacement ?? defaultMenuPlacement(index, orientation, 1, fontSize);
 
   const itemWidth =
     typeof base.itemWidth === "number" && base.itemWidth > 0 ? base.itemWidth : defaultDim.itemWidth;
@@ -144,11 +149,7 @@ export function resolveMenuPlacement(
   // is NOT computed or stored here — the desktop derives it dynamically from
   // itemWidth/itemHeight × item count.
   return {
-    anchor: base.anchor,
-    offsetX: base.offsetX,
-    offsetY: base.offsetY,
-    fontSize: normalizeFontSize(fontSize),
-    gap: effectiveGapPx,
+    boundPosition: { ...base.boundPosition },
     itemWidth,
     itemHeight,
   };
@@ -347,7 +348,11 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
 }
 
 function normalizePlacement(value: unknown): MenuPlacement | undefined {
-  if (!isRecord(value) || !isAnchor(value.anchor)) {
+  if (!isRecord(value) || !isRecord(value.boundPosition)) {
+    return undefined;
+  }
+  const bound = value.boundPosition;
+  if (!isAnchor(bound.anchor)) {
     return undefined;
   }
   const itemWidth = typeof value.itemWidth === "number" && Number.isFinite(value.itemWidth)
@@ -356,18 +361,14 @@ function normalizePlacement(value: unknown): MenuPlacement | undefined {
   const itemHeight = typeof value.itemHeight === "number" && Number.isFinite(value.itemHeight)
     ? boundedNumber(value.itemHeight, 1, 200, DEFAULT_ITEM_HEIGHT)
     : undefined;
-  const fontSize = value.fontSize !== undefined ? normalizeFontSize(value.fontSize) : undefined;
-  const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
-    ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
-    : undefined;
   return {
-    anchor: value.anchor,
-    ...(fontSize !== undefined ? { fontSize } : {}),
-    ...(gap !== undefined ? { gap } : {}),
+    boundPosition: {
+      anchor: bound.anchor,
+      offsetX: boundedNumber(bound.offsetX, -10_000, 10_000, 12),
+      offsetY: boundedNumber(bound.offsetY, -10_000, 10_000, 12),
+    },
     ...(itemHeight !== undefined ? { itemHeight } : {}),
     ...(itemWidth !== undefined ? { itemWidth } : {}),
-    offsetX: boundedNumber(value.offsetX, -10_000, 10_000, 12),
-    offsetY: boundedNumber(value.offsetY, -10_000, 10_000, 12),
   };
 }
 
@@ -383,10 +384,10 @@ function boundedNumber(
 }
 
 function isAttachmentMode(value: unknown): value is AttachmentMode {
-  return value === "none" || value === "lastFocused" || value === "all" || value === "free";
+  return value === "lastFocused" || value === "all" || value === "free";
 }
 
-function isAnchor(value: unknown): value is MenuPlacement["anchor"] {
+function isAnchor(value: unknown): value is MenuAnchor {
   return value === "topLeft" || value === "topRight" || value === "bottomLeft" || value === "bottomRight";
 }
 
@@ -560,17 +561,6 @@ export async function loadBookmarkRootPrefix(): Promise<string[]> {
     return raw
       .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
       .map((s) => s.trim());
-  }
-  if (typeof raw === "string" && raw.trim()) {
-    // Legacy "/"-joined string format: migrate by splitting on "/".
-    const trimmed = raw.trim();
-    if (trimmed === "/书签栏" || trimmed === "/Bookmarks bar") {
-      return [];
-    }
-    return trimmed
-      .split("/")
-      .map((s) => s.trim())
-      .filter(Boolean);
   }
   return [];
 }

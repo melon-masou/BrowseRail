@@ -265,7 +265,7 @@ mod tests {
                 instance_uid: "inst-1".into(),
                 revision: 1,
             },
-            Some("Syncing panels"),
+            Some("Syncing menus"),
         );
         assert_eq!(
             *sm.current(),

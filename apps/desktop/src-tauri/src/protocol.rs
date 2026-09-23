@@ -4,7 +4,7 @@ pub const PROTOCOL_VERSION: u16 = 1;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
-pub enum ClientMessage {
+pub enum ExtensionMessage {
     #[serde(rename = "hello")]
     Hello {
         #[serde(rename = "protocolVersion")]
@@ -14,11 +14,7 @@ pub enum ClientMessage {
     #[serde(rename = "sync")]
     Sync {
         revision: u64,
-        #[serde(default, rename = "attachmentMode")]
-        attachment_mode: AttachmentMode,
-        panels: Vec<PanelSnapshot>,
-        #[serde(default, rename = "freeMenus")]
-        free_menus: Vec<MenuSnapshot>,
+        menus: Vec<SyncedMenu>,
         #[serde(default, rename = "resetMenuUids")]
         reset_menu_uids: Vec<String>,
     },
@@ -56,7 +52,7 @@ pub enum ClientMessage {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type")]
-pub enum ServerMessage {
+pub enum NativeMessage {
     #[serde(rename = "ready")]
     Ready {
         #[serde(rename = "protocolVersion")]
@@ -114,17 +110,22 @@ pub enum ServerMessage {
 #[serde(rename_all = "camelCase")]
 pub struct BrowserInstance {
     pub uid: String,
-    #[allow(dead_code)]
+    // Best-effort browser identifier for display only (e.g. "chrome"). An open
+    // string with an extension-side fallback; never matched or enumerated here.
     #[serde(default)]
     pub browser: Option<String>,
     #[serde(default)]
     pub label: Option<String>,
 }
 
+/// How a bound menu attaches to browser windows. `free` is a positioning
+/// concept, kept in the same sum type as `all`/`lastFocused` because a free
+/// surface (one shared floating window) is mutually exclusive with per-window
+/// `all`. URL-driven hiding is expressed by `MenuNativeProps.visible`, not by an
+/// attach mode, so there is deliberately no `None` variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum AttachmentMode {
-    None,
     #[default]
     LastFocused,
     All,
@@ -138,7 +139,6 @@ impl<'de> Deserialize<'de> for AttachmentMode {
     {
         let s = String::deserialize(deserializer)?;
         match s.as_str() {
-            "none" => Ok(AttachmentMode::None),
             "all" => Ok(AttachmentMode::All),
             "free" => Ok(AttachmentMode::Free),
             _ => Ok(AttachmentMode::LastFocused),
@@ -192,48 +192,129 @@ where
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PanelSnapshot {
-    #[serde(default)]
-    pub on_top_mode: OnTopMode,
-    #[serde(default)]
-    pub menus: Vec<MenuSnapshot>,
-    pub window: BrowserWindowSnapshot,
-}
+// See packages/protocol/src/menu.ts and native.ts for the authoritative split
+// between the RENDER axis (MenuView) and the NATIVE axis (MenuPlacement /
+// MenuNativeProps / MenuTarget). These structs mirror those TypeScript types.
 
+/// RENDER axis: the item tree and appearance the surface webview draws. Never
+/// describes window geometry, sizing-as-a-window, or when a surface shows.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MenuSnapshot {
-    #[serde(default)]
-    pub enabled: Option<bool>,
-    #[serde(default)]
-    pub font_size: Option<serde_json::Value>,
-    #[serde(default)]
-    pub gap: Option<f64>,
-    #[serde(default)]
-    pub button_padding: Option<f64>,
-    #[serde(default)]
-    pub color: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
-    pub expand_direction: Option<ExpandDirection>,
+pub struct MenuView {
+    pub uid: String,
     #[serde(default)]
     pub items: Vec<LayoutEntry>,
     #[serde(default)]
     pub orientation: MenuOrientation,
     #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
+    pub expand_direction: Option<ExpandDirection>,
+    #[serde(default)]
+    pub button_font_size: Option<f64>,
+    #[serde(default)]
+    pub popup_font_size: Option<f64>,
+    /// Inter-item gap in px (config-owned appearance). Native reads it, together
+    /// with the item size in MenuPlacement, to derive the total window size.
+    #[serde(default)]
+    pub gap: Option<f64>,
+}
+
+/// NATIVE axis: window behavior the webview never reads. `visible` is the
+/// URL-driven show/hide gate; when false the surface is kept alive but hidden
+/// (no destroy/recreate flicker), for both bound and free menus.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuNativeProps {
+    #[serde(default)]
     pub attachment_mode: AttachmentMode,
     #[serde(default)]
     pub on_top_mode: OnTopMode,
-    pub placement: MenuPlacement,
-    pub uid: String,
-    // Absolute screen coordinates for a free menu's floating surface; absent
-    // means "no saved position, center on the primary monitor".
-    #[serde(default, rename = "freePosition")]
-    pub free_position: Option<FreePosition>,
+    #[serde(default = "default_visible")]
+    pub visible: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+fn default_visible() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncedMenu {
+    pub view: MenuView,
+    pub placement: MenuPlacement,
+    pub native: MenuNativeProps,
+    pub target: MenuTarget,
+}
+
+/// NATIVE axis, downlink only: where a surface lives. A free surface's absolute
+/// position is NOT here — it lives in `MenuPlacement.free_position`, so the whole
+/// placement round-trips as one unit.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum MenuTarget {
+    Window {
+        window: BrowserWindowSnapshot,
+    },
+    Free {
+        #[serde(default, rename = "referenceWindow")]
+        reference_window: Option<BrowserWindowSnapshot>,
+    },
+}
+
+impl SyncedMenu {
+    pub fn bound_window(&self) -> Option<&BrowserWindowSnapshot> {
+        match &self.target {
+            MenuTarget::Window { window } => Some(window),
+            MenuTarget::Free { .. } => None,
+        }
+    }
+
+    pub fn reference_window(&self) -> Option<&BrowserWindowSnapshot> {
+        match &self.target {
+            MenuTarget::Window { window } => Some(window),
+            MenuTarget::Free {
+                reference_window, ..
+            } => reference_window.as_ref(),
+        }
+    }
+
+    pub fn free_position(&self) -> Option<FreePosition> {
+        self.placement.free_position
+    }
+
+    pub fn set_free_position(&mut self, position: FreePosition) {
+        self.placement.free_position = Some(position);
+    }
+
+    pub fn is_free(&self) -> bool {
+        matches!(self.target, MenuTarget::Free { .. })
+    }
+}
+
+/// Desktop→webview projection of a synced menu: render content (flattened) plus
+/// the resolved geometry the surface lays itself out from. This is an internal
+/// desktop contract, not the extension wire protocol; the webview reads the view
+/// fields and `placement` only (never native props or target). Mirrors
+/// `SurfaceMenu` in apps/desktop/src/main.ts.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurfaceMenu {
+    #[serde(flatten)]
+    pub view: MenuView,
+    pub placement: MenuPlacement,
+}
+
+impl SurfaceMenu {
+    pub fn from_synced(synced: &SyncedMenu) -> Self {
+        Self {
+            view: synced.view.clone(),
+            placement: synced.placement,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FreePosition {
     pub x: f64,
@@ -261,23 +342,34 @@ impl<'de> Deserialize<'de> for MenuOrientation {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+/// A bound menu's position relative to its owning browser window.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct MenuPlacement {
+pub struct MenuBoundPosition {
     #[serde(default)]
     pub anchor: MenuAnchor,
     #[serde(default)]
     pub offset_x: f64,
     #[serde(default)]
     pub offset_y: f64,
+}
+
+/// NATIVE axis: geometry the desktop decides and echoes back after a drag/resize
+/// (round-trips extension⇄desktop). Each mode reads its own field —
+/// `bound_position` while attached, `free_position` while detached — and both
+/// may coexist because a menu switches between them. `item_width`/`item_height`
+/// are the shared per-item pixel size set by resizing.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuPlacement {
+    #[serde(default)]
+    pub bound_position: MenuBoundPosition,
+    #[serde(default)]
+    pub free_position: Option<FreePosition>,
     #[serde(default)]
     pub item_width: Option<f64>,
     #[serde(default)]
     pub item_height: Option<f64>,
-    #[serde(default)]
-    pub font_size: Option<serde_json::Value>,
-    #[serde(default)]
-    pub gap: Option<f64>,
 }
 
 /// Internal derived geometry for positioning and sizing a menu window in Tauri.
@@ -394,42 +486,52 @@ pub fn menu_track_count(items: &[LayoutEntry]) -> f64 {
 }
 
 /// Gap in px between menu tracks, resolved identically to the frontend
-/// (apps/desktop/src/main.ts): the placement gap, else the snapshot gap,
-/// else 4. Both the resize derivation and the total recompute must use this.
-pub fn menu_gap(menu: &MenuSnapshot) -> f64 {
-    menu.placement.gap.or(menu.gap).unwrap_or(4.0)
+/// (apps/desktop/src/main.ts): the menu's gap, else 4. Both the resize
+/// derivation and the total recompute must use this.
+pub fn menu_gap(view: &MenuView) -> f64 {
+    view.gap.unwrap_or(4.0)
 }
 
-/// Derives the internal total window dimensions (width, height) from the menu snapshot.
-pub fn menu_total_size(menu: &MenuSnapshot) -> (f64, f64) {
-    let count = menu_track_count(&menu.items);
-    let item_width = menu.placement.item_width.unwrap_or(84.0);
-    let item_height = menu.placement.item_height.unwrap_or(36.0);
-    let gap = menu_gap(menu);
-    match menu.orientation {
+/// Derives the internal total window dimensions (width, height). Item size is
+/// desktop-owned (MenuPlacement); gap and item count come from the view.
+pub fn menu_total_size(view: &MenuView, placement: &MenuPlacement) -> (f64, f64) {
+    let count = menu_track_count(&view.items);
+    let item_width = placement.item_width.unwrap_or(84.0);
+    let item_height = placement.item_height.unwrap_or(36.0);
+    let gap = menu_gap(view);
+    match view.orientation {
         MenuOrientation::Row => (count * item_width + (count - 1.0) * gap, item_height),
         MenuOrientation::Column => (item_width, count * item_height + (count - 1.0) * gap),
     }
 }
 
-pub fn menu_total_size_for_state(menu: &MenuSnapshot, collapsed: bool) -> (f64, f64) {
+pub fn menu_total_size_for_state(
+    view: &MenuView,
+    placement: &MenuPlacement,
+    collapsed: bool,
+) -> (f64, f64) {
     if collapsed {
         (
-            menu.placement.item_width.unwrap_or(84.0),
-            menu.placement.item_height.unwrap_or(36.0),
+            placement.item_width.unwrap_or(84.0),
+            placement.item_height.unwrap_or(36.0),
         )
     } else {
-        menu_total_size(menu)
+        menu_total_size(view, placement)
     }
 }
 
 /// Geometry for a detached menu surface in its current state. The full state
 /// includes the drag handle; the collapsed state places the MenuToggle at its
 /// absolute full-state position.
-pub fn free_menu_geometry_for_state(menu: &MenuSnapshot, collapsed: bool) -> ComputedMenuGeometry {
+pub fn free_menu_geometry_for_state(
+    view: &MenuView,
+    placement: &MenuPlacement,
+    free_position: Option<FreePosition>,
+    collapsed: bool,
+) -> ComputedMenuGeometry {
     const FREE_DRAG_HANDLE_SIZE: f64 = 10.0;
-    let (mut width, mut height) = menu_total_size_for_state(menu, collapsed);
-    let Some(position) = menu.free_position else {
+    let (mut width, mut height) = menu_total_size_for_state(view, placement, collapsed);
+    let Some(position) = free_position else {
         return ComputedMenuGeometry {
             x: 0.0,
             y: 0.0,
@@ -440,13 +542,13 @@ pub fn free_menu_geometry_for_state(menu: &MenuSnapshot, collapsed: bool) -> Com
     let (x, y) = (position.x, position.y);
 
     if collapsed {
-        let (toggle_x, toggle_y) = menu_toggle_position(menu);
-        let handle_offset_x = if matches!(menu.orientation, MenuOrientation::Row) {
+        let (toggle_x, toggle_y) = menu_toggle_position(view, placement);
+        let handle_offset_x = if matches!(view.orientation, MenuOrientation::Row) {
             FREE_DRAG_HANDLE_SIZE
         } else {
             0.0
         };
-        let handle_offset_y = if matches!(menu.orientation, MenuOrientation::Column) {
+        let handle_offset_y = if matches!(view.orientation, MenuOrientation::Column) {
             FREE_DRAG_HANDLE_SIZE
         } else {
             0.0
@@ -461,7 +563,7 @@ pub fn free_menu_geometry_for_state(menu: &MenuSnapshot, collapsed: bool) -> Com
         };
     }
 
-    match menu.orientation {
+    match view.orientation {
         MenuOrientation::Row => width += FREE_DRAG_HANDLE_SIZE,
         MenuOrientation::Column => height += FREE_DRAG_HANDLE_SIZE,
     }
@@ -474,9 +576,9 @@ pub fn free_menu_geometry_for_state(menu: &MenuSnapshot, collapsed: bool) -> Com
 }
 
 /// Position of the MenuToggle button inside the full menu grid.
-pub fn menu_toggle_position(menu: &MenuSnapshot) -> (f64, f64) {
+pub fn menu_toggle_position(view: &MenuView, placement: &MenuPlacement) -> (f64, f64) {
     let mut units = 0.0;
-    for item in &menu.items {
+    for item in &view.items {
         if matches!(item, LayoutEntry::MenuToggle { .. }) {
             break;
         }
@@ -487,25 +589,20 @@ pub fn menu_toggle_position(menu: &MenuSnapshot) -> (f64, f64) {
     }
 
     let track = units.round().max(0.0);
-    let gap = menu_gap(menu);
-    match menu.orientation {
-        MenuOrientation::Row => (
-            track * (menu.placement.item_width.unwrap_or(84.0) + gap),
-            0.0,
-        ),
-        MenuOrientation::Column => (
-            0.0,
-            track * (menu.placement.item_height.unwrap_or(36.0) + gap),
-        ),
+    let gap = menu_gap(view);
+    match view.orientation {
+        MenuOrientation::Row => (track * (placement.item_width.unwrap_or(84.0) + gap), 0.0),
+        MenuOrientation::Column => (0.0, track * (placement.item_height.unwrap_or(36.0) + gap)),
     }
 }
 
 /// Derives the full window geometry (x, y, width, height) relative to the browser window.
 pub fn compute_menu_geometry(
     window: &BrowserWindowSnapshot,
-    menu: &MenuSnapshot,
+    view: &MenuView,
+    placement: &MenuPlacement,
 ) -> ComputedMenuGeometry {
-    compute_menu_geometry_for_state(window, menu, false)
+    compute_menu_geometry_for_state(window, view, placement, false)
 }
 
 /// Derives geometry for the menu's current state. In the collapsed state, the
@@ -513,23 +610,25 @@ pub fn compute_menu_geometry(
 /// right/bottom anchors must first resolve against the full-menu size.
 pub fn compute_menu_geometry_for_state(
     window: &BrowserWindowSnapshot,
-    menu: &MenuSnapshot,
+    view: &MenuView,
+    placement: &MenuPlacement,
     collapsed: bool,
 ) -> ComputedMenuGeometry {
-    let (full_width, full_height) = menu_total_size(menu);
-    let (width, height) = menu_total_size_for_state(menu, collapsed);
-    let (toggle_x, toggle_y) = menu_toggle_position(menu);
+    let (full_width, full_height) = menu_total_size(view, placement);
+    let (width, height) = menu_total_size_for_state(view, placement, collapsed);
+    let (toggle_x, toggle_y) = menu_toggle_position(view, placement);
     let bounds = &window.bounds;
-    let full_x = match menu.placement.anchor {
-        MenuAnchor::TopLeft | MenuAnchor::BottomLeft => bounds.x + menu.placement.offset_x,
+    let bound = &placement.bound_position;
+    let full_x = match bound.anchor {
+        MenuAnchor::TopLeft | MenuAnchor::BottomLeft => bounds.x + bound.offset_x,
         MenuAnchor::TopRight | MenuAnchor::BottomRight => {
-            bounds.x + bounds.width - full_width - menu.placement.offset_x
+            bounds.x + bounds.width - full_width - bound.offset_x
         }
     };
-    let full_y = match menu.placement.anchor {
-        MenuAnchor::TopLeft | MenuAnchor::TopRight => bounds.y + menu.placement.offset_y,
+    let full_y = match bound.anchor {
+        MenuAnchor::TopLeft | MenuAnchor::TopRight => bounds.y + bound.offset_y,
         MenuAnchor::BottomLeft | MenuAnchor::BottomRight => {
-            bounds.y + bounds.height - full_height - menu.placement.offset_y
+            bounds.y + bounds.height - full_height - bound.offset_y
         }
     };
     let x = full_x + if collapsed { toggle_x } else { 0.0 };
@@ -545,20 +644,20 @@ pub fn compute_menu_geometry_for_state(
 #[cfg(test)]
 mod tests {
     use super::{
-        BrowserWindowSnapshot, ClientMessage, MenuSnapshot, ServerMessage,
-        compute_menu_geometry_for_state, free_menu_geometry_for_state,
+        BrowserWindowSnapshot, ExtensionMessage, MenuPlacement, MenuView, NativeMessage,
+        SyncedMenu, compute_menu_geometry_for_state, free_menu_geometry_for_state,
     };
 
     #[test]
     fn reads_the_extension_hello_contract() {
-        let message = serde_json::from_str::<ClientMessage>(
+        let message = serde_json::from_str::<ExtensionMessage>(
             r#"{"type":"hello","protocolVersion":1,"instance":{"uid":"instance-a","browser":"chrome","label":"Work"}}"#,
         )
         .unwrap();
 
         assert!(matches!(
             message,
-            ClientMessage::Hello {
+            ExtensionMessage::Hello {
                 protocol_version: 1,
                 instance,
                 ..
@@ -568,11 +667,11 @@ mod tests {
 
     #[test]
     fn handles_unknown_message_types_gracefully() {
-        let message = serde_json::from_str::<ClientMessage>(
+        let message = serde_json::from_str::<ExtensionMessage>(
             r#"{"type":"someNewFutureMessage","payload":123}"#,
         )
         .unwrap();
-        assert!(matches!(message, ClientMessage::Unknown));
+        assert!(matches!(message, ExtensionMessage::Unknown));
     }
 
     #[test]
@@ -586,71 +685,119 @@ mod tests {
         let json = r#"{
             "type": "sync",
             "revision": 1,
-            "attachmentMode": "futureAttachmentStrategy",
-            "panels": [{
-                "onTopMode": "unknownFutureMode",
-                "menus": [{
+            "menus": [{
+                "view": {
                     "uid": "menu-1",
                     "orientation": "diagonalFuture",
-                    "placement": {
-                        "anchor": "centerFuture",
-                        "width": 100,
-                        "height": 40
-                    },
                     "expandDirection": "",
                     "items": [
                         { "kind": "bookmark", "uid": "b1", "label": "Google" },
                         { "kind": "customWidget", "uid": "w1", "extra": true }
                     ]
-                }],
-                "window": {
-                    "uid": "win-1",
-                    "bounds": { "x": 0, "y": 0, "width": 800, "height": 600 }
+                },
+                "placement": {
+                    "boundPosition": { "anchor": "centerFuture" }
+                },
+                "native": {
+                    "attachmentMode": "futureAttachmentStrategy",
+                    "onTopMode": "unknownFutureMode"
+                },
+                "target": {
+                    "kind": "window",
+                    "window": {
+                        "uid": "win-1",
+                        "bounds": { "x": 0, "y": 0, "width": 800, "height": 600 }
+                    }
                 }
             }]
         }"#;
 
         let message =
-            serde_json::from_str::<ClientMessage>(json).expect("should parse resiliently");
-        if let ClientMessage::Sync {
-            attachment_mode,
-            panels,
-            ..
-        } = message
-        {
-            assert_eq!(attachment_mode, super::AttachmentMode::LastFocused);
-            assert_eq!(panels.len(), 1);
-            let panel = &panels[0];
-            assert_eq!(panel.on_top_mode, super::OnTopMode::AboveBrowser);
-            let menu = &panel.menus[0];
-            assert_eq!(menu.orientation, super::MenuOrientation::Row);
-            assert_eq!(menu.placement.anchor, super::MenuAnchor::TopLeft);
-            assert_eq!(menu.expand_direction, None);
-            assert_eq!(menu.items.len(), 2);
-            assert!(matches!(menu.items[1], super::LayoutEntry::Unknown));
+            serde_json::from_str::<ExtensionMessage>(json).expect("should parse resiliently");
+        if let ExtensionMessage::Sync { menus, .. } = message {
+            assert_eq!(menus.len(), 1);
+            let menu = &menus[0];
+            assert_eq!(menu.view.orientation, super::MenuOrientation::Row);
+            assert_eq!(
+                menu.placement.bound_position.anchor,
+                super::MenuAnchor::TopLeft
+            );
+            assert_eq!(menu.native.attachment_mode, super::AttachmentMode::LastFocused);
+            assert_eq!(menu.native.on_top_mode, super::OnTopMode::AboveBrowser);
+            assert_eq!(menu.view.expand_direction, None);
+            assert_eq!(menu.view.items.len(), 2);
+            assert!(matches!(menu.view.items[1], super::LayoutEntry::Unknown));
         } else {
-            panic!("Expected ClientMessage::Sync");
+            panic!("Expected ExtensionMessage::Sync");
         }
     }
 
     #[test]
+    fn reads_bound_and_free_menus_from_one_sync_collection() {
+        let message = serde_json::from_str::<ExtensionMessage>(
+            r#"{
+                "type": "sync",
+                "revision": 1,
+                "menus": [
+                    {
+                        "view": { "uid": "bound-menu", "orientation": "row", "items": [] },
+                        "placement": { "boundPosition": { "anchor": "topLeft", "offsetX": 0, "offsetY": 0 } },
+                        "native": { "attachmentMode": "lastFocused", "onTopMode": "aboveBrowser", "visible": true },
+                        "target": {
+                            "kind": "window",
+                            "window": {
+                                "uid": "window-a",
+                                "bounds": { "x": 0, "y": 0, "width": 800, "height": 600 }
+                            }
+                        }
+                    },
+                    {
+                        "view": { "uid": "free-menu", "orientation": "column", "items": [] },
+                        "placement": {
+                            "boundPosition": { "anchor": "topLeft", "offsetX": 0, "offsetY": 0 },
+                            "freePosition": { "x": 120, "y": 240 }
+                        },
+                        "native": { "attachmentMode": "free", "onTopMode": "alwaysOnTop", "visible": true },
+                        "target": { "kind": "free" }
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let ExtensionMessage::Sync { menus, .. } = message else {
+            panic!("Expected ExtensionMessage::Sync");
+        };
+        assert_eq!(menus.len(), 2);
+        assert_eq!(
+            menus[0].bound_window().map(|window| window.uid.as_str()),
+            Some("window-a")
+        );
+        assert!(menus[1].is_free());
+        assert_eq!(
+            menus[1]
+                .free_position()
+                .map(|position| (position.x, position.y)),
+            Some((120.0, 240.0))
+        );
+    }
+
+    #[test]
     fn reads_negative_popup_expansion_directions() {
-        let left: MenuSnapshot = serde_json::from_str(
+        let left: MenuView = serde_json::from_str(
             r#"{
                 "uid": "menu-left",
                 "orientation": "column",
                 "expandDirection": "left",
-                "placement": { "anchor": "topLeft", "offsetX": 0, "offsetY": 0 },
                 "items": []
             }"#,
         )
         .unwrap();
-        let up: MenuSnapshot = serde_json::from_str(
+        let up: MenuView = serde_json::from_str(
             r#"{
                 "uid": "menu-up",
                 "orientation": "row",
                 "expandDirection": "up",
-                "placement": { "anchor": "topLeft", "offsetX": 0, "offsetY": 0 },
                 "items": []
             }"#,
         )
@@ -662,7 +809,7 @@ mod tests {
 
     #[test]
     fn writes_an_invocation_with_the_required_window_context() {
-        let message = ServerMessage::Invoke {
+        let message = NativeMessage::Invoke {
             action_uid: "bookmark:same".into(),
             window_uid: Some("window-a".into()),
             menu_uid: None,
@@ -680,7 +827,7 @@ mod tests {
 
     #[test]
     fn writes_a_free_invocation_without_a_window() {
-        let message = ServerMessage::Invoke {
+        let message = NativeMessage::Invoke {
             action_uid: "bookmark:same".into(),
             window_uid: None,
             menu_uid: Some("menu-1".into()),
@@ -698,24 +845,28 @@ mod tests {
 
     #[test]
     fn collapsed_menu_keeps_the_toggle_button_at_its_expanded_position() {
-        let menu_json = r#"{
-            "uid": "menu-1",
-            "orientation": "row",
-            "placement": {
-                "anchor": "topRight",
-                "offsetX": 10,
+        let view: MenuView = serde_json::from_str(
+            r#"{
+                "uid": "menu-1",
+                "orientation": "row",
+                "gap": 5,
+                "items": [
+                    { "kind": "bookmark", "uid": "a", "label": "A" },
+                    { "kind": "bookmark", "uid": "b", "label": "B" },
+                    { "kind": "menuToggle", "uid": "toggle", "label": "D" },
+                    { "kind": "bookmark", "uid": "e", "label": "E" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let placement: MenuPlacement = serde_json::from_str(
+            r#"{
+                "boundPosition": { "anchor": "topRight", "offsetX": 10 },
                 "itemWidth": 50,
-                "itemHeight": 20,
-                "gap": 5
-            },
-            "items": [
-                { "kind": "bookmark", "uid": "a", "label": "A" },
-                { "kind": "bookmark", "uid": "b", "label": "B" },
-                { "kind": "menuToggle", "uid": "toggle", "label": "D" },
-                { "kind": "bookmark", "uid": "e", "label": "E" }
-            ]
-        }"#;
-        let menu: MenuSnapshot = serde_json::from_str(menu_json).unwrap();
+                "itemHeight": 20
+            }"#,
+        )
+        .unwrap();
         let window = BrowserWindowSnapshot {
             uid: "window-a".into(),
             bounds: crate::protocol::WindowBounds {
@@ -727,8 +878,8 @@ mod tests {
             focused: true,
         };
 
-        let expanded = compute_menu_geometry_for_state(&window, &menu, false);
-        let collapsed = compute_menu_geometry_for_state(&window, &menu, true);
+        let expanded = compute_menu_geometry_for_state(&window, &view, &placement, false);
+        let collapsed = compute_menu_geometry_for_state(&window, &view, &placement, true);
 
         assert_eq!((expanded.x + 110.0, expanded.y), (collapsed.x, collapsed.y));
         assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));
@@ -737,23 +888,29 @@ mod tests {
     #[test]
     fn collapsed_free_menu_keeps_the_toggle_button_at_its_expanded_position() {
         let menu_json = r#"{
-            "uid": "menu-free",
-            "orientation": "row",
-            "freePosition": { "x": 100, "y": 200 },
+            "view": {
+                "uid": "menu-free",
+                "orientation": "row",
+                "gap": 5,
+                "items": [
+                    { "kind": "bookmark", "uid": "a", "label": "A" },
+                    { "kind": "menuToggle", "uid": "toggle", "label": "D" }
+                ]
+            },
             "placement": {
                 "itemWidth": 50,
                 "itemHeight": 20,
-                "gap": 5
+                "freePosition": { "x": 100, "y": 200 }
             },
-            "items": [
-                { "kind": "bookmark", "uid": "a", "label": "A" },
-                { "kind": "menuToggle", "uid": "toggle", "label": "D" }
-            ]
+            "native": { "attachmentMode": "free", "onTopMode": "alwaysOnTop", "visible": true },
+            "target": { "kind": "free" }
         }"#;
-        let menu: MenuSnapshot = serde_json::from_str(menu_json).unwrap();
+        let synced: SyncedMenu = serde_json::from_str(menu_json).unwrap();
 
-        let expanded = free_menu_geometry_for_state(&menu, false);
-        let collapsed = free_menu_geometry_for_state(&menu, true);
+        let expanded =
+            free_menu_geometry_for_state(&synced.view, &synced.placement, synced.free_position(), false);
+        let collapsed =
+            free_menu_geometry_for_state(&synced.view, &synced.placement, synced.free_position(), true);
 
         assert_eq!((expanded.x + 65.0, expanded.y), (collapsed.x, collapsed.y));
         assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));

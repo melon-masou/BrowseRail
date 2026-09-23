@@ -25,8 +25,8 @@ use crate::panel::{
     surface_prefix,
 };
 use crate::protocol::{
-    AttachmentMode, BrowserInstance, MenuAnchor, MenuPlacement, MenuSnapshot, PanelSnapshot,
-    ServerMessage,
+    AttachmentMode, BrowserInstance, BrowserWindowSnapshot, MenuAnchor, MenuPlacement, MenuTarget,
+    NativeMessage, SyncedMenu,
 };
 use crate::session::SessionRegistry;
 use crate::settings::CollapsedMenu;
@@ -51,17 +51,15 @@ pub enum NativeCommand {
     ClientRegistered {
         connection_uid: Uuid,
         instance: BrowserInstance,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     },
     ClientDisconnected {
         connection_uid: Uuid,
     },
-    SyncPanels {
+    SyncMenus {
         connection_uid: Uuid,
         revision: u64,
-        attachment_mode: crate::protocol::AttachmentMode,
-        panels: Vec<PanelSnapshot>,
-        free_menus: Vec<MenuSnapshot>,
+        menus: Vec<SyncedMenu>,
         reset_menu_uids: Vec<String>,
     },
     BeginWindowPairing {
@@ -69,14 +67,14 @@ pub enum NativeCommand {
         instance_uid: String,
         request_uid: String,
         window_uid: String,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     },
     ConfirmWindowPairing {
         connection_uid: Uuid,
         instance_uid: String,
         request_uid: String,
         window_uid: String,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     },
     ExpireWindowPairing {
         request_uid: String,
@@ -84,7 +82,7 @@ pub enum NativeCommand {
     RebuildInstanceSurfaces {
         instance_uid: String,
         request_uid: String,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     },
     OpenPopup {
         request: PopupRequest,
@@ -160,7 +158,7 @@ struct MenuSyncItem {
     is_customizing: bool,
     geometry_changed: bool,
     window_uid: String,
-    menu: MenuSnapshot,
+    menu: crate::protocol::SurfaceMenu,
     collapsed: bool,
 }
 
@@ -169,7 +167,7 @@ struct MenuSyncItem {
 struct MenuStateEvent<'a> {
     instance_uid: &'a str,
     window_uid: Option<&'a str>,
-    menu: &'a MenuSnapshot,
+    menu: &'a crate::protocol::SurfaceMenu,
     collapsed: bool,
 }
 
@@ -178,7 +176,7 @@ struct PendingWindowPairing {
     instance_uid: String,
     window_uid: String,
     hwnd: isize,
-    outgoing: UnboundedSender<ServerMessage>,
+    outgoing: UnboundedSender<NativeMessage>,
 }
 
 pub struct NativeReactor {
@@ -448,7 +446,7 @@ impl NativeReactor {
                 } => {
                     self.registry
                         .register(connection_uid, instance, outgoing.clone());
-                    let _ = outgoing.send(ServerMessage::Ready {
+                    let _ = outgoing.send(NativeMessage::Ready {
                         protocol_version: crate::protocol::PROTOCOL_VERSION,
                     });
                     self.check_update_tray();
@@ -469,43 +467,40 @@ impl NativeReactor {
                         self.check_update_tray();
                     }
                 }
-                NativeCommand::SyncPanels {
+                NativeCommand::SyncMenus {
                     connection_uid,
                     revision,
-                    attachment_mode,
-                    panels,
-                    free_menus,
+                    menus,
                     reset_menu_uids,
                 } => {
-                    if let Ok(Some(outcome)) = self.registry.sync(
-                        connection_uid,
-                        revision,
-                        attachment_mode,
-                        panels,
-                        free_menus,
-                        reset_menu_uids,
-                    ) {
+                    if let Ok(Some(outcome)) =
+                        self.registry
+                            .sync(connection_uid, revision, menus, reset_menu_uids)
+                    {
                         let instance_uid = outcome.instance_uid.clone();
-                        let free_menus = outcome.free_menus.clone();
-                        let current_free_menus = free_menus.clone();
-                        let reset_menu_uids = outcome.reset_menu_uids.clone();
-                        let current_panels = outcome.panels.clone();
-                        // Center new free surfaces on the lastFocused browser window
-                        // (else any window), falling back to the primary monitor.
-                        let window_bounds = outcome
-                            .panels
+                        let synced_menus = outcome.menus.clone();
+                        let free_menus = synced_menus
                             .iter()
-                            .find(|p| p.window.focused)
-                            .or_else(|| outcome.panels.first())
-                            .map(|p| {
-                                let b = &p.window.bounds;
+                            .filter(|synced| synced.is_free())
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        let reset_menu_uids = outcome.reset_menu_uids.clone();
+                        // Center a new free surface on the last-focused browser window, falling
+                        // back to any browser window and then the primary monitor.
+                        let window_bounds = synced_menus
+                            .iter()
+                            .filter_map(|synced| synced.reference_window())
+                            .find(|window| window.focused)
+                            .or_else(|| {
+                                synced_menus
+                                    .iter()
+                                    .find_map(|synced| synced.reference_window())
+                            })
+                            .map(|window| {
+                                let b = &window.bounds;
                                 (b.x, b.y, b.width, b.height)
                             });
-                        self.prune_collapsed_menus(
-                            &instance_uid,
-                            &current_panels,
-                            &current_free_menus,
-                        );
+                        self.prune_collapsed_menus(&instance_uid, &synced_menus);
                         self.reset_collapsed_menus(&instance_uid, &reset_menu_uids);
                         self.handle_sync_outcome(outcome);
                         self.handle_free_menus(
@@ -550,7 +545,7 @@ impl NativeReactor {
                 }
                 NativeCommand::ExpireWindowPairing { request_uid } => {
                     if let Some(pairing) = self.pending_window_pairings.remove(&request_uid) {
-                        let _ = pairing.outgoing.send(ServerMessage::PairWindowResult {
+                        let _ = pairing.outgoing.send(NativeMessage::PairWindowResult {
                             request_uid,
                             window_uid: pairing.window_uid,
                             ok: false,
@@ -750,22 +745,29 @@ impl NativeReactor {
                     settings.listener_port = self.socket.port();
                     let _ = crate::settings::save(&self.app, &settings);
 
-                    for (instance_uid, attachment_mode, panels) in self.registry.panel_snapshots() {
+                    for (instance_uid, menus) in self.registry.menu_snapshots() {
                         if next {
                             self.handle_sync_outcome(crate::session::SyncOutcome {
-                                instance_uid,
-                                attachment_mode,
-                                panels,
+                                instance_uid: instance_uid.clone(),
+                                menus: menus.clone(),
                                 removed_window_uids: Vec::new(),
-                                free_menus: Vec::new(),
                                 reset_menu_uids: Vec::new(),
                             });
-                        } else {
-                            let window_uids = panels
+                            let free_menus = menus
                                 .iter()
-                                .map(|panel| panel.window.uid.clone())
+                                .filter(|synced| synced.is_free())
+                                .cloned()
+                                .collect::<Vec<_>>();
+                            self.handle_free_menus(&instance_uid, &free_menus, &[], None);
+                        } else {
+                            let window_uids = menus
+                                .iter()
+                                .filter_map(|synced| {
+                                    synced.bound_window().map(|window| window.uid.clone())
+                                })
                                 .collect::<Vec<_>>();
                             self.hide_instance_windows(&instance_uid, &window_uids);
+                            self.hide_instance_free_surfaces(&instance_uid);
                         }
                     }
                     self.refresh_window_levels();
@@ -798,42 +800,41 @@ impl NativeReactor {
         instance_uid: String,
         request_uid: String,
         window_uid: String,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     ) {
         let fg_opt = foreground_browser_window();
         crate::debug::log(
             "Pairing:Begin",
             format!("inst={instance_uid}, req={request_uid}, win={window_uid}, fg={fg_opt:?}"),
         );
-        let Some((foreground_hwnd, foreground_browser)) = fg_opt else {
+        // The foreground window must be a browser (so we have a real HWND to bind);
+        // the identity match is windowUid-based (has_window) plus the extension's
+        // focus confirmation in the VerifyWindowPairing round-trip below. The
+        // instance already scopes the connection, so no browser-kind comparison is
+        // needed.
+        let Some((foreground_hwnd, _foreground_browser)) = fg_opt else {
             crate::debug::log(
                 "Pairing:Begin",
                 "Failed: foreground_browser_window() is None",
             );
-            let _ = outgoing.send(ServerMessage::PairWindowResult {
+            let _ = outgoing.send(NativeMessage::PairWindowResult {
                 request_uid,
                 window_uid,
                 ok: false,
             });
             return;
         };
-        let reported_browser = self.registry.browser_kind(&instance_uid);
-        let browser_matches = reported_browser
-            .as_deref()
-            .is_some_and(|browser| browser_kinds_match(Some(browser), foreground_browser));
-        let has_panel = self.registry.panel(&instance_uid, &window_uid).is_some();
+        let has_window = self.registry.has_window(&instance_uid, &window_uid);
         crate::debug::log(
             "Pairing:Begin",
-            format!(
-                "reported_browser={reported_browser:?}, fg_browser={foreground_browser}, match={browser_matches}, has_panel={has_panel}"
-            ),
+            format!("has_window={has_window}"),
         );
-        if !browser_matches || !has_panel {
+        if !has_window {
             crate::debug::log(
                 "Pairing:Begin",
-                "Failed: browser mismatch or panel not in registry",
+                "Failed: window not in registry",
             );
-            let _ = outgoing.send(ServerMessage::PairWindowResult {
+            let _ = outgoing.send(NativeMessage::PairWindowResult {
                 request_uid,
                 window_uid,
                 ok: false,
@@ -855,7 +856,7 @@ impl NativeReactor {
             "Pairing:Begin",
             format!("Sending VerifyWindowPairing: req={request_uid}, win={window_uid}"),
         );
-        let _ = outgoing.send(ServerMessage::VerifyWindowPairing {
+        let _ = outgoing.send(NativeMessage::VerifyWindowPairing {
             request_uid: request_uid.clone(),
             window_uid,
         });
@@ -872,14 +873,14 @@ impl NativeReactor {
         instance_uid: String,
         request_uid: String,
         window_uid: String,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     ) {
         let Some(pairing) = self.pending_window_pairings.remove(&request_uid) else {
             crate::debug::log(
                 "Pairing:Confirm",
                 format!("Failed: pending pairing for req={request_uid} not found or expired"),
             );
-            let _ = outgoing.send(ServerMessage::PairWindowResult {
+            let _ = outgoing.send(NativeMessage::PairWindowResult {
                 request_uid,
                 window_uid,
                 ok: false,
@@ -917,33 +918,28 @@ impl NativeReactor {
             if let Ok(mut handles) = self.browser_window_handles.lock() {
                 handles.insert(identity, pairing.hwnd);
             }
-            if let Some((attachment_mode, panel)) =
-                self.registry.panel_context(&instance_uid, &window_uid)
-            {
+            let menus = self.registry.window_menus(&instance_uid, &window_uid);
+            if !menus.is_empty() {
                 crate::debug::log(
                     "Pairing:Confirm",
-                    format!(
-                        "Triggering sync_outcome for window {window_uid} (mode={attachment_mode:?})"
-                    ),
+                    format!("Triggering sync_outcome for window {window_uid}"),
                 );
                 self.handle_sync_outcome(crate::session::SyncOutcome {
                     instance_uid: instance_uid.clone(),
-                    attachment_mode,
-                    panels: vec![panel],
+                    menus,
                     removed_window_uids: Vec::new(),
-                    free_menus: Vec::new(),
                     reset_menu_uids: Vec::new(),
                 });
                 self.refresh_window_levels();
             } else {
                 crate::debug::log(
                     "Pairing:Confirm",
-                    format!("Warning: panel_context not found for window {window_uid}"),
+                    format!("Warning: no menus found for window {window_uid}"),
                 );
             }
         }
 
-        let _ = pairing.outgoing.send(ServerMessage::PairWindowResult {
+        let _ = pairing.outgoing.send(NativeMessage::PairWindowResult {
             request_uid,
             window_uid,
             ok,
@@ -980,7 +976,7 @@ impl NativeReactor {
         &mut self,
         instance_uid: String,
         request_uid: String,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     ) {
         self.pending_window_pairings
             .retain(|_, pairing| pairing.instance_uid != instance_uid);
@@ -1030,7 +1026,7 @@ impl NativeReactor {
             }
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(75)).await;
-                let _ = outgoing.send(ServerMessage::ResyncComplete { request_uid });
+                let _ = outgoing.send(NativeMessage::ResyncComplete { request_uid });
             });
         });
     }
@@ -1060,16 +1056,13 @@ impl NativeReactor {
         }
     }
 
-    /// Reconcile the free (detached) surfaces for an instance to exactly match
-    /// the `free_menus` in the latest sync. The extension only sends free menus
-    /// that should currently be shown (windows exist + URL-rule matches), so
-    /// the desktop just creates/keeps those and destroys the rest. Each free
-    /// surface is a single non-owned, always-topmost, no-activate floating
-    /// window keyed by instance + menu (never per browser window).
+    /// Reconcile instance-wide free surfaces to the windowless entries in the latest sync.
+    /// The extension emits only free menus that should currently exist, so entries absent from
+    /// this subset are destroyed. Each remaining menu owns one non-activating topmost window.
     fn handle_free_menus(
         &self,
         instance_uid: &str,
-        free_menus: &[MenuSnapshot],
+        free_menus: &[SyncedMenu],
         reset_menu_uids: &[String],
         // Bounds (x, y, w, h) of the lastFocused browser window, used to center a
         // free surface that has no saved position (or whose saved spot is now
@@ -1086,20 +1079,27 @@ impl NativeReactor {
             height: f64,
             free_pos: Option<(f64, f64)>,
             reset_position: bool,
-            menu: MenuSnapshot,
+            should_be_visible: bool,
+            menu: crate::protocol::SurfaceMenu,
             collapsed: bool,
         }
         let mut desired: Vec<FreeItem> = Vec::new();
         if display {
-            for menu in free_menus {
-                let label = free_label(instance_uid, &menu.uid);
-                let collapsed = is_menu_collapsed(&self.collapsed_menus, instance_uid, &menu.uid);
-                let geometry = crate::protocol::free_menu_geometry_for_state(menu, collapsed);
+            for synced in free_menus {
+                let menu_uid = synced.view.uid.clone();
+                let label = free_label(instance_uid, &menu_uid);
+                let collapsed = is_menu_collapsed(&self.collapsed_menus, instance_uid, &menu_uid);
+                let geometry = crate::protocol::free_menu_geometry_for_state(
+                    &synced.view,
+                    &synced.placement,
+                    synced.free_position(),
+                    collapsed,
+                );
                 let (width, height) = (geometry.width, geometry.height);
                 let url = format!(
                     "index.html?surface=menu&free=1&instanceUid={}&menuUid={}",
                     urlencoding::encode(instance_uid),
-                    urlencoding::encode(&menu.uid),
+                    urlencoding::encode(&menu_uid),
                 );
                 desired.push(FreeItem {
                     label,
@@ -1107,8 +1107,11 @@ impl NativeReactor {
                     width,
                     height,
                     free_pos: Some((geometry.x, geometry.y)),
-                    reset_position: reset_menu_uids.contains(&menu.uid),
-                    menu: menu.clone(),
+                    reset_position: reset_menu_uids.contains(&menu_uid),
+                    // URL-driven visibility: kept alive but hidden when the URL
+                    // does not match, mirroring bound menus (no destroy/recreate).
+                    should_be_visible: synced.native.visible,
+                    menu: crate::protocol::SurfaceMenu::from_synced(synced),
                     collapsed,
                 });
             }
@@ -1142,8 +1145,8 @@ impl NativeReactor {
                 let window = match app.get_webview_window(&item.label) {
                     Some(window) => {
                         // Only resize on update; leave the position where the user
-                        // last dragged it (a fresh position arrives via freePosition
-                        // on the next create, not by snapping an open surface).
+                        // last dragged it (a fresh saved target position applies on the next
+                        // create, not by snapping an open surface).
                         let _ = window.set_size(LogicalSize::new(item.width, item.height));
                         if item.reset_position {
                             let (x, y) = resolve_free_position(
@@ -1222,19 +1225,24 @@ impl NativeReactor {
                     let _ = window.set_position(tauri::LogicalPosition::new(x, y));
                 }
                 let _ = set_window_always_on_top(&window, true);
-                if !surfaces.is_visible(&item.label) {
-                    let _ = set_window_visible_without_activation(&window, true);
-                    surfaces.mark_visible(&item.label);
-                    crate::debug::log(
-                        "Native:Free",
-                        format!(
-                            "shown {} is_new={is_new} visible={:?} outer_pos={:?} inner_size={:?}",
-                            item.label,
-                            window.is_visible().ok(),
-                            window.outer_position().ok(),
-                            window.inner_size().ok(),
-                        ),
-                    );
+                if item.should_be_visible {
+                    if !surfaces.is_visible(&item.label) {
+                        let _ = set_window_visible_without_activation(&window, true);
+                        surfaces.mark_visible(&item.label);
+                        crate::debug::log(
+                            "Native:Free",
+                            format!(
+                                "shown {} is_new={is_new} visible={:?} outer_pos={:?} inner_size={:?}",
+                                item.label,
+                                window.is_visible().ok(),
+                                window.outer_position().ok(),
+                                window.inner_size().ok(),
+                            ),
+                        );
+                    }
+                } else if surfaces.is_visible(&item.label) {
+                    let _ = set_window_visible_without_activation(&window, false);
+                    surfaces.mark_hidden(&item.label);
                 }
                 // Push the latest content so an already-open free surface refreshes
                 // (mirrors the bound menu-state emit).
@@ -1270,15 +1278,15 @@ impl NativeReactor {
     fn handle_sync_outcome(&self, outcome: crate::session::SyncOutcome) {
         let display = self.display_panels.load(Ordering::Relaxed);
         let instance_uid = outcome.instance_uid;
-        let attachment_mode = outcome.attachment_mode;
+        let synced_menus = outcome.menus;
         let foreground_hwnd = unsafe { GetForegroundWindow().0 as isize };
         let mut labels_to_destroy = Vec::new();
 
         crate::debug::log(
             "Native:SyncOutcome",
             format!(
-                "outcome: inst={instance_uid}, panels={}, display={display}, mode={attachment_mode:?}, fg_hwnd={foreground_hwnd}",
-                outcome.panels.len()
+                "outcome: inst={instance_uid}, menus={}, display={display}, fg_hwnd={foreground_hwnd}",
+                synced_menus.len()
             ),
         );
 
@@ -1331,52 +1339,61 @@ impl NativeReactor {
             }
         }
 
+        let mut menus_by_window: HashMap<String, (BrowserWindowSnapshot, Vec<SyncedMenu>)> =
+            HashMap::new();
+        for synced in synced_menus {
+            if let MenuTarget::Window { window } = synced.target.clone() {
+                menus_by_window
+                    .entry(window.uid.clone())
+                    .or_insert_with(|| (window, Vec::new()))
+                    .1
+                    .push(synced);
+            }
+        }
+
         let mut sync_items = Vec::new();
-        for panel in &outcome.panels {
+        for (window_uid, (window, menus)) in menus_by_window {
             let owner_hwnd = self.browser_window_handles.lock().ok().and_then(|handles| {
                 handles
-                    .get(&(instance_uid.clone(), panel.window.uid.clone()))
+                    .get(&(instance_uid.clone(), window_uid.clone()))
                     .copied()
             });
             crate::debug::log(
                 "Native:SyncOutcome",
-                format!("panel win={}: owner_hwnd={owner_hwnd:?}", panel.window.uid),
+                format!("window={window_uid}: owner_hwnd={owner_hwnd:?}"),
             );
             let Some(owner_hwnd) = owner_hwnd else {
                 crate::debug::log(
                     "Native:SyncOutcome",
-                    format!(
-                        "panel win={}: skipped because owner_hwnd is None",
-                        panel.window.uid
-                    ),
+                    format!("window={window_uid}: skipped because owner_hwnd is None"),
                 );
                 continue;
             };
-            let desired = panel
-                .menus
+            let desired = menus
                 .iter()
-                .filter(|m| m.enabled != Some(false))
-                .map(|m| menu_label(&instance_uid, &panel.window.uid, &m.uid))
+                .map(|m| menu_label(&instance_uid, &window_uid, &m.view.uid))
                 .collect::<HashSet<_>>();
 
-            let prefix = surface_prefix("menu", &instance_uid, &panel.window.uid);
+            let prefix = surface_prefix("menu", &instance_uid, &window_uid);
             for (label, _) in self.app.webview_windows() {
                 if label.starts_with(&prefix) && !desired.contains(&label) {
                     labels_to_destroy.push(label);
                 }
             }
 
-            for menu in panel.menus.iter().filter(|m| m.enabled != Some(false)) {
-                let label = menu_label(&instance_uid, &panel.window.uid, &menu.uid);
-                let collapsed = is_menu_collapsed(&self.collapsed_menus, &instance_uid, &menu.uid);
+            for menu in &menus {
+                let label = menu_label(&instance_uid, &window_uid, &menu.view.uid);
+                let collapsed =
+                    is_menu_collapsed(&self.collapsed_menus, &instance_uid, &menu.view.uid);
                 let geometry = crate::protocol::compute_menu_geometry_for_state(
-                    &panel.window,
-                    menu,
+                    &window,
+                    &menu.view,
+                    &menu.placement,
                     collapsed,
                 );
                 let is_customizing = self.surfaces.is_customizing(&label);
                 let effective_always_on_top =
-                    menu.on_top_mode == crate::protocol::OnTopMode::AlwaysOnTop;
+                    menu.native.on_top_mode == crate::protocol::OnTopMode::AlwaysOnTop;
                 let geometry_changed = self.surfaces.update_geometry(
                     &label,
                     geometry.x,
@@ -1388,21 +1405,19 @@ impl NativeReactor {
                 let url = format!(
                     "index.html?surface=menu&instanceUid={}&windowUid={}&menuUid={}",
                     urlencoding::encode(&instance_uid),
-                    urlencoding::encode(&panel.window.uid),
-                    urlencoding::encode(&menu.uid),
+                    urlencoding::encode(&window_uid),
+                    urlencoding::encode(&menu.view.uid),
                 );
 
                 let owner = Some(owner_hwnd);
 
-                let is_focused = match menu.attachment_mode {
-                    AttachmentMode::None => false,
+                // `visible` is the URL-driven gate; attachment mode decides focus follow.
+                let is_focused = match menu.native.attachment_mode {
                     AttachmentMode::All => true,
-                    AttachmentMode::LastFocused => panel.window.focused,
-                    // Free menus are never carried in panels; they get their own
-                    // detached surface via handle_free_menus.
+                    AttachmentMode::LastFocused => window.focused,
                     AttachmentMode::Free => false,
                 };
-                let should_be_visible = display && is_focused;
+                let should_be_visible = display && menu.native.visible && is_focused;
 
                 sync_items.push(MenuSyncItem {
                     label,
@@ -1413,8 +1428,8 @@ impl NativeReactor {
                     should_be_visible,
                     is_customizing,
                     geometry_changed,
-                    window_uid: panel.window.uid.clone(),
-                    menu: menu.clone(),
+                    window_uid: window_uid.clone(),
+                    menu: crate::protocol::SurfaceMenu::from_synced(menu),
                     collapsed,
                 });
             }
@@ -1588,27 +1603,17 @@ impl NativeReactor {
         });
     }
 
-    fn prune_collapsed_menus(
-        &self,
-        instance_uid: &str,
-        panels: &[PanelSnapshot],
-        free_menus: &[MenuSnapshot],
-    ) {
-        let has_toggle = |menu: &MenuSnapshot| {
-            menu.items
+    fn prune_collapsed_menus(&self, instance_uid: &str, synced_menus: &[SyncedMenu]) {
+        let has_toggle = |view: &crate::protocol::MenuView| {
+            view.items
                 .iter()
                 .any(|item| matches!(item, crate::protocol::LayoutEntry::MenuToggle { .. }))
         };
-        let valid_bound_menu_uids: HashSet<&str> = panels
+        let valid_menu_uids: HashSet<&str> = synced_menus
             .iter()
-            .flat_map(|panel| &panel.menus)
-            .filter(|menu| has_toggle(menu))
-            .map(|menu| menu.uid.as_str())
-            .collect();
-        let valid_free_menu_uids: HashSet<&str> = free_menus
-            .iter()
-            .filter(|menu| has_toggle(menu))
-            .map(|menu| menu.uid.as_str())
+            .map(|synced| &synced.view)
+            .filter(|view| has_toggle(view))
+            .map(|view| view.uid.as_str())
             .collect();
 
         let mut menus = match self.collapsed_menus.lock() {
@@ -1617,9 +1622,7 @@ impl NativeReactor {
         };
         let before = menus.len();
         menus.retain(|item| {
-            item.instance_uid != instance_uid
-                || valid_bound_menu_uids.contains(item.menu_uid.as_str())
-                || valid_free_menu_uids.contains(item.menu_uid.as_str())
+            item.instance_uid != instance_uid || valid_menu_uids.contains(item.menu_uid.as_str())
         });
         if menus.len() == before {
             return;
@@ -1723,32 +1726,32 @@ impl NativeReactor {
             });
         }
 
-        for snapshot in self.registry.instance_panel_snapshots() {
-            for panel in snapshot.panels {
+        for snapshot in self.registry.instance_menu_snapshots() {
+            for synced in snapshot.menus {
+                let MenuTarget::Window { window } = synced.target else {
+                    continue;
+                };
                 let owner_hwnd = browser_window_handles
-                    .get(&(snapshot.instance_uid.clone(), panel.window.uid.clone()))
+                    .get(&(snapshot.instance_uid.clone(), window.uid.clone()))
                     .copied();
-                for menu in panel.menus {
-                    let always_on_top = menu.on_top_mode == crate::protocol::OnTopMode::AlwaysOnTop;
-                    let is_focused = match menu.attachment_mode {
-                        AttachmentMode::None => false,
-                        AttachmentMode::All => true,
-                        AttachmentMode::LastFocused => panel.window.focused,
-                        AttachmentMode::Free => false,
-                    };
-                    let should_be_visible = display && owner_hwnd.is_some() && is_focused;
-                    let menu_label =
-                        menu_label(&snapshot.instance_uid, &panel.window.uid, &menu.uid);
-                    let popup_label =
-                        popup_label(&snapshot.instance_uid, &panel.window.uid, &menu.uid);
-                    desired_levels.insert(menu_label.clone(), always_on_top);
-                    desired_levels.insert(popup_label.clone(), always_on_top);
-                    if self.surfaces.is_visible(&menu_label) != should_be_visible {
-                        visibility_changes.push((menu_label, should_be_visible));
-                    }
-                    if !should_be_visible && self.surfaces.is_visible(&popup_label) {
-                        popup_labels_to_hide.push(popup_label);
-                    }
+                let always_on_top =
+                    synced.native.on_top_mode == crate::protocol::OnTopMode::AlwaysOnTop;
+                let is_focused = match synced.native.attachment_mode {
+                    AttachmentMode::All => true,
+                    AttachmentMode::LastFocused => window.focused,
+                    AttachmentMode::Free => false,
+                };
+                let should_be_visible =
+                    display && owner_hwnd.is_some() && synced.native.visible && is_focused;
+                let menu_label = menu_label(&snapshot.instance_uid, &window.uid, &synced.view.uid);
+                let popup_label = popup_label(&snapshot.instance_uid, &window.uid, &synced.view.uid);
+                desired_levels.insert(menu_label.clone(), always_on_top);
+                desired_levels.insert(popup_label.clone(), always_on_top);
+                if self.surfaces.is_visible(&menu_label) != should_be_visible {
+                    visibility_changes.push((menu_label, should_be_visible));
+                }
+                if !should_be_visible && self.surfaces.is_visible(&popup_label) {
+                    popup_labels_to_hide.push(popup_label);
                 }
             }
         }
@@ -1867,26 +1870,19 @@ impl NativeReactor {
             extensions
                 .into_iter()
                 .map(|ext| {
-                    let browser_name = match ext.browser.as_deref() {
-                        Some("chrome") => "Chrome",
-                        Some("edge") => "Edge",
-                        Some("brave") => "Brave",
-                        Some("firefox") => "Firefox",
-                        Some("opera") => "Opera",
-                        Some("vivaldi") => "Vivaldi",
-                        Some(b) if !b.is_empty() => b,
-                        _ => "Connected",
-                    };
+                    // Display the reported browser string as-is (no enumeration);
+                    // fall back to "Connected" when absent.
+                    let browser = ext
+                        .browser
+                        .as_deref()
+                        .filter(|b| !b.is_empty())
+                        .unwrap_or("Connected");
                     let label = ext
                         .label
                         .as_deref()
                         .filter(|l| !l.is_empty())
                         .unwrap_or(&ext.instance_uid);
-                    Msg::ExtensionConnected {
-                        browser: browser_name,
-                        label,
-                    }
-                    .localized()
+                    Msg::ExtensionConnected { browser, label }.localized()
                 })
                 .collect()
         }
@@ -1936,8 +1932,4 @@ impl NativeReactor {
         };
         format!("BrowseRail [{server_text}] — {client_text}{panels_text}")
     }
-}
-
-fn browser_kinds_match(reported: Option<&str>, foreground: &str) -> bool {
-    reported == Some(foreground)
 }

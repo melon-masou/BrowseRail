@@ -1,7 +1,4 @@
-import type {
-  BrowserKind,
-  BrowserWindowSnapshot,
-} from "@browserail/protocol";
+import type { BrowserKind, BrowserWindowSnapshot } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 export type BrowserWindowCandidate = BrowserWindowSnapshot & {
@@ -9,6 +6,9 @@ export type BrowserWindowCandidate = BrowserWindowSnapshot & {
   activeTabUrl?: string;
 };
 
+// Best-effort browser identification for display only (see BrowserKind). The
+// returned value is a plain string with a "chrome" fallback; it is never used
+// for matching, so callers must not switch on an enumerated set.
 export function browserKind(): BrowserKind {
   if (browser.runtime.getURL("").startsWith("moz-extension:")) {
     return "firefox";

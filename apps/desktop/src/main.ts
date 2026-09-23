@@ -4,7 +4,7 @@ import {
   type LayoutEntry,
   type MenuAnchor,
   type MenuPlacement,
-  type MenuSnapshot,
+  type MenuView,
 } from "@browserail/protocol";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -13,6 +13,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getLanguage, type Lang, LANGUAGES, onLanguageChange, saveLanguage, t } from "@browserail/i18n";
 import { initializePopupSurface } from "./popup-surface";
 import "./styles.css";
+
+// Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
+// resolved geometry the surface lays itself out from. The webview reads view
+// fields (flattened) and `placement`; it never sees native props or target.
+type SurfaceMenu = MenuView & { placement: MenuPlacement };
 
 const root = requiredElement("app");
 const query = new URLSearchParams(location.search);
@@ -392,7 +397,7 @@ async function initializeSurface(): Promise<void> {
     return 13;
   }
 
-  function computeMenuDimensions(menu: MenuSnapshot): { width: number; height: number } {
+  function computeMenuDimensions(menu: SurfaceMenu): { width: number; height: number } {
     const totalUnits = menu.items.reduce((acc, item) => {
       if (item.kind === "space") {
         return acc + Math.max(0.1, item.units ?? 1);
@@ -402,7 +407,7 @@ async function initializeSurface(): Promise<void> {
     const count = Math.max(1, Math.round(totalUnits));
     const itemWidth = menu.placement.itemWidth ?? 84;
     const itemHeight = menu.placement.itemHeight ?? 36;
-    const gap = menu.placement.gap ?? menu.gap ?? 4;
+    const gap = menu.gap ?? 4;
     if (menu.orientation === "row") {
       return {
         width: count * itemWidth + (count - 1) * gap,
@@ -415,7 +420,7 @@ async function initializeSurface(): Promise<void> {
     };
   }
 
-  function computeSurfaceDimensions(menu: MenuSnapshot): { width: number; height: number } {
+  function computeSurfaceDimensions(menu: SurfaceMenu): { width: number; height: number } {
     const dimensions = computeMenuDimensions(menu);
     if (menuCollapsed) {
       return {
@@ -433,23 +438,23 @@ async function initializeSurface(): Promise<void> {
       : { width: dimensions.width, height: dimensions.height + FREE_DRAG_HANDLE_SIZE };
   }
 
-  function applyMenuTheme(menu: MenuSnapshot): { buttonFontSize: number; popupFontSize: number; itemHeight: number } {
-    const buttonFontSize = parseFontSize(menu.buttonFontSize ?? menu.placement.fontSize);
-    const popupFontSize = parseFontSize(menu.popupFontSize ?? menu.buttonFontSize ?? menu.placement.fontSize);
+  function applyMenuTheme(menu: SurfaceMenu): { buttonFontSize: number; popupFontSize: number; itemHeight: number } {
+    const buttonFontSize = parseFontSize(menu.buttonFontSize);
+    const popupFontSize = parseFontSize(menu.popupFontSize ?? menu.buttonFontSize);
     const itemHeight = Math.max(24, Math.round(popupFontSize * 2.7));
     root.style.setProperty("--menu-font-size", `${popupFontSize}px`);
     root.style.setProperty("--menu-item-height", `${itemHeight}px`);
     return { buttonFontSize, popupFontSize, itemHeight };
   }
 
-  function renderSurface(menu: MenuSnapshot): void {
+  function renderSurface(menu: SurfaceMenu): void {
     const theme = applyMenuTheme(menu);
     root.className = "menu-surface";
     root.replaceChildren();
 
     const buttonFontSize = theme.buttonFontSize;
 
-    const gap = menu.placement.gap ?? menu.gap ?? 4;
+    const gap = menu.gap ?? 4;
     const menuBar = document.createElement("div");
     menuBar.className = "menu-bar";
     menuBar.ariaLabel = t("aria.menu");
@@ -932,11 +937,11 @@ async function initializeSurface(): Promise<void> {
   }
 
   function renderCustomize(
-    menu: MenuSnapshot,
+    menu: SurfaceMenu,
     toolbarPosition: "top" | "bottom" = "bottom",
   ): HTMLElement {
     const theme = applyMenuTheme(menu);
-    let anchor = menu.placement.anchor;
+    let anchor = menu.placement.boundPosition.anchor;
     const initialDims = computeMenuDimensions(menu);
     let targetWidth = initialDims.width;
     let targetHeight = initialDims.height;
@@ -945,7 +950,7 @@ async function initializeSurface(): Promise<void> {
     root.dataset.orientation = menu.orientation;
     root.onpointerdown = null;
 
-    const gap = menu.placement.gap ?? menu.gap ?? 4;
+    const gap = menu.gap ?? 4;
     const railContainer = document.createElement("div");
     railContainer.className = "customize-rail";
     railContainer.dataset.orientation = menu.orientation;
@@ -1748,7 +1753,7 @@ async function initializeListenerSettings(): Promise<void> {
 
 interface SurfaceState {
   kind: "menu";
-  menu?: MenuSnapshot;
+  menu?: SurfaceMenu;
   collapsed?: boolean;
   fontFamily: string;
 }
@@ -1756,7 +1761,7 @@ interface SurfaceState {
 interface MenuStateEvent {
   instanceUid: string;
   windowUid?: string | null;
-  menu?: MenuSnapshot;
+  menu?: SurfaceMenu;
   collapsed?: boolean;
 }
 

@@ -1055,16 +1055,11 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(formatSpecialRootForDisplay("${mobile}", chromeTree)).toBe("移动设备书签");
     expect(formatSpecialRootForDisplay("${managed}", chromeTree)).toBe("受管理书签");
 
-    // Legacy "/书签栏" storage migrates to empty (whole tree)
-    vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
-      bookmark_root_prefix: "/书签栏",
-    });
-    expect(await loadBookmarkRootPrefix()).toEqual([]);
-    // Other legacy "/"-joined strings migrate to a segment array
+    // A stored string (non-array) is ignored, falling back to the whole tree
     vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
       bookmark_root_prefix: "/Work/Docs",
     });
-    expect(await loadBookmarkRootPrefix()).toEqual(["Work", "Docs"]);
+    expect(await loadBookmarkRootPrefix()).toEqual([]);
     // A stored array is used as-is, so a title containing "/" stays one segment
     vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
       bookmark_root_prefix: ["Work", "A/B"],

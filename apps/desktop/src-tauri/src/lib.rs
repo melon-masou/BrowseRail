@@ -26,7 +26,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(target_os = "windows")]
-use protocol::{MenuAnchor, MenuPlacement, MenuSnapshot};
+use protocol::{MenuAnchor, MenuBoundPosition, MenuPlacement, SurfaceMenu};
 #[cfg(target_os = "windows")]
 use serde::Serialize;
 #[cfg(target_os = "windows")]
@@ -82,7 +82,7 @@ struct ListenerState {
 #[serde(rename_all = "camelCase")]
 struct SurfaceState {
     kind: String,
-    menu: Option<MenuSnapshot>,
+    menu: Option<SurfaceMenu>,
     payload: Option<serde_json::Value>,
     collapsed: bool,
     font_family: String,
@@ -359,7 +359,7 @@ fn free_surface_state(
             menu.is_some()
         ),
     );
-    let menu = menu.ok_or("Free menu state is unavailable")?;
+    let menu = SurfaceMenu::from_synced(&menu.ok_or("Free menu state is unavailable")?);
     let collapsed = is_menu_collapsed(&state, &instance_uid, &menu_uid);
     Ok(SurfaceState {
         kind: "menu".into(),
@@ -444,15 +444,11 @@ fn surface_state(
 ) -> Result<SurfaceState, String> {
     match surface.as_str() {
         "menu" => {
-            let panel = state
+            let menu = state
                 .registry
-                .panel(&instance_uid, &window_uid)
-                .ok_or("Panel state is unavailable")?;
-            let menu = panel
-                .menus
-                .into_iter()
-                .find(|entry| entry.uid == menu_uid)
+                .menu(&instance_uid, &window_uid, &menu_uid)
                 .ok_or("Menu state is unavailable")?;
+            let menu = SurfaceMenu::from_synced(&menu);
             let collapsed = is_menu_collapsed(&state, &instance_uid, &menu_uid);
             Ok(SurfaceState {
                 kind: surface,
@@ -734,16 +730,10 @@ fn save_menu_placement(
             .free_menu(&instance_uid, &menu_uid)
             .ok_or("Free menu state is unavailable")?
     } else {
-        let panel = state
+        state
             .registry
-            .panel(&instance_uid, &window_uid)
-            .ok_or("Panel state is unavailable")?;
-        panel
-            .menus
-            .iter()
-            .find(|menu| menu.uid == menu_uid)
+            .menu(&instance_uid, &window_uid, &menu_uid)
             .ok_or("Menu state is unavailable")?
-            .clone()
     };
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
@@ -760,7 +750,7 @@ fn save_menu_placement(
     let mut width = width;
     let mut height = height;
 
-    match orig_menu.orientation {
+    match orig_menu.view.orientation {
         protocol::MenuOrientation::Row => {
             width = width.clamp(CUSTOMIZE_ICON_SIZE, 2000.0);
             height = height.clamp(CUSTOMIZE_ICON_SIZE, 64.0);
@@ -775,13 +765,16 @@ fn save_menu_placement(
     // placement's offsets and anchor unchanged, store the screen position as
     // free_position instead.
     let (offset_x, offset_y) = if is_free {
-        (orig_menu.placement.offset_x, orig_menu.placement.offset_y)
+        (
+            orig_menu.placement.bound_position.offset_x,
+            orig_menu.placement.bound_position.offset_y,
+        )
     } else {
         let bounds = state
             .registry
-            .panel(&instance_uid, &window_uid)
-            .map(|panel| panel.window.bounds)
-            .ok_or("Panel state is unavailable")?;
+            .window_snapshot(&instance_uid, &window_uid)
+            .map(|window| window.bounds)
+            .ok_or("Browser window state is unavailable")?;
         let offset_x = match anchor {
             MenuAnchor::TopLeft | MenuAnchor::BottomLeft => x - bounds.x,
             MenuAnchor::TopRight | MenuAnchor::BottomRight => bounds.x + bounds.width - x - width,
@@ -799,9 +792,9 @@ fn save_menu_placement(
     // grid renders with (and that native::recompute_menu_total_size inverts),
     // so a save without a drag round-trips back to the same total instead of
     // growing every time.
-    let track_count = protocol::menu_track_count(&orig_menu.items);
-    let item_gap = protocol::menu_gap(&orig_menu);
-    let (item_width, item_height) = match orig_menu.orientation {
+    let track_count = protocol::menu_track_count(&orig_menu.view.items);
+    let item_gap = protocol::menu_gap(&orig_menu.view);
+    let (item_width, item_height) = match orig_menu.view.orientation {
         protocol::MenuOrientation::Row => {
             let iw = ((width - (track_count - 1.0) * item_gap) / track_count).max(1.0);
             (Some(iw), Some(height))
@@ -813,18 +806,21 @@ fn save_menu_placement(
     };
 
     let anchor = if is_free {
-        orig_menu.placement.anchor
+        orig_menu.placement.bound_position.anchor
     } else {
         anchor
     };
     let placement = MenuPlacement {
-        anchor,
-        offset_x,
-        offset_y,
+        bound_position: MenuBoundPosition {
+            anchor,
+            offset_x,
+            offset_y,
+        },
+        // Preserve the free position; a resize/drag never recomputes it here
+        // (free drags go through update_free_placement).
+        free_position: orig_menu.placement.free_position,
         item_width,
         item_height,
-        font_size: orig_menu.placement.font_size.clone(),
-        gap: orig_menu.placement.gap,
     };
 
     state.surfaces.set_customizing(window.label(), false);
@@ -835,7 +831,7 @@ fn save_menu_placement(
             window_uid: window_uid.clone(),
             menu_uid,
             anchor,
-            placement: placement.clone(),
+            placement,
         });
     Ok(placement)
 }

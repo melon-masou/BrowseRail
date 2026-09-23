@@ -1,13 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-use crate::protocol::{
-    AttachmentMode, BrowserInstance, FreePosition, MenuPlacement, MenuSnapshot, PanelSnapshot,
-    ServerMessage,
-};
+use crate::protocol::{BrowserInstance, FreePosition, MenuPlacement, NativeMessage, SyncedMenu};
 
 #[derive(Default)]
 pub struct SessionRegistry {
@@ -17,30 +14,22 @@ pub struct SessionRegistry {
 struct Session {
     connection_uid: Option<Uuid>,
     instance: BrowserInstance,
-    outgoing: Option<UnboundedSender<ServerMessage>>,
-    panels: HashMap<String, PanelSnapshot>,
-    // Free (detached) menu snapshots, keyed by menuUid. Stored like panels so a
-    // free surface can fetch its own snapshot via free_surface_state — the only
-    // difference from a bound menu is that there is no window key.
-    free_menus: HashMap<String, MenuSnapshot>,
-    attachment_mode: AttachmentMode,
+    outgoing: Option<UnboundedSender<NativeMessage>>,
+    // The optional window UID distinguishes one instance-wide free menu from each bound copy.
+    menus: HashMap<(Option<String>, String), SyncedMenu>,
     revision: u64,
 }
 
 pub struct SyncOutcome {
     pub instance_uid: String,
-    pub attachment_mode: AttachmentMode,
-    pub panels: Vec<PanelSnapshot>,
+    pub menus: Vec<SyncedMenu>,
     pub removed_window_uids: Vec<String>,
-    pub free_menus: Vec<MenuSnapshot>,
     pub reset_menu_uids: Vec<String>,
 }
 
-pub struct InstancePanelsSnapshot {
-    pub attachment_mode: AttachmentMode,
-    pub browser: Option<String>,
+pub struct InstanceMenusSnapshot {
     pub instance_uid: String,
-    pub panels: Vec<PanelSnapshot>,
+    pub menus: Vec<SyncedMenu>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -57,7 +46,7 @@ impl SessionRegistry {
         &self,
         connection_uid: Uuid,
         instance: BrowserInstance,
-        outgoing: UnboundedSender<ServerMessage>,
+        outgoing: UnboundedSender<NativeMessage>,
     ) {
         let mut sessions = self.sessions.write().expect("session lock poisoned");
         if let Some(session) = sessions.get_mut(&instance.uid) {
@@ -72,9 +61,7 @@ impl SessionRegistry {
                     connection_uid: Some(connection_uid),
                     instance,
                     outgoing: Some(outgoing),
-                    panels: HashMap::new(),
-                    free_menus: HashMap::new(),
-                    attachment_mode: AttachmentMode::None,
+                    menus: HashMap::new(),
                     revision: 0,
                 },
             );
@@ -85,9 +72,7 @@ impl SessionRegistry {
         &self,
         connection_uid: Uuid,
         revision: u64,
-        attachment_mode: AttachmentMode,
-        panels: Vec<PanelSnapshot>,
-        free_menus: Vec<MenuSnapshot>,
+        menus: Vec<SyncedMenu>,
         reset_menu_uids: Vec<String>,
     ) -> Result<Option<SyncOutcome>, String> {
         let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
@@ -100,42 +85,34 @@ impl SessionRegistry {
             return Ok(None);
         }
 
-        let next = panels
+        let previous_window_uids = window_uids(session.menus.values());
+        let next = menus
             .iter()
-            .map(|panel| (panel.window.uid.clone(), panel.clone()))
+            .map(|synced| (menu_key(synced), synced.clone()))
             .collect::<HashMap<_, _>>();
-        let removed_window_uids = session
-            .panels
-            .keys()
-            .filter(|uid| !next.contains_key(*uid))
+        let next_window_uids = window_uids(next.values());
+        let removed_window_uids = previous_window_uids
+            .difference(&next_window_uids)
             .cloned()
             .collect();
-        session.panels = next;
-        session.free_menus = free_menus
-            .iter()
-            .map(|menu| (menu.uid.clone(), menu.clone()))
-            .collect();
-        session.attachment_mode = attachment_mode;
+        session.menus = next;
         session.revision = revision;
 
         Ok(Some(SyncOutcome {
             instance_uid: session.instance.uid.clone(),
-            attachment_mode,
-            panels,
+            menus,
             removed_window_uids,
-            free_menus,
             reset_menu_uids,
         }))
     }
 
-    /// The stored snapshot for a free (detached) menu, for free_surface_state.
-    pub fn free_menu(&self, instance_uid: &str, menu_uid: &str) -> Option<MenuSnapshot> {
+    pub fn free_menu(&self, instance_uid: &str, menu_uid: &str) -> Option<SyncedMenu> {
         self.sessions
             .read()
             .ok()?
             .get(instance_uid)?
-            .free_menus
-            .get(menu_uid)
+            .menus
+            .get(&(None, menu_uid.to_owned()))
             .cloned()
     }
 
@@ -149,7 +126,11 @@ impl SessionRegistry {
         let session = sessions
             .get(instance_uid)
             .ok_or("The browser instance is disconnected")?;
-        if !session.panels.contains_key(window_uid) {
+        if !session
+            .menus
+            .keys()
+            .any(|(stored_window_uid, _)| stored_window_uid.as_deref() == Some(window_uid))
+        {
             return Err("The bound browser window is unavailable".into());
         }
 
@@ -157,7 +138,7 @@ impl SessionRegistry {
             .outgoing
             .as_ref()
             .ok_or("The browser instance is disconnected")?
-            .send(ServerMessage::Invoke {
+            .send(NativeMessage::Invoke {
                 action_uid,
                 window_uid: Some(window_uid.to_owned()),
                 menu_uid: None,
@@ -182,7 +163,7 @@ impl SessionRegistry {
             .outgoing
             .as_ref()
             .ok_or("The browser instance is disconnected")?
-            .send(ServerMessage::Invoke {
+            .send(NativeMessage::Invoke {
                 action_uid,
                 window_uid: None,
                 menu_uid: Some(menu_uid),
@@ -204,42 +185,67 @@ impl SessionRegistry {
             .get_mut(instance_uid)
             .ok_or("The browser instance is disconnected")?;
 
-        if let Some(menu) = session.free_menus.get_mut(&menu_uid) {
-            menu.free_position = Some(FreePosition { x, y });
+        if let Some(synced) = session.menus.get_mut(&(None, menu_uid.clone())) {
+            synced.set_free_position(FreePosition { x, y });
         }
 
         session
             .outgoing
             .as_ref()
             .ok_or("The browser instance is disconnected")?
-            .send(ServerMessage::UpdateFreePlacement { menu_uid, x, y })
+            .send(NativeMessage::UpdateFreePlacement { menu_uid, x, y })
             .map_err(|_| "The browser instance is disconnected".into())
     }
 
-    pub fn panel(&self, instance_uid: &str, window_uid: &str) -> Option<PanelSnapshot> {
-        self.sessions
-            .read()
-            .ok()?
-            .get(instance_uid)?
-            .panels
-            .get(window_uid)
-            .cloned()
-    }
-
-    pub fn panel_context(
+    pub fn menu(
         &self,
         instance_uid: &str,
         window_uid: &str,
-    ) -> Option<(AttachmentMode, PanelSnapshot)> {
+        menu_uid: &str,
+    ) -> Option<SyncedMenu> {
         let sessions = self.sessions.read().ok()?;
         let session = sessions.get(instance_uid)?;
-        Some((
-            session.attachment_mode,
-            session.panels.get(window_uid)?.clone(),
-        ))
+        session
+            .menus
+            .get(&(Some(window_uid.to_owned()), menu_uid.to_owned()))
+            .cloned()
     }
 
-    pub fn panel_snapshots(&self) -> Vec<(String, AttachmentMode, Vec<PanelSnapshot>)> {
+    pub fn window_menus(&self, instance_uid: &str, window_uid: &str) -> Vec<SyncedMenu> {
+        self.sessions
+            .read()
+            .ok()
+            .and_then(|sessions| {
+                let session = sessions.get(instance_uid)?;
+                Some(
+                    session
+                        .menus
+                        .iter()
+                        .filter(|((stored_window_uid, _), _)| {
+                            stored_window_uid.as_deref() == Some(window_uid)
+                        })
+                        .map(|(_, synced)| synced.clone())
+                        .collect(),
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn window_snapshot(
+        &self,
+        instance_uid: &str,
+        window_uid: &str,
+    ) -> Option<crate::protocol::BrowserWindowSnapshot> {
+        self.window_menus(instance_uid, window_uid)
+            .into_iter()
+            .find_map(|synced| synced.bound_window().cloned())
+    }
+
+    pub fn has_window(&self, instance_uid: &str, window_uid: &str) -> bool {
+        !self.window_menus(instance_uid, window_uid).is_empty()
+    }
+
+    pub fn menu_snapshots(&self) -> Vec<(String, Vec<SyncedMenu>)> {
         self.sessions
             .read()
             .map(|sessions| {
@@ -248,8 +254,7 @@ impl SessionRegistry {
                     .map(|(instance_uid, session)| {
                         (
                             instance_uid.clone(),
-                            session.attachment_mode,
-                            session.panels.values().cloned().collect(),
+                            session.menus.values().cloned().collect(),
                         )
                     })
                     .collect()
@@ -257,31 +262,19 @@ impl SessionRegistry {
             .unwrap_or_default()
     }
 
-    pub fn instance_panel_snapshots(&self) -> Vec<InstancePanelsSnapshot> {
+    pub fn instance_menu_snapshots(&self) -> Vec<InstanceMenusSnapshot> {
         self.sessions
             .read()
             .map(|sessions| {
                 sessions
                     .iter()
-                    .map(|(instance_uid, session)| InstancePanelsSnapshot {
-                        attachment_mode: session.attachment_mode,
-                        browser: session.instance.browser.clone(),
+                    .map(|(instance_uid, session)| InstanceMenusSnapshot {
                         instance_uid: instance_uid.clone(),
-                        panels: session.panels.values().cloned().collect(),
+                        menus: session.menus.values().cloned().collect(),
                     })
                     .collect()
             })
             .unwrap_or_default()
-    }
-
-    pub fn browser_kind(&self, instance_uid: &str) -> Option<String> {
-        self.sessions
-            .read()
-            .ok()?
-            .get(instance_uid)?
-            .instance
-            .browser
-            .clone()
     }
 
     pub fn update_menu_placement(
@@ -295,18 +288,15 @@ impl SessionRegistry {
             .get_mut(instance_uid)
             .ok_or("The browser instance is disconnected")?;
 
-        // A menu can appear both as bound panels and as a free (detached)
-        // surface; keep the stored free snapshot in sync so an endpoint save can
-        // fall back to the preserved global placement for its offsets/anchor.
-        if let Some(menu) = session.free_menus.get_mut(&menu_uid) {
-            menu.placement.item_width = placement.item_width;
-            menu.placement.item_height = placement.item_height;
-        }
-
-        for panel in session.panels.values_mut() {
-            for menu in &mut panel.menus {
-                if menu.uid == menu_uid {
-                    menu.placement = placement.clone();
+        for synced in session.menus.values_mut() {
+            if synced.view.uid == menu_uid {
+                if synced.is_free() {
+                    // A free surface has no browser-relative anchor. Preserve its offsets and
+                    // update only the dimensions shared with the bound copies.
+                    synced.placement.item_width = placement.item_width;
+                    synced.placement.item_height = placement.item_height;
+                } else {
+                    synced.placement = placement;
                 }
             }
         }
@@ -316,7 +306,7 @@ impl SessionRegistry {
             .as_ref()
             .ok_or("The browser instance is disconnected")?;
         outgoing
-            .send(ServerMessage::UpdateMenuPlacement {
+            .send(NativeMessage::UpdateMenuPlacement {
                 menu_uid,
                 placement,
             })
@@ -332,7 +322,7 @@ impl SessionRegistry {
         session.outgoing = None;
         Some((
             session.instance.uid.clone(),
-            session.panels.keys().cloned().collect(),
+            window_uids(session.menus.values()).into_iter().collect(),
         ))
     }
 
@@ -343,7 +333,10 @@ impl SessionRegistry {
                 sessions
                     .drain()
                     .map(|(instance_uid, session)| {
-                        (instance_uid, session.panels.into_keys().collect())
+                        (
+                            instance_uid,
+                            window_uids(session.menus.values()).into_iter().collect(),
+                        )
                     })
                     .collect()
             })
@@ -381,12 +374,25 @@ impl SessionRegistry {
                         instance_uid: s.instance.uid.clone(),
                         browser: s.instance.browser.clone(),
                         label: s.instance.label.clone(),
-                        windows_count: s.panels.len(),
+                        windows_count: window_uids(s.menus.values()).len(),
                     })
                     .collect()
             })
             .unwrap_or_default()
     }
+}
+
+fn menu_key(synced: &SyncedMenu) -> (Option<String>, String) {
+    (
+        synced.bound_window().map(|window| window.uid.clone()),
+        synced.view.uid.clone(),
+    )
+}
+
+fn window_uids<'a>(menus: impl Iterator<Item = &'a SyncedMenu>) -> HashSet<String> {
+    menus
+        .filter_map(|synced| synced.bound_window().map(|window| window.uid.clone()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -396,8 +402,9 @@ mod tests {
 
     use super::SessionRegistry;
     use crate::protocol::{
-        AttachmentMode, BrowserInstance, BrowserWindowSnapshot, PanelSnapshot, ServerMessage,
-        WindowBounds,
+        AttachmentMode, BrowserInstance, BrowserWindowSnapshot, MenuAnchor, MenuBoundPosition,
+        MenuNativeProps, MenuOrientation, MenuPlacement, MenuTarget, MenuView, NativeMessage,
+        OnTopMode, SyncedMenu, WindowBounds,
     };
 
     #[test]
@@ -411,24 +418,10 @@ mod tests {
         registry.register(connection_a, instance("instance-a"), sender_a);
         registry.register(connection_b, instance("instance-b"), sender_b);
         registry
-            .sync(
-                connection_a,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-a")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(connection_a, 1, vec![menu("window-a")], Vec::new())
             .unwrap();
         registry
-            .sync(
-                connection_b,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-b")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(connection_b, 1, vec![menu("window-b")], Vec::new())
             .unwrap();
 
         registry
@@ -438,7 +431,7 @@ mod tests {
         let message = receiver_a.try_recv().unwrap();
         assert!(matches!(
             message,
-            ServerMessage::Invoke { window_uid, action_uid, .. }
+            NativeMessage::Invoke { window_uid, action_uid, .. }
                 if window_uid.as_deref() == Some("window-a") && action_uid == "bookmark:same"
         ));
         assert!(receiver_b.try_recv().is_err());
@@ -455,24 +448,10 @@ mod tests {
         registry.register(connection_a, instance("instance-a"), sender_a);
         registry.register(connection_b, instance("instance-b"), sender_b);
         registry
-            .sync(
-                connection_a,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-a")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(connection_a, 1, vec![menu("window-a")], Vec::new())
             .unwrap();
         registry
-            .sync(
-                connection_b,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-b")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(connection_b, 1, vec![menu("window-b")], Vec::new())
             .unwrap();
 
         let result = registry.invoke("instance-a", "window-b", "bookmark:same".into());
@@ -486,20 +465,13 @@ mod tests {
     }
 
     #[test]
-    fn disconnecting_all_instances_removes_their_panels_and_routes() {
+    fn disconnecting_all_instances_removes_their_menus_and_routes() {
         let registry = SessionRegistry::default();
         let connection = Uuid::new_v4();
         let (sender, _) = unbounded_channel();
         registry.register(connection, instance("instance-a"), sender);
         registry
-            .sync(
-                connection,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-a")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(connection, 1, vec![menu("window-a")], Vec::new())
             .unwrap();
 
         let disconnected = registry.disconnect_all();
@@ -507,11 +479,11 @@ mod tests {
         assert_eq!(disconnected.len(), 1);
         assert_eq!(disconnected[0].0, "instance-a");
         assert_eq!(disconnected[0].1, vec!["window-a"]);
-        assert!(registry.panel("instance-a", "window-a").is_none());
+        assert!(!registry.has_window("instance-a", "window-a"));
     }
 
     #[test]
-    fn replacing_a_connection_keeps_its_panels_for_the_first_new_sync() {
+    fn replacing_a_connection_keeps_its_menus_for_the_first_new_sync() {
         let registry = SessionRegistry::default();
         let old_connection = Uuid::new_v4();
         let new_connection = Uuid::new_v4();
@@ -520,36 +492,22 @@ mod tests {
 
         registry.register(old_connection, instance("instance-a"), old_sender);
         registry
-            .sync(
-                old_connection,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-a")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(old_connection, 1, vec![menu("window-a")], Vec::new())
             .unwrap();
 
         registry.register(new_connection, instance("instance-a"), new_sender);
 
         assert!(registry.disconnect(old_connection).is_none());
         let outcome = registry
-            .sync(
-                new_connection,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-b")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(new_connection, 1, vec![menu("window-b")], Vec::new())
             .unwrap()
             .expect("sync outcome");
         assert_eq!(outcome.removed_window_uids, vec!["window-a"]);
-        assert!(registry.panel("instance-a", "window-b").is_some());
+        assert!(registry.has_window("instance-a", "window-b"));
     }
 
     #[test]
-    fn disconnecting_then_reconnecting_keeps_panels_for_next_sync() {
+    fn disconnecting_then_reconnecting_keeps_menus_for_next_sync() {
         let registry = SessionRegistry::default();
         let old_connection = Uuid::new_v4();
         let new_connection = Uuid::new_v4();
@@ -558,14 +516,7 @@ mod tests {
 
         registry.register(old_connection, instance("instance-a"), old_sender);
         registry
-            .sync(
-                old_connection,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-a")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(old_connection, 1, vec![menu("window-a")], Vec::new())
             .unwrap();
 
         let disconnected = registry.disconnect(old_connection);
@@ -573,22 +524,15 @@ mod tests {
             disconnected,
             Some(("instance-a".into(), vec!["window-a".into()]))
         );
-        assert!(registry.panel("instance-a", "window-a").is_some());
+        assert!(registry.has_window("instance-a", "window-a"));
 
         registry.register(new_connection, instance("instance-a"), new_sender);
         let outcome = registry
-            .sync(
-                new_connection,
-                1,
-                AttachmentMode::All,
-                vec![panel("window-b")],
-                vec![],
-                Vec::new(),
-            )
+            .sync(new_connection, 1, vec![menu("window-b")], Vec::new())
             .unwrap()
             .expect("sync outcome");
         assert_eq!(outcome.removed_window_uids, vec!["window-a"]);
-        assert!(registry.panel("instance-a", "window-b").is_some());
+        assert!(registry.has_window("instance-a", "window-b"));
     }
 
     #[test]
@@ -599,40 +543,19 @@ mod tests {
         registry.register(connection, instance("instance-a"), sender);
         assert!(
             registry
-                .sync(
-                    connection,
-                    2,
-                    AttachmentMode::All,
-                    vec![panel("window-a")],
-                    vec![],
-                    Vec::new()
-                )
+                .sync(connection, 2, vec![menu("window-a")], Vec::new())
                 .unwrap()
                 .is_some()
         );
         assert!(
             registry
-                .sync(
-                    connection,
-                    2,
-                    AttachmentMode::All,
-                    vec![panel("window-a")],
-                    vec![],
-                    Vec::new()
-                )
+                .sync(connection, 2, vec![menu("window-a")], Vec::new())
                 .unwrap()
                 .is_none()
         );
         assert!(
             registry
-                .sync(
-                    connection,
-                    1,
-                    AttachmentMode::All,
-                    vec![panel("window-a")],
-                    vec![],
-                    Vec::new()
-                )
+                .sync(connection, 1, vec![menu("window-a")], Vec::new())
                 .unwrap()
                 .is_none()
         );
@@ -662,9 +585,7 @@ mod tests {
         let _ = registry.sync(
             connection_a,
             1,
-            AttachmentMode::All,
-            vec![panel("window-1"), panel("window-2")],
-            vec![],
+            vec![menu("window-1"), menu("window-2")],
             Vec::new(),
         );
 
@@ -700,19 +621,44 @@ mod tests {
         }
     }
 
-    fn panel(window_uid: &str) -> PanelSnapshot {
-        PanelSnapshot {
-            on_top_mode: crate::protocol::OnTopMode::AboveBrowser,
-            menus: vec![],
-            window: BrowserWindowSnapshot {
-                uid: window_uid.into(),
-                bounds: WindowBounds {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 1200.0,
-                    height: 800.0,
+    fn menu(window_uid: &str) -> SyncedMenu {
+        SyncedMenu {
+            view: MenuView {
+                uid: format!("menu-{window_uid}"),
+                items: vec![],
+                orientation: MenuOrientation::Row,
+                color: None,
+                expand_direction: None,
+                button_font_size: None,
+                popup_font_size: None,
+                gap: None,
+            },
+            placement: MenuPlacement {
+                bound_position: MenuBoundPosition {
+                    anchor: MenuAnchor::TopLeft,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
                 },
-                focused: true,
+                free_position: None,
+                item_width: None,
+                item_height: None,
+            },
+            native: MenuNativeProps {
+                attachment_mode: AttachmentMode::All,
+                on_top_mode: OnTopMode::AboveBrowser,
+                visible: true,
+            },
+            target: MenuTarget::Window {
+                window: BrowserWindowSnapshot {
+                    uid: window_uid.into(),
+                    bounds: WindowBounds {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1200.0,
+                        height: 800.0,
+                    },
+                    focused: true,
+                },
             },
         }
     }

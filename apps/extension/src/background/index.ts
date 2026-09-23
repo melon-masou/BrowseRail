@@ -1,10 +1,11 @@
 import {
-  isServerMessage,
+  isNativeMessage,
   isUrlMatchingSet,
   PROTOCOL_VERSION,
   type BrowserInstance,
-  type ClientMessage,
-  type PanelSnapshot,
+  type ExtensionMessage,
+  type MenuView,
+  type SyncedMenu,
 } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 import browser from "webextension-polyfill";
@@ -21,6 +22,7 @@ import {
   loadMenuPlacements,
   loadWidgetEnabled,
   removeMenuPlacements,
+  resolveGapPx,
   resolveMenuPlacement,
   saveFreePlacement,
   saveMenuPlacement,
@@ -451,7 +453,7 @@ async function handleMessage(raw: unknown): Promise<void> {
     return;
   }
 
-  if (!isServerMessage(value)) {
+  if (!isNativeMessage(value)) {
     return;
   }
 
@@ -480,7 +482,7 @@ async function handleMessage(raw: unknown): Promise<void> {
     if (value.actionUid.startsWith("noop")) {
       return;
     }
-    // Bound-window panels carry a fixed target window. A free (detached) surface
+    // Bound menus carry a fixed target window. A free (detached) surface
     // omits windowUid, so the target is resolved here as the instance's current
     // lastFocused window. No available window → silently drop (spec: no log, no
     // error, no fallback, no foregrounding).
@@ -600,7 +602,7 @@ async function syncOnce(): Promise<void> {
   const config = previewConfigOverride ?? loadedConfig;
   const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
   const bookmarkTargets = createBookmarkTargetDraft();
-  const menus = await Promise.all(
+  const menuStates = await Promise.all(
     activeMenus.map(async (menu, index) => {
       const items = await resolveMenuItems(
         menu.items,
@@ -613,36 +615,34 @@ async function syncOnce(): Promise<void> {
           registerTarget: (browserBookmarkId) => bookmarkTargets.register(browserBookmarkId),
         },
       );
-      const totalUnits = items.reduce((acc, item) => {
-        if (item.kind === "space") {
-          return acc + Math.max(0.1, item.units ?? 1);
-        }
-        return acc + 1;
-      }, 0);
       const placement = resolveMenuPlacement(
         placements[menu.uid],
         index,
         menu.orientation,
-        totalUnits,
+        0,
         menu.buttonFontSize,
-        menu.gap,
       );
-      return {
-        attachmentMode: menu.attachmentMode ?? "lastFocused",
-        enabled: true,
-        buttonFontSize: menu.buttonFontSize ?? DEFAULT_FONT_SIZE,
-        popupFontSize: menu.popupFontSize ?? DEFAULT_FONT_SIZE,
-        gap: placement.gap ?? 0,
+      const attachmentMode = menu.attachmentMode ?? "lastFocused";
+      const view: MenuView = {
+        uid: menu.uid,
+        items,
+        orientation: menu.orientation,
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
-        items,
-        onTopMode:
-          menu.attachmentMode === "free"
-            ? "alwaysOnTop"
-            : menu.onTopMode ?? "aboveBrowser",
-        orientation: menu.orientation,
-        placement,
+        buttonFontSize: menu.buttonFontSize ?? DEFAULT_FONT_SIZE,
+        popupFontSize: menu.popupFontSize ?? DEFAULT_FONT_SIZE,
+        gap: resolveGapPx(menu.buttonFontSize, menu.gap),
+      };
+      return {
         uid: menu.uid,
+        isFree: attachmentMode === "free",
+        view,
+        placement,
+        attachmentMode,
+        onTopMode:
+          attachmentMode === "free"
+            ? ("alwaysOnTop" as const)
+            : menu.onTopMode ?? "aboveBrowser",
       };
     }),
   );
@@ -667,73 +667,88 @@ async function syncOnce(): Promise<void> {
     );
   };
 
-  const isFreeMenu = (menuUid: string): boolean =>
-    (origByUid.get(menuUid)?.attachmentMode ?? "lastFocused") === "free";
-
-  // Free menus are not tied to any window: build them once below, and keep them
-  // out of the per-window panels.
-  const boundMenus = menus.filter((menu) => !isFreeMenu(menu.uid));
-
-  const panels: PanelSnapshot[] = windows.map((window) => {
-    const windowMenus = boundMenus.map((menu) =>
-      menuVisibleForUrl(menu.uid, window.activeTabUrl)
-        ? menu
-        : { ...menu, attachmentMode: "none" as const },
-    );
-
-    return {
-      menus: windowMenus,
-      window: {
-        uid: window.uid,
-        bounds: window.bounds,
-        focused: window.uid === lastFocusedWindowUid,
-      },
+  // Bound menus are emitted once for each browser window because URL visibility, focus state,
+  // geometry, and the native owner are window-specific.
+  const boundMenus = menuStates.filter((menu) => !menu.isFree);
+  const syncedBoundMenus: SyncedMenu[] = windows.flatMap((window) => {
+    const windowSnapshot = {
+      uid: window.uid,
+      bounds: window.bounds,
+      focused: window.uid === lastFocusedWindowUid,
     };
+    return boundMenus.map((menu) => ({
+      view: menu.view,
+      placement: menu.placement,
+      native: {
+        attachmentMode: menu.attachmentMode,
+        onTopMode: menu.onTopMode,
+        visible: menuVisibleForUrl(menu.uid, window.activeTabUrl),
+      },
+      target: { kind: "window" as const, window: windowSnapshot },
+    }));
   });
 
-  // A single free surface per free menu. It exists only when the instance has at
-  // least one browser window, and (if url-rule-restricted) when the current
-  // lastFocused window's active tab matches.
   const lastFocusedWindow =
     windows.find((w) => w.uid === lastFocusedWindowUid) ?? windows.find((w) => w.focused);
-  const freeMenus = windows.length === 0
+  // A free menu is emitted exactly once for the instance while it has a browser window.
+  // URL matching only toggles native.visible (hidden-but-kept), same as bound menus, so a
+  // URL change never destroys and recreates the free surface.
+  const syncedFreeMenus: SyncedMenu[] = windows.length === 0
     ? []
-    : menus
-        .filter((menu) => isFreeMenu(menu.uid))
-        .filter((menu) => menuVisibleForUrl(menu.uid, lastFocusedWindow?.activeTabUrl))
+    : menuStates
+        .filter((menu) => menu.isFree)
         .map((menu) => {
           const pos = freePlacements[menu.uid];
           return {
-            ...menu,
-            attachmentMode: "free" as const,
-            ...(pos ? { freePosition: pos } : {}),
+            view: menu.view,
+            placement: { ...menu.placement, ...(pos ? { freePosition: pos } : {}) },
+            native: {
+              attachmentMode: "free" as const,
+              onTopMode: menu.onTopMode,
+              visible: menuVisibleForUrl(menu.uid, lastFocusedWindow?.activeTabUrl),
+            },
+            target: {
+              kind: "free" as const,
+              ...(lastFocusedWindow
+                ? {
+                    referenceWindow: {
+                      uid: lastFocusedWindow.uid,
+                      bounds: lastFocusedWindow.bounds,
+                      focused: lastFocusedWindow.uid === lastFocusedWindowUid,
+                    },
+                  }
+                : {}),
+            },
           };
         });
 
-  const allEmittedMenus = panels.flatMap((p) => p.menus);
-  const hasActiveAttachment = allEmittedMenus.some((m) => m.attachmentMode !== "none");
-  const hasAllAttachment = allEmittedMenus.some((m) => m.attachmentMode === "all");
+  const syncedMenus = [...syncedBoundMenus, ...syncedFreeMenus];
+  const hasActiveAttachment = syncedBoundMenus.some(({ native }) => native.visible);
+  const hasAllAttachment = syncedBoundMenus.some(
+    ({ native }) => native.attachmentMode === "all",
+  );
 
   extLog(
     "Sync",
-    `syncOnce: totalWindows=${windows.length}, menus=${menus.length}, free=${freeMenus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
+    `syncOnce: totalWindows=${windows.length}, menus=${menuStates.length}, free=${syncedFreeMenus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
   );
 
   send({
     type: "sync",
     revision: ++revision,
-    attachmentMode: hasAllAttachment ? "all" : hasActiveAttachment ? "lastFocused" : "none",
-    panels,
-    ...(freeMenus.length > 0 ? { freeMenus } : {}),
+    menus: syncedMenus,
     ...(resetMenuUids.size > 0 ? { resetMenuUids: Array.from(resetMenuUids) } : {}),
   });
   resetMenuUids.clear();
 
   if (hasActiveAttachment) {
-    for (const panel of panels) {
-      if (panel.window.focused || hasAllAttachment) {
-        requestWindowPairing(panel.window.uid);
-      }
+    const windowUids = new Set(
+      syncedBoundMenus
+        .filter(({ target }) => target.kind === "window" && (target.window.focused || hasAllAttachment))
+        .map(({ target }) => (target.kind === "window" ? target.window.uid : "")),
+    );
+    for (const windowUid of windowUids) {
+      requestWindowPairing(windowUid);
     }
   }
 }
@@ -780,7 +795,7 @@ async function loadInstance(label: string): Promise<BrowserInstance> {
   return { uid: await loadInstanceUid(), browser: browserKind(), label };
 }
 
-function send(message: ClientMessage): void {
+function send(message: ExtensionMessage): void {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
   }

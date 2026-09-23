@@ -7,6 +7,21 @@ use tauri::Manager;
 pub const DEFAULT_LISTENER_PORT: u16 = 17654;
 pub const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
 
+/// Desktop-local persisted settings. This is a SEPARATE channel from the
+/// extension⇄native wire protocol (see packages/protocol): it is stored on disk
+/// by the desktop and flows rust→webview via Tauri commands/events, never over
+/// the socket. It is intentionally not part of `packages/protocol`.
+///
+/// How each field reaches the surface webview (apps/desktop/src/main.ts):
+///   listener_port   — native WS listener only; not sent to the webview.
+///   display_panels  — native show/hide of all surfaces; not read by the webview.
+///   debug_enabled   — native debug logging only.
+///   lock_editing    — disables right-click "customize" in the webview
+///                     (main.ts `editingLocked`), pushed via a Tauri event.
+///   font_family     — webview `--desktop-font-family` CSS var
+///                     (main.ts `applyFontFamily`), delivered in SurfaceState.
+///   collapsed_menus — per-menu collapsed state; drives native geometry and the
+///                     webview's collapsed render (SurfaceState/menu-state `collapsed`).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopSettings {

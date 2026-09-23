@@ -9,7 +9,7 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use uuid::Uuid;
 
 use crate::native::NativeCommand;
-use crate::protocol::{ClientMessage, ServerMessage};
+use crate::protocol::{ExtensionMessage, NativeMessage};
 use crate::state_machine::{
     ConnectionState, ConnectionStateMachine, ServerState, ServerStateMachine,
 };
@@ -214,7 +214,7 @@ async fn handle_connection(
         .await
         .map_err(|error| error.to_string())?;
     let (mut writer, mut reader) = websocket.split();
-    let (outgoing, mut outgoing_messages) = unbounded_channel::<ServerMessage>();
+    let (outgoing, mut outgoing_messages) = unbounded_channel::<NativeMessage>();
     let mut registered_instance: Option<String> = None;
 
     connection_sm.transition(
@@ -235,7 +235,7 @@ async fn handle_connection(
                             break;
                         }
                         Message::Text(text) => {
-                            let message = match serde_json::from_str::<ClientMessage>(&text) {
+                            let message = match serde_json::from_str::<ExtensionMessage>(&text) {
                                 Ok(msg) => msg,
                                 Err(error) => {
                                     crate::debug::log("Socket", format!("Ignored malformed client message: {error}, text={text}"));
@@ -243,10 +243,10 @@ async fn handle_connection(
                                 }
                             };
                             match message {
-                                ClientMessage::Unknown => {
+                                ExtensionMessage::Unknown => {
                                     crate::debug::log("Socket", format!("Ignored unknown client message: text={text}"));
                                 }
-                                ClientMessage::Hello { protocol_version, instance } => {
+                                ExtensionMessage::Hello { protocol_version, instance } => {
                                     if registered_instance.is_some() {
                                         crate::debug::log("Socket", format!("Duplicate hello ignored: instance={:?}", registered_instance));
                                         continue;
@@ -271,26 +271,24 @@ async fn handle_connection(
                                         outgoing: outgoing.clone(),
                                     });
                                 }
-                                ClientMessage::Sync { revision, attachment_mode, panels, free_menus, reset_menu_uids } => {
+                                ExtensionMessage::Sync { revision, menus, reset_menu_uids } => {
                                     let Some(ref inst_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored Sync received before Hello");
                                         continue;
                                     };
-                                    crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, mode={:?}, panels={}, free={}", attachment_mode, panels.len(), free_menus.len()));
+                                    crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, menus={}", menus.len()));
                                     connection_sm.transition(
                                         ConnectionState::Syncing {
                                             connection_uid,
                                             instance_uid: inst_uid.clone(),
                                             revision,
                                         },
-                                        Some(&format!("Menus count: {}", panels.len())),
+                                        Some(&format!("Menus count: {}", menus.len())),
                                     );
-                                    let _ = native_sender.send(NativeCommand::SyncPanels {
+                                    let _ = native_sender.send(NativeCommand::SyncMenus {
                                         connection_uid,
                                         revision,
-                                        attachment_mode,
-                                        panels,
-                                        free_menus,
+                                        menus,
                                         reset_menu_uids,
                                     });
                                     connection_sm.transition(
@@ -301,7 +299,7 @@ async fn handle_connection(
                                         Some("Sync applied"),
                                     );
                                 }
-                                ClientMessage::PairWindow { request_uid, window_uid } => {
+                                ExtensionMessage::PairWindow { request_uid, window_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored PairWindow received before Hello");
                                         continue;
@@ -315,7 +313,7 @@ async fn handle_connection(
                                         outgoing: outgoing.clone(),
                                     });
                                 }
-                                ClientMessage::ConfirmWindowPairing { request_uid, window_uid } => {
+                                ExtensionMessage::ConfirmWindowPairing { request_uid, window_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored ConfirmWindowPairing received before Hello");
                                         continue;
@@ -329,13 +327,13 @@ async fn handle_connection(
                                         outgoing: outgoing.clone(),
                                     });
                                 }
-                                ClientMessage::ClientDebugLog { time, tag, message, details } => {
+                                ExtensionMessage::ClientDebugLog { time, tag, message, details } => {
                                     let details_str = details
                                         .map(|d| format!(" details={}", serde_json::to_string(&d).unwrap_or_default()))
                                         .unwrap_or_default();
                                     crate::debug::log(format!("Ext:{tag}"), format!("[{time}] {message}{details_str}"));
                                 }
-                                ClientMessage::Resync { request_uid } => {
+                                ExtensionMessage::Resync { request_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored Resync received before Hello");
                                         continue;
@@ -347,8 +345,8 @@ async fn handle_connection(
                                         outgoing: outgoing.clone(),
                                     });
                                 }
-                                ClientMessage::Heartbeat => {
-                                    outgoing.send(ServerMessage::Heartbeat)
+                                ExtensionMessage::Heartbeat => {
+                                    outgoing.send(NativeMessage::Heartbeat)
                                         .map_err(|_| "Connection closed")?;
                                 }
                             }
