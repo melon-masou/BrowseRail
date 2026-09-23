@@ -1,3 +1,4 @@
+import { AUTO_FONT_SIZE, isAutoFontSize } from "@browserail/protocol";
 import type {
   AttachmentMode,
   ExpandDirection,
@@ -43,7 +44,13 @@ export interface ExtensionConfig {
 
 export const DEFAULT_FONT_SIZE = 13;
 
+// Preserves the AUTO_FONT_SIZE sentinel (-1); every other value resolves to a
+// concrete px >= 1. Callers that need real pixels (e.g. getItemDimensions) must
+// map auto to a default themselves.
 export function normalizeFontSize(value: unknown): number {
+  if (isAutoFontSize(value)) {
+    return AUTO_FONT_SIZE;
+  }
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.max(1, Math.round(value));
   }
@@ -65,7 +72,8 @@ export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
   return {
     attachmentMode: "lastFocused",
     enabled: true,
-    buttonFontSize: DEFAULT_FONT_SIZE,
+    // Button font auto-scales with button height by default; popup stays fixed.
+    buttonFontSize: AUTO_FONT_SIZE,
     popupFontSize: DEFAULT_FONT_SIZE,
     gap: DEFAULT_MENU_GAP_PERCENT,
     items: [],
@@ -90,7 +98,10 @@ export const DEFAULT_ITEM_HEIGHT = 36;
 export const MENU_GAP = DEFAULT_MENU_GAP;
 
 export function getItemDimensions(fontSize: MenuFontSize = DEFAULT_FONT_SIZE): { itemWidth: number; itemHeight: number } {
-  const fs = normalizeFontSize(fontSize);
+  // Auto has no fixed px, so default item dimensions come from the default font
+  // size; the actual auto font is then derived back from the button height.
+  const normalized = normalizeFontSize(fontSize);
+  const fs = normalized > 0 ? normalized : DEFAULT_FONT_SIZE;
   const itemHeight = Math.max(26, Math.round(fs * 2.7));
   const itemWidth = Math.max(54, Math.round(fs * 6.5));
   return { itemWidth, itemHeight };
@@ -290,9 +301,11 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const buttonFontSize = value.buttonFontSize !== undefined
     ? normalizeFontSize(value.buttonFontSize)
     : undefined;
-  const popupFontSize = value.popupFontSize !== undefined
+  // Only the button font supports auto; a stray auto on the popup coerces to the default.
+  const rawPopupFontSize = value.popupFontSize !== undefined
     ? normalizeFontSize(value.popupFontSize)
     : undefined;
+  const popupFontSize = isAutoFontSize(rawPopupFontSize) ? DEFAULT_FONT_SIZE : rawPopupFontSize;
   const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
     ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : DEFAULT_MENU_GAP;

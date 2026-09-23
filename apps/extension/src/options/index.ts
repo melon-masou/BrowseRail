@@ -1,9 +1,11 @@
 import {
   type AttachmentMode,
+  AUTO_FONT_SIZE,
   EXPORT_SCHEMA_VERSION,
   type ExportedMenuItem,
   type ExportedSettingsData,
   type ExpandDirection,
+  isAutoFontSize,
   isExportedSettingsData,
   type MenuOrientation,
   type OnTopMode,
@@ -148,6 +150,7 @@ const menuSettingsTabs = Array.from(
 const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientation");
 const menuSettingExpandDirection = element<HTMLSelectElement>("menu-setting-expand-direction");
 const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
+const menuSettingFontSizeAuto = element<HTMLInputElement>("menu-setting-font-size-auto");
 const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
 
@@ -1586,10 +1589,24 @@ function initMenuSettingsDialog(): void {
   menuSettingFontSize.addEventListener("input", () => {
     const menu = menus[activeMenuSettingsIndex];
     const val = parseInt(menuSettingFontSize.value, 10);
-    if (menu && !isNaN(val)) {
+    if (menu && !menuSettingFontSizeAuto.checked && !isNaN(val)) {
       menu.buttonFontSize = Math.max(1, val);
       markDirty();
     }
+  });
+
+  menuSettingFontSizeAuto.addEventListener("change", () => {
+    const menu = menus[activeMenuSettingsIndex];
+    if (!menu) return;
+    if (menuSettingFontSizeAuto.checked) {
+      menu.buttonFontSize = AUTO_FONT_SIZE;
+      menuSettingFontSize.disabled = true;
+    } else {
+      const val = parseInt(menuSettingFontSize.value, 10);
+      menu.buttonFontSize = !isNaN(val) ? Math.max(1, val) : DEFAULT_FONT_SIZE;
+      menuSettingFontSize.disabled = false;
+    }
+    markDirty();
   });
 
   menuSettingPopupFontSize.addEventListener("input", () => {
@@ -1649,7 +1666,9 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   const menu = menus[menuIndex];
   if (!menu) return;
 
-  const barFs = menu.buttonFontSize !== undefined
+  const barFontAuto = isAutoFontSize(menu.buttonFontSize);
+  // Auto has no px value, so show the default in the (disabled) number field.
+  const barFs = menu.buttonFontSize !== undefined && !barFontAuto
     ? normalizeFontSize(menu.buttonFontSize)
     : DEFAULT_FONT_SIZE;
   const popupFs = menu.popupFontSize !== undefined
@@ -1660,6 +1679,8 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   menuSettingOrientation.value = menu.orientation;
   menuSettingExpandDirection.value = menu.expandDirection ?? "";
   menuSettingFontSize.value = String(barFs);
+  menuSettingFontSizeAuto.checked = barFontAuto;
+  menuSettingFontSize.disabled = barFontAuto;
   menuSettingPopupFontSize.value = String(popupFs);
   menuSettingGap.value = String(gapVal);
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";

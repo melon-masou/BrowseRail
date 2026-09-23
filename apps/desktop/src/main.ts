@@ -1,5 +1,6 @@
 import {
   invertBookmarkActionUid,
+  isAutoFontSize,
   type ExpandDirection,
   type LayoutEntry,
   type MenuAnchor,
@@ -438,9 +439,23 @@ async function initializeSurface(): Promise<void> {
       : { width: dimensions.width, height: dimensions.height + FREE_DRAG_HANDLE_SIZE };
   }
 
+  // Auto button font (buttonFontSize === -1): scale with the button's pixel
+  // height, inverting getItemDimensions' fs*2.7 so the default 36px button
+  // yields the default 13px font, and a resized button scales its font too.
+  function autoButtonFontSize(menu: SurfaceMenu): number {
+    const itemHeight = menu.placement.itemHeight ?? 36;
+    return Math.max(6, Math.round(itemHeight / 2.7));
+  }
+
   function applyMenuTheme(menu: SurfaceMenu): { buttonFontSize: number; popupFontSize: number; itemHeight: number } {
-    const buttonFontSize = parseFontSize(menu.buttonFontSize);
-    const popupFontSize = parseFontSize(menu.popupFontSize ?? menu.buttonFontSize);
+    const buttonFontSize = isAutoFontSize(menu.buttonFontSize)
+      ? autoButtonFontSize(menu)
+      : parseFontSize(menu.buttonFontSize);
+    // The popup font never auto-scales; when unset (or stray auto) it follows the resolved button font.
+    const popupFontSize =
+      menu.popupFontSize === undefined || isAutoFontSize(menu.popupFontSize)
+        ? buttonFontSize
+        : parseFontSize(menu.popupFontSize);
     const itemHeight = Math.max(24, Math.round(popupFontSize * 2.7));
     root.style.setProperty("--menu-font-size", `${popupFontSize}px`);
     root.style.setProperty("--menu-item-height", `${itemHeight}px`);
