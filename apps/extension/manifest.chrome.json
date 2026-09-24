@@ -3,9 +3,12 @@
   "name": "BrowseRail",
   "version": "0.1.0",
   "description": "External bookmark controls for browser windows.",
-  "permissions": ["bookmarks", "storage", "tabs"],
+  "permissions": ["bookmarks", "storage", "tabs", "offscreen"],
   "background": {
     "service_worker": "background.js"
+  },
+  "sandbox": {
+    "pages": ["sandbox.html"]
   },
   "icons": {
     "16": "icons/16.png",
@@ -24,6 +27,7 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*",
+    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval'; object-src 'self'"
   }
 }

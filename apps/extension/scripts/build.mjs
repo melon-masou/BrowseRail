@@ -54,6 +54,38 @@ await build({
   },
 });
 
+// Sandboxed executor + its Chrome offscreen host, built as classic IIFE scripts
+// (a sandboxed page's opaque origin does not play well with module scripts).
+await build({
+  configFile: false,
+  define,
+  build: {
+    emptyOutDir: false,
+    lib: {
+      entry: resolve(root, "src/sandbox/index.ts"),
+      fileName: () => "sandbox.js",
+      formats: ["iife"],
+      name: "BrowseRailSandbox",
+    },
+    outDir,
+  },
+});
+
+await build({
+  configFile: false,
+  define,
+  build: {
+    emptyOutDir: false,
+    lib: {
+      entry: resolve(root, "src/offscreen/index.ts"),
+      fileName: () => "offscreen.js",
+      formats: ["iife"],
+      name: "BrowseRailOffscreen",
+    },
+    outDir,
+  },
+});
+
 const manifestRaw = await readFile(resolve(root, `manifest.${target}.json`), "utf8");
 const manifestJson = JSON.parse(manifestRaw);
 if (isRelease) {
@@ -79,3 +111,5 @@ if (target === "chrome") {
 await writeFile(resolve(outDir, "manifest.json"), JSON.stringify(manifestJson, null, 2), "utf8");
 
 await cp(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
+await cp(resolve(root, "sandbox.html"), resolve(outDir, "sandbox.html"));
+await cp(resolve(root, "offscreen.html"), resolve(outDir, "offscreen.html"));

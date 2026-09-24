@@ -16,8 +16,11 @@ import {
   createMenu,
   DEFAULT_FONT_SIZE,
   DEFAULT_MENU_GAP_PERCENT,
+  type DynamicBookmark,
+  type DynamicValuesMap,
   type ExtensionConfig,
   loadBookmarkRootPrefix,
+  loadDynamicValues,
   loadConfig,
   loadSyncEnabled,
   loadWidgetEnabled,
@@ -47,6 +50,7 @@ import {
 } from "../bookmarks";
 import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
+import { createSandboxHost } from "../sandbox/host";
 import {
   applyStaticI18n,
   getLanguage,
@@ -197,6 +201,18 @@ const addPopoverMenuToggleBtn = element<HTMLButtonElement>("add-popover-menu-tog
 const menusCardTabs = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"),
 );
+const dynamicList = element<HTMLDivElement>("dynamic-list");
+const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
+const addPopoverDynamicBtn = element<HTMLButtonElement>("add-popover-dynamic-btn");
+const addDynamicMarkerBtn = element<HTMLButtonElement>("add-dynamic-marker-btn");
+const dynamicMarkerDialog = element<HTMLDialogElement>("dynamic-marker-dialog");
+const dynamicMarkerForm = element<HTMLFormElement>("dynamic-marker-form");
+const dynamicMarkerSelect = element<HTMLSelectElement>("dynamic-marker-select");
+const dynamicMarkerFolderBtn = element<HTMLButtonElement>("dynamic-marker-folder-btn");
+const dynamicMarkerFolderDisplay = element<HTMLSpanElement>("dynamic-marker-folder-display");
+const dynamicMarkerResult = element<HTMLOutputElement>("dynamic-marker-result");
+const dynamicMarkerClose = element<HTMLButtonElement>("dynamic-marker-close");
+const dynamicMarkerCloseBtn = element<HTMLButtonElement>("dynamic-marker-close-btn");
 const addUrlRuleBtn = element<HTMLButtonElement>("add-url-rule-btn");
 const urlRulesList = element<HTMLDivElement>("url-rules-list");
 const menuSettingUrlRulesList = element<HTMLDivElement>("menu-setting-url-rules-list");
@@ -210,6 +226,7 @@ let isMenusDirty = false;
 let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
 let urlRules: UrlRule[] = [];
+let dynamicBookmarks: DynamicBookmark[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let desktopTestGeneration = 0;
 
@@ -1009,6 +1026,7 @@ function rerenderForLanguage(): void {
   languageSelect.value = getLanguage();
   renderMenus();
   renderUrlRules();
+  renderDynamicList();
   updateDesktopControls();
   renderDesktopState(stateCard.dataset.state ?? "disconnected");
   if (pickerDialog.open) {
@@ -1052,6 +1070,7 @@ async function initialize(): Promise<void> {
   initItemSettingsPopover();
   initSpaceBookmarkDialog();
   initAddItemPopover();
+  initDynamicPanel();
   void refreshDesktopState();
   const [config, enabled, tree, rootPrefix] = await Promise.all([
     loadConfig(),
@@ -1081,9 +1100,11 @@ async function initialize(): Promise<void> {
   }
   menus = structuredClone(config.panel.menus);
   urlRules = structuredClone(config.urlRules);
+  dynamicBookmarks = structuredClone(config.dynamicBookmarks ?? []);
   updateDesktopControls();
   renderMenus();
   renderUrlRules();
+  renderDynamicList();
   clearDirty();
 }
 
@@ -1149,6 +1170,7 @@ async function persistMenus(): Promise<void> {
       menus,
     },
     urlRules,
+    dynamicBookmarks,
   });
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearMenusDirty();
@@ -1192,6 +1214,7 @@ async function previewCurrentConfig(): Promise<void> {
       menus,
     },
     urlRules,
+    dynamicBookmarks,
   };
 
   try {
@@ -2035,10 +2058,13 @@ function initSpaceBookmarkDialog(): void {
 
 function updateGapBookmarkFolderDisplay(): void {
   const node = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
-  spaceBookmarkFolderDisplay.textContent =
+  const label =
     gapBookmarkFolderId === "0"
       ? t("toolkit.defaultLocation")
       : node?.title || t("common.folder");
+  spaceBookmarkFolderDisplay.textContent = label;
+  // The dynamic-marker dialog shares the same folder selection.
+  dynamicMarkerFolderDisplay.textContent = label;
 }
 
 function updateSpaceBookmarkColorState(): void {
@@ -2066,6 +2092,225 @@ async function addSpaceBookmark(): Promise<void> {
     });
     spaceBookmarkResult.dataset.state = "error";
   }
+}
+
+const DEFAULT_DYNAMIC_CODE = `function dynamicBookmark({ action, url, title, current }) {
+  // Return { newUrl, title } to update this bookmark, or { newUrl: null } to keep it.
+  // 'title' is optional; leave it out to reuse the visited page's title.
+  // Example: track the last GitHub repo you open.
+  // if (url.startsWith("https://github.com/")) return { newUrl: url };
+  return { newUrl: null };
+}
+`;
+
+function createDynamicBookmark(): DynamicBookmark {
+  return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), code: DEFAULT_DYNAMIC_CODE };
+}
+
+function buildDynamicMarkerUrl(uid: string): string {
+  return `https://browserail.local/#Dynamic:${uid}`;
+}
+
+let dynamicValuesCache: DynamicValuesMap = {};
+let dynamicTestHost: ReturnType<typeof createSandboxHost> | null = null;
+
+async function refreshDynamicValues(): Promise<void> {
+  try {
+    dynamicValuesCache = await loadDynamicValues();
+  } catch {
+    dynamicValuesCache = {};
+  }
+  renderDynamicList();
+}
+
+function renderDynamicList(): void {
+  dynamicList.replaceChildren();
+  if (dynamicBookmarks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "url-rules-syntax-guide";
+    empty.textContent = t("dynamic.empty");
+    dynamicList.append(empty);
+    return;
+  }
+  for (const db of dynamicBookmarks) {
+    dynamicList.append(renderDynamicCard(db));
+  }
+}
+
+function renderDynamicCard(db: DynamicBookmark): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "dynamic-card";
+
+  const header = document.createElement("div");
+  header.className = "dynamic-card-header";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.value = db.name;
+  nameInput.addEventListener("input", () => {
+    db.name = nameInput.value;
+    markDirty();
+  });
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "action-btn";
+  del.textContent = t("common.delete");
+  del.addEventListener("click", () => {
+    dynamicBookmarks = dynamicBookmarks.filter((d) => d.uid !== db.uid);
+    for (const menu of menus) {
+      menu.items = menu.items.filter((i) => !(i.type === "dynamic" && i.dynamicUid === db.uid));
+    }
+    renderDynamicList();
+    renderMenus();
+    markDirty();
+  });
+  header.append(nameInput, del);
+
+  const code = document.createElement("textarea");
+  code.className = "dynamic-code";
+  code.rows = 8;
+  code.spellcheck = false;
+  code.value = db.code;
+  code.addEventListener("input", () => {
+    db.code = code.value;
+    markDirty();
+  });
+
+  const rulesWrap = document.createElement("div");
+  rulesWrap.className = "dynamic-rules";
+  const rulesLabel = document.createElement("span");
+  rulesLabel.className = "url-rules-hint";
+  rulesLabel.textContent = t("dynamic.urlRulesLabel");
+  rulesWrap.append(rulesLabel);
+  if (urlRules.length === 0) {
+    const none = document.createElement("span");
+    none.className = "url-rules-hint";
+    none.textContent = t("dynamic.noUrlRules");
+    rulesWrap.append(none);
+  } else {
+    for (const rule of urlRules) {
+      const lbl = document.createElement("label");
+      lbl.className = "item-setting-check-label";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = Boolean(db.urlRuleUids?.includes(rule.uid));
+      cb.addEventListener("change", () => {
+        const set = new Set(db.urlRuleUids ?? []);
+        if (cb.checked) set.add(rule.uid);
+        else set.delete(rule.uid);
+        if (set.size > 0) db.urlRuleUids = [...set];
+        else delete db.urlRuleUids;
+        markDirty();
+      });
+      const span = document.createElement("span");
+      span.textContent = rule.name;
+      lbl.append(cb, span);
+      rulesWrap.append(lbl);
+    }
+  }
+
+  const current = document.createElement("div");
+  current.className = "dynamic-current";
+  const live = dynamicValuesCache[db.uid];
+  current.textContent = live?.url
+    ? t("dynamic.currentValue", { title: live.title || "", url: live.url })
+    : t("dynamic.noValue");
+
+  const testRow = document.createElement("div");
+  testRow.className = "dynamic-test-row";
+  const testInput = document.createElement("input");
+  testInput.type = "text";
+  testInput.placeholder = t("dynamic.testUrlPlaceholder");
+  const testBtn = document.createElement("button");
+  testBtn.type = "button";
+  testBtn.className = "action-btn";
+  testBtn.textContent = t("dynamic.test");
+  const testOut = document.createElement("output");
+  testOut.className = "toolkit-status";
+  testBtn.addEventListener("click", () => {
+    void runDynamicTest(db.code, testInput.value.trim(), testOut);
+  });
+  testRow.append(testInput, testBtn, testOut);
+
+  card.append(header, code, rulesWrap, current, testRow);
+  return card;
+}
+
+async function runDynamicTest(code: string, url: string, out: HTMLOutputElement): Promise<void> {
+  if (!dynamicTestHost) {
+    dynamicTestHost = createSandboxHost(browser.runtime.getURL("sandbox.html"));
+  }
+  const args = {
+    action: "visit",
+    url: url || "https://example.com/",
+    title: "Test title",
+    current: { url: null, title: null },
+  };
+  const result = await dynamicTestHost.run(code, args, 200);
+  out.dataset.state = result.ok ? "success" : "error";
+  out.textContent = result.ok ? JSON.stringify(result.value) : result.error || "error";
+}
+
+function populateDynamicMarkerSelect(): void {
+  dynamicMarkerSelect.replaceChildren();
+  for (const db of dynamicBookmarks) {
+    const opt = document.createElement("option");
+    opt.value = db.uid;
+    opt.textContent = db.name;
+    dynamicMarkerSelect.append(opt);
+  }
+}
+
+async function addDynamicMarkerBookmark(): Promise<void> {
+  const uid = dynamicMarkerSelect.value;
+  if (!uid) {
+    dynamicMarkerResult.textContent = t("dynamic.markerNeedsSelection");
+    dynamicMarkerResult.dataset.state = "error";
+    return;
+  }
+  try {
+    await browser.bookmarks.create({
+      title: dynamicBookmarks.find((d) => d.uid === uid)?.name || "Dynamic",
+      url: buildDynamicMarkerUrl(uid),
+      ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
+    });
+    rawBookmarkTree = await browser.bookmarks.getTree();
+    dynamicMarkerResult.textContent = t("toolkit.added");
+    dynamicMarkerResult.dataset.state = "success";
+  } catch (error) {
+    dynamicMarkerResult.textContent = t("toolkit.addFailed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    dynamicMarkerResult.dataset.state = "error";
+  }
+}
+
+function initDynamicPanel(): void {
+  addDynamicBtn.addEventListener("click", () => {
+    dynamicBookmarks.push(createDynamicBookmark());
+    renderDynamicList();
+    markDirty();
+  });
+  document.getElementById("dynamic-tab")?.addEventListener("click", () => {
+    void refreshDynamicValues();
+  });
+
+  addDynamicMarkerBtn.addEventListener("click", () => {
+    populateDynamicMarkerSelect();
+    dynamicMarkerResult.textContent = "";
+    updateGapBookmarkFolderDisplay();
+    dynamicMarkerDialog.showModal();
+  });
+  dynamicMarkerFolderBtn.addEventListener("click", () => {
+    void openBookmarkPicker("pickFolder");
+  });
+  dynamicMarkerClose.addEventListener("click", () => dynamicMarkerDialog.close());
+  dynamicMarkerCloseBtn.addEventListener("click", () => dynamicMarkerDialog.close());
+  dynamicMarkerForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void addDynamicMarkerBookmark();
+  });
+
+  void refreshDynamicValues();
 }
 
 function initAddItemPopover(): void {
@@ -2112,6 +2357,23 @@ function initAddItemPopover(): void {
     });
     renderMenus();
     markDirty();
+  });
+
+  addPopoverDynamicBtn.addEventListener("click", () => {
+    const menuIdx = activeAddMenuIndex;
+    closeAddItemDropdown();
+    if (menuIdx < 0 || menuIdx >= menus.length) return;
+    const menu = menus[menuIdx];
+    if (!menu) return;
+    // Inserting a dynamic bookmark also creates its definition; the user then
+    // edits the function in the Dynamic bookmarks tab.
+    const db = createDynamicBookmark();
+    dynamicBookmarks.push(db);
+    menu.items.push({ uid: crypto.randomUUID(), type: "dynamic", dynamicUid: db.uid });
+    renderMenus();
+    renderDynamicList();
+    markDirty();
+    status.value = t("dynamic.createdHint");
   });
 
   document.addEventListener("pointerdown", (e) => {

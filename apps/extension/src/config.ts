@@ -31,6 +31,17 @@ export type {
   UrlRule,
 };
 
+// A user-defined dynamic bookmark: its function body maintains a live URL/title
+// that updates as the user browses (see the sandbox runner). The definition is
+// synced with config; the live value lives in local `dynamic_values` only.
+export interface DynamicBookmark {
+  uid: string;
+  name: string;
+  code: string;
+  // urlRules this bookmark's function reacts to; empty/undefined = all visits.
+  urlRuleUids?: string[];
+}
+
 export interface ExtensionConfig {
   desktopWidget: {
     url: string;
@@ -40,6 +51,7 @@ export interface ExtensionConfig {
     menus: StoredMenu[];
   };
   urlRules: UrlRule[];
+  dynamicBookmarks: DynamicBookmark[];
 }
 
 export const DEFAULT_FONT_SIZE = 13;
@@ -91,6 +103,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
     menus: [createMenu()],
   },
   urlRules: [],
+  dynamicBookmarks: [],
 };
 
 export const DEFAULT_ITEM_WIDTH = 84;
@@ -225,6 +238,7 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
         [SYNC_CONFIG_KEY]: {
           menus: normalized.panel.menus,
           urlRules: normalized.urlRules,
+          dynamicBookmarks: normalized.dynamicBookmarks,
         },
       });
     } catch (e) {
@@ -273,6 +287,25 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     return [{ uid: ws.uid, name, patterns }];
   });
 
+  const rawDynamic = Array.isArray(value.dynamicBookmarks) ? value.dynamicBookmarks : [];
+  const dynamicBookmarks: DynamicBookmark[] = rawDynamic.flatMap((db) => {
+    if (!isRecord(db)) return [];
+    if (typeof db.uid !== "string" || !db.uid) return [];
+    const name = typeof db.name === "string" && db.name.trim() ? db.name.trim() : "Dynamic bookmark";
+    const code = typeof db.code === "string" ? db.code : "";
+    const urlRuleUids = Array.isArray(db.urlRuleUids)
+      ? db.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+      : undefined;
+    return [
+      {
+        uid: db.uid,
+        name,
+        code,
+        ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
+      },
+    ];
+  });
+
   return {
     desktopWidget: {
       url:
@@ -288,6 +321,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
       menus: menus.length > 0 ? menus : [createMenu()],
     },
     urlRules,
+    dynamicBookmarks,
   };
 }
 
@@ -432,6 +466,22 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
       uid,
       type: "menuToggle",
       ...(rename ? { rename } : {}),
+    };
+  }
+
+  if (rawType === "dynamic") {
+    const dynamicUid = typeof value.dynamicUid === "string" && value.dynamicUid ? value.dynamicUid : undefined;
+    if (!dynamicUid) return undefined;
+    const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
+    const color = typeof value.color === "string" && value.color ? value.color : undefined;
+    const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
+    return {
+      uid,
+      type: "dynamic",
+      dynamicUid,
+      ...(rename ? { rename } : {}),
+      ...(color ? { color } : {}),
+      ...(tabMode ? { tabMode } : {}),
     };
   }
 
@@ -585,4 +635,49 @@ export async function saveBookmarkRootPrefix(prefix: string[]): Promise<void> {
 
 export async function initBookmarkRootPrefix(): Promise<string[]> {
   return DEFAULT_BOOKMARK_ROOT_PREFIX;
+}
+
+// Live values of dynamic bookmarks, keyed by dynamic bookmark uid. Local only
+// (never synced): they update on every qualifying page visit, so syncing would
+// blow the sync quota. This is the parallel of menu_placements/free_placements.
+export const DYNAMIC_VALUES_STORAGE_KEY = "dynamic_values";
+
+export interface DynamicValue {
+  url: string;
+  title: string;
+  updatedAt: number;
+}
+
+export type DynamicValuesMap = Record<string, DynamicValue>;
+
+export async function loadDynamicValues(): Promise<DynamicValuesMap> {
+  const stored = await browser.storage.local.get(DYNAMIC_VALUES_STORAGE_KEY);
+  const raw = stored[DYNAMIC_VALUES_STORAGE_KEY];
+  if (!isRecord(raw)) {
+    return {};
+  }
+  const result: DynamicValuesMap = {};
+  for (const [uid, value] of Object.entries(raw)) {
+    if (isRecord(value) && typeof value.url === "string" && typeof value.title === "string") {
+      result[uid] = {
+        url: value.url,
+        title: value.title,
+        updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
+      };
+    }
+  }
+  return result;
+}
+
+export async function saveDynamicValue(uid: string, value: DynamicValue): Promise<void> {
+  const current = await loadDynamicValues();
+  current[uid] = value;
+  await browser.storage.local.set({ [DYNAMIC_VALUES_STORAGE_KEY]: current });
+}
+
+export async function removeDynamicValues(uid: string): Promise<void> {
+  const current = await loadDynamicValues();
+  if (!(uid in current)) return;
+  delete current[uid];
+  await browser.storage.local.set({ [DYNAMIC_VALUES_STORAGE_KEY]: current });
 }

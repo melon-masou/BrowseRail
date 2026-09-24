@@ -123,6 +123,9 @@
           <button type="button" id="url-rules-tab" class="menus-card-tab" role="tab"
             data-tab-target="url-rules-panel" aria-selected="false" aria-controls="url-rules-panel"
             data-i18n="section.urlRules">URL rules</button>
+          <button type="button" id="dynamic-tab" class="menus-card-tab" role="tab"
+            data-tab-target="dynamic-panel" aria-selected="false" aria-controls="dynamic-panel"
+            data-i18n="section.dynamic">Dynamic bookmarks</button>
         </div>
 
         <section id="menus-panel" class="menus-section" role="tabpanel" aria-labelledby="menus-tab">
@@ -147,6 +150,16 @@
           <p class="url-rules-syntax-guide" data-i18n="urlRules.syntaxHint">Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line</p>
         </section>
 
+        <!-- Dynamic Bookmarks Panel -->
+        <section id="dynamic-panel" class="dynamic-section" role="tabpanel" aria-labelledby="dynamic-tab" hidden>
+          <div class="url-rules-header">
+            <span class="url-rules-hint" data-i18n="dynamic.hint">A function decides a bookmark's URL as you browse. It runs sandboxed on page visits.</span>
+            <button id="add-dynamic-btn" class="menu-action-btn add-url-rule-btn" type="button" data-i18n="dynamic.add">+ Add dynamic bookmark</button>
+          </div>
+          <div id="dynamic-list" class="dynamic-list"></div>
+          <p class="url-rules-syntax-guide" data-i18n="dynamic.syntaxHint">function dynamicBookmark({ action, url, title, current }) { return { newUrl: null, title: null }; } — return an http(s) newUrl to update; leave title empty to use the page title.</p>
+        </section>
+
         <div class="form-actions-row">
           <button type="submit" id="save-btn" class="save-btn" data-i18n="btn.save">Save</button>
           <button type="button" id="preview-btn" class="preview-btn action-btn" data-i18n="btn.preview">Preview</button>
@@ -159,8 +172,36 @@
         <div class="toolkit-card-row">
           <h2 class="toolkit-card-title" data-i18n="section.toolkit">Tools</h2>
           <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap bookmark</button>
+          <button type="button" id="add-dynamic-marker-btn" class="action-btn" data-i18n="toolkit.addDynamicMarker">Add dynamic bookmark (flatten)</button>
         </div>
       </section>
+
+      <!-- Add Dynamic Marker Dialog -->
+      <dialog id="dynamic-marker-dialog" class="space-bookmark-dialog">
+        <div class="space-bookmark-dialog-header">
+          <span data-i18n="toolkit.dynamicMarkerTitle">Add dynamic bookmark to folder</span>
+          <button type="button" id="dynamic-marker-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <form id="dynamic-marker-form" class="space-bookmark-dialog-body">
+          <div class="space-bookmark-fields">
+            <label>
+              <span data-i18n="toolkit.dynamicMarkerPick">Dynamic bookmark</span>
+              <select id="dynamic-marker-select"></select>
+            </label>
+          </div>
+          <div class="space-bookmark-folder-row">
+            <span data-i18n="toolkit.destination">Destination folder</span>
+            <button type="button" id="dynamic-marker-folder-btn" class="action-btn" data-i18n="toolkit.chooseFolder">Choose…</button>
+            <span id="dynamic-marker-folder-display" class="space-bookmark-folder-name"></span>
+          </div>
+          <p class="space-bookmark-help" data-i18n="toolkit.dynamicMarkerHelp">Inserts a bookmark whose URL is https://browserail.local/#Dynamic:&lt;id&gt;. Flatten the folder to show it on the rail; clicking it (even in the native bookmarks bar) redirects to the live URL.</p>
+          <div class="space-bookmark-dialog-actions">
+            <button type="submit" id="dynamic-marker-add" class="save-btn" data-i18n="toolkit.add">Add</button>
+            <button type="button" id="dynamic-marker-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
+            <output id="dynamic-marker-result" class="toolkit-status" aria-live="polite"></output>
+          </div>
+        </form>
+      </dialog>
 
       <!-- Add Space Bookmark Dialog -->
       <dialog id="space-bookmark-dialog" class="space-bookmark-dialog">
@@ -390,6 +431,10 @@ Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
         <button type="button" id="add-popover-menu-toggle-btn" class="add-popover-item">
           <span class="add-popover-icon">⇕</span>
           <span class="add-popover-text" data-i18n="menu.addMenuToggle">Menu toggle</span>
+        </button>
+        <button type="button" id="add-popover-dynamic-btn" class="add-popover-item">
+          <span class="add-popover-icon">🜂</span>
+          <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
         </button>
       </div>
 

@@ -1,6 +1,8 @@
 import {
+  isDynamicAction,
   isNativeMessage,
   isUrlMatchingSet,
+  parseDynamicAction,
   PROTOCOL_VERSION,
   type BrowserInstance,
   type ExtensionMessage,
@@ -21,6 +23,7 @@ import {
   loadFreePlacements,
   loadMenuPlacements,
   loadWidgetEnabled,
+  loadDynamicValues,
   removeMenuPlacements,
   resolveGapPx,
   resolveMenuPlacement,
@@ -30,7 +33,8 @@ import {
 } from "../config";
 import { loadInstanceUid } from "../instance-identity";
 import { ExtensionStateMachine, type ExtensionConnectionState } from "../state-machine";
-import { navigateBookmark } from "../tab-actions/navigate";
+import { navigateBookmark, navigateToUrl } from "../tab-actions/navigate";
+import { initDynamicBookmarks } from "./dynamic";
 
 export const connectionStateMachine = new ExtensionStateMachine("disconnected");
 
@@ -228,6 +232,7 @@ browser.tabs?.onAttached?.addListener(() => {
 browser.tabs?.onDetached?.addListener(() => {
   requestSync();
 });
+initDynamicBookmarks(requestSync);
 let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleReconcile(): void {
@@ -491,7 +496,15 @@ async function handleMessage(raw: unknown): Promise<void> {
       return;
     }
     try {
-      await navigateBookmark(browser, targetWindowUid, value.actionUid);
+      if (isDynamicAction(value.actionUid)) {
+        const { dynamicUid, tabMode } = parseDynamicAction(value.actionUid);
+        const live = (await loadDynamicValues())[dynamicUid];
+        if (live?.url) {
+          await navigateToUrl(browser, targetWindowUid, live.url, tabMode);
+        }
+      } else {
+        await navigateBookmark(browser, targetWindowUid, value.actionUid);
+      }
     } catch {
       requestSync();
     }
@@ -591,15 +604,27 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [loadedConfig, windows, placements, rootPrefix, freePlacements, bookmarkTree] = await Promise.all([
+  const [loadedConfig, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
     loadBookmarkRootPrefix(),
     loadFreePlacements(),
     browser.bookmarks.getTree().catch(() => []),
+    loadDynamicValues(),
   ]);
   const config = previewConfigOverride ?? loadedConfig;
+  const dynamicByUid = new Map((config.dynamicBookmarks ?? []).map((db) => [db.uid, db]));
+  const dynamicResolve = (dynamicUid: string) => {
+    const def = dynamicByUid.get(dynamicUid);
+    if (!def) return undefined;
+    const value = dynamicValues[dynamicUid];
+    return {
+      name: def.name,
+      ...(value?.url ? { url: value.url } : {}),
+      ...(value?.title ? { title: value.title } : {}),
+    };
+  };
   const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
   const bookmarkTargets = createBookmarkTargetDraft();
   const menuStates = await Promise.all(
@@ -613,6 +638,7 @@ async function syncOnce(): Promise<void> {
         {
           tree: bookmarkTree as BookmarkNode[],
           registerTarget: (browserBookmarkId) => bookmarkTargets.register(browserBookmarkId),
+          dynamicResolve,
         },
       );
       const placement = resolveMenuPlacement(

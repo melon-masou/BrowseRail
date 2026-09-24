@@ -46,6 +46,21 @@ export async function navigateBookmark(
   if (!url) {
     throw new Error("The bookmark no longer exists");
   }
+  await navigateToUrl(api, windowId, url, tabMode);
+}
+
+// Navigate a target window to a URL, honoring tab mode. Shared by bookmark and
+// dynamic-bookmark navigation.
+export async function navigateToUrl(
+  api: TabActionBrowser,
+  windowUid: string | number,
+  url: string,
+  tabMode: TabMode,
+): Promise<void> {
+  const windowId = Number(windowUid);
+  if (!Number.isInteger(windowId)) {
+    throw new Error("The bound browser window is invalid");
+  }
   await api.windows.get(windowId);
 
   if (tabMode === "newTab") {

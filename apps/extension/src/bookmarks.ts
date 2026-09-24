@@ -415,6 +415,43 @@ function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
   };
 }
 
+export interface DynamicResolved {
+  name: string;
+  url?: string;
+  title?: string;
+}
+export type DynamicResolver = (dynamicUid: string) => DynamicResolved | undefined;
+
+// Reads the dynamic-bookmark id from a marker URL, scheme/host-agnostic: the id
+// is whatever follows `#Dynamic:` in the fragment (the browser may prepend a
+// scheme/host when the marker is stored as a bookmark).
+export function parseDynamicMarkerUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const hashIndex = url.indexOf("#");
+  if (hashIndex === -1) return undefined;
+  const fragment = url.slice(hashIndex + 1);
+  const prefix = "Dynamic:";
+  if (!fragment.startsWith(prefix)) return undefined;
+  const id = fragment.slice(prefix.length);
+  return id || undefined;
+}
+
+function dynamicBookmarkEntry(
+  dynamicUid: string,
+  info: DynamicResolved,
+  tabMode: TabMode,
+  color?: string,
+  rename?: string,
+): BookmarkEntry {
+  return {
+    kind: "bookmark",
+    uid: actionUid("dynamic", dynamicUid, tabMode),
+    label: rename || info.title || info.name || info.url || "Dynamic",
+    ...(color ? { color } : {}),
+    ...(rename ? { rename } : {}),
+  };
+}
+
 export async function resolveMenuItems(
   items: StoredMenuItem[],
   menuTabMode?: TabMode,
@@ -424,12 +461,14 @@ export async function resolveMenuItems(
   context: {
     tree?: BookmarkNode[];
     registerTarget?: (browserBookmarkId: string) => string;
+    dynamicResolve?: DynamicResolver;
   } = {},
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = context.tree ?? null;
   const registerTarget = context.registerTarget ?? (() => crypto.randomUUID());
+  const dynamicResolve = context.dynamicResolve ?? (() => undefined);
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, expandOnHover, includeFolders, tabMode, units, transparent }): Promise<LayoutEntry[]> => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, transparent }): Promise<LayoutEntry[]> => {
       if (type === "menuToggle") {
         const entry: LayoutEntry = {
           kind: "menuToggle",
@@ -449,6 +488,14 @@ export async function resolveMenuItems(
           transparent: isTransparent,
         };
         return [spaceEntry];
+      }
+
+      if (type === "dynamic") {
+        if (!dynamicUid) return [];
+        const info = dynamicResolve(dynamicUid);
+        if (!info) return []; // orphan (definition removed): omit
+        const effectiveTabMode: TabMode = tabMode || menuTabMode || "replace";
+        return [dynamicBookmarkEntry(dynamicUid, info, effectiveTabMode, color || menuColor, rename)];
       }
 
       const effectivePath = combineRootAndItemPath(rootPrefix, path);
@@ -506,6 +553,14 @@ export async function resolveMenuItems(
         return (node.children ?? []).flatMap((child): LayoutEntry[] => {
           const directive = parseFlattenSpaceDirective(child);
           if (directive) return [directive];
+          const dynamicId = parseDynamicMarkerUrl(child.url);
+          if (dynamicId) {
+            const info = dynamicResolve(dynamicId);
+            if (!info) return []; // orphan marker: omit
+            const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
+            flattenedIdx++;
+            return [dynamicBookmarkEntry(dynamicId, info, effectiveTabMode, itemColor)];
+          }
           if (child.url === undefined) {
             // Sub-folder: only emitted when "include folders" is on, as a folder
             // that inherits this flatten item's folder options.

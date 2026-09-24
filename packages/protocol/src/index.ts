@@ -11,7 +11,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuToggle", "space"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuToggle", "space", "dynamic"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export type StoredMenuItemType = MenuItemType;
 export type ExportedItemType = MenuItemType;
@@ -34,6 +34,9 @@ export interface StoredMenuItem {
   cycleColors?: string[];
   rename?: string;
   type?: MenuItemType;
+  // For `dynamic` items: the dynamic bookmark definition this item renders (see
+  // ExtensionConfig.dynamicBookmarks). Its live URL/title come from local state.
+  dynamicUid?: string;
   expandOnHover?: boolean;
   // For flattenFolder items: also emit the folder's sub-folders (as folders
   // inheriting this item's folder options), not just its bookmarks. Default off.
@@ -88,18 +91,45 @@ export function isSpecialRootPlaceholder(value: unknown): value is string {
 
 // Action UID Wire Protocol
 export function formatActionUid(
-  kind: "bookmark" | "folder",
+  kind: "bookmark" | "folder" | "dynamic",
   uid: string,
   tabMode?: TabMode,
 ): string {
   const base = `${kind}:${encodeURIComponent(uid)}`;
-  if (kind === "bookmark" && tabMode === "newTab") {
+  if ((kind === "bookmark" || kind === "dynamic") && tabMode === "newTab") {
     return `${base}?tab=newTab`;
   }
   return base;
 }
 
 export const actionUid = formatActionUid;
+
+// Dynamic-bookmark navigation action. The target URL is not a browser bookmark
+// but the dynamic bookmark's current live value, resolved at dispatch time.
+export function isDynamicAction(actionUid: string): boolean {
+  return actionUid.startsWith("dynamic:");
+}
+
+export interface ParsedDynamicAction {
+  dynamicUid: string;
+  tabMode: TabMode;
+}
+
+export function parseDynamicAction(actionUid: string): ParsedDynamicAction {
+  const prefix = "dynamic:";
+  if (!actionUid.startsWith(prefix)) {
+    throw new Error("The action is not a dynamic bookmark navigation");
+  }
+  const raw = actionUid.slice(prefix.length);
+  const qIndex = raw.indexOf("?tab=");
+  if (qIndex !== -1) {
+    return {
+      dynamicUid: decodeURIComponent(raw.slice(0, qIndex)),
+      tabMode: raw.slice(qIndex + 5) === "newTab" ? "newTab" : "replace",
+    };
+  }
+  return { dynamicUid: decodeURIComponent(raw), tabMode: "replace" };
+}
 
 export interface ParsedBookmarkAction {
   uid: string;
