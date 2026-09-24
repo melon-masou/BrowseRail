@@ -132,6 +132,10 @@ async function initializeSurface(): Promise<void> {
   // The in-progress customization's cancel hook, so turning edit mode off (or a
   // fresh menu) discards an uncommitted edit instead of stranding its toolbar.
   let cancelActiveCustomization: (() => Promise<void>) | null = null;
+  // Tears down the current renderCustomize call's window-move listener. Each
+  // render replaces the previous one, and begin re-renders once when the native
+  // toolbar side comes back, so the stale listener must be removed first.
+  let teardownCustomize: (() => void) | undefined;
   let currentMenu = initial.menu;
   let menuCollapsed = initial.collapsed;
 
@@ -979,13 +983,16 @@ async function initializeSurface(): Promise<void> {
     menu: SurfaceMenu,
     toolbarPosition: "top" | "bottom" = "bottom",
   ): HTMLElement {
+    teardownCustomize?.();
+    teardownCustomize = undefined;
     const theme = applyMenuTheme(menu);
     let anchor = menu.placement.boundPosition.anchor;
     const initialDims = computeMenuDimensions(menu);
     let targetWidth = initialDims.width;
     let targetHeight = initialDims.height;
+    let toolbarSide: "top" | "bottom" = toolbarPosition;
     root.className = "customize-mode";
-    root.dataset.toolbarPosition = toolbarPosition;
+    root.dataset.toolbarPosition = toolbarSide;
     root.dataset.orientation = menu.orientation;
     root.onpointerdown = null;
 
@@ -1197,18 +1204,86 @@ async function initializeSurface(): Promise<void> {
       resizeHandle("southEast"),
     );
 
-    if (toolbarPosition === "top") {
-      content.replaceChildren(toolbar, railContainer);
-    } else {
-      content.replaceChildren(railContainer, toolbar);
-    }
+    // Order the toolbar against the rail. Re-ordering preserves the rail's on-
+    // screen position (see maybeFlipToolbarSide), so a flip only moves the
+    // toolbar to the other edge.
+    const layoutForToolbarSide = (side: "top" | "bottom"): void => {
+      toolbarSide = side;
+      root.dataset.toolbarPosition = side;
+      if (side === "top") {
+        content.replaceChildren(toolbar, railContainer);
+      } else {
+        content.replaceChildren(railContainer, toolbar);
+      }
+      applyTargetSize();
+    };
+    layoutForToolbarSide(toolbarPosition);
     root.replaceChildren(content);
     applyTargetSize();
+
+    // While the window is dragged, re-check which edge has room for the toolbar.
+    // Dragging the bar past the screen edge would push the toolbar off-screen;
+    // when that happens we flip sides and re-anchor so the rail stays put and the
+    // toolbar jumps to the opposite edge, keeping save/cancel reachable.
+    const appWindow = getCurrentWindow();
+    let flipCheckTimer: ReturnType<typeof setTimeout> | undefined;
+    let flipInFlight = false;
+    async function maybeFlipToolbarSide(): Promise<void> {
+      if (flipInFlight || !root.isConnected) return;
+      const railRect = railContainer.getBoundingClientRect();
+      let side: "top" | "bottom";
+      try {
+        side = await invoke<"top" | "bottom">("customization_toolbar_flip", {
+          anchorOffsetY: railRect.top,
+          current: toolbarSide,
+          menuHeight: railRect.height,
+          toolbarSpace: customizationToolbarSpace(toolbar),
+        });
+      } catch {
+        return;
+      }
+      if (side === toolbarSide || !root.isConnected) return;
+
+      flipInFlight = true;
+      try {
+        const beforeRail = elementOrigin(railContainer);
+        layoutForToolbarSide(side);
+        await requestDoubleAnimationFrame();
+        const contentRect = content.getBoundingClientRect();
+        await resizeAndPosition(
+          beforeRail,
+          elementOrigin(railContainer),
+          contentRect.width,
+          contentRect.height,
+        );
+      } catch {
+        // Ignore: the next move event will retry.
+      } finally {
+        flipInFlight = false;
+      }
+    }
+    let unlistenMoved: (() => void) | undefined;
+    teardownCustomize = () => {
+      clearTimeout(flipCheckTimer);
+      unlistenMoved?.();
+      unlistenMoved = undefined;
+    };
+    void appWindow
+      .onMoved(() => {
+        clearTimeout(flipCheckTimer);
+        flipCheckTimer = setTimeout(() => {
+          void maybeFlipToolbarSide();
+        }, 200);
+      })
+      .then((unlisten) => {
+        unlistenMoved = unlisten;
+      });
 
     async function cancelCustomization(): Promise<void> {
       cancelActiveCustomization = null;
       const restorePosition = customizationStartPosition;
       customizing = false;
+      teardownCustomize?.();
       await invoke("cancel_menu_customization", { instanceUid, menuUid, windowUid });
       if (currentMenu) {
         renderSurface(currentMenu);
@@ -1234,6 +1309,7 @@ async function initializeSurface(): Promise<void> {
 
     async function saveCustomization(): Promise<void> {
       cancelActiveCustomization = null;
+      teardownCustomize?.();
       const fromAnchor = elementOrigin(railContainer);
       const placement = await invoke<MenuPlacement>("save_menu_placement", {
         anchor,

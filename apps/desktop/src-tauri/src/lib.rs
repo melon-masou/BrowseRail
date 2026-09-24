@@ -629,6 +629,92 @@ pub struct CustomizationStartInfo {
 #[cfg(target_os = "windows")]
 const CUSTOMIZE_ICON_SIZE: f64 = 26.0;
 
+// Free vertical space above and below the menu rail, in logical pixels, plus
+// the rail's absolute logical top edge. `anchor_offset_y` is the rail's top edge
+// relative to the window and `menu_height` its height. Shared by
+// begin_menu_customization and the live flip command so both agree on where the
+// rail actually sits on screen.
+#[cfg(target_os = "windows")]
+struct CustomizationSpace {
+    space_above: f64,
+    space_below: f64,
+    menu_y: f64,
+}
+
+// Pure side decision for the customization toolbar, split out from the window
+// measurement so it stays platform-independent and unit testable. Picks a side
+// that has room for the toolbar; when both fit it prefers the bottom for a menu
+// near the top edge (so the toolbar does not cover the bar) and the top for a
+// menu lower down (so the toolbar clears the screen bottom). When neither side
+// fits, the side with more space wins.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn decide_toolbar_position(
+    space_above: f64,
+    space_below: f64,
+    menu_y: f64,
+    toolbar_space: f64,
+) -> String {
+    if space_above >= toolbar_space && (space_below < toolbar_space || menu_y > 150.0) {
+        "top".to_string()
+    } else if space_below >= toolbar_space {
+        "bottom".to_string()
+    } else if space_above >= space_below {
+        "top".to_string()
+    } else {
+        "bottom".to_string()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn customization_space(
+    window: &tauri::Window,
+    anchor_offset_y: f64,
+    menu_height: f64,
+) -> Result<CustomizationSpace, String> {
+    if !anchor_offset_y.is_finite() || !menu_height.is_finite() || menu_height <= 0.0 {
+        return Err("Invalid customization geometry".into());
+    }
+
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let menu_y = f64::from(position.y) / scale + anchor_offset_y;
+
+    let (space_above, space_below) = if let Ok(Some(monitor)) = window.current_monitor() {
+        let m_pos = monitor.position();
+        let m_size = monitor.size();
+        let m_top = f64::from(m_pos.y) / scale;
+        let m_bottom = m_top + f64::from(m_size.height) / scale;
+        (menu_y - m_top, m_bottom - (menu_y + menu_height))
+    } else {
+        (menu_y, 800.0)
+    };
+
+    Ok(CustomizationSpace {
+        space_above,
+        space_below,
+        menu_y,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn choose_toolbar_position(
+    window: &tauri::Window,
+    toolbar_space: f64,
+    anchor_offset_y: f64,
+    menu_height: f64,
+) -> Result<String, String> {
+    if !toolbar_space.is_finite() || toolbar_space < 0.0 {
+        return Err("Invalid customization toolbar geometry".into());
+    }
+    let space = customization_space(window, anchor_offset_y, menu_height)?;
+    Ok(decide_toolbar_position(
+        space.space_above,
+        space.space_below,
+        space.menu_y,
+        toolbar_space,
+    ))
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn begin_menu_customization(
@@ -646,38 +732,8 @@ fn begin_menu_customization(
         state.popups.remove(&instance_uid, &window_uid, &menu_uid);
     }
 
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let position = window.outer_position().map_err(|error| error.to_string())?;
-    let menu_y = f64::from(position.y) / scale + anchor_offset_y;
-    if !toolbar_space.is_finite()
-        || toolbar_space < 0.0
-        || !anchor_offset_y.is_finite()
-        || !menu_height.is_finite()
-        || menu_height <= 0.0
-    {
-        return Err("Invalid customization toolbar geometry".into());
-    }
-
-    let (space_above, space_below) = if let Ok(Some(monitor)) = window.current_monitor() {
-        let m_pos = monitor.position();
-        let m_size = monitor.size();
-        let m_top = f64::from(m_pos.y) / scale;
-        let m_bottom = m_top + f64::from(m_size.height) / scale;
-        (menu_y - m_top, m_bottom - (menu_y + menu_height))
-    } else {
-        (menu_y, 800.0)
-    };
-
     let toolbar_position =
-        if space_above >= toolbar_space && (space_below < toolbar_space || menu_y > 150.0) {
-            "top".to_string()
-        } else if space_below >= toolbar_space {
-            "bottom".to_string()
-        } else if space_above >= space_below {
-            "top".to_string()
-        } else {
-            "bottom".to_string()
-        };
+        choose_toolbar_position(&window, toolbar_space, anchor_offset_y, menu_height)?;
 
     state.surfaces.set_customizing(window.label(), true);
     let _ = state
@@ -687,6 +743,50 @@ fn begin_menu_customization(
         });
 
     Ok(CustomizationStartInfo { toolbar_position })
+}
+
+// Decides whether a drag should flip the toolbar to the other edge. Unlike the
+// initial pick, this only flips when the toolbar's *current* side has run out of
+// room and the other side has not — otherwise the two sides could trade places
+// every drag, since the tie-break depends on the menu's on-screen position.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn flip_toolbar_position(
+    current: &str,
+    space_above: f64,
+    space_below: f64,
+    toolbar_space: f64,
+) -> String {
+    if current == "top" && space_above < toolbar_space && space_below >= toolbar_space {
+        "bottom".to_string()
+    } else if current == "bottom" && space_below < toolbar_space && space_above >= toolbar_space {
+        "top".to_string()
+    } else {
+        current.to_string()
+    }
+}
+
+// Live flip check: re-measures the rail and returns the toolbar side the drag
+// should land on. `current` is the side the toolbar is on right now; the result
+// is that same side unless it has run out of room.
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn customization_toolbar_flip(
+    window: tauri::Window,
+    current: String,
+    toolbar_space: f64,
+    anchor_offset_y: f64,
+    menu_height: f64,
+) -> Result<String, String> {
+    if !toolbar_space.is_finite() || toolbar_space < 0.0 {
+        return Err("Invalid customization toolbar geometry".into());
+    }
+    let space = customization_space(&window, anchor_offset_y, menu_height)?;
+    Ok(flip_toolbar_position(
+        &current,
+        space.space_above,
+        space.space_below,
+        toolbar_space,
+    ))
 }
 
 #[cfg(target_os = "windows")]
@@ -1128,6 +1228,7 @@ pub fn run() {
             set_popup_pointer_inside,
             close_popup,
             begin_menu_customization,
+            customization_toolbar_flip,
             start_menu_drag,
             move_free_surface,
             save_menu_placement,
@@ -1149,4 +1250,66 @@ pub fn run() {
 #[cfg(not(target_os = "windows"))]
 pub fn run() {
     eprintln!("BrowseRail desktop is Windows-first");
+}
+
+#[cfg(test)]
+mod toolbar_position_tests {
+    use super::{decide_toolbar_position, flip_toolbar_position};
+
+    // toolbar_space of 40 means the toolbar needs 40px of clear edge space.
+    #[test]
+    fn keeps_bottom_when_the_menu_sits_near_the_top_and_both_edges_fit() {
+        // Menu near the top: with room on both edges the toolbar sits below the
+        // bar rather than jumping above it.
+        assert_eq!(decide_toolbar_position(200.0, 600.0, 100.0, 40.0), "bottom");
+    }
+
+    #[test]
+    fn keeps_top_when_both_edges_fit_and_the_menu_is_low() {
+        // Menu low on screen: the toolbar prefers the top edge so it stays clear
+        // of the screen bottom.
+        assert_eq!(decide_toolbar_position(600.0, 200.0, 400.0, 40.0), "top");
+    }
+
+    #[test]
+    fn keeps_bottom_when_neither_edge_has_room_and_top_is_closer() {
+        // Both bands are too small; the closer (larger) side wins.
+        assert_eq!(decide_toolbar_position(30.0, 20.0, 100.0, 40.0), "top");
+        assert_eq!(decide_toolbar_position(20.0, 30.0, 100.0, 40.0), "bottom");
+    }
+
+    #[test]
+    fn flips_to_top_when_the_bottom_band_is_exhausted() {
+        // Dragged down: no room below for the toolbar, so it flips up.
+        assert_eq!(decide_toolbar_position(120.0, 10.0, 700.0, 40.0), "top");
+    }
+
+    #[test]
+    fn uses_bottom_when_the_top_band_is_exhausted() {
+        // Dragged near the top edge: no room above, so it falls to the bottom.
+        assert_eq!(decide_toolbar_position(5.0, 500.0, 5.0, 40.0), "bottom");
+    }
+
+    #[test]
+    fn flip_is_a_noop_while_the_current_side_has_room() {
+        // Toolbar already on top with room above: a drag with both sides fitting
+        // must not move it, or it would trade places on every drag.
+        assert_eq!(flip_toolbar_position("top", 300.0, 300.0, 40.0), "top");
+        assert_eq!(flip_toolbar_position("bottom", 300.0, 300.0, 40.0), "bottom");
+    }
+
+    #[test]
+    fn flip_moves_off_a_side_that_ran_out_of_room() {
+        // Dragged down: the bottom band is gone, so flip up.
+        assert_eq!(flip_toolbar_position("bottom", 500.0, 10.0, 40.0), "top");
+        // Dragged up: the top band is gone, so flip down.
+        assert_eq!(flip_toolbar_position("top", 10.0, 500.0, 40.0), "bottom");
+    }
+
+    #[test]
+    fn flip_stays_when_neither_side_can_fit() {
+        // Both bands too small: keep the current side rather than oscillate.
+        assert_eq!(flip_toolbar_position("top", 20.0, 20.0, 40.0), "top");
+        assert_eq!(flip_toolbar_position("bottom", 20.0, 20.0, 40.0), "bottom");
+    }
 }
