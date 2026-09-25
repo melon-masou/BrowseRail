@@ -86,7 +86,7 @@ button {
   display: grid;
   gap: var(--menu-gap, 3px);
   box-sizing: border-box;
-  padding: 2px;
+  padding: 0;
   background-color: var(--menu-bar-bg, var(--dock-surface));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -522,7 +522,7 @@ button {
   min-height: 0;
   min-width: 0;
   box-sizing: border-box;
-  padding: 2px;
+  padding: 0;
   gap: var(--menu-gap, 3px);
   background-color: var(--menu-bar-bg, var(--dock-surface));
   backdrop-filter: blur(8px);
@@ -647,6 +647,14 @@ button {
   top: 8px;
   right: 0;
   bottom: 8px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.resize-west {
+  top: 8px;
+  bottom: 8px;
+  left: 0;
   width: 6px;
   cursor: ew-resize;
 }

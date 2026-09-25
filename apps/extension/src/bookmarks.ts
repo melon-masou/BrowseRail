@@ -476,6 +476,7 @@ export async function resolveMenuItems(
           kind: "menuToggle",
           uid,
           label: rename || t("menu.foldButton"),
+          ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
         };
         return [entry];
       }

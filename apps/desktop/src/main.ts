@@ -24,6 +24,7 @@ type SurfaceMenu = MenuView & { placement: MenuPlacement };
 const root = requiredElement("app");
 const query = new URLSearchParams(location.search);
 const FREE_DRAG_HANDLE_SIZE = 10;
+const DEFAULT_DOCK_COLOR = "#161b24";
 function applyFontFamily(fontFamily: string): void {
   document.documentElement.style.setProperty("--desktop-font-family", fontFamily);
 }
@@ -487,7 +488,7 @@ async function initializeSurface(): Promise<void> {
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
     menuBar.style.setProperty("--menu-gap", `${gap}px`);
     const opacity = typeof menu.opacity === "number" ? Math.max(0, Math.min(100, menu.opacity)) : 88;
-    const baseColor = menu.color || "#1f2531";
+    const baseColor = menu.dockColor || DEFAULT_DOCK_COLOR;
     menuBar.style.setProperty("--menu-bar-bg", `color-mix(in srgb, ${baseColor} ${opacity}%, transparent)`);
     const dims = computeMenuDimensions(menu);
     const renderedDims = menuCollapsed
@@ -672,13 +673,8 @@ async function initializeSurface(): Promise<void> {
     }
 
     if (entry.kind === "menuToggle") {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "menu-button menu-toggle-button";
-      const labelSpan = document.createElement("span");
-      labelSpan.className = "menu-button-label";
-      labelSpan.textContent = entry.label;
-      button.append(labelSpan);
+      const button = menuButton(entry, false);
+      button.classList.add("menu-toggle-button");
       button.title = menuCollapsed ? t("menu.expand") : t("menu.collapse");
       button.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) return;
@@ -996,7 +992,7 @@ async function initializeSurface(): Promise<void> {
     railContainer.style.setProperty("--menu-gap", `${gap}px`);
     railContainer.style.setProperty("--button-font-size", `${theme.buttonFontSize}px`);
     const opacity = typeof menu.opacity === "number" ? Math.max(0, Math.min(100, menu.opacity)) : 88;
-    const baseColor = menu.color || "#1f2531";
+    const baseColor = menu.dockColor || DEFAULT_DOCK_COLOR;
     railContainer.style.setProperty("--menu-bar-bg", `color-mix(in srgb, ${baseColor} ${opacity}%, transparent)`);
 
     if (menu.items.length === 0) {
@@ -1022,16 +1018,6 @@ async function initializeSurface(): Promise<void> {
               spaceEl.classList.add("menu-space-solid");
             }
             return spaceEl;
-          }
-          if (entry.kind === "menuToggle") {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "menu-button";
-            const labelSpan = document.createElement("span");
-            labelSpan.className = "menu-button-label";
-            labelSpan.textContent = entry.label;
-            button.append(labelSpan);
-            return button;
           }
           return menuButton(entry, false);
         }),
@@ -1128,9 +1114,15 @@ async function initializeSurface(): Promise<void> {
       });
     }
 
-    function resizeHandle(direction: "east" | "south" | "southEast" | "north"): HTMLElement {
+    function resizeHandle(direction: "north" | "east" | "south" | "west" | "southEast"): HTMLElement {
       const handle = document.createElement("div");
       handle.className = `resize-handle resize-${direction}`;
+      const currentResizeAnchor = (): SurfacePoint => {
+        const rect = railContainer.getBoundingClientRect();
+        if (direction === "north") return { x: rect.left, y: rect.bottom };
+        if (direction === "west") return { x: rect.right, y: rect.top };
+        return { x: rect.left, y: rect.top };
+      };
       handle.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) {
           return;
@@ -1145,14 +1137,12 @@ async function initializeSurface(): Promise<void> {
         handle.setPointerCapture(event.pointerId);
 
         const move = (moveEvent: PointerEvent): void => {
-          const fromResizeAnchor = direction === "north"
-            ? (() => {
-                const rect = railContainer.getBoundingClientRect();
-                return { x: rect.left, y: rect.bottom };
-              })()
-            : elementOrigin(railContainer);
+          const fromResizeAnchor = currentResizeAnchor();
           if (direction === "east" || direction === "southEast") {
             targetWidth = clampWidth(startWidth + moveEvent.screenX - startX);
+          }
+          if (direction === "west") {
+            targetWidth = clampWidth(startWidth - (moveEvent.screenX - startX));
           }
           if (direction === "south" || direction === "southEast") {
             targetHeight = clampHeight(startHeight + moveEvent.screenY - startY);
@@ -1161,12 +1151,7 @@ async function initializeSurface(): Promise<void> {
             targetHeight = clampHeight(startHeight - (moveEvent.screenY - startY));
           }
           applyTargetSize();
-          const toResizeAnchor = direction === "north"
-            ? (() => {
-                const rect = railContainer.getBoundingClientRect();
-                return { x: rect.left, y: rect.bottom };
-              })()
-            : elementOrigin(railContainer);
+          const toResizeAnchor = currentResizeAnchor();
           resizeNativeCanvas(fromResizeAnchor, toResizeAnchor);
         };
         const stop = (stopEvent: PointerEvent): void => {
@@ -1189,6 +1174,7 @@ async function initializeSurface(): Promise<void> {
       resizeHandle("north"),
       resizeHandle("east"),
       resizeHandle("south"),
+      resizeHandle("west"),
       resizeHandle("southEast"),
     );
 
@@ -1330,7 +1316,7 @@ async function initializeSurface(): Promise<void> {
 }
 
   function menuButton(
-    entry: Exclude<LayoutEntry, { kind: "space" } | { kind: "menuToggle" }>,
+    entry: Exclude<LayoutEntry, { kind: "space" }>,
     popup: boolean,
   ): HTMLButtonElement {
   const button = document.createElement("button");
@@ -1348,7 +1334,7 @@ async function initializeSurface(): Promise<void> {
 
   const labelSpan = document.createElement("span");
   labelSpan.className = "menu-button-label";
-  const displayText = entry.rename;
+  const displayText = entry.kind === "menuToggle" ? undefined : entry.rename;
   if (displayText) {
     if (popup) {
       labelSpan.textContent =

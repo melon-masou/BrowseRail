@@ -64,6 +64,7 @@ export interface MenuToggleEntry {
   kind: "menuToggle";
   uid: string;
   label: string;
+  color?: string;
 }
 
 export interface FolderEntry {
@@ -111,4 +112,7 @@ export interface MenuView {
   popupFontSize?: MenuFontSize;
   gap?: number;
   opacity?: number;
+  // Dock strip (bar background) color, independent of `color` (the default item
+  // color). When unset the desktop uses its neutral dock surface.
+  dockColor?: string;
 }

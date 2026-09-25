@@ -663,6 +663,7 @@ async function syncOnce(): Promise<void> {
         items,
         orientation: menu.orientation,
         ...(menu.color ? { color: menu.color } : {}),
+        ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
         ...(menu.opacity !== undefined ? { opacity: menu.opacity } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
         buttonFontSize: menu.buttonFontSize ?? DEFAULT_FONT_SIZE,

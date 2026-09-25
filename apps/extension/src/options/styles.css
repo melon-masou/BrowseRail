@@ -619,14 +619,6 @@ output {
   gap: 8px;
 }
 
-/* Keep every menu header action on the same 28px baseline as the Add button. */
-.item-color-swatch.menu-color-swatch {
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  box-sizing: border-box;
-}
-
 .remove-item-btn.menu-remove-btn {
   width: auto;
   min-height: 28px;
@@ -1537,6 +1529,28 @@ output {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.menu-setting-color-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+}
+
+.menu-setting-color-swatch {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  box-sizing: border-box;
+}
+
+.menu-setting-color-value {
+  min-width: 0;
+  color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .menu-setting-input-with-auto {
@@ -2920,7 +2934,6 @@ button.item-tag {
     box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
   }
 }
-
 
 
 

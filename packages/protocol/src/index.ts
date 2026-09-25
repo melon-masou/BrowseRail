@@ -94,6 +94,7 @@ export interface StoredMenu {
   uid: string;
   urlRuleUids?: string[];
   opacity?: number;
+  dockColor?: string;
 }
 
 // Special Root Placeholders
@@ -234,6 +235,7 @@ export interface ExportedMenu {
   items: ExportedMenuItem[];
   urlRuleUids?: string[];
   opacity?: number;
+  dockColor?: string;
 }
 
 export interface ExportedSettingsData {

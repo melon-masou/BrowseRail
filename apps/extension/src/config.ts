@@ -402,6 +402,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : DEFAULT_MENU_GAP;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
+  const dockColor = typeof value.dockColor === "string" && value.dockColor ? value.dockColor : undefined;
   const opacity = typeof value.opacity === "number" && Number.isFinite(value.opacity)
     ? boundedNumber(value.opacity, 0, 100, 88)
     : undefined;
@@ -441,6 +442,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   return {
     attachmentMode,
     ...(color !== undefined ? { color } : {}),
+    ...(dockColor !== undefined ? { dockColor } : {}),
     ...(opacity !== undefined ? { opacity } : {}),
     enabled,
     ...(expandDirection !== undefined ? { expandDirection } : {}),
@@ -524,10 +526,12 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
 
   if (rawType === "menuToggle") {
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
+    const color = typeof value.color === "string" && value.color ? value.color : undefined;
     return {
       uid,
       type: "menuToggle",
       ...(rename ? { rename } : {}),
+      ...(color ? { color } : {}),
     };
   }
 

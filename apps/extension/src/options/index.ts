@@ -168,6 +168,10 @@ const menuSettingFontSizeAuto = element<HTMLInputElement>("menu-setting-font-siz
 const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
 const menuSettingOpacity = element<HTMLInputElement>("menu-setting-opacity");
+const menuSettingDefaultColor = element<HTMLButtonElement>("menu-setting-default-color");
+const menuSettingDefaultColorValue = element<HTMLOutputElement>("menu-setting-default-color-value");
+const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
+const menuSettingDockColorValue = element<HTMLOutputElement>("menu-setting-dock-color-value");
 
 const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
 const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
@@ -266,7 +270,15 @@ let desktopTestGeneration = 0;
 
 // Popover state
 let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
+// Which color field the popover writes: "color" (default item color) or
+// "dockColor" (menu-level dock strip color). Only menus use "dockColor".
+let activeColorField: "color" | "dockColor" = "color";
 let activeColorSwatchElement: HTMLElement | null = null;
+const colorPopoverHome = (() => {
+  const parent = colorPopover.parentElement;
+  if (!parent) throw new Error("Color popover must have a parent");
+  return parent;
+})();
 
 let activeMenuSettingsIndex = -1;
 
@@ -1554,7 +1566,7 @@ function initColorPopover(): void {
         return;
       }
     }
-    delete activeColorTarget.color;
+    delete (activeColorTarget as { color?: string; dockColor?: string })[activeColorField];
     popoverColorInput.value = "#3b82f6";
     popoverColorHex.value = "";
     updateActiveTargetSwatch();
@@ -1683,7 +1695,14 @@ function updateActiveTargetSwatch(): void {
       activeColorSwatchElement.title = t("item.cycleColorsEmpty");
     }
   } else {
-    updateSwatchAppearance(activeColorSwatchElement, activeColorTarget.color);
+    updateSwatchAppearance(
+      activeColorSwatchElement,
+      (activeColorTarget as { color?: string; dockColor?: string })[activeColorField],
+    );
+    const activeMenu = menus[activeMenuSettingsIndex];
+    if (activeMenu && activeColorTarget === activeMenu) {
+      updateMenuSettingColorControls(activeMenu);
+    }
   }
 }
 
@@ -1712,7 +1731,7 @@ function setColor(color: string): void {
       renderPopoverCycleList();
     }
   } else {
-    activeColorTarget.color = color;
+    (activeColorTarget as { color?: string; dockColor?: string })[activeColorField] = color;
   }
   popoverColorInput.value = color;
   popoverColorHex.value = color.toUpperCase();
@@ -1736,16 +1755,42 @@ function updateSwatchAppearance(swatch: HTMLElement, color?: string): void {
   }
 }
 
-function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HTMLElement): void {
-  if (activeColorTarget === target && colorPopover.style.display !== "none") {
+function updateMenuSettingColorControls(menu: StoredMenu): void {
+  updateSwatchAppearance(menuSettingDefaultColor, menu.color);
+  menuSettingDefaultColor.title = menu.color
+    ? t("menu.colorSwatchSet", { color: menu.color })
+    : t("menu.colorSwatchEmpty");
+  menuSettingDefaultColor.setAttribute("aria-label", menuSettingDefaultColor.title);
+  menuSettingDefaultColorValue.value = menu.color?.toUpperCase() ?? t("expandDirection.default");
+
+  updateSwatchAppearance(menuSettingDockColor, menu.dockColor);
+  menuSettingDockColor.title = menu.dockColor
+    ? t("menu.dockColorSwatchSet", { color: menu.dockColor })
+    : t("menu.dockColorSwatchEmpty");
+  menuSettingDockColor.setAttribute("aria-label", menuSettingDockColor.title);
+  menuSettingDockColorValue.value = menu.dockColor?.toUpperCase() ?? t("expandDirection.default");
+}
+
+function openColorPopover(
+  target: StoredMenu | StoredMenuItem,
+  swatchElement: HTMLElement,
+  field: "color" | "dockColor" = "color",
+): void {
+  if (activeColorTarget === target && activeColorField === field && colorPopover.style.display !== "none") {
     closeColorPopover();
     return;
   }
-  // Measure before close* calls below; they can re-render and detach this swatch,
-  // whose rect then reports 0,0 and moves the popover to the top-left corner.
+  activeColorField = field;
+  const openedFromMenuSettings = menuSettingsDialog.open && menuSettingsDialog.contains(swatchElement);
   const rect = swatchElement.getBoundingClientRect();
   closeAddItemDropdown();
-  closeMenuSettingsDialog();
+  if (menuSettingsDialog.open && !openedFromMenuSettings) {
+    closeMenuSettingsDialog();
+  }
+  const popoverParent = openedFromMenuSettings ? menuSettingsDialog : colorPopoverHome;
+  if (colorPopover.parentElement !== popoverParent) {
+    popoverParent.append(colorPopover);
+  }
   activeColorTarget = target;
   activeColorSwatchElement = swatchElement;
 
@@ -1771,11 +1816,17 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
   } else {
     colorPopoverCycleRow.style.display = "none";
     colorPopoverTitle.style.display = "block";
+    colorPopoverTitle.textContent = field === "dockColor"
+      ? t("menuSettings.dockColor")
+      : menus.includes(target as StoredMenu)
+        ? t("menuSettings.defaultColor")
+        : t("color.title");
     colorPopoverCycleSection.style.display = "none";
     selectedCycleIndex = -1;
-    const currentColor = target.color || "#3b82f6";
+    const current = (target as { color?: string; dockColor?: string })[activeColorField];
+    const currentColor = current || "#3b82f6";
     popoverColorInput.value = currentColor;
-    popoverColorHex.value = target.color ? target.color.toUpperCase() : "";
+    popoverColorHex.value = current ? current.toUpperCase() : "";
   }
 
   positionPopover(colorPopover, rect, 220);
@@ -1783,7 +1834,11 @@ function openColorPopover(target: StoredMenu | StoredMenuItem, swatchElement: HT
 
 function closeColorPopover(): void {
   colorPopover.style.display = "none";
+  if (colorPopover.parentElement !== colorPopoverHome) {
+    colorPopoverHome.append(colorPopover);
+  }
   activeColorTarget = null;
+  activeColorField = "color";
   activeColorSwatchElement = null;
   if (activeMenuSettingsIndex < 0 && !activeItemSettings) {
     renderMenus();
@@ -1809,6 +1864,16 @@ function initMenuSettingsDialog(): void {
         if (candidatePanel) candidatePanel.hidden = !selected;
       });
     });
+  });
+
+  menuSettingDefaultColor.addEventListener("click", () => {
+    const menu = menus[activeMenuSettingsIndex];
+    if (menu) openColorPopover(menu, menuSettingDefaultColor, "color");
+  });
+
+  menuSettingDockColor.addEventListener("click", () => {
+    const menu = menus[activeMenuSettingsIndex];
+    if (menu) openColorPopover(menu, menuSettingDockColor, "dockColor");
   });
 
   menuSettingOrientation.addEventListener("change", () => {
@@ -1940,6 +2005,7 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   menuSettingPopupFontSize.value = String(popupFs);
   menuSettingGap.value = String(gapVal);
   menuSettingOpacity.value = String(opacityVal);
+  updateMenuSettingColorControls(menu);
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
   const isFree = menuSettingAttachmentMode.value === "free";
   if (isFree) menu.onTopMode = "alwaysOnTop";
@@ -1954,6 +2020,9 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
 }
 
 function closeMenuSettingsDialog(): void {
+  if (menuSettingsDialog.contains(colorPopover)) {
+    closeColorPopover();
+  }
   menuSettingsDialog.close();
   activeMenuSettingsIndex = -1;
   renderMenus();
@@ -3483,19 +3552,6 @@ function renderMenus(): void {
       const headerActions = document.createElement("div");
       headerActions.className = "menu-header-actions";
 
-      // Menu default color swatch button (to the left of Settings)
-      const menuColorSwatch = document.createElement("button");
-      menuColorSwatch.type = "button";
-      menuColorSwatch.className = `item-color-swatch menu-color-swatch ${!menu.color ? "has-no-color" : ""}`;
-      menuColorSwatch.title = menu.color
-        ? t("menu.colorSwatchSet", { color: menu.color })
-        : t("menu.colorSwatchEmpty");
-      updateSwatchAppearance(menuColorSwatch, menu.color);
-      menuColorSwatch.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openColorPopover(menu, menuColorSwatch);
-      });
-
       const removeMenu = document.createElement("button");
       removeMenu.type = "button";
       removeMenu.className = "remove-item-btn menu-remove-btn";
@@ -3527,7 +3583,7 @@ function renderMenus(): void {
         openAddItemDropdown(menuIndex, addBtn);
       });
 
-      headerActions.append(menuColorSwatch, settingsBtn, removeMenu, addBtn);
+      headerActions.append(settingsBtn, removeMenu, addBtn);
       header.append(titleRow, headerActions);
 
       const items = document.createElement("ol");
@@ -3622,6 +3678,18 @@ function renderMenus(): void {
               openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
             });
 
+            const swatch = document.createElement("button");
+            swatch.type = "button";
+            swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
+            updateSwatchAppearance(swatch, item.color);
+            if (!item.color && menu.color) {
+              swatch.title = t("item.followMenuColor", { color: menu.color });
+            }
+            swatch.addEventListener("click", (event) => {
+              event.stopPropagation();
+              openColorPopover(item, swatch);
+            });
+
             const removeBtn = document.createElement("button");
             removeBtn.type = "button";
             removeBtn.className = "remove-item-btn";
@@ -3633,7 +3701,7 @@ function renderMenus(): void {
               markDirty();
             });
 
-            controls.append(dragHandleBtn, settingsBtn, removeBtn);
+            controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
             row.append(label, controls);
             return row;
           }
@@ -4370,6 +4438,7 @@ function exportSettings(): void {
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
       ...(menu.opacity !== undefined ? { opacity: menu.opacity } : {}),
       ...(menu.color ? { color: menu.color } : {}),
+      ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
       ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
       ...(menu.attachmentMode ? { attachmentMode: menu.attachmentMode } : {}),
       ...(menu.onTopMode ? { onTopMode: menu.onTopMode } : {}),
@@ -4380,6 +4449,7 @@ function exportSettings(): void {
             uid: item.uid,
             type: "menuToggle",
             ...(item.rename ? { rename: item.rename } : {}),
+            ...(item.color ? { color: item.color } : {}),
           } satisfies ExportedMenuItem;
         }
 
@@ -4498,6 +4568,9 @@ async function importSettings(file: File): Promise<void> {
             uid,
             type: "menuToggle",
             ...(rename ? { rename } : {}),
+            ...(typeof itemRecord.color === "string" && itemRecord.color
+              ? { color: itemRecord.color }
+              : {}),
           });
           continue;
         }
