@@ -47,6 +47,27 @@ export interface StoredMenuItem {
   showPageTitle?: boolean;
 }
 
+export interface StoredShortcut {
+  slot: string;
+  type?: "bookmark" | "dynamic";
+  path?: string[];
+  url?: string;
+  title?: string;
+  dynamicUid?: string;
+  tabMode?: TabMode;
+}
+
+export interface StoredNativeShortcut {
+  id: string;
+  key: string;
+  type?: "bookmark" | "dynamic";
+  path?: string[];
+  url?: string;
+  title?: string;
+  dynamicUid?: string;
+  tabMode?: TabMode;
+}
+
 export interface UrlRule {
   uid: string;
   name: string;
@@ -214,6 +235,8 @@ export interface ExportedSettingsData {
   menus: ExportedMenu[];
   urlRules?: UrlRule[];
   dynamicBookmarks?: ExportedDynamicBookmark[];
+  shortcuts?: StoredShortcut[];
+  nativeShortcuts?: StoredNativeShortcut[];
 }
 
 export function isExportedSettingsData(value: unknown): value is ExportedSettingsData {

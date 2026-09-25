@@ -126,6 +126,9 @@
           <button type="button" id="dynamic-tab" class="menus-card-tab" role="tab"
             data-tab-target="dynamic-panel" aria-selected="false" aria-controls="dynamic-panel"
             data-i18n="section.dynamic">Dynamic bookmarks</button>
+          <button type="button" id="shortcuts-tab" class="menus-card-tab" role="tab"
+            data-tab-target="shortcuts-panel" aria-selected="false" aria-controls="shortcuts-panel"
+            data-i18n="section.shortcuts">Shortcuts</button>
         </div>
 
         <section id="menus-panel" class="menus-section" role="tabpanel" aria-labelledby="menus-tab">
@@ -157,6 +160,32 @@
             <button id="add-dynamic-btn" class="menu-action-btn add-dynamic-btn" type="button" data-i18n="dynamic.add">+ Add</button>
           </div>
           <div id="dynamic-list" class="dynamic-list"></div>
+        </section>
+
+        <!-- Shortcuts Panel -->
+        <section id="shortcuts-panel" class="shortcuts-section" role="tabpanel" aria-labelledby="shortcuts-tab" hidden>
+          <div class="shortcuts-subtabs" role="tablist">
+            <button type="button" id="shortcuts-subtab-browser" class="shortcuts-subtab-btn is-active" data-subtab-target="shortcuts-browser-panel" data-i18n="shortcuts.tabBrowser">🌐 Browser Shortcuts</button>
+            <button type="button" id="shortcuts-subtab-native" class="shortcuts-subtab-btn" data-subtab-target="shortcuts-native-panel" data-i18n="shortcuts.tabNative">🖥️ Native Shortcuts</button>
+          </div>
+
+          <!-- Browser Shortcuts Sub-panel -->
+          <div id="shortcuts-browser-panel" class="shortcuts-subpanel is-active">
+            <div class="shortcuts-toolbar">
+              <span class="url-rules-hint" data-i18n="shortcuts.browserHint">Assign browser shortcut slots to bookmarks or dynamic bookmarks.</span>
+              <button id="configure-browser-shortcuts-btn" class="menu-action-btn" type="button" data-i18n="shortcuts.configureKeys">Configure keys…</button>
+            </div>
+            <div id="shortcuts-list" class="shortcuts-list"></div>
+          </div>
+
+          <!-- Native Shortcuts Sub-panel -->
+          <div id="shortcuts-native-panel" class="shortcuts-subpanel" hidden>
+            <div class="shortcuts-toolbar">
+              <span class="url-rules-hint" data-i18n="shortcuts.nativeHint">Requires desktop client. Captures single-key or custom shortcuts when the browser window is active.</span>
+              <button id="add-native-shortcut-btn" class="menu-action-btn" type="button" data-i18n="shortcuts.addNative">+ Add</button>
+            </div>
+            <div id="native-shortcuts-list" class="shortcuts-list"></div>
+          </div>
         </section>
 
         <div class="form-actions-row">
@@ -438,6 +467,26 @@ The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dyna
             <div class="item-settings-actions">
               <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shortcut Settings Popover -->
+      <div id="shortcut-settings-popover" class="item-settings-popover" style="display: none;">
+        <div class="item-settings-header">
+          <span id="shortcut-settings-title" class="item-settings-title" data-i18n="itemSettings.title">Item Settings</span>
+          <button type="button" id="shortcut-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <div class="item-settings-body">
+          <div class="item-setting-field">
+            <span class="item-setting-field-title" data-i18n="itemSettings.openMode">Open mode</span>
+            <select id="shortcut-setting-tab-mode" class="item-setting-select">
+              <option value="replace" data-i18n="itemSettings.replaceTab">Replace current tab</option>
+              <option value="newTab" data-i18n="itemSettings.newTab">New tab</option>
+            </select>
+          </div>
+          <div class="item-settings-actions">
+            <button type="button" id="shortcut-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
           </div>
         </div>
       </div>

@@ -9,6 +9,7 @@ import {
   isExportedSettingsData,
   type MenuOrientation,
   type OnTopMode,
+  type TabMode,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -33,6 +34,8 @@ import {
   type StoredMenu,
   type StoredMenuItem,
   type StoredMenuItemType,
+  type StoredShortcut,
+  type StoredNativeShortcut,
   type UrlRule,
 } from "../config";
 import {
@@ -49,6 +52,7 @@ import {
   SPECIAL_ROOT_PLACEHOLDERS,
 } from "../bookmarks";
 import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
+import { browserKind } from "../browser-adapter";
 import { createRandomInstanceLabel } from "../instance-label";
 import {
   applyStaticI18n,
@@ -92,6 +96,7 @@ function getRandomPaletteColor(): string {
 }
 
 const SETTINGS_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
+const REMOVE_ICON_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
 
 const connectionForm = element<HTMLFormElement>("connection-form");
 const saveConnectionBtn = element<HTMLButtonElement>("save-connection-btn");
@@ -181,6 +186,19 @@ const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>("item-setting-i
 const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
 const itemSettingsDynamicControls = element<HTMLDivElement>("item-settings-dynamic-controls");
 const itemSettingDynamicShowPageTitle = element<HTMLInputElement>("item-setting-dynamic-show-page-title");
+const shortcutsList = element<HTMLDivElement>("shortcuts-list");
+const configureBrowserShortcutsBtn = element<HTMLButtonElement>("configure-browser-shortcuts-btn");
+const shortcutsSubtabBrowser = element<HTMLButtonElement>("shortcuts-subtab-browser");
+const shortcutsSubtabNative = element<HTMLButtonElement>("shortcuts-subtab-native");
+const shortcutsBrowserPanel = element<HTMLDivElement>("shortcuts-browser-panel");
+const shortcutsNativePanel = element<HTMLDivElement>("shortcuts-native-panel");
+const addNativeShortcutBtn = element<HTMLButtonElement>("add-native-shortcut-btn");
+const nativeShortcutsList = element<HTMLDivElement>("native-shortcuts-list");
+const shortcutSettingsPopover = element<HTMLDivElement>("shortcut-settings-popover");
+const shortcutSettingsTitle = element<HTMLSpanElement>("shortcut-settings-title");
+const shortcutSettingsClose = element<HTMLButtonElement>("shortcut-settings-close");
+const shortcutSettingTabMode = element<HTMLSelectElement>("shortcut-setting-tab-mode");
+const shortcutSettingChangeBtn = element<HTMLButtonElement>("shortcut-setting-change-btn");
 const colorPopoverCycleRow = element<HTMLDivElement>("color-popover-cycle-row");
 const colorPopoverCycleToggle = element<HTMLInputElement>("color-popover-cycle-toggle");
 const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-section");
@@ -236,6 +254,8 @@ let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
 let urlRules: UrlRule[] = [];
 let dynamicBookmarks: DynamicBookmark[] = [];
+let shortcuts: StoredShortcut[] = [];
+let nativeShortcuts: StoredNativeShortcut[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let desktopTestGeneration = 0;
 
@@ -254,13 +274,62 @@ let activeAddBtn: HTMLElement | null = null;
 // Picker state
 let pickerCurrentFolderId = "0";
 let pickerSelectedId: string | null = null;
-let pickerMode: "addItem" | "editItem" | "selectRoot" | "pickFolder" = "addItem";
+let pickerMode: "addItem" | "editItem" | "selectRoot" | "pickFolder" | "pickShortcut" | "pickNativeShortcut" = "addItem";
 let pickerTargetMenuIndex = -1;
 let pickerTargetItemIndex = -1;
+let pickerTargetShortcutSlot = "";
+let pickerTargetNativeShortcutId = "";
+let activeRecordingKeyId: string | null = null;
 // Remembers the destination folder chosen for gap-bookmark and dynamic-marker tools so the next
 // open reuses it. Only the dialogs (pickFolder mode) read this.
 let gapBookmarkFolderId = "0";
 let activeDynamicMarkerDb: DynamicBookmark | null = null;
+let activeShortcutSettingsTarget: StoredShortcut | StoredNativeShortcut | null = null;
+let activeShortcutSettingsBtn: HTMLElement | null = null;
+
+let browserCommandsMap: Record<string, string> = {};
+
+async function refreshBrowserCommands(): Promise<void> {
+  try {
+    if (browser.commands && typeof browser.commands.getAll === "function") {
+      const commands = await browser.commands.getAll();
+      browserCommandsMap = {};
+      for (const cmd of commands) {
+        if (cmd.name) {
+          browserCommandsMap[cmd.name] = cmd.shortcut || "";
+        }
+      }
+      renderShortcuts();
+      if (menus.length > 0) {
+        renderMenus();
+      }
+    }
+  } catch (err) {
+    console.error("Failed to query browser commands:", err);
+  }
+}
+
+function findItemShortcut(item: StoredMenuItem): StoredShortcut | undefined {
+  if (item.type === "dynamic" && item.dynamicUid) {
+    return shortcuts.find((s) => s.type === "dynamic" && s.dynamicUid === item.dynamicUid);
+  }
+  if (item.type === "bookmark" || (!item.type && item.url)) {
+    return shortcuts.find((s) => {
+      if (s.type === "dynamic") return false;
+      if (item.url && s.url && item.url === s.url) return true;
+      if (
+        item.path &&
+        s.path &&
+        item.path.length === s.path.length &&
+        item.path.every((p, idx) => p === s.path![idx])
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }
+  return undefined;
+}
 
 void initialize();
 
@@ -502,6 +571,72 @@ pickerConfirmBtn.addEventListener("click", () => {
     ...(selectedNode?.url ? { url: selectedNode.url } : {}),
   };
 
+  if (pickerMode === "pickShortcut") {
+    if (!pickerSelectedId) return;
+    const selectedNode = findBookmarkNode(pickerSelectedId, rawBookmarkTree);
+    if (!selectedNode || selectedNode.url === undefined) return;
+    const relativePath = getItemRelativePath(
+      pickerSelectedId,
+      rawBookmarkTree as BookmarkNode[],
+      bookmarkRootPrefix,
+    );
+
+    const existing = shortcuts.find((s) => s.slot === pickerTargetShortcutSlot);
+    if (existing) {
+      existing.type = "bookmark";
+      if (relativePath !== undefined) {
+        existing.path = relativePath;
+      } else {
+        delete existing.path;
+      }
+      existing.url = selectedNode.url;
+      existing.title = selectedNode.title;
+      delete existing.dynamicUid;
+    } else {
+      shortcuts.push({
+        slot: pickerTargetShortcutSlot,
+        type: "bookmark",
+        ...(relativePath !== undefined ? { path: relativePath } : {}),
+        url: selectedNode.url,
+        title: selectedNode.title,
+        tabMode: "replace",
+      });
+    }
+    renderShortcuts();
+    renderMenus();
+    markDirty();
+    pickerDialog.close();
+    return;
+  }
+
+  if (pickerMode === "pickNativeShortcut") {
+    if (!pickerSelectedId) return;
+    const selectedNode = findBookmarkNode(pickerSelectedId, rawBookmarkTree);
+    if (!selectedNode || selectedNode.url === undefined) return;
+    const relativePath = getItemRelativePath(
+      pickerSelectedId,
+      rawBookmarkTree as BookmarkNode[],
+      bookmarkRootPrefix,
+    );
+
+    const existing = nativeShortcuts.find((s) => s.id === pickerTargetNativeShortcutId);
+    if (existing) {
+      existing.type = "bookmark";
+      if (relativePath !== undefined) {
+        existing.path = relativePath;
+      } else {
+        delete existing.path;
+      }
+      existing.url = selectedNode.url;
+      existing.title = selectedNode.title;
+      delete existing.dynamicUid;
+      renderNativeShortcuts();
+      markDirty();
+    }
+    pickerDialog.close();
+    return;
+  }
+
   if (pickerMode === "addItem") {
     const menu = menus[pickerTargetMenuIndex];
     if (menu) {
@@ -546,9 +681,11 @@ async function refreshBookmarkTree(): Promise<void> {
 }
 
 async function openBookmarkPicker(
-  mode: "addItem" | "editItem" | "selectRoot" | "pickFolder",
+  mode: "addItem" | "editItem" | "selectRoot" | "pickFolder" | "pickShortcut" | "pickNativeShortcut",
   menuIndex = -1,
   itemIndex = -1,
+  shortcutSlot = "",
+  nativeShortcutId = "",
 ): Promise<void> {
   // Pick up bookmarks added in the browser since the page (or last picker) loaded.
   await refreshBookmarkTree();
@@ -556,6 +693,8 @@ async function openBookmarkPicker(
   pickerMode = mode;
   pickerTargetMenuIndex = menuIndex;
   pickerTargetItemIndex = itemIndex;
+  pickerTargetShortcutSlot = shortcutSlot;
+  pickerTargetNativeShortcutId = nativeShortcutId;
 
   const rootNode = mode === "selectRoot" ? undefined : getRootNode();
   pickerCurrentFolderId = rootNode?.id ?? "0";
@@ -623,6 +762,42 @@ async function openBookmarkPicker(
         pickerCurrentFolderId = target.id;
       }
     }
+  } else if (mode === "pickShortcut") {
+    pickerSelectedId = null;
+    const existing = shortcuts.find((s) => s.slot === shortcutSlot);
+    if (existing?.path) {
+      const rootPrefix = bookmarkRootPrefix;
+      const effectivePath = combineRootAndItemPath(rootPrefix, existing.path);
+      const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, existing.url);
+      if (node) {
+        pickerSelectedId = node.id;
+        const path = getFolderPath(node.id, rawBookmarkTree as BookmarkNode[]);
+        if (path.length > 1) {
+          const parent = path[path.length - 2];
+          if (parent) {
+            pickerCurrentFolderId = parent.id;
+          }
+        }
+      }
+    }
+  } else if (mode === "pickNativeShortcut") {
+    pickerSelectedId = null;
+    const existing = nativeShortcuts.find((s) => s.id === nativeShortcutId);
+    if (existing?.path) {
+      const rootPrefix = bookmarkRootPrefix;
+      const effectivePath = combineRootAndItemPath(rootPrefix, existing.path);
+      const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, existing.url);
+      if (node) {
+        pickerSelectedId = node.id;
+        const path = getFolderPath(node.id, rawBookmarkTree as BookmarkNode[]);
+        if (path.length > 1) {
+          const parent = path[path.length - 2];
+          if (parent) {
+            pickerCurrentFolderId = parent.id;
+          }
+        }
+      }
+    }
   } else {
     pickerSelectedId = null;
   }
@@ -643,6 +818,14 @@ async function openBookmarkPicker(
     pickerConfirmBtn.textContent = t("picker.pickFolderConfirm");
   } else if (mode === "editItem") {
     pickerTitle.textContent = t("picker.changeTitle");
+    pickerConfirmBtn.textContent = t("picker.apply");
+  } else if (mode === "pickShortcut") {
+    const slotNum = shortcutSlot.replace("slot_", "");
+    pickerTitle.textContent = t("shortcuts.pickDialogTitle", { n: slotNum });
+    pickerConfirmBtn.textContent = t("picker.apply");
+  } else if (mode === "pickNativeShortcut") {
+    const existing = nativeShortcuts.find((s) => s.id === nativeShortcutId);
+    pickerTitle.textContent = t("shortcuts.pickNativeDialogTitle", { key: existing?.key || "" });
     pickerConfirmBtn.textContent = t("picker.apply");
   } else {
     pickerTitle.textContent = t("picker.addItemTitle", { n: menuIndex + 1 });
@@ -878,6 +1061,16 @@ function updateSelectedInfo(): void {
     return;
   }
 
+  if (pickerMode === "pickShortcut" || pickerMode === "pickNativeShortcut") {
+    pickerFlattenLabel.style.display = "none";
+    pickerHoverExpandLabel.style.display = "none";
+    pickerIncludeFoldersLabel.style.display = "none";
+    const selectedNode = pickerSelectedId ? findBookmarkNode(pickerSelectedId, rawBookmarkTree) : undefined;
+    const isBookmark = Boolean(selectedNode && selectedNode.url !== undefined);
+    pickerConfirmBtn.disabled = !isBookmark;
+    return;
+  }
+
   if (pickerSelectedId) {
     const selectedNode = findBookmarkNode(pickerSelectedId, rawBookmarkTree);
     const isFolder = selectedNode?.children !== undefined || selectedNode?.url === undefined;
@@ -1035,6 +1228,7 @@ function rerenderForLanguage(): void {
     opt.textContent = opt.value === "zh-CN" ? t("language.zhCN") : t("language.en");
   }
   languageSelect.value = getLanguage();
+  renderShortcuts();
   renderMenus();
   renderUrlRules();
   renderDynamicList();
@@ -1082,7 +1276,12 @@ async function initialize(): Promise<void> {
   initSpaceBookmarkDialog();
   initAddItemPopover();
   initDynamicPanel();
+  initShortcutsPanel();
   void refreshDesktopState();
+  void refreshBrowserCommands();
+  window.addEventListener("focus", () => {
+    void refreshBrowserCommands();
+  });
   const [config, enabled, tree, rootPrefix] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
@@ -1112,10 +1311,14 @@ async function initialize(): Promise<void> {
   menus = structuredClone(config.panel.menus);
   urlRules = structuredClone(config.urlRules);
   dynamicBookmarks = structuredClone(config.dynamicBookmarks ?? []);
+  shortcuts = structuredClone(config.shortcuts ?? []);
+  nativeShortcuts = structuredClone(config.nativeShortcuts ?? []);
   updateDesktopControls();
   renderMenus();
   renderUrlRules();
   renderDynamicList();
+  renderShortcuts();
+  renderNativeShortcuts();
   clearDirty();
 }
 
@@ -1182,6 +1385,8 @@ async function persistMenus(): Promise<void> {
     },
     urlRules,
     dynamicBookmarks,
+    shortcuts,
+    nativeShortcuts,
   });
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearMenusDirty();
@@ -1226,6 +1431,8 @@ async function previewCurrentConfig(): Promise<void> {
     },
     urlRules,
     dynamicBookmarks,
+    shortcuts: structuredClone(shortcuts),
+    nativeShortcuts: structuredClone(nativeShortcuts),
   };
 
   try {
@@ -2078,6 +2285,36 @@ function closeItemSettingsPopover(): void {
   activeItemSettingsBtn = null;
 }
 
+function openShortcutSettingsPopover(
+  target: StoredShortcut | StoredNativeShortcut,
+  titleText: string,
+  anchorEl: HTMLElement,
+): void {
+  if (activeShortcutSettingsBtn === anchorEl && shortcutSettingsPopover.style.display !== "none") {
+    closeShortcutSettingsPopover();
+    return;
+  }
+
+  closeColorPopover();
+  closeItemSettingsPopover();
+  closeAddItemDropdown();
+
+  activeShortcutSettingsTarget = target;
+  activeShortcutSettingsBtn = anchorEl;
+
+  shortcutSettingsTitle.textContent = titleText;
+  shortcutSettingTabMode.value = target.tabMode === "newTab" ? "newTab" : "replace";
+
+  const rect = anchorEl.getBoundingClientRect();
+  positionPopover(shortcutSettingsPopover, rect, 200);
+}
+
+function closeShortcutSettingsPopover(): void {
+  shortcutSettingsPopover.style.display = "none";
+  activeShortcutSettingsTarget = null;
+  activeShortcutSettingsBtn = null;
+}
+
 function initSpaceBookmarkDialog(): void {
   addSpaceBookmarkBtn.addEventListener("click", () => {
     spaceBookmarkResult.textContent = "";
@@ -2445,10 +2682,12 @@ function renderDynamicCard(db: DynamicBookmark): HTMLElement {
   return card;
 }
 
-function openPickDynamicBookmarkDialog(targetMenuIndex: number): void {
-  if (targetMenuIndex < 0 || targetMenuIndex >= menus.length) return;
-  const menu = menus[targetMenuIndex];
-  if (!menu) return;
+function openPickDynamicBookmarkDialog(target: number | { shortcutSlot: string } | { nativeShortcutId: string }): void {
+  if (typeof target === "number") {
+    if (target < 0 || target >= menus.length) return;
+    const menu = menus[target];
+    if (!menu) return;
+  }
 
   if (dynamicBookmarks.length === 0) {
     status.value = t("dynamic.noneCreated");
@@ -2478,17 +2717,56 @@ function openPickDynamicBookmarkDialog(targetMenuIndex: number): void {
 
     itemBtn.append(info, meta);
     itemBtn.addEventListener("click", () => {
-      menu.items.push({
-        uid: crypto.randomUUID(),
-        type: "dynamic",
-        dynamicUid: db.uid,
-      });
-      renderMenus();
-      markDirty();
-      pickDynamicDialog.close();
-      status.value = t("dynamic.addedToMenu", {
-        menu: t("menu.title", { n: targetMenuIndex + 1 }),
-      });
+      if (typeof target === "number") {
+        const menu = menus[target];
+        if (menu) {
+          menu.items.push({
+            uid: crypto.randomUUID(),
+            type: "dynamic",
+            dynamicUid: db.uid,
+          });
+          renderMenus();
+          markDirty();
+          pickDynamicDialog.close();
+          status.value = t("dynamic.addedToMenu", {
+            menu: t("menu.title", { n: target + 1 }),
+          });
+        }
+      } else if ("shortcutSlot" in target) {
+        const slot = target.shortcutSlot;
+        const existing = shortcuts.find((s) => s.slot === slot);
+        if (existing) {
+          existing.type = "dynamic";
+          existing.dynamicUid = db.uid;
+          delete existing.path;
+          delete existing.url;
+          delete existing.title;
+        } else {
+          shortcuts.push({
+            slot,
+            type: "dynamic",
+            dynamicUid: db.uid,
+            tabMode: "replace",
+          });
+        }
+        renderShortcuts();
+        renderMenus();
+        markDirty();
+        pickDynamicDialog.close();
+      } else if ("nativeShortcutId" in target) {
+        const id = target.nativeShortcutId;
+        const existing = nativeShortcuts.find((s) => s.id === id);
+        if (existing) {
+          existing.type = "dynamic";
+          existing.dynamicUid = db.uid;
+          delete existing.path;
+          delete existing.url;
+          delete existing.title;
+          renderNativeShortcuts();
+          markDirty();
+        }
+        pickDynamicDialog.close();
+      }
     });
     pickDynamicList.append(itemBtn);
   }
@@ -2567,6 +2845,437 @@ function initDynamicPanel(): void {
   });
 
   void refreshDynamicValues();
+}
+
+function initShortcutsPanel(): void {
+  shortcutsSubtabBrowser.addEventListener("click", () => {
+    shortcutsSubtabBrowser.classList.add("is-active");
+    shortcutsSubtabNative.classList.remove("is-active");
+    shortcutsBrowserPanel.hidden = false;
+    shortcutsNativePanel.hidden = true;
+  });
+
+  shortcutsSubtabNative.addEventListener("click", () => {
+    shortcutsSubtabNative.classList.add("is-active");
+    shortcutsSubtabBrowser.classList.remove("is-active");
+    shortcutsNativePanel.hidden = false;
+    shortcutsBrowserPanel.hidden = true;
+  });
+
+  addNativeShortcutBtn.addEventListener("click", () => {
+    const newId = crypto.randomUUID();
+    nativeShortcuts.push({
+      id: newId,
+      key: "",
+      tabMode: "replace",
+    });
+    activeRecordingKeyId = newId;
+    renderNativeShortcuts();
+    markDirty();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (!activeRecordingKeyId) return;
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      activeRecordingKeyId = null;
+      renderNativeShortcuts();
+      return;
+    }
+
+    if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push("Ctrl");
+    if (e.altKey) parts.push("Alt");
+    if (e.shiftKey) parts.push("Shift");
+    if (e.metaKey) parts.push("Meta");
+
+    let keyName = e.key;
+    if (e.code.startsWith("Key")) {
+      keyName = e.code.slice(3).toLowerCase();
+    } else if (e.code.startsWith("Digit")) {
+      keyName = e.code.slice(5);
+    } else if (e.key === " ") {
+      keyName = "Space";
+    } else if (keyName.length === 1) {
+      keyName = keyName.toLowerCase();
+    }
+
+    if (parts.length > 0 && keyName.length === 1) {
+      keyName = keyName.toUpperCase();
+    }
+
+    parts.push(keyName);
+    const recorded = parts.join("+");
+
+    const target = nativeShortcuts.find((s) => s.id === activeRecordingKeyId);
+    if (target) {
+      target.key = recorded;
+      markDirty();
+    }
+    activeRecordingKeyId = null;
+    renderNativeShortcuts();
+  });
+
+  configureBrowserShortcutsBtn.addEventListener("click", () => {
+    const kind = browserKind();
+    const url =
+      kind === "firefox"
+        ? "about:addons"
+        : kind === "edge"
+          ? "edge://extensions/shortcuts"
+          : "chrome://extensions/shortcuts";
+    void browser.tabs.create({ url });
+  });
+
+  document.getElementById("shortcuts-tab")?.addEventListener("click", () => {
+    void refreshBrowserCommands();
+  });
+
+  shortcutSettingsClose.addEventListener("click", closeShortcutSettingsPopover);
+  shortcutSettingTabMode.addEventListener("change", () => {
+    if (activeShortcutSettingsTarget) {
+      activeShortcutSettingsTarget.tabMode = shortcutSettingTabMode.value as TabMode;
+      renderShortcuts();
+      renderNativeShortcuts();
+      markDirty();
+    }
+  });
+
+  shortcutSettingChangeBtn.addEventListener("click", () => {
+    if (!activeShortcutSettingsTarget) return;
+    const target = activeShortcutSettingsTarget;
+    closeShortcutSettingsPopover();
+
+    if ("slot" in target) {
+      if (target.type === "dynamic") {
+        openPickDynamicBookmarkDialog({ shortcutSlot: target.slot });
+      } else {
+        void openBookmarkPicker("pickShortcut", -1, -1, target.slot);
+      }
+    } else {
+      if (target.type === "dynamic") {
+        openPickDynamicBookmarkDialog({ nativeShortcutId: target.id });
+      } else {
+        void openBookmarkPicker("pickNativeShortcut", -1, -1, "", target.id);
+      }
+    }
+  });
+
+  document.addEventListener("pointerdown", (e) => {
+    if (shortcutSettingsPopover.style.display === "none") return;
+    const target = e.target as Node;
+    if (
+      shortcutSettingsPopover.contains(target) ||
+      (activeShortcutSettingsBtn && activeShortcutSettingsBtn.contains(target))
+    ) {
+      return;
+    }
+    closeShortcutSettingsPopover();
+  });
+}
+
+function renderNativeShortcuts(): void {
+  nativeShortcutsList.replaceChildren();
+
+  if (nativeShortcuts.length === 0) {
+    const emptyRow = document.createElement("div");
+    emptyRow.className = "shortcut-row";
+    const emptyLabel = document.createElement("span");
+    emptyLabel.className = "shortcut-empty-label";
+    emptyLabel.textContent = t("shortcuts.emptyNative");
+    emptyRow.append(emptyLabel);
+    nativeShortcutsList.append(emptyRow);
+    return;
+  }
+
+  for (const item of nativeShortcuts) {
+    const row = document.createElement("div");
+    row.className = "shortcut-row";
+
+    // Key col
+    const keyCol = document.createElement("div");
+    keyCol.className = "shortcut-slot-col";
+
+    const keyBtn = document.createElement("button");
+    keyBtn.type = "button";
+    const isRecording = activeRecordingKeyId === item.id;
+    if (isRecording) {
+      keyBtn.className = "key-recorder-btn is-recording";
+      keyBtn.textContent = t("shortcuts.pressKey");
+    } else if (item.key && item.key.trim().length > 0) {
+      keyBtn.className = "key-recorder-btn";
+      keyBtn.textContent = item.key;
+    } else {
+      keyBtn.className = "key-recorder-btn is-unset";
+      keyBtn.textContent = t("shortcuts.pressKey");
+    }
+
+    keyBtn.addEventListener("click", () => {
+      if (activeRecordingKeyId === item.id) {
+        activeRecordingKeyId = null;
+      } else {
+        activeRecordingKeyId = item.id;
+      }
+      renderNativeShortcuts();
+    });
+
+    keyCol.append(keyBtn);
+
+    // Target col
+    const targetCol = document.createElement("div");
+    targetCol.className = "shortcut-target-col";
+
+    const actionsCol = document.createElement("div");
+    actionsCol.className = "shortcut-actions-col";
+
+    const hasTarget = item.type === "dynamic" ? Boolean(item.dynamicUid) : Boolean(item.path || item.url);
+
+    if (hasTarget) {
+      const icon = document.createElement("span");
+      icon.className = "shortcut-target-icon";
+
+      const title = document.createElement("span");
+      title.className = "shortcut-target-title";
+
+      const urlSpan = document.createElement("span");
+      urlSpan.className = "shortcut-target-url";
+
+      if (item.type === "dynamic") {
+        icon.textContent = "🜂";
+        const db = dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
+        title.textContent = db?.name || t("dynamic.defaultName");
+        const liveVal = item.dynamicUid ? dynamicValuesCache[item.dynamicUid] : undefined;
+        urlSpan.textContent = liveVal?.url || "";
+        urlSpan.title = liveVal?.url || "";
+      } else {
+        icon.textContent = "🔖";
+        let displayTitle = item.title || "";
+        let displayUrl = item.url || "";
+        if (item.path) {
+          const rootPrefix = bookmarkRootPrefix;
+          const effectivePath = combineRootAndItemPath(rootPrefix, item.path);
+          const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, item.url);
+          if (node?.title) displayTitle = node.title;
+          if (node?.url) displayUrl = node.url;
+        }
+        title.textContent =
+          displayTitle || (item.path ? item.path[item.path.length - 1] || "Bookmark" : "Bookmark");
+        urlSpan.textContent = displayUrl;
+        urlSpan.title = displayUrl;
+      }
+
+      targetCol.append(icon, title, urlSpan);
+
+      // Settings button
+      const settingsBtn = document.createElement("button");
+      settingsBtn.type = "button";
+      settingsBtn.className = "item-settings-btn";
+      settingsBtn.title = t("itemSettings.title");
+      settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+      settingsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openShortcutSettingsPopover(item, item.key || t("itemSettings.title"), settingsBtn);
+      });
+
+      actionsCol.append(settingsBtn);
+    } else {
+      const emptyLabel = document.createElement("span");
+      emptyLabel.className = "shortcut-empty-label";
+      emptyLabel.textContent = t("shortcuts.emptyTarget");
+      targetCol.append(emptyLabel);
+
+      const pickBookmarkBtn = document.createElement("button");
+      pickBookmarkBtn.type = "button";
+      pickBookmarkBtn.className = "action-btn";
+      pickBookmarkBtn.textContent = t("shortcuts.pickBookmark");
+      pickBookmarkBtn.addEventListener("click", () => {
+        void openBookmarkPicker("pickNativeShortcut", -1, -1, "", item.id);
+      });
+      actionsCol.append(pickBookmarkBtn);
+
+      if (dynamicBookmarks.length > 0) {
+        const pickDynamicBtn = document.createElement("button");
+        pickDynamicBtn.type = "button";
+        pickDynamicBtn.className = "action-btn";
+        pickDynamicBtn.textContent = t("shortcuts.pickDynamic");
+        pickDynamicBtn.addEventListener("click", () => {
+          openPickDynamicBookmarkDialog({ nativeShortcutId: item.id });
+        });
+        actionsCol.append(pickDynamicBtn);
+      }
+    }
+
+    // Delete button (matches menu item remove-item-btn)
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "remove-item-btn";
+    deleteBtn.title = t("common.delete");
+    deleteBtn.innerHTML = REMOVE_ICON_SVG;
+    deleteBtn.addEventListener("click", () => {
+      const idx = nativeShortcuts.findIndex((s) => s.id === item.id);
+      if (idx !== -1) {
+        nativeShortcuts.splice(idx, 1);
+        if (activeRecordingKeyId === item.id) activeRecordingKeyId = null;
+        if (activeShortcutSettingsTarget === item) closeShortcutSettingsPopover();
+        renderNativeShortcuts();
+        markDirty();
+      }
+    });
+    actionsCol.append(deleteBtn);
+
+    row.append(keyCol, targetCol, actionsCol);
+    nativeShortcutsList.append(row);
+  }
+}
+
+function renderShortcuts(): void {
+  shortcutsList.replaceChildren();
+
+  for (let i = 1; i <= 10; i++) {
+    const slotKey = `slot_${i}`;
+    const row = document.createElement("div");
+    row.className = "shortcut-row";
+
+    // Slot info col
+    const slotCol = document.createElement("div");
+    slotCol.className = "shortcut-slot-col";
+
+    const slotTitle = document.createElement("span");
+    slotTitle.className = "shortcut-slot-title";
+    slotTitle.textContent = t("shortcuts.slotTitle", { n: String(i) });
+
+    const keyBadge = document.createElement("span");
+    const rawKey = browserCommandsMap[slotKey];
+    if (rawKey && rawKey.trim().length > 0) {
+      keyBadge.className = "shortcut-key-badge";
+      keyBadge.textContent = rawKey;
+    } else {
+      keyBadge.className = "shortcut-key-badge is-unset";
+      keyBadge.textContent = t("shortcuts.keyUnset");
+      keyBadge.title = t("shortcuts.keyUnsetHint");
+    }
+
+    slotCol.append(slotTitle, keyBadge);
+
+    // Target col
+    const targetCol = document.createElement("div");
+    targetCol.className = "shortcut-target-col";
+
+    const target = shortcuts.find((s) => s.slot === slotKey);
+
+    const actionsCol = document.createElement("div");
+    actionsCol.className = "shortcut-actions-col";
+
+    if (
+      target &&
+      (target.type === "dynamic"
+        ? Boolean(target.dynamicUid)
+        : Boolean(target.path || target.url))
+    ) {
+      const icon = document.createElement("span");
+      icon.className = "shortcut-target-icon";
+
+      const title = document.createElement("span");
+      title.className = "shortcut-target-title";
+
+      const urlSpan = document.createElement("span");
+      urlSpan.className = "shortcut-target-url";
+
+      if (target.type === "dynamic") {
+        icon.textContent = "🜂";
+        const db = dynamicBookmarks.find((d) => d.uid === target.dynamicUid);
+        title.textContent = db?.name || t("dynamic.defaultName");
+        const liveVal = target.dynamicUid ? dynamicValuesCache[target.dynamicUid] : undefined;
+        urlSpan.textContent = liveVal?.url || "";
+        urlSpan.title = liveVal?.url || "";
+      } else {
+        icon.textContent = "🔖";
+        let displayTitle = target.title || "";
+        let displayUrl = target.url || "";
+        if (target.path) {
+          const rootPrefix = bookmarkRootPrefix;
+          const effectivePath = combineRootAndItemPath(rootPrefix, target.path);
+          const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, target.url);
+          if (node?.title) displayTitle = node.title;
+          if (node?.url) displayUrl = node.url;
+        }
+        title.textContent =
+          displayTitle || (target.path ? target.path[target.path.length - 1] || "Bookmark" : "Bookmark");
+        urlSpan.textContent = displayUrl;
+        urlSpan.title = displayUrl;
+      }
+
+      targetCol.append(icon, title, urlSpan);
+
+      // Settings button
+      const settingsBtn = document.createElement("button");
+      settingsBtn.type = "button";
+      settingsBtn.className = "item-settings-btn";
+      settingsBtn.title = t("menu.settings");
+      settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+      settingsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openShortcutSettingsPopover(target, t("shortcuts.slotTitle", { n: String(i) }), settingsBtn);
+      });
+
+      // Clear button (minus icon, matching remove-item-btn)
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "remove-item-btn";
+      clearBtn.title = t("shortcuts.clearTarget");
+      clearBtn.innerHTML = REMOVE_ICON_SVG;
+      clearBtn.addEventListener("click", () => {
+        const idx = shortcuts.findIndex((s) => s.slot === slotKey);
+        if (idx !== -1) {
+          if (activeShortcutSettingsTarget === shortcuts[idx]) {
+            closeShortcutSettingsPopover();
+          }
+          shortcuts.splice(idx, 1);
+          renderShortcuts();
+          renderMenus();
+          markDirty();
+        }
+      });
+
+      actionsCol.append(settingsBtn, clearBtn);
+    } else {
+      const emptyLabel = document.createElement("span");
+      emptyLabel.className = "shortcut-empty-label";
+      emptyLabel.textContent = t("shortcuts.emptyTarget");
+      targetCol.append(emptyLabel);
+
+      const pickBookmarkBtn = document.createElement("button");
+      pickBookmarkBtn.type = "button";
+      pickBookmarkBtn.className = "action-btn";
+      pickBookmarkBtn.textContent = t("shortcuts.pickBookmark");
+      pickBookmarkBtn.addEventListener("click", () => {
+        void openBookmarkPicker("pickShortcut", -1, -1, slotKey);
+      });
+      actionsCol.append(pickBookmarkBtn);
+
+      if (dynamicBookmarks.length > 0) {
+        const pickDynamicBtn = document.createElement("button");
+        pickDynamicBtn.type = "button";
+        pickDynamicBtn.className = "action-btn";
+        pickDynamicBtn.textContent = t("shortcuts.pickDynamic");
+        pickDynamicBtn.addEventListener("click", () => {
+          openPickDynamicBookmarkDialog({ shortcutSlot: slotKey });
+        });
+        actionsCol.append(pickDynamicBtn);
+      }
+    }
+
+    row.append(slotCol, targetCol, actionsCol);
+    shortcutsList.append(row);
+  }
 }
 
 function initAddItemPopover(): void {
@@ -2915,7 +3624,6 @@ function renderMenus(): void {
 
           if (item.type === "space") {
             const units = item.units ?? 1;
-            const isTransparent = item.transparent !== false;
 
             const label = document.createElement("span");
             label.className = "item-label";
@@ -2926,25 +3634,6 @@ function renderMenus(): void {
             titleSpan.title = `${t("item.spaceBadge")} (${units}x)`;
             label.appendChild(titleSpan);
 
-            const spaceBadge = document.createElement("span");
-            spaceBadge.className = "item-tag item-tag-space";
-            spaceBadge.textContent = `${units}x`;
-            spaceBadge.addEventListener("click", (e) => {
-              e.stopPropagation();
-              openItemSettingsPopover(menuIndex, itemIndex, spaceBadge);
-            });
-            label.appendChild(spaceBadge);
-
-            if (!isTransparent) {
-              const solidBadge = document.createElement("span");
-              solidBadge.className = "item-tag item-tag-space-solid";
-              solidBadge.textContent = t("itemSettings.transparent") === "透明" ? "实体" : "Solid";
-              solidBadge.addEventListener("click", (e) => {
-                e.stopPropagation();
-                openItemSettingsPopover(menuIndex, itemIndex, solidBadge);
-              });
-              label.appendChild(solidBadge);
-            }
 
             const controls = document.createElement("div");
             controls.className = "item-color-controls";
@@ -3097,31 +3786,20 @@ function renderMenus(): void {
             dynamicTag.textContent = t("section.dynamic");
             label.appendChild(dynamicTag);
 
-            if (item.tabMode) {
-              const tabBadge = document.createElement("span");
-              tabBadge.className = "item-tag item-tag-tab-mode";
-              tabBadge.textContent =
-                item.tabMode === "newTab" ? t("item.tabBadgeNew") : t("item.tabBadgeReplace");
-              tabBadge.title = t("item.tabBadgeTitle", {
-                mode: item.tabMode === "newTab" ? t("itemSettings.newTab") : t("itemSettings.replaceTab"),
-              });
-              tabBadge.addEventListener("click", (e) => {
-                e.stopPropagation();
-                openItemSettingsPopover(menuIndex, itemIndex, tabBadge);
-              });
-              label.appendChild(tabBadge);
-            }
 
-            if (item.showPageTitle) {
-              const titleBadge = document.createElement("span");
-              titleBadge.className = "item-tag item-tag-dynamic-title";
-              titleBadge.textContent = t("dynamic.showPageTitleBadge");
-              titleBadge.title = t("dynamic.showPageTitle");
-              titleBadge.addEventListener("click", (e) => {
+            const itemShortcut = findItemShortcut(item);
+            if (itemShortcut) {
+              const shortcutBadge = document.createElement("span");
+              shortcutBadge.className = "item-tag item-tag-shortcut";
+              const rawKey = browserCommandsMap[itemShortcut.slot];
+              const keyLabel = (rawKey && rawKey.trim().length > 0) ? rawKey : itemShortcut.slot.replace("slot_", "#");
+              shortcutBadge.textContent = t("item.shortcutBadge", { key: keyLabel });
+              shortcutBadge.title = `${t("item.shortcutBadge", { key: keyLabel })} (${t("shortcuts.slotTitle", { n: itemShortcut.slot.replace("slot_", "") })})`;
+              shortcutBadge.addEventListener("click", (e) => {
                 e.stopPropagation();
-                openItemSettingsPopover(menuIndex, itemIndex, titleBadge);
+                document.getElementById("shortcuts-tab")?.click();
               });
-              label.appendChild(titleBadge);
+              label.appendChild(shortcutBadge);
             }
 
             const controls = document.createElement("div");
@@ -3279,20 +3957,6 @@ function renderMenus(): void {
           titleSpan.title = rawLabel.trim();
           label.appendChild(titleSpan);
 
-          if (item.tabMode) {
-            const tabBadge = document.createElement("span");
-            tabBadge.className = "item-tag item-tag-tab-mode";
-            tabBadge.textContent =
-              item.tabMode === "newTab" ? t("item.tabBadgeNew") : t("item.tabBadgeReplace");
-            tabBadge.title = t("item.tabBadgeTitle", {
-              mode: item.tabMode === "newTab" ? t("itemSettings.newTab") : t("itemSettings.replaceTab"),
-            });
-            tabBadge.addEventListener("click", (e) => {
-              e.stopPropagation();
-              openItemSettingsPopover(menuIndex, itemIndex, tabBadge);
-            });
-            label.appendChild(tabBadge);
-          }
 
           if (isFlatten) {
             const badge = document.createElement("span");
@@ -3319,17 +3983,21 @@ function renderMenus(): void {
               openItemSettingsPopover(menuIndex, itemIndex, badge);
             });
             label.appendChild(badge);
+          }
 
-            const isHover = item.expandOnHover !== false;
-            const hoverBadge = document.createElement("span");
-            hoverBadge.className = `item-tag ${isHover ? "item-tag-hover" : "item-tag-click"}`;
-            hoverBadge.textContent = isHover ? t("item.hoverBadge") : t("item.clickBadge");
-            hoverBadge.title = isHover ? t("item.hoverBadgeTitle") : t("item.clickBadgeTitle");
-            hoverBadge.addEventListener("click", (e) => {
+          const itemShortcut = findItemShortcut(item);
+          if (itemShortcut) {
+            const shortcutBadge = document.createElement("span");
+            shortcutBadge.className = "item-tag item-tag-shortcut";
+            const rawKey = browserCommandsMap[itemShortcut.slot];
+            const keyLabel = (rawKey && rawKey.trim().length > 0) ? rawKey : itemShortcut.slot.replace("slot_", "#");
+            shortcutBadge.textContent = t("item.shortcutBadge", { key: keyLabel });
+            shortcutBadge.title = `${t("item.shortcutBadge", { key: keyLabel })} (${t("shortcuts.slotTitle", { n: itemShortcut.slot.replace("slot_", "") })})`;
+            shortcutBadge.addEventListener("click", (e) => {
               e.stopPropagation();
-              openItemSettingsPopover(menuIndex, itemIndex, hoverBadge);
+              document.getElementById("shortcuts-tab")?.click();
             });
-            label.appendChild(hoverBadge);
+            label.appendChild(shortcutBadge);
           }
 
           const controls = document.createElement("div");
@@ -3674,6 +4342,8 @@ function exportSettings(): void {
     exportedAt: new Date().toISOString(),
     ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
     ...(dynamicBookmarks.length > 0 ? { dynamicBookmarks: structuredClone(dynamicBookmarks) } : {}),
+    ...(shortcuts.length > 0 ? { shortcuts: structuredClone(shortcuts) } : {}),
+    ...(nativeShortcuts.length > 0 ? { nativeShortcuts: structuredClone(nativeShortcuts) } : {}),
     menus: menus.map((menu) => ({
       uid: menu.uid,
       orientation: menu.orientation,
@@ -3853,7 +4523,7 @@ async function importSettings(file: File): Promise<void> {
       if (normalizedMenu) importedMenus.push(normalizedMenu);
     }
 
-    // Only the menus and URL rules are imported; instance label, desktop address, attachment
+    // Only the menus, URL rules, and shortcuts are imported; instance label, desktop address, attachment
     // mode, always-on-top, and language keep their current values.
     menus = importedMenus;
     if (Array.isArray(parsed.urlRules)) {
@@ -3892,6 +4562,45 @@ async function importSettings(file: File): Promise<void> {
         ];
       });
       renderDynamicList();
+    }
+    if (Array.isArray(parsed.shortcuts)) {
+      shortcuts = parsed.shortcuts.flatMap((sc): StoredShortcut[] => {
+        if (typeof sc !== "object" || sc === null) return [];
+        const record = sc as unknown as Record<string, unknown>;
+        if (typeof record.slot !== "string") return [];
+        return [
+          {
+            slot: record.slot,
+            type: record.type === "dynamic" ? "dynamic" : "bookmark",
+            ...(Array.isArray(record.path) ? { path: record.path.filter((p): p is string => typeof p === "string") } : {}),
+            ...(typeof record.url === "string" ? { url: record.url } : {}),
+            ...(typeof record.title === "string" ? { title: record.title } : {}),
+            ...(typeof record.dynamicUid === "string" ? { dynamicUid: record.dynamicUid } : {}),
+            ...(record.tabMode === "newTab" || record.tabMode === "replace" ? { tabMode: record.tabMode } : {}),
+          },
+        ];
+      });
+      renderShortcuts();
+    }
+    if (Array.isArray(parsed.nativeShortcuts)) {
+      nativeShortcuts = parsed.nativeShortcuts.flatMap((sc): StoredNativeShortcut[] => {
+        if (typeof sc !== "object" || sc === null) return [];
+        const record = sc as unknown as Record<string, unknown>;
+        if (typeof record.id !== "string" || !record.id) return [];
+        return [
+          {
+            id: record.id,
+            key: typeof record.key === "string" ? record.key : "",
+            type: record.type === "dynamic" ? "dynamic" : "bookmark",
+            ...(Array.isArray(record.path) ? { path: record.path.filter((p): p is string => typeof p === "string") } : {}),
+            ...(typeof record.url === "string" ? { url: record.url } : {}),
+            ...(typeof record.title === "string" ? { title: record.title } : {}),
+            ...(typeof record.dynamicUid === "string" ? { dynamicUid: record.dynamicUid } : {}),
+            ...(record.tabMode === "newTab" || record.tabMode === "replace" ? { tabMode: record.tabMode } : {}),
+          },
+        ];
+      });
+      renderNativeShortcuts();
     }
     renderMenus();
     markDirty();

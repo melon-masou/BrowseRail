@@ -29,5 +29,17 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*",
     "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval'; object-src 'self'"
+  },
+  "commands": {
+    "slot_1": { "description": "BrowseRail shortcut slot 1" },
+    "slot_2": { "description": "BrowseRail shortcut slot 2" },
+    "slot_3": { "description": "BrowseRail shortcut slot 3" },
+    "slot_4": { "description": "BrowseRail shortcut slot 4" },
+    "slot_5": { "description": "BrowseRail shortcut slot 5" },
+    "slot_6": { "description": "BrowseRail shortcut slot 6" },
+    "slot_7": { "description": "BrowseRail shortcut slot 7" },
+    "slot_8": { "description": "BrowseRail shortcut slot 8" },
+    "slot_9": { "description": "BrowseRail shortcut slot 9" },
+    "slot_10": { "description": "BrowseRail shortcut slot 10" }
   }
 }

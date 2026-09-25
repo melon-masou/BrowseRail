@@ -11,6 +11,8 @@ import type {
   StoredMenu,
   StoredMenuItem,
   StoredMenuItemType,
+  StoredShortcut,
+  StoredNativeShortcut,
   TabMode,
   UrlRule,
 } from "@browserail/protocol";
@@ -28,6 +30,8 @@ export type {
   TabMode,
   StoredMenuItem,
   StoredMenu,
+  StoredShortcut,
+  StoredNativeShortcut,
   UrlRule,
 };
 
@@ -52,6 +56,8 @@ export interface ExtensionConfig {
   };
   urlRules: UrlRule[];
   dynamicBookmarks: DynamicBookmark[];
+  shortcuts: StoredShortcut[];
+  nativeShortcuts: StoredNativeShortcut[];
 }
 
 export const DEFAULT_FONT_SIZE = 13;
@@ -104,6 +110,8 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   },
   urlRules: [],
   dynamicBookmarks: [],
+  shortcuts: [],
+  nativeShortcuts: [],
 };
 
 export const DEFAULT_ITEM_WIDTH = 84;
@@ -306,6 +314,54 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     ];
   });
 
+  const rawShortcuts = Array.isArray(value.shortcuts) ? value.shortcuts : [];
+  const shortcuts: StoredShortcut[] = rawShortcuts.flatMap((sc) => {
+    if (!isRecord(sc)) return [];
+    if (typeof sc.slot !== "string" || !sc.slot.startsWith("slot_")) return [];
+    const type = sc.type === "dynamic" ? "dynamic" : "bookmark";
+    const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
+    const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
+    const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
+    const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
+    const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
+    return [
+      {
+        slot: sc.slot,
+        type,
+        ...(path !== undefined ? { path } : {}),
+        ...(url ? { url } : {}),
+        ...(title ? { title } : {}),
+        ...(dynamicUid ? { dynamicUid } : {}),
+        ...(tabMode ? { tabMode } : {}),
+      },
+    ];
+  });
+
+  const rawNativeShortcuts = Array.isArray(value.nativeShortcuts) ? value.nativeShortcuts : [];
+  const nativeShortcuts: StoredNativeShortcut[] = rawNativeShortcuts.flatMap((sc) => {
+    if (!isRecord(sc)) return [];
+    if (typeof sc.id !== "string" || !sc.id) return [];
+    const key = typeof sc.key === "string" ? sc.key.trim() : "";
+    const type = sc.type === "dynamic" ? "dynamic" : "bookmark";
+    const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
+    const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
+    const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
+    const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
+    const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
+    return [
+      {
+        id: sc.id,
+        key,
+        type,
+        ...(path !== undefined ? { path } : {}),
+        ...(url ? { url } : {}),
+        ...(title ? { title } : {}),
+        ...(dynamicUid ? { dynamicUid } : {}),
+        ...(tabMode ? { tabMode } : {}),
+      },
+    ];
+  });
+
   return {
     desktopWidget: {
       url:
@@ -322,6 +378,8 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     },
     urlRules,
     dynamicBookmarks,
+    shortcuts,
+    nativeShortcuts,
   };
 }
 

@@ -1043,10 +1043,11 @@ output {
   border: 1px solid #f5d0fe;
 }
 
-.item-tag-tab-mode {
-  background: #f0fdf4;
-  color: #15803d;
-  border: 1px solid #bbf7d0;
+
+.item-tag-shortcut {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
 }
 
 .item-tag-space {
@@ -1681,6 +1682,26 @@ output {
   outline: none;
   border-color: #2563eb;
   background: #ffffff;
+}
+
+.item-setting-shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.item-setting-shortcut-row .item-setting-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.item-setting-configure-shortcuts-btn {
+  flex: 0 0 auto;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .item-settings-folder-controls {
@@ -2676,5 +2697,228 @@ button.item-tag {
   color: #64748b;
   flex-shrink: 0;
 }
+
+/* Shortcuts section */
+.shortcuts-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.shortcuts-section[hidden] {
+  display: none;
+}
+
+.shortcuts-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  min-height: 44px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.shortcut-row:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.shortcut-slot-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 170px;
+  flex: 0 0 auto;
+}
+
+.shortcut-slot-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  min-width: 50px;
+}
+
+.shortcut-key-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+  font-family: inherit;
+}
+
+.shortcut-key-badge.is-unset {
+  background: #f1f5f9;
+  color: #94a3b8;
+  border: 1px dashed #cbd5e1;
+  font-weight: normal;
+}
+
+.shortcut-target-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shortcut-target-icon {
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+.shortcut-target-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.shortcut-target-url {
+  font-size: 12px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shortcut-empty-label {
+  font-size: 13px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.shortcut-actions-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.shortcut-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  font-size: 13px;
+}
+
+/* Shortcuts Sub-tabs (Segment Control) */
+.shortcuts-subtabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f1f5f9;
+  margin-bottom: 12px;
+}
+
+.shortcuts-subtab-btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.shortcuts-subtab-btn:hover {
+  color: #0f172a;
+}
+
+.shortcuts-subtab-btn.is-active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 10%);
+}
+
+.shortcuts-subpanel[hidden] {
+  display: none;
+}
+
+/* Key Recorder Button */
+.key-recorder-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.key-recorder-btn:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.key-recorder-btn.is-unset {
+  background: #f1f5f9;
+  color: #94a3b8;
+  border: 1px dashed #cbd5e1;
+  font-weight: normal;
+}
+
+.key-recorder-btn.is-recording {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #f87171;
+  animation: pulse-recording 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-recording {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
+  }
+}
+
+
 
 

@@ -12,7 +12,12 @@ import {
 import { t } from "@browserail/i18n";
 import browser from "webextension-polyfill";
 
-import { type BookmarkNode, resolveMenuItems } from "../bookmarks";
+import {
+  type BookmarkNode,
+  combineRootAndItemPath,
+  findBookmarkNodeByPath,
+  resolveMenuItems,
+} from "../bookmarks";
 import { createBookmarkTargetDraft } from "../bookmark-registry";
 import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser-adapter";
 import {
@@ -931,3 +936,35 @@ function isSetWidgetEnabledMessage(
     typeof (value as { enabled: unknown }).enabled === "boolean"
   );
 }
+
+browser.commands.onCommand.addListener(async (command) => {
+  const currentWindow = await browser.windows.getCurrent();
+  if (!currentWindow?.id) return;
+  const windowId = currentWindow.id;
+  const config = await loadConfig();
+
+  const target = config.shortcuts.find((s) => s.slot === command);
+  if (!target) return;
+
+  const tabMode = target.tabMode || "replace";
+
+  if (target.type === "dynamic" && target.dynamicUid) {
+    const live = (await loadDynamicValues())[target.dynamicUid];
+    if (live?.url) {
+      await navigateToUrl(browser, windowId, live.url, tabMode);
+    }
+    return;
+  }
+
+  if (target.path) {
+    const rootPrefix = await loadBookmarkRootPrefix();
+    const effectivePath = combineRootAndItemPath(rootPrefix, target.path);
+    const tree = (await browser.bookmarks.getTree()) as BookmarkNode[];
+    const node = findBookmarkNodeByPath(tree, effectivePath, target.url);
+    if (node?.url) {
+      await navigateToUrl(browser, windowId, node.url, tabMode);
+    }
+  } else if (target.url) {
+    await navigateToUrl(browser, windowId, target.url, tabMode);
+  }
+});
