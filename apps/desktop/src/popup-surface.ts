@@ -232,8 +232,8 @@ export async function initializePopupSurface(): Promise<void> {
       column.dataset.columnWidth = column.style.width;
       if (payload.color) {
         column.dataset.accent = "true";
-        column.style.backgroundColor = payload.color;
-        column.style.borderColor = payload.color;
+        // Mute via CSS color-mix (see .menu-column[data-accent]); no raw fill.
+        column.style.setProperty("--button-custom-color", payload.color);
       }
 
       for (const entry of entries) {

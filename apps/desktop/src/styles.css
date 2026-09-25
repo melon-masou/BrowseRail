@@ -1,10 +1,22 @@
 :root {
   color-scheme: dark;
-  --desktop-font-family: Segoe UI;
+  --desktop-font-family: Segoe UI, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-family: var(--desktop-font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   --menu-font-size: 13px;
   --menu-item-height: 36px;
   --min-column-width: 84px;
+  /* Theme tokens: unified dock surface base, faint hairline, and nested radius */
+  --surface-base: #1f2531;
+  --dock-surface: rgba(22, 27, 36, 0.88);
+  --dock-border: rgba(255, 255, 255, 0.08);
+  --dock-radius: 7px;
+  --hairline: rgb(255 255 255 / 7%);
+  --button-radius: 5px;
+  --label-color: rgb(255 255 255 / 90%);
+  --color-intensity: 90%;
+  --accent-blue: #7aa2ff;
 }
 
 html,
@@ -72,9 +84,15 @@ button {
   left: 0;
   --item-count: 1;
   display: grid;
-  gap: var(--menu-gap, 4px);
+  gap: var(--menu-gap, 3px);
   box-sizing: border-box;
-  background: transparent;
+  padding: 2px;
+  background: var(--dock-surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--dock-border);
+  border-radius: var(--dock-radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
   pointer-events: none;
 }
 
@@ -112,22 +130,41 @@ button {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: clamp(
-    2px,
-    calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.45),
-    6px
-  );
+  border: 1px solid var(--hairline);
+  border-radius: var(--button-radius);
   padding-left: var(--button-padding-left);
   padding-right: var(--button-padding-right);
   padding-top: 0;
   padding-bottom: 0;
-  color: #f5f7fb;
-  background: rgb(31 37 49 / 94%);
-  box-shadow: 0 3px 12px rgb(0 0 0 / 22%);
+  color: var(--label-color);
+  background: var(--surface-base);
+  box-shadow: none;
   font-size: var(--button-font-size, var(--menu-font-size, 13px));
   cursor: pointer;
   user-select: none;
+  transition: filter 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.menu-button:hover,
+.menu-button:focus-visible {
+  filter: brightness(1.12);
+}
+
+.menu-button:active {
+  filter: brightness(0.92);
+}
+
+.menu-button[data-expanded] {
+  filter: brightness(1.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.menu-bar[data-orientation="row"] .menu-button[data-expanded] {
+  box-shadow: inset 0 -2px 0 0 var(--accent-blue), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.menu-bar[data-orientation="column"] .menu-button[data-expanded] {
+  box-shadow: inset -2px 0 0 0 var(--accent-blue), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 
 .menu-button-label {
@@ -199,23 +236,17 @@ button {
     calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.5),
     8px
   );
-  background-color: rgb(0 0 0 / 24%);
-  border-left: 1px solid rgb(0 0 0 / 18%);
+  background-color: rgba(0, 0, 0, 0.22);
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
   pointer-events: none;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.popup-container[data-direction="left"] .menu-button[data-folder]::after {
-  right: auto;
-  left: 0;
-  border-right: 1px solid rgb(0 0 0 / 18%);
-  border-left: 0;
-}
-
+.popup-container[data-direction="left"] .menu-button[data-folder]::after,
 .popup-container .menu-button[data-expand-direction="left"]::after {
   right: auto;
   left: 0;
-  border-right: 1px solid rgb(0 0 0 / 18%);
+  border-right: 1px solid rgba(255, 255, 255, 0.09);
   border-left: 0;
 }
 
@@ -223,21 +254,31 @@ button {
   right: 0;
   left: auto;
   border-right: 0;
-  border-left: 1px solid rgb(0 0 0 / 18%);
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 .menu-button[data-folder]:hover::after,
-.menu-button[data-folder]:focus-visible::after,
+.menu-button[data-folder]:focus-visible::after {
+  background-color: rgba(0, 0, 0, 0.36);
+  border-left-color: rgba(255, 255, 255, 0.18);
+  border-right-color: rgba(255, 255, 255, 0.18);
+}
+
 .menu-button[data-folder][data-expanded]::after {
-  background-color: rgb(0 0 0 / 38%);
-  border-left-color: rgb(0 0 0 / 28%);
+  background-color: rgba(0, 0, 0, 0.45);
+  border-left-color: var(--accent-blue);
+  border-right-color: var(--accent-blue);
 }
 
 .menu-button:hover,
-.menu-button:focus-visible,
+.menu-button:focus-visible {
+  outline: none;
+  background: #2a3344;
+}
+
 .menu-button[data-expanded] {
   outline: none;
-  background: rgb(56 67 87 / 98%);
+  background: #333e54;
 }
 
 .empty-menu {
@@ -310,15 +351,74 @@ button {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  color: #f5f7fb;
-  background: rgb(24 29 39 / 98%);
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 10px;
-  padding: 6px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 34%);
+  color: var(--label-color);
+  background: rgba(27, 33, 45, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  padding: 5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
   max-height: 560px;
   height: fit-content;
   pointer-events: auto !important;
+  animation: flyout-appear-down 120ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes flyout-appear-down {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flyout-appear-up {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flyout-appear-right {
+  from {
+    opacity: 0;
+    transform: translateX(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes flyout-appear-left {
+  from {
+    opacity: 0;
+    transform: translateX(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.popup-container[data-direction="up"] .menu-column {
+  animation-name: flyout-appear-up;
+}
+
+.popup-container[data-direction="right"] .menu-column {
+  animation-name: flyout-appear-right;
+}
+
+.popup-container[data-direction="left"] .menu-column {
+  animation-name: flyout-appear-left;
 }
 
 .menu-space {
@@ -360,13 +460,14 @@ button {
   min-height: var(--menu-item-height, 36px);
   width: 100%;
   border: 0;
-  border-radius: clamp(3px, calc(var(--menu-font-size, 13px) * 0.45), 6px);
-  padding: 0 clamp(4px, calc(var(--menu-font-size, 13px) * 0.75), 10px);
+  border-radius: 4px;
+  padding: 0 clamp(6px, calc(var(--menu-font-size, 13px) * 0.75), 10px);
   background: transparent;
   box-shadow: none;
   text-align: left;
   justify-content: flex-start;
   font-size: var(--menu-font-size, 13px) !important;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
 .popup-container .menu-button .menu-button-label {
@@ -378,13 +479,24 @@ button {
 .popup-container .menu-button:hover,
 .popup-container .menu-button:focus-visible,
 .popup-container .menu-button[data-expanded] {
-  background: #384357;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.popup-container .menu-button:active {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* Accent popups (menu default color): softer shadow, matching scrollbar, and no
    dark drop-shadow halo on the same-color buttons. */
 .menu-column[data-accent="true"] {
-  box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
+  /* Accented column: same muted material as the buttons, faint hairline edge. */
+  background-color: color-mix(
+    in oklab,
+    var(--button-custom-color) var(--color-intensity),
+    rgba(27, 33, 45, 0.94)
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
   scrollbar-color: rgb(255 255 255 / 35%) transparent;
 }
 
@@ -435,28 +547,43 @@ button {
   min-height: 0;
   min-width: 0;
   box-sizing: border-box;
-  gap: var(--menu-gap, 4px);
-  background: transparent;
-  outline: 2px dashed #7aa2ff;
+  padding: 2px;
+  gap: var(--menu-gap, 3px);
+  background: var(--dock-surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--dock-border);
+  border-radius: var(--dock-radius);
+  outline: 2px dashed var(--accent-blue);
   outline-offset: -1px;
-  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
   cursor: move;
   position: relative;
   overflow: hidden;
 }
 
 .menu-button[data-has-custom-color="true"] {
-  background-color: var(--button-custom-color) !important;
-  /* A soft dark rim reads as a natural edge on any hue; a bright white border
-     (previously 28%) looked like a jarring halo on saturated colors. */
-  border-color: rgb(0 0 0 / 18%);
+  /* Blend the user's hue toward the shared neutral base so any color lands in
+     one muted material instead of a saturated debug chip. Hue is preserved. */
+  background-color: color-mix(
+    in oklab,
+    var(--button-custom-color) var(--color-intensity),
+    var(--surface-base)
+  ) !important;
+  border-color: var(--hairline);
 }
 
 .menu-button[data-has-custom-color="true"]:hover,
-.menu-button[data-has-custom-color="true"]:focus-visible,
+.menu-button[data-has-custom-color="true"]:focus-visible {
+  filter: brightness(1.12);
+}
+
+.menu-button[data-has-custom-color="true"]:active {
+  filter: brightness(0.92);
+}
+
 .menu-button[data-has-custom-color="true"][data-expanded] {
-  filter: brightness(1.22);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 38%);
+  filter: brightness(1.2);
 }
 
 .customize-rail[data-orientation="row"] {

@@ -68,27 +68,31 @@ import { positionPopover } from "./popover-position";
 
 import "./styles.css";
 
+// A dark, muted palette: each hue at a low-lightness "surface" tone so buttons
+// read as one coherent set of tinted-dark chips (with white text) instead of
+// saturated category colors. Rendered at (near) full fidelity — WYSIWYG with the
+// picker — so this palette IS the look, not a post-render transform.
 const PALETTE_COLORS = [
-  "#2563eb", // Blue
-  "#0284c7", // Sky
-  "#0891b2", // Cyan
-  "#059669", // Emerald
-  "#16a34a", // Green
-  "#65a30d", // Lime
-  "#ca8a04", // Gold
-  "#d97706", // Amber
-  "#ea580c", // Orange
-  "#dc2626", // Red
-  "#db2777", // Pink
-  "#c026d3", // Fuchsia
-  "#7c3aed", // Purple
-  "#4f46e5", // Indigo
-  "#475569", // Slate
-  "#334155", // Charcoal
-  "#0d9488", // Teal
-  "#9a3412", // Rust
-  "#9d174d", // Wine
-  "#1e293b", // Navy
+  "#1e3a8a", // Blue
+  "#075985", // Sky
+  "#155e75", // Cyan
+  "#065f46", // Emerald
+  "#166534", // Green
+  "#3f6212", // Lime
+  "#854d0e", // Gold
+  "#92400e", // Amber
+  "#9a3412", // Orange
+  "#991b1b", // Red
+  "#9d174d", // Pink
+  "#86198f", // Fuchsia
+  "#6b21a8", // Purple
+  "#3730a3", // Indigo
+  "#334155", // Slate
+  "#1e293b", // Charcoal
+  "#115e59", // Teal
+  "#7c2d12", // Rust
+  "#831843", // Wine
+  "#172554", // Navy
 ];
 
 function getRandomPaletteColor(): string {
@@ -1484,7 +1488,7 @@ function initColorPopover(): void {
     const item = activeColorTarget as StoredMenuItem;
     if (colorPopoverCycleToggle.checked) {
       if (!Array.isArray(item.cycleColors) || item.cycleColors.length === 0) {
-        item.cycleColors = ["#3b82f6", "#10b981"];
+        item.cycleColors = ["#1e3a8a", "#065f46"];
       }
       delete item.color;
       colorPopoverCycleSection.style.display = "block";

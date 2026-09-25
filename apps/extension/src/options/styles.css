@@ -1547,13 +1547,15 @@ output {
 
 .menu-setting-input-with-auto input[type="number"] {
   flex: 1 1 auto;
-  min-width: 0;
-  width: 100%;
+  min-width: 48px;
 }
 
 .menu-setting-auto-check {
   display: inline-flex !important;
   flex-direction: row !important;
+  /* Never shrink: keep the checkbox + "Auto" label fully visible; the number
+     input takes the remaining width instead of squeezing this out. */
+  flex: 0 0 auto;
   align-items: center;
   gap: 5px;
   font-size: 12px;
