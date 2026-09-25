@@ -87,14 +87,26 @@ button {
   gap: var(--menu-gap, 3px);
   box-sizing: border-box;
   padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.menu-bar::before {
+  content: "";
+  position: absolute;
+  /* Recessed dock chassis: inset 2px so buttons slightly overhang the base */
+  inset: 2px;
   background-color: var(--menu-bar-bg, var(--dock-surface));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: var(--dock-radius, 7px);
+  z-index: 0;
   pointer-events: none;
 }
 
 .menu-bar > * {
+  position: relative;
+  z-index: 1;
   pointer-events: auto;
 }
 
@@ -135,12 +147,12 @@ button {
   padding-top: 0;
   padding-bottom: 0;
   color: var(--label-color);
-  background: transparent;
+  background: var(--surface-base);
   box-shadow: none;
   font-size: var(--button-font-size, var(--menu-font-size, 13px));
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.12s ease;
+  transition: filter 0.12s ease, background-color 0.12s ease;
 }
 
 .menu-button:hover,
@@ -148,7 +160,8 @@ button {
   outline: none;
   border: none;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.08);
+  background: #2a3344;
+  filter: brightness(1.12);
 }
 
 .menu-button:active {
@@ -156,13 +169,14 @@ button {
   border: none;
   box-shadow: none;
   background: rgba(255, 255, 255, 0.04);
+  filter: brightness(0.92);
 }
 
 .menu-button[data-expanded] {
   outline: none;
   border: none;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.12);
+  background: #333e54;
 }
 
 .menu-button-label {
@@ -524,15 +538,30 @@ button {
   box-sizing: border-box;
   padding: 0;
   gap: var(--menu-gap, 3px);
-  background-color: var(--menu-bar-bg, var(--dock-surface));
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: transparent;
   outline: 2px dashed var(--accent-blue);
   outline-offset: -1px;
   border-radius: var(--dock-radius, 7px);
   cursor: move;
   position: relative;
   overflow: visible;
+}
+
+.customize-rail::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background-color: var(--menu-bar-bg, var(--dock-surface));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--dock-radius, 7px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.customize-rail > * {
+  position: relative;
+  z-index: 1;
 }
 
 .menu-button[data-has-custom-color="true"] {
