@@ -361,24 +361,25 @@ The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dyna
                 <span data-i18n="menuSettings.gap">Button gap (%)</span>
                 <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
               </label>
-              <div class="menu-setting-field">
-                <span class="menu-setting-label" data-i18n="menuSettings.defaultColor">Default color</span>
-                <div class="menu-setting-color-control">
-                  <button type="button" id="menu-setting-default-color" class="item-color-swatch menu-setting-color-swatch"></button>
-                  <output id="menu-setting-default-color-value" class="menu-setting-color-value"></output>
-                </div>
-              </div>
-              <div class="menu-setting-field">
-                <span class="menu-setting-label" data-i18n="menuSettings.dockColor">Dock color</span>
-                <div class="menu-setting-color-control">
-                  <button type="button" id="menu-setting-dock-color" class="item-color-swatch menu-setting-color-swatch"></button>
-                  <output id="menu-setting-dock-color-value" class="menu-setting-color-value"></output>
-                </div>
-              </div>
               <label>
                 <span data-i18n="menuSettings.opacity">Dock opacity (%)</span>
                 <input id="menu-setting-opacity" type="number" min="0" max="100" step="5" />
               </label>
+              <div class="menu-setting-field">
+                <span class="menu-setting-label" data-i18n="menuSettings.colorsGroup">Colors (Button / Dock)</span>
+                <div class="menu-setting-dual-color-control">
+                  <div class="menu-setting-color-subfield" id="menu-setting-default-color-box">
+                    <button type="button" id="menu-setting-default-color" class="item-color-swatch menu-setting-color-swatch"></button>
+                    <span class="menu-setting-color-tag" data-i18n="menuSettings.defaultColorTag">Button</span>
+                    <output id="menu-setting-default-color-value" class="menu-setting-color-value"></output>
+                  </div>
+                  <div class="menu-setting-color-subfield" id="menu-setting-dock-color-box">
+                    <button type="button" id="menu-setting-dock-color" class="item-color-swatch menu-setting-color-swatch"></button>
+                    <span class="menu-setting-color-tag" data-i18n="menuSettings.dockColorTag">Dock</span>
+                    <output id="menu-setting-dock-color-value" class="menu-setting-color-value"></output>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
           <section id="menu-behavior-panel" class="menu-settings-panel" role="tabpanel" aria-labelledby="menu-behavior-tab" hidden>

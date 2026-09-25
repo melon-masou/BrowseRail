@@ -1538,6 +1538,61 @@ output {
   height: 28px;
 }
 
+.menu-setting-dual-color-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.menu-setting-color-subfield {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0 6px;
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.menu-setting-color-subfield:hover {
+  border-color: #cbd5e1;
+  background-color: #f1f5f9;
+}
+
+.menu-setting-color-subfield .menu-setting-color-swatch {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.menu-setting-color-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.menu-setting-color-subfield .menu-setting-color-value {
+  font-size: 11px;
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .menu-setting-color-swatch {
   width: 28px;
   height: 28px;
