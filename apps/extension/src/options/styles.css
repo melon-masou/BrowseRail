@@ -1531,15 +1531,27 @@ output {
   text-overflow: ellipsis;
 }
 
-.menu-setting-color-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
+.menu-setting-field-colors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
 }
 
-.menu-setting-color-control #menu-setting-dock-color {
-  margin-left: 6px;
+.menu-setting-subfield {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.menu-setting-subfield .menu-setting-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .menu-setting-color-swatch {

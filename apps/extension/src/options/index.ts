@@ -169,9 +169,7 @@ const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-f
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
 const menuSettingOpacity = element<HTMLInputElement>("menu-setting-opacity");
 const menuSettingDefaultColor = element<HTMLButtonElement>("menu-setting-default-color");
-const menuSettingDefaultColorValue = element<HTMLOutputElement>("menu-setting-default-color-value");
 const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
-const menuSettingDockColorValue = element<HTMLOutputElement>("menu-setting-dock-color-value");
 
 const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
 const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
@@ -1761,14 +1759,12 @@ function updateMenuSettingColorControls(menu: StoredMenu): void {
     ? t("menu.colorSwatchSet", { color: menu.color })
     : t("menu.colorSwatchEmpty");
   menuSettingDefaultColor.setAttribute("aria-label", menuSettingDefaultColor.title);
-  menuSettingDefaultColorValue.value = menu.color?.toUpperCase() ?? t("expandDirection.default");
 
   updateSwatchAppearance(menuSettingDockColor, menu.dockColor);
   menuSettingDockColor.title = menu.dockColor
     ? t("menu.dockColorSwatchSet", { color: menu.dockColor })
     : t("menu.dockColorSwatchEmpty");
   menuSettingDockColor.setAttribute("aria-label", menuSettingDockColor.title);
-  menuSettingDockColorValue.value = menu.dockColor?.toUpperCase() ?? t("expandDirection.default");
 }
 
 function openColorPopover(
