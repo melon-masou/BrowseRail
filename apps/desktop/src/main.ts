@@ -486,6 +486,9 @@ async function initializeSurface(): Promise<void> {
     );
     menuBar.style.setProperty("--button-font-size", `${buttonFontSize}px`);
     menuBar.style.setProperty("--menu-gap", `${gap}px`);
+    const opacity = typeof menu.opacity === "number" ? Math.max(0, Math.min(100, menu.opacity)) : 88;
+    const baseColor = menu.color || "#1f2531";
+    menuBar.style.setProperty("--menu-bar-bg", `color-mix(in srgb, ${baseColor} ${opacity}%, transparent)`);
     const dims = computeMenuDimensions(menu);
     const renderedDims = menuCollapsed
       ? {
@@ -991,8 +994,10 @@ async function initializeSurface(): Promise<void> {
     }, 0);
     railContainer.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
     railContainer.style.setProperty("--menu-gap", `${gap}px`);
-
     railContainer.style.setProperty("--button-font-size", `${theme.buttonFontSize}px`);
+    const opacity = typeof menu.opacity === "number" ? Math.max(0, Math.min(100, menu.opacity)) : 88;
+    const baseColor = menu.color || "#1f2531";
+    railContainer.style.setProperty("--menu-bar-bg", `color-mix(in srgb, ${baseColor} ${opacity}%, transparent)`);
 
     if (menu.items.length === 0) {
       const empty = document.createElement("div");

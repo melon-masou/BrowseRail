@@ -167,6 +167,7 @@ const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
 const menuSettingFontSizeAuto = element<HTMLInputElement>("menu-setting-font-size-auto");
 const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
+const menuSettingOpacity = element<HTMLInputElement>("menu-setting-opacity");
 
 const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
 const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
@@ -1872,6 +1873,15 @@ function initMenuSettingsDialog(): void {
     }
   });
 
+  menuSettingOpacity.addEventListener("input", () => {
+    const menu = menus[activeMenuSettingsIndex];
+    const val = parseInt(menuSettingOpacity.value, 10);
+    if (menu && !isNaN(val)) {
+      menu.opacity = Math.max(0, Math.min(100, val));
+      markDirty();
+    }
+  });
+
   menuSettingAttachmentMode.addEventListener("change", () => {
     const menu = menus[activeMenuSettingsIndex];
     if (menu) {
@@ -1920,6 +1930,7 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
     ? normalizeFontSize(menu.popupFontSize)
     : DEFAULT_FONT_SIZE;
   const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
+  const opacityVal = menu.opacity !== undefined ? menu.opacity : 88;
   menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
   menuSettingOrientation.value = menu.orientation;
   menuSettingExpandDirection.value = menu.expandDirection ?? "";
@@ -1928,6 +1939,7 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   menuSettingFontSize.disabled = barFontAuto;
   menuSettingPopupFontSize.value = String(popupFs);
   menuSettingGap.value = String(gapVal);
+  menuSettingOpacity.value = String(opacityVal);
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
   const isFree = menuSettingAttachmentMode.value === "free";
   if (isFree) menu.onTopMode = "alwaysOnTop";
@@ -4356,6 +4368,7 @@ function exportSettings(): void {
       ...(menu.buttonFontSize !== undefined ? { buttonFontSize: menu.buttonFontSize } : {}),
       ...(menu.popupFontSize !== undefined ? { popupFontSize: menu.popupFontSize } : {}),
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
+      ...(menu.opacity !== undefined ? { opacity: menu.opacity } : {}),
       ...(menu.color ? { color: menu.color } : {}),
       ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
       ...(menu.attachmentMode ? { attachmentMode: menu.attachmentMode } : {}),

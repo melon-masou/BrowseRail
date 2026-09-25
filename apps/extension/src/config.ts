@@ -402,6 +402,9 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
     : DEFAULT_MENU_GAP;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
+  const opacity = typeof value.opacity === "number" && Number.isFinite(value.opacity)
+    ? boundedNumber(value.opacity, 0, 100, 88)
+    : undefined;
   const tabMode: TabMode | undefined =
     value.tabMode === "newTab" || value.tabMode === "replace"
       ? value.tabMode
@@ -438,6 +441,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   return {
     attachmentMode,
     ...(color !== undefined ? { color } : {}),
+    ...(opacity !== undefined ? { opacity } : {}),
     enabled,
     ...(expandDirection !== undefined ? { expandDirection } : {}),
     ...(buttonFontSize !== undefined ? { buttonFontSize } : {}),

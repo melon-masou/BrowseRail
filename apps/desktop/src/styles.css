@@ -86,29 +86,15 @@ button {
   display: grid;
   gap: var(--menu-gap, 3px);
   box-sizing: border-box;
-  padding: 0;
-  background: transparent;
-  pointer-events: none;
-}
-
-.menu-bar::before {
-  content: "";
-  position: absolute;
-  /* Recessed dock chassis: inset 2px so buttons slightly overhang the base */
-  inset: 2px;
-  background: var(--dock-surface);
+  padding: 2px;
+  background-color: var(--menu-bar-bg, var(--dock-surface));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--dock-border);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  z-index: 0;
+  border-radius: var(--dock-radius, 7px);
   pointer-events: none;
 }
 
 .menu-bar > * {
-  position: relative;
-  z-index: 1;
   pointer-events: auto;
 }
 
@@ -142,41 +128,41 @@ button {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  border: 1px solid var(--hairline);
+  border: none;
   border-radius: var(--button-radius);
   padding-left: var(--button-padding-left);
   padding-right: var(--button-padding-right);
   padding-top: 0;
   padding-bottom: 0;
   color: var(--label-color);
-  background: var(--surface-base);
+  background: transparent;
   box-shadow: none;
   font-size: var(--button-font-size, var(--menu-font-size, 13px));
   cursor: pointer;
   user-select: none;
-  transition: filter 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+  transition: background-color 0.12s ease;
 }
 
 .menu-button:hover,
 .menu-button:focus-visible {
-  filter: brightness(1.12);
+  outline: none;
+  border: none;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .menu-button:active {
-  filter: brightness(0.92);
+  outline: none;
+  border: none;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .menu-button[data-expanded] {
-  filter: brightness(1.18);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-}
-
-.menu-bar[data-orientation="row"] .menu-button[data-expanded] {
-  box-shadow: inset 0 -2px 0 0 var(--accent-blue), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
-}
-
-.menu-bar[data-orientation="column"] .menu-button[data-expanded] {
-  box-shadow: inset -2px 0 0 0 var(--accent-blue), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+  outline: none;
+  border: none;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .menu-button-label {
@@ -249,48 +235,33 @@ button {
     8px
   );
   background-color: rgba(0, 0, 0, 0.22);
-  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  border: none !important;
   pointer-events: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
 .popup-container[data-direction="left"] .menu-button[data-folder]::after,
 .popup-container .menu-button[data-expand-direction="left"]::after {
   right: auto;
   left: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.09);
-  border-left: 0;
+  border: none !important;
 }
 
 .popup-container .menu-button[data-expand-direction="right"]::after {
   right: 0;
   left: auto;
-  border-right: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  border: none !important;
 }
 
 .menu-button[data-folder]:hover::after,
 .menu-button[data-folder]:focus-visible::after {
   background-color: rgba(0, 0, 0, 0.36);
-  border-left-color: rgba(255, 255, 255, 0.18);
-  border-right-color: rgba(255, 255, 255, 0.18);
+  border: none !important;
 }
 
 .menu-button[data-folder][data-expanded]::after {
   background-color: rgba(0, 0, 0, 0.45);
-  border-left-color: var(--accent-blue);
-  border-right-color: var(--accent-blue);
-}
-
-.menu-button:hover,
-.menu-button:focus-visible {
-  outline: none;
-  background: #2a3344;
-}
-
-.menu-button[data-expanded] {
-  outline: none;
-  background: #333e54;
+  border: none !important;
 }
 
 .empty-menu {
@@ -435,25 +406,17 @@ button {
 
 .menu-space {
   box-sizing: border-box;
-  background: transparent;
+  background: transparent !important;
+  border: none !important;
   width: 100%;
   height: 100%;
   pointer-events: auto;
 }
 
-.menu-space[data-transparent="true"] {
+.menu-space[data-transparent="true"],
+.menu-space-solid {
   background: transparent !important;
   border: none !important;
-}
-
-.menu-space-solid {
-  background: rgb(31 37 49 / 94%);
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: clamp(
-    2px,
-    calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.45),
-    6px
-  );
 }
 
 .menu-bar[data-orientation="row"] .menu-space,
@@ -559,34 +522,17 @@ button {
   min-height: 0;
   min-width: 0;
   box-sizing: border-box;
-  padding: 0;
+  padding: 2px;
   gap: var(--menu-gap, 3px);
-  background: transparent;
+  background-color: var(--menu-bar-bg, var(--dock-surface));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   outline: 2px dashed var(--accent-blue);
   outline-offset: -1px;
-  border-radius: 6px;
+  border-radius: var(--dock-radius, 7px);
   cursor: move;
   position: relative;
   overflow: visible;
-}
-
-.customize-rail::before {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  background: var(--dock-surface);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--dock-border);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  z-index: 0;
-  pointer-events: none;
-}
-
-.customize-rail > * {
-  position: relative;
-  z-index: 1;
 }
 
 .menu-button[data-has-custom-color="true"] {
@@ -597,20 +543,26 @@ button {
     var(--button-custom-color) var(--color-intensity),
     var(--surface-base)
   ) !important;
-  border-color: var(--hairline);
+  border: none !important;
 }
 
 .menu-button[data-has-custom-color="true"]:hover,
 .menu-button[data-has-custom-color="true"]:focus-visible {
   filter: brightness(1.12);
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .menu-button[data-has-custom-color="true"]:active {
   filter: brightness(0.92);
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .menu-button[data-has-custom-color="true"][data-expanded] {
   filter: brightness(1.2);
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .customize-rail[data-orientation="row"] {

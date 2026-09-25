@@ -690,6 +690,7 @@ mod tests {
                 button_font_size: None,
                 popup_font_size: None,
                 gap: None,
+                opacity: None,
             },
             placement: MenuPlacement {
                 bound_position: MenuBoundPosition {

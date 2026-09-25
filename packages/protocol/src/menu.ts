@@ -110,4 +110,5 @@ export interface MenuView {
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
   gap?: number;
+  opacity?: number;
 }

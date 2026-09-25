@@ -93,6 +93,7 @@ export interface StoredMenu {
   tabMode?: TabMode;
   uid: string;
   urlRuleUids?: string[];
+  opacity?: number;
 }
 
 // Special Root Placeholders
@@ -232,6 +233,7 @@ export interface ExportedMenu {
   tabMode?: TabMode;
   items: ExportedMenuItem[];
   urlRuleUids?: string[];
+  opacity?: number;
 }
 
 export interface ExportedSettingsData {

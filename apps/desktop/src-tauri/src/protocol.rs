@@ -226,6 +226,8 @@ pub struct MenuView {
     /// with the item size in MenuPlacement, to derive the total window size.
     #[serde(default)]
     pub gap: Option<f64>,
+    #[serde(default)]
+    pub opacity: Option<f64>,
 }
 
 /// NATIVE axis: window behavior the webview never reads. `visible` is the
