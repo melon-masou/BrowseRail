@@ -443,12 +443,16 @@ function dynamicBookmarkEntry(
   color?: string,
   rename?: string,
   showPageTitle?: boolean,
+  // Title of the browser bookmark the marker was flattened from. When the marker
+  // lives inside a flattened folder the user named that bookmark, so it takes
+  // precedence over the dynamic definition's name.
+  bookmarkTitle?: string,
 ): BookmarkEntry {
   const dynamicTitle = showPageTitle && info.title ? info.title : undefined;
   return {
     kind: "bookmark",
     uid: actionUid("dynamic", dynamicUid, tabMode),
-    label: rename || dynamicTitle || info.name || info.url || "Dynamic",
+    label: rename || dynamicTitle || bookmarkTitle || info.name || info.url || "Dynamic",
     ...(color ? { color } : {}),
     ...(rename ? { rename } : {}),
   };
@@ -562,7 +566,17 @@ export async function resolveMenuItems(
             if (!info) return []; // orphan marker: omit
             const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
             flattenedIdx++;
-            return [dynamicBookmarkEntry(dynamicId, info, effectiveTabMode, itemColor)];
+            return [
+              dynamicBookmarkEntry(
+                dynamicId,
+                info,
+                effectiveTabMode,
+                itemColor,
+                undefined,
+                undefined,
+                child.title,
+              ),
+            ];
           }
           if (child.url === undefined) {
             // Sub-folder: only emitted when "include folders" is on, as a folder
