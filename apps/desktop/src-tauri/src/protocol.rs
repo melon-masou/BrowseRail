@@ -228,6 +228,8 @@ pub struct MenuView {
     pub gap: Option<f64>,
     #[serde(default)]
     pub opacity: Option<f64>,
+    #[serde(default)]
+    pub dock_color: Option<String>,
 }
 
 /// NATIVE axis: window behavior the webview never reads. `visible` is the
@@ -451,6 +453,8 @@ pub enum LayoutEntry {
     MenuToggle {
         uid: String,
         label: String,
+        #[serde(default)]
+        color: Option<String>,
     },
     Folder {
         uid: String,
@@ -654,7 +658,7 @@ pub fn compute_menu_geometry_for_state(
 #[cfg(test)]
 mod tests {
     use super::{
-        BrowserWindowSnapshot, ExtensionMessage, MenuPlacement, MenuView, NativeMessage,
+        BrowserWindowSnapshot, ExtensionMessage, LayoutEntry, MenuPlacement, MenuView, NativeMessage,
         SyncedMenu, compute_menu_geometry_for_state, free_menu_geometry_for_state,
     };
 
@@ -924,5 +928,24 @@ mod tests {
 
         assert_eq!((expanded.x + 65.0, expanded.y), (collapsed.x, collapsed.y));
         assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));
+    }
+
+    #[test]
+    fn deserializes_dock_color_and_toggle_color() {
+        let json = r##"{
+            "uid": "menu-custom",
+            "dockColor": "#ff0000",
+            "items": [
+                { "kind": "menuToggle", "uid": "toggle-1", "label": "Toggle", "color": "#00ff00" }
+            ]
+        }"##;
+        let view: MenuView = serde_json::from_str(json).unwrap();
+        assert_eq!(view.dock_color.as_deref(), Some("#ff0000"));
+        match &view.items[0] {
+            LayoutEntry::MenuToggle { color, .. } => {
+                assert_eq!(color.as_deref(), Some("#00ff00"));
+            }
+            _ => panic!("Expected MenuToggle"),
+        }
     }
 }

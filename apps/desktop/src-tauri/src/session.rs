@@ -691,6 +691,7 @@ mod tests {
                 popup_font_size: None,
                 gap: None,
                 opacity: None,
+                dock_color: None,
             },
             placement: MenuPlacement {
                 bound_position: MenuBoundPosition {
