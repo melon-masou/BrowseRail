@@ -258,7 +258,7 @@ pub fn apply_anchored_window_geometry(
     }
 }
 
-fn is_window_always_on_top(window: &WebviewWindow) -> Result<bool, String> {
+pub fn is_window_always_on_top(window: &WebviewWindow) -> Result<bool, String> {
     let hwnd = window.hwnd().map_err(|error| error.to_string())?;
     let extended_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
     Ok(extended_style & WS_EX_TOPMOST.0 as isize != 0)

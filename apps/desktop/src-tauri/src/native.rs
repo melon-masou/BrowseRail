@@ -27,9 +27,9 @@ use windows::core::PWSTR;
 
 use crate::panel::{
     PopupPointerAction, PopupPointerSource, PopupRegistry, PopupRequest, SurfaceRegistry,
-    free_label, instance_surface_prefix, menu_label, popup_label, set_window_always_on_top,
-    set_window_no_activate, set_window_owner, set_window_visible_without_activation,
-    surface_prefix,
+    free_label, instance_surface_prefix, is_window_always_on_top, menu_label, popup_label,
+    set_window_always_on_top, set_window_no_activate, set_window_owner,
+    set_window_visible_without_activation, surface_prefix,
 };
 use crate::protocol::{
     AttachmentMode, BrowserInstance, BrowserWindowSnapshot, MenuAnchor, MenuPlacement, MenuTarget,
@@ -1461,6 +1461,7 @@ impl NativeReactor {
 
         let app = self.app.clone();
         let surfaces = self.surfaces.clone();
+        let window_levels = self.window_levels.clone();
         let instance_uid = instance_uid.to_string();
         let _ = self.app.run_on_main_thread(move || {
             for label in &to_destroy {
@@ -1552,7 +1553,17 @@ impl NativeReactor {
                     let _ = window.set_size(LogicalSize::new(item.width, item.height));
                     let _ = window.set_position(tauri::LogicalPosition::new(x, y));
                 }
-                let _ = set_window_always_on_top(&window, true);
+                // Free bars are always topmost. Re-assert from the window's
+                // ACTUAL ex-style, not a cached value: only re-raise when it
+                // truly lost topmost, so a routine sync never leapfrogs the free
+                // bar over another menu's open popup (also topmost), yet a bar
+                // that dropped below ordinary windows still recovers.
+                if !is_window_always_on_top(&window).unwrap_or(false) {
+                    let _ = set_window_always_on_top(&window, true);
+                }
+                if let Ok(mut levels) = window_levels.lock() {
+                    levels.insert(item.label.clone(), true);
+                }
                 if item.should_be_visible {
                     if !surfaces.is_visible(&item.label) {
                         let _ = set_window_visible_without_activation(&window, true);
@@ -1878,20 +1889,21 @@ impl NativeReactor {
                     continue;
                 }
 
-                let current_level = window_levels
-                    .lock()
-                    .ok()
-                    .and_then(|levels| levels.get(&item.label).copied());
-                if is_new {
-                    if let Ok(mut levels) = window_levels.lock() {
-                        levels.insert(item.label.clone(), item.always_on_top);
-                    }
-                } else if current_level != Some(item.always_on_top)
-                    && set_window_always_on_top(&window, item.always_on_top).is_ok()
-                {
-                    if let Ok(mut levels) = window_levels.lock() {
-                        levels.insert(item.label.clone(), item.always_on_top);
-                    }
+                // Re-assert the topmost level from the window's ACTUAL ex-style,
+                // not a cached value. set_window_owner (HWND_NOTOPMOST) clears
+                // topmost whenever the owner is (re)attached, so an always-on-top
+                // bar would otherwise silently drop below ordinary browser
+                // windows and never recover — a cached level still reading
+                // "topmost" makes a cache-based guard skip the fix. Reading the
+                // live style fixes it in the same pass and, because we only
+                // re-raise when it truly lost topmost, avoids leapfrogging an
+                // open popup (topmost too) on routine syncs.
+                let actual_top = is_window_always_on_top(&window).unwrap_or(false);
+                if actual_top != item.always_on_top {
+                    let _ = set_window_always_on_top(&window, item.always_on_top);
+                }
+                if let Ok(mut levels) = window_levels.lock() {
+                    levels.insert(item.label.clone(), item.always_on_top);
                 }
                 if is_new || item.geometry_changed {
                     let _ = window.set_ignore_cursor_events(false);
