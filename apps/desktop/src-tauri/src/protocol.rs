@@ -17,6 +17,8 @@ pub enum ExtensionMessage {
         menus: Vec<SyncedMenu>,
         #[serde(default, rename = "resetMenuUids")]
         reset_menu_uids: Vec<String>,
+        #[serde(default, rename = "nativeShortcuts")]
+        native_shortcuts: Vec<SyncedNativeShortcut>,
     },
     #[serde(rename = "pairWindow")]
     PairWindow {
@@ -195,6 +197,12 @@ where
 // See packages/protocol/src/menu.ts and native.ts for the authoritative split
 // between the RENDER axis (MenuView) and the NATIVE axis (MenuPlacement /
 // MenuNativeProps / MenuTarget). These structs mirror those TypeScript types.
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SyncedNativeShortcut {
+    pub id: String,
+    pub key: String,
+}
 
 /// RENDER axis: the item tree and appearance the surface webview draws. Never
 /// describes window geometry, sizing-as-a-window, or when a surface shows.

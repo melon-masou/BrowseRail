@@ -271,12 +271,17 @@ async fn handle_connection(
                                         outgoing: outgoing.clone(),
                                     });
                                 }
-                                ExtensionMessage::Sync { revision, menus, reset_menu_uids } => {
+                                ExtensionMessage::Sync {
+                                    revision,
+                                    menus,
+                                    reset_menu_uids,
+                                    native_shortcuts,
+                                } => {
                                     let Some(ref inst_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored Sync received before Hello");
                                         continue;
                                     };
-                                    crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, menus={}", menus.len()));
+                                    crate::debug::log("Socket", format!("Sync: inst={inst_uid}, rev={revision}, menus={}, native_shortcuts={}", menus.len(), native_shortcuts.len()));
                                     connection_sm.transition(
                                         ConnectionState::Syncing {
                                             connection_uid,
@@ -290,6 +295,7 @@ async fn handle_connection(
                                         revision,
                                         menus,
                                         reset_menu_uids,
+                                        native_shortcuts,
                                     });
                                     connection_sm.transition(
                                         ConnectionState::Active {

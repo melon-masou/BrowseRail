@@ -68,6 +68,11 @@ export interface StoredNativeShortcut {
   tabMode?: TabMode;
 }
 
+export interface SyncedNativeShortcut {
+  id: string;
+  key: string;
+}
+
 export interface UrlRule {
   uid: string;
   name: string;

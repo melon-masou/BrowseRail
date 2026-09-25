@@ -1,20 +1,27 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use uuid::Uuid;
-use windows::Win32::Foundation::{CloseHandle, HWND};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_OEM_1, VK_OEM_2, VK_OEM_3, VK_OEM_4,
+    VK_OEM_5, VK_OEM_6, VK_OEM_7, VK_OEM_COMMA, VK_OEM_MINUS, VK_OEM_PERIOD, VK_OEM_PLUS,
+    VK_RETURN, VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_SYSTEM_FOREGROUND, GetForegroundWindow, GetWindowThreadProcessId, IsWindow,
-    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    CallNextHookEx, EVENT_SYSTEM_FOREGROUND, GetForegroundWindow, GetGUIThreadInfo,
+    GetWindowThreadProcessId, GUITHREADINFO, IsWindow, KBDLLHOOKSTRUCT,
+    SetWindowsHookExW, WH_KEYBOARD_LL, WINEVENT_OUTOFCONTEXT,
+    WINEVENT_SKIPOWNPROCESS, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
 use windows::core::PWSTR;
 
@@ -26,7 +33,7 @@ use crate::panel::{
 };
 use crate::protocol::{
     AttachmentMode, BrowserInstance, BrowserWindowSnapshot, MenuAnchor, MenuPlacement, MenuTarget,
-    NativeMessage, SyncedMenu,
+    NativeMessage, SyncedMenu, SyncedNativeShortcut,
 };
 use crate::session::SessionRegistry;
 use crate::settings::CollapsedMenu;
@@ -61,6 +68,11 @@ pub enum NativeCommand {
         revision: u64,
         menus: Vec<SyncedMenu>,
         reset_menu_uids: Vec<String>,
+        native_shortcuts: Vec<SyncedNativeShortcut>,
+    },
+    NativeShortcutTriggered {
+        key: String,
+        foreground_hwnd: isize,
     },
     BeginWindowPairing {
         connection_uid: Uuid,
@@ -240,6 +252,164 @@ fn install_foreground_event_hook(app: &AppHandle, sender: UnboundedSender<Native
             let _ = FOREGROUND_EVENT_HOOK.set(hook.0 as isize);
         }
     });
+}
+
+static KEYBOARD_HOOK: OnceLock<isize> = OnceLock::new();
+static KEYBOARD_EVENT_SENDER: OnceLock<UnboundedSender<NativeCommand>> = OnceLock::new();
+static ACTIVE_NATIVE_SHORTCUTS: LazyLock<RwLock<HashMap<String, Vec<SyncedNativeShortcut>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+fn install_keyboard_hook(app: &AppHandle, sender: UnboundedSender<NativeCommand>) {
+    let _ = KEYBOARD_EVENT_SENDER.set(sender);
+    let _ = app.run_on_main_thread(|| {
+        let hook = unsafe {
+            SetWindowsHookExW(
+                WH_KEYBOARD_LL,
+                Some(low_level_keyboard_proc),
+                None,
+                0,
+            )
+        };
+        match hook {
+            Ok(h) => {
+                crate::debug::log(
+                    "Native:Hook",
+                    format!("Installed low-level keyboard hook: {:?}", h.0),
+                );
+                let _ = KEYBOARD_HOOK.set(h.0 as isize);
+            }
+            Err(e) => {
+                crate::debug::log(
+                    "Native:Hook",
+                    format!("Failed to install low-level keyboard hook: {e:?}"),
+                );
+            }
+        }
+    });
+}
+
+fn is_caret_or_edit_active(hwnd: HWND) -> bool {
+    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, None) };
+    if thread_id == 0 {
+        return false;
+    }
+    let mut info = GUITHREADINFO {
+        cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetGUIThreadInfo(thread_id, &mut info).is_ok() } {
+        if !info.hwndCaret.0.is_null() || (info.flags.0 & 1 != 0) {
+            return true;
+        }
+    }
+    false
+}
+
+fn format_vk_key(kbd: &KBDLLHOOKSTRUCT) -> Option<String> {
+    let vk = kbd.vkCode;
+    if vk == VK_CONTROL.0 as u32
+        || vk == VK_SHIFT.0 as u32
+        || vk == VK_MENU.0 as u32
+        || vk == VK_LWIN.0 as u32
+        || vk == VK_RWIN.0 as u32
+    {
+        return None;
+    }
+
+    let ctrl = unsafe { (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
+    let alt = unsafe { (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0 } || (kbd.flags.0 & 0x20 != 0);
+    let shift = unsafe { (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0 };
+    let meta = unsafe { (GetAsyncKeyState(VK_LWIN.0 as i32) as u16 & 0x8000) != 0 }
+        || unsafe { (GetAsyncKeyState(VK_RWIN.0 as i32) as u16 & 0x8000) != 0 };
+
+    let key_name = match vk {
+        0x41..=0x5A => {
+            let ch = (b'a' + (vk - 0x41) as u8) as char;
+            if ctrl || alt || meta {
+                ch.to_ascii_uppercase().to_string()
+            } else {
+                ch.to_string()
+            }
+        }
+        0x30..=0x39 => {
+            let ch = (b'0' + (vk - 0x30) as u8) as char;
+            ch.to_string()
+        }
+        0x70..=0x7B => format!("F{}", vk - 0x70 + 1),
+        x if x == VK_SPACE.0 as u32 => "Space".to_string(),
+        x if x == VK_RETURN.0 as u32 => "Enter".to_string(),
+        x if x == VK_TAB.0 as u32 => "Tab".to_string(),
+        0x08 => "Backspace".to_string(),
+        0x2E => "Delete".to_string(),
+        0x1B => "Escape".to_string(),
+        x if x == VK_OEM_1.0 as u32 => ";".to_string(),
+        x if x == VK_OEM_PLUS.0 as u32 => "+".to_string(),
+        x if x == VK_OEM_COMMA.0 as u32 => ",".to_string(),
+        x if x == VK_OEM_MINUS.0 as u32 => "-".to_string(),
+        x if x == VK_OEM_PERIOD.0 as u32 => ".".to_string(),
+        x if x == VK_OEM_2.0 as u32 => "/".to_string(),
+        x if x == VK_OEM_3.0 as u32 => "`".to_string(),
+        x if x == VK_OEM_4.0 as u32 => "[".to_string(),
+        x if x == VK_OEM_5.0 as u32 => "\\".to_string(),
+        x if x == VK_OEM_6.0 as u32 => "]".to_string(),
+        x if x == VK_OEM_7.0 as u32 => "'".to_string(),
+        _ => return None,
+    };
+
+    let mut parts = Vec::new();
+    if ctrl {
+        parts.push("Ctrl");
+    }
+    if alt {
+        parts.push("Alt");
+    }
+    if shift {
+        parts.push("Shift");
+    }
+    if meta {
+        parts.push("Meta");
+    }
+    parts.push(&key_name);
+    Some(parts.join("+"))
+}
+
+unsafe extern "system" fn low_level_keyboard_proc(
+    code: i32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if code >= 0 && (wparam.0 as u32 == WM_KEYDOWN || wparam.0 as u32 == WM_SYSKEYDOWN) {
+        let kbd = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+        let fg_hwnd = unsafe { GetForegroundWindow() };
+        if !fg_hwnd.0.is_null() && foreground_browser_kind(fg_hwnd).is_some() {
+            if let Some(key_str) = format_vk_key(kbd) {
+                let has_match = {
+                    if let Ok(guard) = ACTIVE_NATIVE_SHORTCUTS.read() {
+                        guard.values().any(|list| {
+                            list.iter().any(|s| s.key.eq_ignore_ascii_case(&key_str))
+                        })
+                    } else {
+                        false
+                    }
+                };
+
+                if has_match {
+                    let is_typing = is_caret_or_edit_active(fg_hwnd);
+                    let is_single_char = !key_str.contains('+') && key_str.chars().count() == 1;
+                    if !(is_single_char && is_typing) {
+                        if let Some(sender) = KEYBOARD_EVENT_SENDER.get() {
+                            let _ = sender.send(NativeCommand::NativeShortcutTriggered {
+                                key: key_str,
+                                foreground_hwnd: fg_hwnd.0 as isize,
+                            });
+                        }
+                        return LRESULT(1);
+                    }
+                }
+            }
+        }
+    }
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
 /// Resolve where a free surface should sit, in logical screen coordinates.
@@ -428,6 +598,7 @@ impl NativeReactor {
         });
 
         install_foreground_event_hook(&reactor.app, sender.clone());
+        install_keyboard_hook(&reactor.app, sender.clone());
 
         tauri::async_runtime::spawn(async move {
             reactor.run(receiver).await;
@@ -457,6 +628,9 @@ impl NativeReactor {
                     if let Some((instance_uid, window_uids)) =
                         self.registry.disconnect(connection_uid)
                     {
+                        if let Ok(mut map) = ACTIVE_NATIVE_SHORTCUTS.write() {
+                            map.remove(&instance_uid);
+                        }
                         if let Ok(mut handles) = self.browser_window_handles.lock() {
                             handles.retain(|(stored_instance_uid, _), _| {
                                 stored_instance_uid != &instance_uid
@@ -472,12 +646,16 @@ impl NativeReactor {
                     revision,
                     menus,
                     reset_menu_uids,
+                    native_shortcuts,
                 } => {
                     if let Ok(Some(outcome)) =
                         self.registry
-                            .sync(connection_uid, revision, menus, reset_menu_uids)
+                            .sync(connection_uid, revision, menus, reset_menu_uids, native_shortcuts.clone())
                     {
                         let instance_uid = outcome.instance_uid.clone();
+                        if let Ok(mut map) = ACTIVE_NATIVE_SHORTCUTS.write() {
+                            map.insert(instance_uid.clone(), native_shortcuts);
+                        }
                         let synced_menus = outcome.menus.clone();
                         let free_menus = synced_menus
                             .iter()
@@ -750,6 +928,7 @@ impl NativeReactor {
                             self.handle_sync_outcome(crate::session::SyncOutcome {
                                 instance_uid: instance_uid.clone(),
                                 menus: menus.clone(),
+                                native_shortcuts: Vec::new(),
                                 removed_window_uids: Vec::new(),
                                 reset_menu_uids: Vec::new(),
                             });
@@ -790,7 +969,58 @@ impl NativeReactor {
                 NativeCommand::UpdateTray => {
                     self.check_update_tray();
                 }
+                NativeCommand::NativeShortcutTriggered {
+                    key,
+                    foreground_hwnd,
+                } => {
+                    self.handle_native_shortcut_triggered(&key, foreground_hwnd);
+                }
             }
+        }
+    }
+
+    fn handle_native_shortcut_triggered(&self, key: &str, foreground_hwnd: isize) {
+        crate::debug::log(
+            "Native:Shortcut",
+            format!("Triggered shortcut key '{key}', fg_hwnd={foreground_hwnd}"),
+        );
+        let matched = if let Ok(handles) = self.browser_window_handles.lock() {
+            handles
+                .iter()
+                .find(|(_, hwnd)| **hwnd == foreground_hwnd)
+                .map(|((inst, win), _)| (inst.clone(), Some(win.clone())))
+        } else {
+            None
+        };
+
+        let (target_instance, target_window) = match matched {
+            Some((inst, win)) => (Some(inst), win),
+            None => {
+                let exts = self.registry.active_extensions();
+                if let Some(first) = exts.first() {
+                    (Some(first.instance_uid.clone()), None)
+                } else {
+                    (None, None)
+                }
+            }
+        };
+
+        let Some(instance_uid) = target_instance else {
+            crate::debug::log("Native:Shortcut", "No active instance found for shortcut");
+            return;
+        };
+
+        if let Some(shortcut) = self.registry.find_shortcut_by_key(&instance_uid, key) {
+            crate::debug::log(
+                "Native:Shortcut",
+                format!("Invoking shortcut id={} for instance={}", shortcut.id, instance_uid),
+            );
+            let _ = self.registry.invoke_shortcut(&instance_uid, target_window, &shortcut.id);
+        } else {
+            crate::debug::log(
+                "Native:Shortcut",
+                format!("No shortcut found for key '{key}' in instance {instance_uid}"),
+            );
         }
     }
 
@@ -927,6 +1157,7 @@ impl NativeReactor {
                 self.handle_sync_outcome(crate::session::SyncOutcome {
                     instance_uid: instance_uid.clone(),
                     menus,
+                    native_shortcuts: Vec::new(),
                     removed_window_uids: Vec::new(),
                     reset_menu_uids: Vec::new(),
                 });

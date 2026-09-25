@@ -8,6 +8,7 @@ import {
   type ExtensionMessage,
   type MenuView,
   type SyncedMenu,
+  type SyncedNativeShortcut,
 } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 import browser from "webextension-polyfill";
@@ -501,7 +502,10 @@ async function handleMessage(raw: unknown): Promise<void> {
       return;
     }
     try {
-      if (isDynamicAction(value.actionUid)) {
+      if (value.actionUid.startsWith("shortcut:")) {
+        const shortcutId = value.actionUid.slice("shortcut:".length);
+        await executeNativeShortcut(shortcutId, targetWindowUid);
+      } else if (isDynamicAction(value.actionUid)) {
         const { dynamicUid, tabMode } = parseDynamicAction(value.actionUid);
         const live = (await loadDynamicValues())[dynamicUid];
         if (live?.url) {
@@ -764,11 +768,25 @@ async function syncOnce(): Promise<void> {
     `syncOnce: totalWindows=${windows.length}, menus=${menuStates.length}, free=${syncedFreeMenus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
   );
 
+  const rawNativeShortcuts = config.nativeShortcuts ?? [];
+  const nativeShortcuts: SyncedNativeShortcut[] = rawNativeShortcuts
+    .filter(
+      (s) =>
+        s.key &&
+        s.key.trim().length > 0 &&
+        (s.type === "dynamic" ? Boolean(s.dynamicUid) : Boolean(s.path || s.url)),
+    )
+    .map((s) => ({
+      id: s.id,
+      key: s.key.trim(),
+    }));
+
   send({
     type: "sync",
     revision: ++revision,
     menus: syncedMenus,
     ...(resetMenuUids.size > 0 ? { resetMenuUids: Array.from(resetMenuUids) } : {}),
+    ...(nativeShortcuts.length > 0 ? { nativeShortcuts } : {}),
   });
   resetMenuUids.clear();
 
@@ -968,3 +986,30 @@ browser.commands.onCommand.addListener(async (command) => {
     await navigateToUrl(browser, windowId, target.url, tabMode);
   }
 });
+
+async function executeNativeShortcut(shortcutId: string, targetWindowUid?: string): Promise<void> {
+  const config = await loadConfig();
+  const target = config.nativeShortcuts?.find((s) => s.id === shortcutId);
+  if (!target) return;
+  const targetWindow = targetWindowUid ?? lastFocusedWindowUid ?? (await browser.windows.getLastFocused())?.id;
+  if (!targetWindow) return;
+  const tabMode = target.tabMode || "replace";
+  if (target.type === "dynamic" && target.dynamicUid) {
+    const live = (await loadDynamicValues())[target.dynamicUid];
+    if (live?.url) {
+      await navigateToUrl(browser, targetWindow, live.url, tabMode);
+    }
+    return;
+  }
+  if (target.path) {
+    const rootPrefix = await loadBookmarkRootPrefix();
+    const effectivePath = combineRootAndItemPath(rootPrefix, target.path);
+    const tree = (await browser.bookmarks.getTree()) as BookmarkNode[];
+    const node = findBookmarkNodeByPath(tree, effectivePath, target.url);
+    if (node?.url) {
+      await navigateToUrl(browser, targetWindow, node.url, tabMode);
+    }
+  } else if (target.url) {
+    await navigateToUrl(browser, targetWindow, target.url, tabMode);
+  }
+}

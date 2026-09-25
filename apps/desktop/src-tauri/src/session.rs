@@ -4,7 +4,9 @@ use std::sync::RwLock;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-use crate::protocol::{BrowserInstance, FreePosition, MenuPlacement, NativeMessage, SyncedMenu};
+use crate::protocol::{
+    BrowserInstance, FreePosition, MenuPlacement, NativeMessage, SyncedMenu, SyncedNativeShortcut,
+};
 
 #[derive(Default)]
 pub struct SessionRegistry {
@@ -17,6 +19,7 @@ struct Session {
     outgoing: Option<UnboundedSender<NativeMessage>>,
     // The optional window UID distinguishes one instance-wide free menu from each bound copy.
     menus: HashMap<(Option<String>, String), SyncedMenu>,
+    native_shortcuts: Vec<SyncedNativeShortcut>,
     revision: u64,
 }
 
@@ -25,6 +28,7 @@ pub struct SyncOutcome {
     pub menus: Vec<SyncedMenu>,
     pub removed_window_uids: Vec<String>,
     pub reset_menu_uids: Vec<String>,
+    pub native_shortcuts: Vec<SyncedNativeShortcut>,
 }
 
 pub struct InstanceMenusSnapshot {
@@ -62,6 +66,7 @@ impl SessionRegistry {
                     instance,
                     outgoing: Some(outgoing),
                     menus: HashMap::new(),
+                    native_shortcuts: Vec::new(),
                     revision: 0,
                 },
             );
@@ -74,6 +79,7 @@ impl SessionRegistry {
         revision: u64,
         menus: Vec<SyncedMenu>,
         reset_menu_uids: Vec<String>,
+        native_shortcuts: Vec<SyncedNativeShortcut>,
     ) -> Result<Option<SyncOutcome>, String> {
         let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
@@ -96,6 +102,7 @@ impl SessionRegistry {
             .cloned()
             .collect();
         session.menus = next;
+        session.native_shortcuts = native_shortcuts.clone();
         session.revision = revision;
 
         Ok(Some(SyncOutcome {
@@ -103,6 +110,7 @@ impl SessionRegistry {
             menus,
             removed_window_uids,
             reset_menu_uids,
+            native_shortcuts,
         }))
     }
 
@@ -169,6 +177,42 @@ impl SessionRegistry {
                 menu_uid: Some(menu_uid),
             })
             .map_err(|_| "The browser instance is disconnected".into())
+    }
+
+    pub fn invoke_shortcut(
+        &self,
+        instance_uid: &str,
+        window_uid: Option<String>,
+        shortcut_id: &str,
+    ) -> Result<(), String> {
+        let sessions = self.sessions.read().map_err(|_| "Session lock failed")?;
+        let session = sessions
+            .get(instance_uid)
+            .ok_or("The browser instance is disconnected")?;
+        session
+            .outgoing
+            .as_ref()
+            .ok_or("The browser instance is disconnected")?
+            .send(NativeMessage::Invoke {
+                action_uid: format!("shortcut:{shortcut_id}"),
+                window_uid,
+                menu_uid: None,
+            })
+            .map_err(|_| "The browser instance is disconnected".into())
+    }
+
+    pub fn find_shortcut_by_key(
+        &self,
+        instance_uid: &str,
+        key: &str,
+    ) -> Option<SyncedNativeShortcut> {
+        let sessions = self.sessions.read().ok()?;
+        let session = sessions.get(instance_uid)?;
+        session
+            .native_shortcuts
+            .iter()
+            .find(|s| s.key.eq_ignore_ascii_case(key))
+            .cloned()
     }
 
     /// Report a free surface's new absolute screen position back to the
@@ -418,10 +462,10 @@ mod tests {
         registry.register(connection_a, instance("instance-a"), sender_a);
         registry.register(connection_b, instance("instance-b"), sender_b);
         registry
-            .sync(connection_a, 1, vec![menu("window-a")], Vec::new())
+            .sync(connection_a, 1, vec![menu("window-a")], Vec::new(), Vec::new())
             .unwrap();
         registry
-            .sync(connection_b, 1, vec![menu("window-b")], Vec::new())
+            .sync(connection_b, 1, vec![menu("window-b")], Vec::new(), Vec::new())
             .unwrap();
 
         registry
@@ -448,10 +492,10 @@ mod tests {
         registry.register(connection_a, instance("instance-a"), sender_a);
         registry.register(connection_b, instance("instance-b"), sender_b);
         registry
-            .sync(connection_a, 1, vec![menu("window-a")], Vec::new())
+            .sync(connection_a, 1, vec![menu("window-a")], Vec::new(), Vec::new())
             .unwrap();
         registry
-            .sync(connection_b, 1, vec![menu("window-b")], Vec::new())
+            .sync(connection_b, 1, vec![menu("window-b")], Vec::new(), Vec::new())
             .unwrap();
 
         let result = registry.invoke("instance-a", "window-b", "bookmark:same".into());
@@ -471,7 +515,7 @@ mod tests {
         let (sender, _) = unbounded_channel();
         registry.register(connection, instance("instance-a"), sender);
         registry
-            .sync(connection, 1, vec![menu("window-a")], Vec::new())
+            .sync(connection, 1, vec![menu("window-a")], Vec::new(), Vec::new())
             .unwrap();
 
         let disconnected = registry.disconnect_all();
@@ -492,14 +536,14 @@ mod tests {
 
         registry.register(old_connection, instance("instance-a"), old_sender);
         registry
-            .sync(old_connection, 1, vec![menu("window-a")], Vec::new())
+            .sync(old_connection, 1, vec![menu("window-a")], Vec::new(), Vec::new())
             .unwrap();
 
         registry.register(new_connection, instance("instance-a"), new_sender);
 
         assert!(registry.disconnect(old_connection).is_none());
         let outcome = registry
-            .sync(new_connection, 1, vec![menu("window-b")], Vec::new())
+            .sync(new_connection, 1, vec![menu("window-b")], Vec::new(), Vec::new())
             .unwrap()
             .expect("sync outcome");
         assert_eq!(outcome.removed_window_uids, vec!["window-a"]);
@@ -516,7 +560,7 @@ mod tests {
 
         registry.register(old_connection, instance("instance-a"), old_sender);
         registry
-            .sync(old_connection, 1, vec![menu("window-a")], Vec::new())
+            .sync(old_connection, 1, vec![menu("window-a")], Vec::new(), Vec::new())
             .unwrap();
 
         let disconnected = registry.disconnect(old_connection);
@@ -528,7 +572,7 @@ mod tests {
 
         registry.register(new_connection, instance("instance-a"), new_sender);
         let outcome = registry
-            .sync(new_connection, 1, vec![menu("window-b")], Vec::new())
+            .sync(new_connection, 1, vec![menu("window-b")], Vec::new(), Vec::new())
             .unwrap()
             .expect("sync outcome");
         assert_eq!(outcome.removed_window_uids, vec!["window-a"]);
@@ -543,19 +587,19 @@ mod tests {
         registry.register(connection, instance("instance-a"), sender);
         assert!(
             registry
-                .sync(connection, 2, vec![menu("window-a")], Vec::new())
+                .sync(connection, 2, vec![menu("window-a")], Vec::new(), Vec::new())
                 .unwrap()
                 .is_some()
         );
         assert!(
             registry
-                .sync(connection, 2, vec![menu("window-a")], Vec::new())
+                .sync(connection, 2, vec![menu("window-a")], Vec::new(), Vec::new())
                 .unwrap()
                 .is_none()
         );
         assert!(
             registry
-                .sync(connection, 1, vec![menu("window-a")], Vec::new())
+                .sync(connection, 1, vec![menu("window-a")], Vec::new(), Vec::new())
                 .unwrap()
                 .is_none()
         );
@@ -586,6 +630,7 @@ mod tests {
             connection_a,
             1,
             vec![menu("window-1"), menu("window-2")],
+            Vec::new(),
             Vec::new(),
         );
 

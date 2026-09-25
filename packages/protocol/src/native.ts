@@ -17,6 +17,7 @@
 // =============================================================================
 
 import type { MenuView } from "./menu";
+import type { SyncedNativeShortcut } from "./index";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const DEFAULT_PORT = 17654 as const;
@@ -163,6 +164,7 @@ export type ExtensionMessage =
       // already-open free surface should move back to its unsaved default spot;
       // ordinary syncs must preserve that window's current position.
       resetMenuUids?: string[];
+      nativeShortcuts?: SyncedNativeShortcut[];
     }
   | { type: "pairWindow"; requestUid: string; windowUid: string }
   | { type: "confirmWindowPairing"; requestUid: string; windowUid: string }
