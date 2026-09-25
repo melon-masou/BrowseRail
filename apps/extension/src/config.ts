@@ -475,6 +475,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
+    const showPageTitle = typeof value.showPageTitle === "boolean" ? value.showPageTitle : undefined;
     return {
       uid,
       type: "dynamic",
@@ -482,6 +483,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
       ...(rename ? { rename } : {}),
       ...(color ? { color } : {}),
       ...(tabMode ? { tabMode } : {}),
+      ...(showPageTitle ? { showPageTitle } : {}),
     };
   }
 

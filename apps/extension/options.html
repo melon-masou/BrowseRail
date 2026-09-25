@@ -144,7 +144,7 @@
             <div class="url-rules-title-row">
               <span class="url-rules-hint" data-i18n="urlRules.hint">Define URL patterns to only show menus on specific sites</span>
             </div>
-            <button id="add-url-rule-btn" class="menu-action-btn add-url-rule-btn" type="button" data-i18n="btn.addUrlRule">+ Add URL rule</button>
+            <button id="add-url-rule-btn" class="menu-action-btn add-url-rule-btn" type="button" data-i18n="btn.addUrlRule">+ Add</button>
           </div>
           <div id="url-rules-list" class="url-rules-list"></div>
           <p class="url-rules-syntax-guide" data-i18n="urlRules.syntaxHint">Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line</p>
@@ -152,12 +152,11 @@
 
         <!-- Dynamic Bookmarks Panel -->
         <section id="dynamic-panel" class="dynamic-section" role="tabpanel" aria-labelledby="dynamic-tab" hidden>
-          <div class="url-rules-header">
-            <span class="url-rules-hint" data-i18n="dynamic.hint">A function decides a bookmark's URL as you browse. It runs sandboxed on page visits.</span>
-            <button id="add-dynamic-btn" class="menu-action-btn add-url-rule-btn" type="button" data-i18n="dynamic.add">+ Add dynamic bookmark</button>
+          <div class="dynamic-toolbar">
+            <span class="url-rules-hint" data-i18n="dynamic.hint">A function decides a bookmark's URL as you browse.</span>
+            <button id="add-dynamic-btn" class="menu-action-btn add-dynamic-btn" type="button" data-i18n="dynamic.add">+ Add</button>
           </div>
           <div id="dynamic-list" class="dynamic-list"></div>
-          <p class="url-rules-syntax-guide" data-i18n="dynamic.syntaxHint">function dynamicBookmark({ action, url, title, current }) { return { newUrl: null, title: null }; } — return an http(s) newUrl to update; leave title empty to use the page title.</p>
         </section>
 
         <div class="form-actions-row">
@@ -171,42 +170,25 @@
       <section class="card toolkit-card">
         <div class="toolkit-card-row">
           <h2 class="toolkit-card-title" data-i18n="section.toolkit">Tools</h2>
-          <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap bookmark</button>
-          <button type="button" id="add-dynamic-marker-btn" class="action-btn" data-i18n="toolkit.addDynamicMarker">Add dynamic bookmark (flatten)</button>
+          <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap to bookmarks</button>
         </div>
       </section>
 
-      <!-- Add Dynamic Marker Dialog -->
-      <dialog id="dynamic-marker-dialog" class="space-bookmark-dialog">
-        <div class="space-bookmark-dialog-header">
-          <span data-i18n="toolkit.dynamicMarkerTitle">Add dynamic bookmark to folder</span>
-          <button type="button" id="dynamic-marker-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+      <!-- Pick Dynamic Bookmark / Menu Dialog -->
+      <dialog id="pick-dynamic-dialog" class="menu-settings-dialog">
+        <div class="menu-settings-dialog-header">
+          <span id="pick-dynamic-title" data-i18n="dynamic.pickTitle">Select dynamic bookmark</span>
+          <button type="button" id="pick-dynamic-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
-        <form id="dynamic-marker-form" class="space-bookmark-dialog-body">
-          <div class="space-bookmark-fields">
-            <label>
-              <span data-i18n="toolkit.dynamicMarkerPick">Dynamic bookmark</span>
-              <select id="dynamic-marker-select"></select>
-            </label>
-          </div>
-          <div class="space-bookmark-folder-row">
-            <span data-i18n="toolkit.destination">Destination folder</span>
-            <button type="button" id="dynamic-marker-folder-btn" class="action-btn" data-i18n="toolkit.chooseFolder">Choose…</button>
-            <span id="dynamic-marker-folder-display" class="space-bookmark-folder-name"></span>
-          </div>
-          <p class="space-bookmark-help" data-i18n="toolkit.dynamicMarkerHelp">Inserts a bookmark whose URL is https://browserail.local/#Dynamic:&lt;id&gt;. Flatten the folder to show it on the rail; clicking it (even in the native bookmarks bar) redirects to the live URL.</p>
-          <div class="space-bookmark-dialog-actions">
-            <button type="submit" id="dynamic-marker-add" class="save-btn" data-i18n="toolkit.add">Add</button>
-            <button type="button" id="dynamic-marker-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
-            <output id="dynamic-marker-result" class="toolkit-status" aria-live="polite"></output>
-          </div>
-        </form>
+        <div class="menu-settings-dialog-body" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+          <div id="pick-dynamic-list" class="pick-menu-list"></div>
+        </div>
       </dialog>
 
       <!-- Add Space Bookmark Dialog -->
       <dialog id="space-bookmark-dialog" class="space-bookmark-dialog">
         <div class="space-bookmark-dialog-header">
-          <span data-i18n="toolkit.dialogTitle">Add gap bookmark</span>
+          <span data-i18n="toolkit.dialogTitle">Add gap to bookmarks</span>
           <button type="button" id="space-bookmark-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <form id="space-bookmark-form" class="space-bookmark-dialog-body">
@@ -236,6 +218,28 @@ Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
             <button type="submit" id="space-bookmark-add" class="save-btn" data-i18n="toolkit.add">Add</button>
             <button type="button" id="space-bookmark-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
             <output id="space-bookmark-result" class="toolkit-status" aria-live="polite"></output>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Add Dynamic Marker Dialog -->
+      <dialog id="dynamic-marker-dialog" class="space-bookmark-dialog">
+        <div class="space-bookmark-dialog-header">
+          <span data-i18n="toolkit.dynamicMarkerTitle">Add to bookmarks</span>
+          <button type="button" id="dynamic-marker-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <form id="dynamic-marker-form" class="space-bookmark-dialog-body">
+          <div class="space-bookmark-folder-row">
+            <span data-i18n="toolkit.destination">Destination folder</span>
+            <button type="button" id="dynamic-marker-folder-btn" class="action-btn" data-i18n="toolkit.chooseFolder">Choose…</button>
+            <span id="dynamic-marker-folder-display" class="space-bookmark-folder-name"></span>
+          </div>
+          <p class="space-bookmark-help" data-i18n="toolkit.dynamicMarkerHelp">For flattened folders: inserts a dynamic bookmark between the folder’s bookmarks on the rail.
+The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dynamic:&lt;id&gt;.</p>
+          <div class="space-bookmark-dialog-actions">
+            <button type="submit" id="dynamic-marker-add" class="save-btn" data-i18n="toolkit.add">Add</button>
+            <button type="button" id="dynamic-marker-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
+            <output id="dynamic-marker-result" class="toolkit-status" aria-live="polite"></output>
           </div>
         </form>
       </dialog>
@@ -282,7 +286,7 @@ Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
       <!-- Menu Settings Dialog -->
       <dialog id="menu-settings-dialog" class="menu-settings-dialog">
         <div class="menu-settings-dialog-header">
-          <span id="menu-settings-dialog-title" data-i18n="menu.settings">⚙️ Settings</span>
+          <span id="menu-settings-dialog-title" data-i18n="menu.settings">Settings</span>
           <button type="button" id="menu-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <div class="menu-settings-tabs" role="tablist" aria-label="menu.settings">
@@ -310,14 +314,16 @@ Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
                   <option value="left" data-i18n="expandDirection.left">Left</option>
                 </select>
               </label>
-              <label>
-                <span data-i18n="menuSettings.buttonFontSize">Bar font size (px)</span>
-                <input id="menu-setting-font-size" type="number" min="1" step="1" />
-              </label>
-              <label class="item-setting-check-label">
-                <input id="menu-setting-font-size-auto" type="checkbox" />
-                <span data-i18n="menuSettings.buttonFontSizeAuto">Auto (scale with button size)</span>
-              </label>
+              <div class="menu-setting-field">
+                <span class="menu-setting-label" data-i18n="menuSettings.buttonFontSize">Bar font size (px)</span>
+                <div class="menu-setting-input-with-auto">
+                  <input id="menu-setting-font-size" type="number" min="1" step="1" />
+                  <label class="menu-setting-auto-check">
+                    <input id="menu-setting-font-size-auto" type="checkbox" />
+                    <span data-i18n="menuSettings.buttonFontSizeAuto">Auto</span>
+                  </label>
+                </div>
+              </div>
               <label>
                 <span data-i18n="menuSettings.popupFontSize">Menu font size (px)</span>
                 <input id="menu-setting-popup-font-size" type="number" min="1" step="1" />
@@ -357,6 +363,18 @@ Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
           <section id="menu-url-rules-panel" class="menu-settings-panel" role="tabpanel" aria-labelledby="menu-url-rules-tab" hidden>
             <div class="menu-setting-url-rules-list" id="menu-setting-url-rules-list"></div>
           </section>
+        </div>
+      </dialog>
+
+      <!-- Dynamic Bookmark Settings Dialog -->
+      <dialog id="dynamic-settings-dialog" class="menu-settings-dialog">
+        <div class="menu-settings-dialog-header">
+          <span id="dynamic-settings-dialog-title" data-i18n="dynamic.settingsTitle">Settings</span>
+          <button type="button" id="dynamic-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <div class="menu-settings-dialog-body" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+          <span class="url-rules-hint" data-i18n="dynamic.rulesHelp">Select which URL rules activate this bookmark:</span>
+          <div class="menu-setting-url-rules-list" id="dynamic-setting-url-rules-list"></div>
         </div>
       </dialog>
 
@@ -409,6 +427,12 @@ Fields: units (0.1–20), transparent (true/false), color (#rrggbb).</p>
               <label class="item-setting-check-label" id="item-setting-include-folders-label" style="display: none;">
                 <input type="checkbox" id="item-setting-include-folders" />
                 <span data-i18n="itemSettings.includeFolders">Include subfolders when flattening</span>
+              </label>
+            </div>
+            <div id="item-settings-dynamic-controls" class="item-settings-folder-controls" style="display: none;">
+              <label class="item-setting-check-label">
+                <input type="checkbox" id="item-setting-dynamic-show-page-title" />
+                <span data-i18n="dynamic.showPageTitle">Show current bookmark title</span>
               </label>
             </div>
             <div class="item-settings-actions">

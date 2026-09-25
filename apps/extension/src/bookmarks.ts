@@ -442,11 +442,13 @@ function dynamicBookmarkEntry(
   tabMode: TabMode,
   color?: string,
   rename?: string,
+  showPageTitle?: boolean,
 ): BookmarkEntry {
+  const dynamicTitle = showPageTitle && info.title ? info.title : undefined;
   return {
     kind: "bookmark",
     uid: actionUid("dynamic", dynamicUid, tabMode),
-    label: rename || info.title || info.name || info.url || "Dynamic",
+    label: rename || dynamicTitle || info.name || info.url || "Dynamic",
     ...(color ? { color } : {}),
     ...(rename ? { rename } : {}),
   };
@@ -468,7 +470,7 @@ export async function resolveMenuItems(
   const registerTarget = context.registerTarget ?? (() => crypto.randomUUID());
   const dynamicResolve = context.dynamicResolve ?? (() => undefined);
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, transparent }): Promise<LayoutEntry[]> => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, transparent, showPageTitle }): Promise<LayoutEntry[]> => {
       if (type === "menuToggle") {
         const entry: LayoutEntry = {
           kind: "menuToggle",
@@ -495,7 +497,7 @@ export async function resolveMenuItems(
         const info = dynamicResolve(dynamicUid);
         if (!info) return []; // orphan (definition removed): omit
         const effectiveTabMode: TabMode = tabMode || menuTabMode || "replace";
-        return [dynamicBookmarkEntry(dynamicUid, info, effectiveTabMode, color || menuColor, rename)];
+        return [dynamicBookmarkEntry(dynamicUid, info, effectiveTabMode, color || menuColor, rename, showPageTitle)];
       }
 
       const effectivePath = combineRootAndItemPath(rootPrefix, path);

@@ -44,6 +44,7 @@ export interface StoredMenuItem {
   tabMode?: TabMode;
   units?: number;
   transparent?: boolean;
+  showPageTitle?: boolean;
 }
 
 export interface UrlRule {
@@ -178,6 +179,17 @@ export interface ExportedMenuItem {
   expandOnHover?: boolean;
   includeFolders?: boolean;
   tabMode?: TabMode;
+  // For `dynamic` items: the dynamic bookmark id they reference (resolved
+  // against ExportedSettingsData.dynamicBookmarks on import).
+  dynamicUid?: string;
+  showPageTitle?: boolean;
+}
+
+export interface ExportedDynamicBookmark {
+  uid: string;
+  name: string;
+  code: string;
+  urlRuleUids?: string[];
 }
 
 export interface ExportedMenu {
@@ -201,6 +213,7 @@ export interface ExportedSettingsData {
   exportedAt: string;
   menus: ExportedMenu[];
   urlRules?: UrlRule[];
+  dynamicBookmarks?: ExportedDynamicBookmark[];
 }
 
 export function isExportedSettingsData(value: unknown): value is ExportedSettingsData {

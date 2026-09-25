@@ -50,7 +50,6 @@ import {
 } from "../bookmarks";
 import { isLocalDesktopUrl, probeDesktopConnection } from "../desktop-connection";
 import { createRandomInstanceLabel } from "../instance-label";
-import { createSandboxHost } from "../sandbox/host";
 import {
   applyStaticI18n,
   getLanguage,
@@ -91,6 +90,8 @@ const PALETTE_COLORS = [
 function getRandomPaletteColor(): string {
   return PALETTE_COLORS[Math.floor(Math.random() * PALETTE_COLORS.length)] ?? PALETTE_COLORS[0]!;
 }
+
+const SETTINGS_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
 
 const connectionForm = element<HTMLFormElement>("connection-form");
 const saveConnectionBtn = element<HTMLButtonElement>("save-connection-btn");
@@ -178,6 +179,8 @@ const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
 const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
 const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>("item-setting-include-folders-label");
 const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
+const itemSettingsDynamicControls = element<HTMLDivElement>("item-settings-dynamic-controls");
+const itemSettingDynamicShowPageTitle = element<HTMLInputElement>("item-setting-dynamic-show-page-title");
 const colorPopoverCycleRow = element<HTMLDivElement>("color-popover-cycle-row");
 const colorPopoverCycleToggle = element<HTMLInputElement>("color-popover-cycle-toggle");
 const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-section");
@@ -194,6 +197,13 @@ const spaceBookmarkTransparent = element<HTMLInputElement>("space-bookmark-trans
 const spaceBookmarkResult = element<HTMLOutputElement>("space-bookmark-result");
 const spaceBookmarkFolderBtn = element<HTMLButtonElement>("space-bookmark-folder-btn");
 const spaceBookmarkFolderDisplay = element<HTMLSpanElement>("space-bookmark-folder-display");
+const dynamicMarkerDialog = element<HTMLDialogElement>("dynamic-marker-dialog");
+const dynamicMarkerClose = element<HTMLButtonElement>("dynamic-marker-close");
+const dynamicMarkerCloseBtn = element<HTMLButtonElement>("dynamic-marker-close-btn");
+const dynamicMarkerForm = element<HTMLFormElement>("dynamic-marker-form");
+const dynamicMarkerFolderBtn = element<HTMLButtonElement>("dynamic-marker-folder-btn");
+const dynamicMarkerFolderDisplay = element<HTMLSpanElement>("dynamic-marker-folder-display");
+const dynamicMarkerResult = element<HTMLOutputElement>("dynamic-marker-result");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
@@ -204,15 +214,14 @@ const menusCardTabs = Array.from(
 const dynamicList = element<HTMLDivElement>("dynamic-list");
 const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
 const addPopoverDynamicBtn = element<HTMLButtonElement>("add-popover-dynamic-btn");
-const addDynamicMarkerBtn = element<HTMLButtonElement>("add-dynamic-marker-btn");
-const dynamicMarkerDialog = element<HTMLDialogElement>("dynamic-marker-dialog");
-const dynamicMarkerForm = element<HTMLFormElement>("dynamic-marker-form");
-const dynamicMarkerSelect = element<HTMLSelectElement>("dynamic-marker-select");
-const dynamicMarkerFolderBtn = element<HTMLButtonElement>("dynamic-marker-folder-btn");
-const dynamicMarkerFolderDisplay = element<HTMLSpanElement>("dynamic-marker-folder-display");
-const dynamicMarkerResult = element<HTMLOutputElement>("dynamic-marker-result");
-const dynamicMarkerClose = element<HTMLButtonElement>("dynamic-marker-close");
-const dynamicMarkerCloseBtn = element<HTMLButtonElement>("dynamic-marker-close-btn");
+const pickDynamicDialog = element<HTMLDialogElement>("pick-dynamic-dialog");
+const pickDynamicTitle = element<HTMLSpanElement>("pick-dynamic-title");
+const pickDynamicClose = element<HTMLButtonElement>("pick-dynamic-close");
+const pickDynamicList = element<HTMLDivElement>("pick-dynamic-list");
+const dynamicSettingsDialog = element<HTMLDialogElement>("dynamic-settings-dialog");
+const dynamicSettingsDialogTitle = element<HTMLSpanElement>("dynamic-settings-dialog-title");
+const dynamicSettingsClose = element<HTMLButtonElement>("dynamic-settings-close");
+const dynamicSettingUrlRulesList = element<HTMLDivElement>("dynamic-setting-url-rules-list");
 const addUrlRuleBtn = element<HTMLButtonElement>("add-url-rule-btn");
 const urlRulesList = element<HTMLDivElement>("url-rules-list");
 const menuSettingUrlRulesList = element<HTMLDivElement>("menu-setting-url-rules-list");
@@ -248,9 +257,10 @@ let pickerSelectedId: string | null = null;
 let pickerMode: "addItem" | "editItem" | "selectRoot" | "pickFolder" = "addItem";
 let pickerTargetMenuIndex = -1;
 let pickerTargetItemIndex = -1;
-// Remembers the destination folder chosen for the gap-bookmark tool so the next
-// open reuses it. Only the gap-bookmark dialog (pickFolder mode) reads this.
+// Remembers the destination folder chosen for gap-bookmark and dynamic-marker tools so the next
+// open reuses it. Only the dialogs (pickFolder mode) read this.
 let gapBookmarkFolderId = "0";
+let activeDynamicMarkerDb: DynamicBookmark | null = null;
 
 void initialize();
 
@@ -437,6 +447,7 @@ pickerConfirmBtn.addEventListener("click", () => {
       pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : "0");
     gapBookmarkFolderId = targetId;
     updateGapBookmarkFolderDisplay();
+    updateDynamicMarkerFolderDisplay();
     pickerDialog.close();
     return;
   }
@@ -1924,6 +1935,21 @@ function initItemSettingsPopover(): void {
     markDirty();
   });
 
+  itemSettingDynamicShowPageTitle.addEventListener("change", () => {
+    if (!activeItemSettings) return;
+    const menu = menus[activeItemSettings.menuIndex];
+    const item = menu?.items[activeItemSettings.itemIndex];
+    if (!item || item.type !== "dynamic") return;
+
+    if (itemSettingDynamicShowPageTitle.checked) {
+      item.showPageTitle = true;
+    } else {
+      delete item.showPageTitle;
+    }
+    renderMenus();
+    markDirty();
+  });
+
   itemSettingChangeBtn.addEventListener("click", () => {
     if (!activeItemSettings) return;
     const { menuIndex, itemIndex } = activeItemSettings;
@@ -1979,6 +2005,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     itemSettingsTitle.textContent = `␣ ${t("item.spaceBadge")}`;
     itemSettingsSpaceControls.style.display = "block";
     itemSettingsBookmarkControls.style.display = "none";
+    itemSettingsDynamicControls.style.display = "none";
     itemSettingSpaceUnits.value = String(item.units ?? 1);
     itemSettingTransparent.checked = item.transparent !== false;
   } else {
@@ -1986,18 +2013,34 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     itemSettingsBookmarkControls.style.display = "block";
 
     const isMenuToggle = item.type === "menuToggle";
+    const isDynamic = item.type === "dynamic";
     const tabModeField = itemSettingTabMode.parentElement;
     const changeActions = itemSettingChangeBtn.parentElement;
     if (tabModeField) tabModeField.style.display = isMenuToggle ? "none" : "";
-    if (changeActions) changeActions.style.display = isMenuToggle ? "none" : "";
+    if (changeActions) changeActions.style.display = (isMenuToggle || isDynamic) ? "none" : "";
 
     if (isMenuToggle) {
       itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
+      itemSettingsDynamicControls.style.display = "none";
       positionPopover(itemSettingsPopover, rect, 250);
       return;
     }
+
+    if (isDynamic) {
+      const db = dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
+      itemSettingsTitle.textContent = `🜂 ${db?.name || t("dynamic.defaultName")}`;
+      itemSettingRename.value = item.rename ?? "";
+      itemSettingTabMode.value = item.tabMode ?? "";
+      itemSettingsFolderControls.style.display = "none";
+      itemSettingsDynamicControls.style.display = "block";
+      itemSettingDynamicShowPageTitle.checked = item.showPageTitle === true;
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
+
+    itemSettingsDynamicControls.style.display = "none";
 
     const node = getItemNode(item);
     const isFolderNode = node ? (node.children !== undefined || node.url === undefined) : (item.type === "folder" || item.type === "flattenFolder");
@@ -2063,8 +2106,6 @@ function updateGapBookmarkFolderDisplay(): void {
       ? t("toolkit.defaultLocation")
       : node?.title || t("common.folder");
   spaceBookmarkFolderDisplay.textContent = label;
-  // The dynamic-marker dialog shares the same folder selection.
-  dynamicMarkerFolderDisplay.textContent = label;
 }
 
 function updateSpaceBookmarkColorState(): void {
@@ -2094,11 +2135,30 @@ async function addSpaceBookmark(): Promise<void> {
   }
 }
 
-const DEFAULT_DYNAMIC_CODE = `function dynamicBookmark({ action, url, title, current }) {
-  // Return { newUrl, title } to update this bookmark, or { newUrl: null } to keep it.
-  // 'title' is optional; leave it out to reuse the visited page's title.
-  // Example: track the last GitHub repo you open.
-  // if (url.startsWith("https://github.com/")) return { newUrl: url };
+const DEFAULT_DYNAMIC_CODE = `/**
+ * Dynamic Bookmark Handler
+ *
+ * @param {Object} context
+ * @param {string} context.action  - Trigger event: "visit"
+ * @param {string} context.url     - URL of the visited page
+ * @param {string} context.title   - Title of the visited page
+ * @param {Object} context.current - Current bookmark state: { url, title }
+ *
+ * @returns {Object}
+ *   - { newUrl: string, title?: string } - Updates bookmark URL (title is optional; page title used if omitted)
+ *   - { newUrl: null }                   - Keeps current bookmark unchanged
+ */
+function dynamicBookmark({ action, url, title, current }) {
+  // Example 1: Track the last visited GitHub repository
+  // if (url.startsWith("https://github.com/")) {
+  //   return { newUrl: url, title };
+  // }
+
+  // Example 2: Track docs pages and customize bookmark title
+  // if (url.includes("/docs/")) {
+  //   return { newUrl: url, title: \`Doc: \${title}\` };
+  // }
+
   return { newUrl: null };
 }
 `;
@@ -2112,7 +2172,7 @@ function buildDynamicMarkerUrl(uid: string): string {
 }
 
 let dynamicValuesCache: DynamicValuesMap = {};
-let dynamicTestHost: ReturnType<typeof createSandboxHost> | null = null;
+const collapsedDynamicUids = new Set<string>();
 
 async function refreshDynamicValues(): Promise<void> {
   try {
@@ -2127,7 +2187,7 @@ function renderDynamicList(): void {
   dynamicList.replaceChildren();
   if (dynamicBookmarks.length === 0) {
     const empty = document.createElement("p");
-    empty.className = "url-rules-syntax-guide";
+    empty.className = "url-rule-empty-hint";
     empty.textContent = t("dynamic.empty");
     dynamicList.append(empty);
     return;
@@ -2137,24 +2197,144 @@ function renderDynamicList(): void {
   }
 }
 
-function renderDynamicCard(db: DynamicBookmark): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "dynamic-card";
+function openDynamicSettingsDialog(db: DynamicBookmark): void {
+  dynamicSettingsDialogTitle.textContent = `${db.name || t("dynamic.defaultName")} - ${t("menu.settings")}`;
+  renderDynamicUrlRulesContent(db);
+  dynamicSettingsDialog.showModal();
+}
 
-  const header = document.createElement("div");
-  header.className = "dynamic-card-header";
+function renderDynamicUrlRulesContent(db: DynamicBookmark): void {
+  dynamicSettingUrlRulesList.replaceChildren();
+
+  const allRow = document.createElement("label");
+  allRow.className = "menu-setting-url-rule-item";
+  const allRadio = document.createElement("input");
+  allRadio.type = "checkbox";
+  const hasSpecificSets = Array.isArray(db.urlRuleUids) && db.urlRuleUids.length > 0;
+  allRadio.checked = !hasSpecificSets;
+
+  const allSpan = document.createElement("span");
+  allSpan.textContent = t("menuBehavior.allUrls");
+  allRow.append(allRadio, allSpan);
+  dynamicSettingUrlRulesList.appendChild(allRow);
+
+  allRadio.addEventListener("change", () => {
+    if (allRadio.checked) {
+      delete db.urlRuleUids;
+    } else {
+      if (urlRules.length > 0) {
+        const firstRule = urlRules[0];
+        if (firstRule) db.urlRuleUids = [firstRule.uid];
+      }
+    }
+    renderDynamicUrlRulesContent(db);
+    markDirty();
+  });
+
+  if (urlRules.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "url-rule-empty-hint";
+    hint.style.fontSize = "11px";
+    hint.style.padding = "6px";
+    hint.textContent = t("menuBehavior.noUrlRules");
+    dynamicSettingUrlRulesList.appendChild(hint);
+  } else {
+    urlRules.forEach((rule) => {
+      const row = document.createElement("label");
+      row.className = "menu-setting-url-rule-item";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = Array.isArray(db.urlRuleUids) && db.urlRuleUids.includes(rule.uid);
+      cb.addEventListener("change", () => {
+        if (!Array.isArray(db.urlRuleUids)) {
+          db.urlRuleUids = [];
+        }
+        if (cb.checked) {
+          if (!db.urlRuleUids.includes(rule.uid)) {
+            db.urlRuleUids.push(rule.uid);
+          }
+        } else {
+          db.urlRuleUids = db.urlRuleUids.filter((u) => u !== rule.uid);
+        }
+        if (db.urlRuleUids.length === 0) {
+          delete db.urlRuleUids;
+        }
+        renderDynamicUrlRulesContent(db);
+        markDirty();
+      });
+
+      const span = document.createElement("span");
+      span.textContent = rule.name || t("urlRules.defaultName");
+      if (rule.patterns.length > 0) {
+        span.title = rule.patterns.join("\n");
+      }
+
+      row.append(cb, span);
+      dynamicSettingUrlRulesList.appendChild(row);
+    });
+  }
+}
+
+function renderDynamicCard(db: DynamicBookmark): HTMLElement {
+  const isCollapsed = collapsedDynamicUids.has(db.uid);
+  const card = document.createElement("article");
+  card.className = `menu-card dynamic-card${isCollapsed ? " is-collapsed" : ""}`;
+  card.dataset.collapsed = String(isCollapsed);
+
+  const header = document.createElement("header");
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "menu-title-row";
+
+  const collapseBtn = document.createElement("button");
+  collapseBtn.type = "button";
+  collapseBtn.className = "menu-collapse-btn";
+  collapseBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>`;
+  collapseBtn.title = isCollapsed ? t("menu.expand") : t("menu.collapse");
+  collapseBtn.setAttribute("aria-label", collapseBtn.title);
+  collapseBtn.setAttribute("aria-expanded", String(!isCollapsed));
+  collapseBtn.addEventListener("click", () => {
+    if (collapsedDynamicUids.has(db.uid)) {
+      collapsedDynamicUids.delete(db.uid);
+    } else {
+      collapsedDynamicUids.add(db.uid);
+    }
+    renderDynamicList();
+  });
+
   const nameInput = document.createElement("input");
   nameInput.type = "text";
+  nameInput.className = "dynamic-name-input";
   nameInput.value = db.name;
+  nameInput.placeholder = t("dynamic.defaultName");
   nameInput.addEventListener("input", () => {
     db.name = nameInput.value;
     markDirty();
   });
+
+  titleRow.append(collapseBtn, nameInput);
+
+  const headerActions = document.createElement("div");
+  headerActions.className = "dynamic-header-actions";
+
+  const settingsBtn = document.createElement("button");
+  settingsBtn.type = "button";
+  settingsBtn.className = "action-btn menu-header-btn";
+  settingsBtn.innerHTML = `${SETTINGS_ICON_SVG}<span>${t("menu.settings")}</span>`;
+  settingsBtn.title = t("menu.settingsTitle");
+  settingsBtn.addEventListener("click", () => {
+    openDynamicSettingsDialog(db);
+  });
+
   const del = document.createElement("button");
   del.type = "button";
-  del.className = "action-btn";
-  del.textContent = t("common.delete");
+  del.className = "remove-item-btn menu-remove-btn";
+  del.title = t("common.delete");
+  del.setAttribute("aria-label", t("common.delete"));
+  del.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("common.delete")}</span>`;
   del.addEventListener("click", () => {
+    collapsedDynamicUids.delete(db.uid);
     dynamicBookmarks = dynamicBookmarks.filter((d) => d.uid !== db.uid);
     for (const menu of menus) {
       menu.items = menu.items.filter((i) => !(i.type === "dynamic" && i.dynamicUid === db.uid));
@@ -2163,114 +2343,181 @@ function renderDynamicCard(db: DynamicBookmark): HTMLElement {
     renderMenus();
     markDirty();
   });
-  header.append(nameInput, del);
+
+  headerActions.append(settingsBtn, del);
+
+  const live = dynamicValuesCache[db.uid];
+  const subtitleRow = document.createElement("div");
+  subtitleRow.className = "dynamic-subtitle-row";
+
+  const currentGroup = document.createElement("div");
+  currentGroup.className = "dynamic-current-group";
+
+  const currentLabel = document.createElement("span");
+  currentLabel.className = "dynamic-current-label";
+  currentLabel.textContent = `${t("dynamic.currentLabel")}:`;
+  currentGroup.append(currentLabel);
+
+  if (live?.url) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "dynamic-current-chip";
+    const fullTooltip = `${live.title ? `${live.title}\n` : ""}${live.url}\n(${t("dynamic.copyTooltip")})`;
+    chip.title = fullTooltip;
+    chip.setAttribute("aria-label", fullTooltip);
+
+    const copyIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    const checkIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+    const displayTitle = live.url;
+    chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
+    const titleSpan = chip.querySelector(".dynamic-current-title") as HTMLElement;
+    titleSpan.textContent = displayTitle;
+
+    let resetTimer: ReturnType<typeof setTimeout> | undefined;
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void navigator.clipboard.writeText(live.url).then(() => {
+        chip.classList.add("is-copied");
+        chip.innerHTML = `${checkIcon}<span class="dynamic-current-title"></span>`;
+        (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent = t("dynamic.copied");
+        if (resetTimer) clearTimeout(resetTimer);
+        resetTimer = setTimeout(() => {
+          chip.classList.remove("is-copied");
+          chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
+          (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent = displayTitle;
+        }, 1500);
+      });
+    });
+
+    currentGroup.append(chip);
+  } else {
+    const emptySpan = document.createElement("span");
+    emptySpan.className = "dynamic-current-empty";
+    emptySpan.textContent = t("dynamic.noValue");
+    currentGroup.append(emptySpan);
+  }
+
+  const actionsGroup = document.createElement("div");
+  actionsGroup.className = "dynamic-card-actions";
+
+  const addToBookmarksBtn = document.createElement("button");
+  addToBookmarksBtn.type = "button";
+  addToBookmarksBtn.className = "action-btn dynamic-add-btn";
+  addToBookmarksBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>${t("dynamic.addToBookmarks")}</span>`;
+  addToBookmarksBtn.title = t("dynamic.addToBookmarks");
+  addToBookmarksBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openDynamicMarkerDialog(db);
+  });
+
+  actionsGroup.append(addToBookmarksBtn);
+  subtitleRow.append(currentGroup, actionsGroup);
+  header.append(titleRow, headerActions, subtitleRow);
+
+  // Card Body: pure code editor
+  const body = document.createElement("div");
+  body.className = "dynamic-card-body";
 
   const code = document.createElement("textarea");
   code.className = "dynamic-code";
-  code.rows = 8;
+  code.rows = 14;
   code.spellcheck = false;
   code.value = db.code;
   code.addEventListener("input", () => {
     db.code = code.value;
     markDirty();
   });
-
-  const rulesWrap = document.createElement("div");
-  rulesWrap.className = "dynamic-rules";
-  const rulesLabel = document.createElement("span");
-  rulesLabel.className = "url-rules-hint";
-  rulesLabel.textContent = t("dynamic.urlRulesLabel");
-  rulesWrap.append(rulesLabel);
-  if (urlRules.length === 0) {
-    const none = document.createElement("span");
-    none.className = "url-rules-hint";
-    none.textContent = t("dynamic.noUrlRules");
-    rulesWrap.append(none);
-  } else {
-    for (const rule of urlRules) {
-      const lbl = document.createElement("label");
-      lbl.className = "item-setting-check-label";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = Boolean(db.urlRuleUids?.includes(rule.uid));
-      cb.addEventListener("change", () => {
-        const set = new Set(db.urlRuleUids ?? []);
-        if (cb.checked) set.add(rule.uid);
-        else set.delete(rule.uid);
-        if (set.size > 0) db.urlRuleUids = [...set];
-        else delete db.urlRuleUids;
-        markDirty();
-      });
-      const span = document.createElement("span");
-      span.textContent = rule.name;
-      lbl.append(cb, span);
-      rulesWrap.append(lbl);
+  code.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const start = code.selectionStart;
+      const end = code.selectionEnd;
+      code.value = code.value.substring(0, start) + "  " + code.value.substring(end);
+      code.selectionStart = code.selectionEnd = start + 2;
+      db.code = code.value;
+      markDirty();
     }
-  }
-
-  const current = document.createElement("div");
-  current.className = "dynamic-current";
-  const live = dynamicValuesCache[db.uid];
-  current.textContent = live?.url
-    ? t("dynamic.currentValue", { title: live.title || "", url: live.url })
-    : t("dynamic.noValue");
-
-  const testRow = document.createElement("div");
-  testRow.className = "dynamic-test-row";
-  const testInput = document.createElement("input");
-  testInput.type = "text";
-  testInput.placeholder = t("dynamic.testUrlPlaceholder");
-  const testBtn = document.createElement("button");
-  testBtn.type = "button";
-  testBtn.className = "action-btn";
-  testBtn.textContent = t("dynamic.test");
-  const testOut = document.createElement("output");
-  testOut.className = "toolkit-status";
-  testBtn.addEventListener("click", () => {
-    void runDynamicTest(db.code, testInput.value.trim(), testOut);
   });
-  testRow.append(testInput, testBtn, testOut);
 
-  card.append(header, code, rulesWrap, current, testRow);
+  body.append(code);
+  card.append(header, body);
   return card;
 }
 
-async function runDynamicTest(code: string, url: string, out: HTMLOutputElement): Promise<void> {
-  if (!dynamicTestHost) {
-    dynamicTestHost = createSandboxHost(browser.runtime.getURL("sandbox.html"));
+function openPickDynamicBookmarkDialog(targetMenuIndex: number): void {
+  if (targetMenuIndex < 0 || targetMenuIndex >= menus.length) return;
+  const menu = menus[targetMenuIndex];
+  if (!menu) return;
+
+  if (dynamicBookmarks.length === 0) {
+    status.value = t("dynamic.noneCreated");
+    return;
   }
-  const args = {
-    action: "visit",
-    url: url || "https://example.com/",
-    title: "Test title",
-    current: { url: null, title: null },
-  };
-  const result = await dynamicTestHost.run(code, args, 200);
-  out.dataset.state = result.ok ? "success" : "error";
-  out.textContent = result.ok ? JSON.stringify(result.value) : result.error || "error";
+  pickDynamicTitle.textContent = t("dynamic.pickTitle");
+  pickDynamicList.replaceChildren();
+  for (const db of dynamicBookmarks) {
+    const itemBtn = document.createElement("button");
+    itemBtn.type = "button";
+    itemBtn.className = "pick-menu-item";
+
+    const info = document.createElement("div");
+    info.className = "pick-menu-item-info";
+    const icon = document.createElement("span");
+    icon.className = "pick-menu-item-icon";
+    icon.textContent = "🜂";
+    const title = document.createElement("span");
+    title.className = "pick-menu-item-title";
+    title.textContent = db.name;
+    info.append(icon, title);
+
+    const meta = document.createElement("span");
+    meta.className = "pick-menu-item-meta";
+    const liveVal = dynamicValuesCache[db.uid];
+    meta.textContent = liveVal?.url || t("dynamic.noValueShort");
+
+    itemBtn.append(info, meta);
+    itemBtn.addEventListener("click", () => {
+      menu.items.push({
+        uid: crypto.randomUUID(),
+        type: "dynamic",
+        dynamicUid: db.uid,
+      });
+      renderMenus();
+      markDirty();
+      pickDynamicDialog.close();
+      status.value = t("dynamic.addedToMenu", {
+        menu: t("menu.title", { n: targetMenuIndex + 1 }),
+      });
+    });
+    pickDynamicList.append(itemBtn);
+  }
+  pickDynamicDialog.showModal();
 }
 
-function populateDynamicMarkerSelect(): void {
-  dynamicMarkerSelect.replaceChildren();
-  for (const db of dynamicBookmarks) {
-    const opt = document.createElement("option");
-    opt.value = db.uid;
-    opt.textContent = db.name;
-    dynamicMarkerSelect.append(opt);
-  }
+function updateDynamicMarkerFolderDisplay(): void {
+  const node = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
+  const label =
+    gapBookmarkFolderId === "0"
+      ? t("toolkit.defaultLocation")
+      : node?.title || gapBookmarkFolderId;
+  dynamicMarkerFolderDisplay.textContent = label;
+}
+
+function openDynamicMarkerDialog(db: DynamicBookmark): void {
+  activeDynamicMarkerDb = db;
+  dynamicMarkerResult.textContent = "";
+  delete dynamicMarkerResult.dataset.state;
+  updateDynamicMarkerFolderDisplay();
+  dynamicMarkerDialog.showModal();
 }
 
 async function addDynamicMarkerBookmark(): Promise<void> {
-  const uid = dynamicMarkerSelect.value;
-  if (!uid) {
-    dynamicMarkerResult.textContent = t("dynamic.markerNeedsSelection");
-    dynamicMarkerResult.dataset.state = "error";
-    return;
-  }
+  if (!activeDynamicMarkerDb) return;
   try {
     await browser.bookmarks.create({
-      title: dynamicBookmarks.find((d) => d.uid === uid)?.name || "Dynamic",
-      url: buildDynamicMarkerUrl(uid),
+      title: activeDynamicMarkerDb.name || t("dynamic.defaultName"),
+      url: buildDynamicMarkerUrl(activeDynamicMarkerDb.uid),
       ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
     });
     rawBookmarkTree = await browser.bookmarks.getTree();
@@ -2286,7 +2533,9 @@ async function addDynamicMarkerBookmark(): Promise<void> {
 
 function initDynamicPanel(): void {
   addDynamicBtn.addEventListener("click", () => {
-    dynamicBookmarks.push(createDynamicBookmark());
+    const newDb = createDynamicBookmark();
+    collapsedDynamicUids.delete(newDb.uid);
+    dynamicBookmarks.push(newDb);
     renderDynamicList();
     markDirty();
   });
@@ -2294,17 +2543,24 @@ function initDynamicPanel(): void {
     void refreshDynamicValues();
   });
 
-  addDynamicMarkerBtn.addEventListener("click", () => {
-    populateDynamicMarkerSelect();
-    dynamicMarkerResult.textContent = "";
-    updateGapBookmarkFolderDisplay();
-    dynamicMarkerDialog.showModal();
+  dynamicSettingsClose.addEventListener("click", () => dynamicSettingsDialog.close());
+  dynamicSettingsDialog.addEventListener("click", (e) => {
+    if (e.target === dynamicSettingsDialog) dynamicSettingsDialog.close();
   });
+
+  pickDynamicClose.addEventListener("click", () => pickDynamicDialog.close());
+  pickDynamicDialog.addEventListener("click", (e) => {
+    if (e.target === pickDynamicDialog) pickDynamicDialog.close();
+  });
+
   dynamicMarkerFolderBtn.addEventListener("click", () => {
     void openBookmarkPicker("pickFolder");
   });
   dynamicMarkerClose.addEventListener("click", () => dynamicMarkerDialog.close());
   dynamicMarkerCloseBtn.addEventListener("click", () => dynamicMarkerDialog.close());
+  dynamicMarkerDialog.addEventListener("click", (e) => {
+    if (e.target === dynamicMarkerDialog) dynamicMarkerDialog.close();
+  });
   dynamicMarkerForm.addEventListener("submit", (e) => {
     e.preventDefault();
     void addDynamicMarkerBookmark();
@@ -2363,17 +2619,7 @@ function initAddItemPopover(): void {
     const menuIdx = activeAddMenuIndex;
     closeAddItemDropdown();
     if (menuIdx < 0 || menuIdx >= menus.length) return;
-    const menu = menus[menuIdx];
-    if (!menu) return;
-    // Inserting a dynamic bookmark also creates its definition; the user then
-    // edits the function in the Dynamic bookmarks tab.
-    const db = createDynamicBookmark();
-    dynamicBookmarks.push(db);
-    menu.items.push({ uid: crypto.randomUUID(), type: "dynamic", dynamicUid: db.uid });
-    renderMenus();
-    renderDynamicList();
-    markDirty();
-    status.value = t("dynamic.createdHint");
+    openPickDynamicBookmarkDialog(menuIdx);
   });
 
   document.addEventListener("pointerdown", (e) => {
@@ -2492,7 +2738,7 @@ function renderMenus(): void {
       const settingsBtn = document.createElement("button");
       settingsBtn.type = "button";
       settingsBtn.className = "action-btn menu-header-btn";
-      settingsBtn.textContent = t("menu.settings");
+      settingsBtn.innerHTML = `${SETTINGS_ICON_SVG}<span>${t("menu.settings")}</span>`;
       settingsBtn.title = t("menu.settingsTitle");
       settingsBtn.addEventListener("click", () => {
         openMenuSettingsDialog(menuIndex);
@@ -2645,7 +2891,7 @@ function renderMenus(): void {
             settingsBtn.type = "button";
             settingsBtn.className = "item-settings-btn";
             settingsBtn.title = t("itemSettings.title");
-            settingsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83l.06-.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
+            settingsBtn.innerHTML = SETTINGS_ICON_SVG;
             settingsBtn.addEventListener("click", (event) => {
               event.stopPropagation();
               openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
@@ -2783,7 +3029,185 @@ function renderMenus(): void {
             settingsBtn.type = "button";
             settingsBtn.className = "item-settings-btn";
             settingsBtn.title = t("itemSettings.title");
-            settingsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
+            settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+            settingsBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
+            });
+
+            const swatch = document.createElement("button");
+            swatch.type = "button";
+            swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
+            updateSwatchAppearance(swatch, item.color);
+            if (!item.color && menu.color) {
+              swatch.title = t("item.followMenuColor", { color: menu.color });
+            }
+            swatch.addEventListener("click", (e) => {
+              e.stopPropagation();
+              openColorPopover(item, swatch);
+            });
+
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "remove-item-btn";
+            removeBtn.title = t("menu.removeItem");
+            removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
+            removeBtn.addEventListener("click", () => {
+              if (activeColorTarget === item) {
+                closeColorPopover();
+              }
+              if (
+                activeItemSettings &&
+                activeItemSettings.menuIndex === menuIndex &&
+                activeItemSettings.itemIndex === itemIndex
+              ) {
+                closeItemSettingsPopover();
+              }
+              menu.items.splice(itemIndex, 1);
+              renderMenus();
+              markDirty();
+            });
+
+            controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
+            row.append(label, controls);
+            return row;
+          }
+
+          if (item.type === "dynamic") {
+            const db = dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
+            const rawLabel = db?.name || t("dynamic.defaultName");
+            const customRename = item.rename;
+
+            const label = document.createElement("span");
+            label.className = "item-label";
+
+            const titleSpan = document.createElement("span");
+            titleSpan.className = "item-title";
+            if (customRename) {
+              titleSpan.textContent = `${customRename} (${rawLabel.trim()})`;
+            } else {
+              titleSpan.textContent = `🜂 ${rawLabel.trim()}`;
+            }
+            const liveUrl = db?.uid ? dynamicValuesCache[db.uid]?.url : undefined;
+            titleSpan.title = liveUrl ? `${rawLabel.trim()}\n${liveUrl}` : rawLabel.trim();
+            label.appendChild(titleSpan);
+
+            const dynamicTag = document.createElement("span");
+            dynamicTag.className = "item-tag item-tag-dynamic";
+            dynamicTag.textContent = t("section.dynamic");
+            label.appendChild(dynamicTag);
+
+            if (item.tabMode) {
+              const tabBadge = document.createElement("span");
+              tabBadge.className = "item-tag item-tag-tab-mode";
+              tabBadge.textContent =
+                item.tabMode === "newTab" ? t("item.tabBadgeNew") : t("item.tabBadgeReplace");
+              tabBadge.title = t("item.tabBadgeTitle", {
+                mode: item.tabMode === "newTab" ? t("itemSettings.newTab") : t("itemSettings.replaceTab"),
+              });
+              tabBadge.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openItemSettingsPopover(menuIndex, itemIndex, tabBadge);
+              });
+              label.appendChild(tabBadge);
+            }
+
+            if (item.showPageTitle) {
+              const titleBadge = document.createElement("span");
+              titleBadge.className = "item-tag item-tag-dynamic-title";
+              titleBadge.textContent = t("dynamic.showPageTitleBadge");
+              titleBadge.title = t("dynamic.showPageTitle");
+              titleBadge.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openItemSettingsPopover(menuIndex, itemIndex, titleBadge);
+              });
+              label.appendChild(titleBadge);
+            }
+
+            const controls = document.createElement("div");
+            controls.className = "item-color-controls";
+
+            const dragHandleBtn = document.createElement("button");
+            dragHandleBtn.type = "button";
+            dragHandleBtn.className = "drag-handle-btn";
+            dragHandleBtn.title = t("item.dragHandleTitle");
+            dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
+
+            dragHandleBtn.addEventListener("mousedown", () => {
+              row.draggable = true;
+            });
+            dragHandleBtn.addEventListener("mouseup", () => {
+              if (!row.classList.contains("is-dragging")) {
+                row.draggable = false;
+              }
+            });
+            dragHandleBtn.addEventListener("mouseleave", () => {
+              if (!row.classList.contains("is-dragging")) {
+                row.draggable = false;
+              }
+            });
+
+            row.addEventListener("dragstart", (e) => {
+              draggingItem = { menuIndex, itemIndex };
+              if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", `${menuIndex}:${itemIndex}`);
+              }
+              requestAnimationFrame(() => {
+                row.classList.add("is-dragging");
+              });
+            });
+
+            row.addEventListener("dragover", (e) => {
+              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
+              e.preventDefault();
+              if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = "move";
+              }
+              const rect = row.getBoundingClientRect();
+              const isAfter = e.clientY > rect.top + rect.height / 2;
+              row.classList.toggle("drag-over-top", !isAfter);
+              row.classList.toggle("drag-over-bottom", isAfter);
+            });
+
+            row.addEventListener("dragleave", () => {
+              row.classList.remove("drag-over-top", "drag-over-bottom");
+            });
+
+            row.addEventListener("drop", (e) => {
+              e.preventDefault();
+              row.classList.remove("drag-over-top", "drag-over-bottom");
+              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
+              const sourceIndex = draggingItem.itemIndex;
+              const rect = row.getBoundingClientRect();
+              const isAfter = e.clientY > rect.top + rect.height / 2;
+              let targetIndex = isAfter ? itemIndex + 1 : itemIndex;
+              if (sourceIndex < targetIndex) {
+                targetIndex--;
+              }
+              if (sourceIndex !== targetIndex) {
+                const [moved] = menu.items.splice(sourceIndex, 1);
+                if (moved) menu.items.splice(targetIndex, 0, moved);
+                renderMenus();
+                markDirty();
+              }
+              draggingItem = null;
+            });
+
+            row.addEventListener("dragend", () => {
+              row.draggable = false;
+              row.classList.remove("is-dragging");
+              draggingItem = null;
+              items.querySelectorAll(".menu-item-row").forEach((el) => {
+                el.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
+              });
+            });
+
+            const settingsBtn = document.createElement("button");
+            settingsBtn.type = "button";
+            settingsBtn.className = "item-settings-btn";
+            settingsBtn.title = t("itemSettings.title");
+            settingsBtn.innerHTML = SETTINGS_ICON_SVG;
             settingsBtn.addEventListener("click", (e) => {
               e.stopPropagation();
               openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
@@ -2993,7 +3417,7 @@ function renderMenus(): void {
           settingsBtn.type = "button";
           settingsBtn.className = "item-settings-btn";
           settingsBtn.title = t("item.settingsTitle");
-          settingsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`;
+          settingsBtn.innerHTML = SETTINGS_ICON_SVG;
           settingsBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
@@ -3116,8 +3540,10 @@ function renderUrlRules(): void {
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
-    deleteBtn.className = "action-btn url-rule-remove-btn";
-    deleteBtn.textContent = t("urlRules.deleteSet");
+    deleteBtn.className = "remove-item-btn menu-remove-btn";
+    deleteBtn.title = t("common.delete");
+    deleteBtn.setAttribute("aria-label", t("common.delete"));
+    deleteBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("common.delete")}</span>`;
     deleteBtn.addEventListener("click", () => {
       const removedUid = ws.uid;
       urlRules.splice(setIndex, 1);
@@ -3247,6 +3673,7 @@ function exportSettings(): void {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
+    ...(dynamicBookmarks.length > 0 ? { dynamicBookmarks: structuredClone(dynamicBookmarks) } : {}),
     menus: menus.map((menu) => ({
       uid: menu.uid,
       orientation: menu.orientation,
@@ -3266,6 +3693,18 @@ function exportSettings(): void {
             uid: item.uid,
             type: "menuToggle",
             ...(item.rename ? { rename: item.rename } : {}),
+          } satisfies ExportedMenuItem;
+        }
+
+        if (item.type === "dynamic") {
+          return {
+            uid: item.uid,
+            type: "dynamic",
+            ...(item.dynamicUid ? { dynamicUid: item.dynamicUid } : {}),
+            ...(item.rename ? { rename: item.rename } : {}),
+            ...(item.color ? { color: item.color } : {}),
+            ...(item.tabMode ? { tabMode: item.tabMode } : {}),
+            ...(item.showPageTitle ? { showPageTitle: true } : {}),
           } satisfies ExportedMenuItem;
         }
 
@@ -3397,6 +3836,12 @@ async function importSettings(file: File): Promise<void> {
           ...(itemRecord.tabMode === "newTab" || itemRecord.tabMode === "replace"
             ? { tabMode: itemRecord.tabMode }
             : {}),
+          ...(type === "dynamic" && typeof itemRecord.dynamicUid === "string" && itemRecord.dynamicUid
+            ? { dynamicUid: itemRecord.dynamicUid }
+            : {}),
+          ...(type === "dynamic" && itemRecord.showPageTitle === true
+            ? { showPageTitle: true }
+            : {}),
         });
       }
 
@@ -3428,6 +3873,25 @@ async function importSettings(file: File): Promise<void> {
             : [],
         }));
       renderUrlRules();
+    }
+    if (Array.isArray(parsed.dynamicBookmarks)) {
+      dynamicBookmarks = parsed.dynamicBookmarks.flatMap((db): DynamicBookmark[] => {
+        if (typeof db !== "object" || db === null) return [];
+        const record = db as unknown as Record<string, unknown>;
+        if (typeof record.uid !== "string" || !record.uid) return [];
+        const urlRuleUids = Array.isArray(record.urlRuleUids)
+          ? record.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+          : undefined;
+        return [
+          {
+            uid: record.uid,
+            name: typeof record.name === "string" && record.name.trim() ? record.name.trim() : "Dynamic bookmark",
+            code: typeof record.code === "string" ? record.code : "",
+            ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
+          },
+        ];
+      });
+      renderDynamicList();
     }
     renderMenus();
     markDirty();
