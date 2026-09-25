@@ -86,17 +86,29 @@ button {
   display: grid;
   gap: var(--menu-gap, 3px);
   box-sizing: border-box;
-  padding: 2px;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.menu-bar::before {
+  content: "";
+  position: absolute;
+  /* Recessed dock chassis: inset 2px so buttons slightly overhang the base */
+  inset: 2px;
   background: var(--dock-surface);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--dock-border);
-  border-radius: var(--dock-radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 0;
   pointer-events: none;
 }
 
 .menu-bar > * {
+  position: relative;
+  z-index: 1;
   pointer-events: auto;
 }
 
@@ -547,19 +559,34 @@ button {
   min-height: 0;
   min-width: 0;
   box-sizing: border-box;
-  padding: 2px;
+  padding: 0;
   gap: var(--menu-gap, 3px);
+  background: transparent;
+  outline: 2px dashed var(--accent-blue);
+  outline-offset: -1px;
+  border-radius: 6px;
+  cursor: move;
+  position: relative;
+  overflow: visible;
+}
+
+.customize-rail::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
   background: var(--dock-surface);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--dock-border);
-  border-radius: var(--dock-radius);
-  outline: 2px dashed var(--accent-blue);
-  outline-offset: -1px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-  cursor: move;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.customize-rail > * {
   position: relative;
-  overflow: hidden;
+  z-index: 1;
 }
 
 .menu-button[data-has-custom-color="true"] {
