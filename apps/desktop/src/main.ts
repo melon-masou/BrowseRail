@@ -13,6 +13,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { getLanguage, type Lang, LANGUAGES, onLanguageChange, saveLanguage, t } from "@browserail/i18n";
 import { initializePopupSurface } from "./popup-surface";
+import { measureTextWidth } from "./text-measure";
 import "./styles.css";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -23,12 +24,7 @@ type SurfaceMenu = MenuView & { placement: MenuPlacement };
 const root = requiredElement("app");
 const query = new URLSearchParams(location.search);
 const FREE_DRAG_HANDLE_SIZE = 10;
-const DEFAULT_FONT_FAMILY = "Inter, ui-sans-serif, system-ui, sans-serif";
-
-let currentFontFamily = DEFAULT_FONT_FAMILY;
-
 function applyFontFamily(fontFamily: string): void {
-  currentFontFamily = fontFamily;
   document.documentElement.style.setProperty("--desktop-font-family", fontFamily);
 }
 
@@ -308,19 +304,6 @@ async function initializeSurface(): Promise<void> {
     target.addEventListener("pointerleave", cancelHoverOpen);
     target.addEventListener("pointercancel", cancelHoverOpen);
     target.addEventListener("pointerdown", cancelHoverOpen, { capture: true });
-  }
-
-  let measureCanvas: HTMLCanvasElement | null = null;
-  function measureTextWidth(text: string, fontSize: number): number {
-    if (!measureCanvas) {
-      measureCanvas = document.createElement("canvas");
-    }
-    const ctx = measureCanvas.getContext("2d");
-    if (!ctx) {
-      return text.length * fontSize * 1.0;
-    }
-    ctx.font = `${fontSize}px ${currentFontFamily}`;
-    return ctx.measureText(text).width;
   }
 
   const MIN_COLUMN_WIDTH = 72;

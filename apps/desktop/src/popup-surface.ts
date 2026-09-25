@@ -7,6 +7,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+import { measureTextWidth } from "./text-measure";
+
 interface PopupPayload {
   color?: string;
   direction: ExpandDirection;
@@ -486,21 +488,12 @@ function isPointerHeadingToward(
     projectedY <= childRect.bottom + tolerance;
 }
 
-let measureCanvas: HTMLCanvasElement | undefined;
 function calculateColumnWidth(
   entries: LayoutEntry[],
   fontSize: number,
   maxColumnHeight: number,
   itemHeight: number,
 ): number {
-  const canvas = measureCanvas ??= document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (context) {
-    const fontFamily = getComputedStyle(document.documentElement)
-      .getPropertyValue("--desktop-font-family")
-      .trim();
-    context.font = `${fontSize}px ${fontFamily}`;
-  }
   const padding = 2 * Math.min(10, Math.max(4, fontSize * 0.75));
   const folderBlock = Math.min(8, Math.max(6, fontSize * 0.5));
   let width = 0;
@@ -511,7 +504,7 @@ function calculateColumnWidth(
       : entry.label;
     width = Math.max(
       width,
-      (context?.measureText(text).width ?? text.length * fontSize) +
+      measureTextWidth(text, fontSize) +
         padding +
         (entry.kind === "folder" ? folderBlock : 0),
     );
