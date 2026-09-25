@@ -1288,16 +1288,41 @@ impl NativeReactor {
             .retain(|_, pairing| pairing.instance_uid != instance_uid);
         let menu_prefix = instance_surface_prefix("menu", &instance_uid);
         let popup_prefix = instance_surface_prefix("popup", &instance_uid);
-        let free_prefix = instance_surface_prefix("free", &instance_uid);
+        // Preserve free surfaces across a resync instead of destroying and
+        // recreating them. Menu/popup surfaces are still fully rebuilt below.
+        //
+        // Investigation (EVENT_SYSTEM_FOREGROUND logging correlated with surface
+        // (re)creation):
+        //   - Symptom: on Resync the paired browser drops out of the foreground
+        //     and falls behind other windows (it is NOT minimized). Intermittent.
+        //   - None of our own windows were ever the foreground window
+        //     (GetWindowThreadProcessId never matched our pid for any foreground
+        //     change), so it is not our surface / its WebView2 grabbing
+        //     activation. The foreground jumped straight from the browser
+        //     (chrome.exe) to the shell (explorer.exe, including its no-activate
+        //     taskbar windows) and to whatever else happened to be nearby.
+        //   - The disturbance correlated strictly with creating a *new* free
+        //     surface (is_new=true). Every resync/reconnect that reused an
+        //     existing free window (is_new=false) left the foreground untouched.
+        //
+        // Leading explanation: a free surface is an ownerless top-level window,
+        // so when a freshly created one initializes its WebView2 the resulting
+        // activation churn has no owner to fall back to and Windows hands the
+        // foreground to the shell. Menu/popup surfaces are owned by the browser
+        // window, so their recreation falls back to the browser and is harmless.
+        //
+        // This is a workaround, not a root-cause fix: it only removes the resync
+        // trigger by reusing the window. The underlying "creating a new ownerless
+        // free WebView2 window perturbs the foreground" is unresolved, so
+        // genuinely-new creation (first launch, a newly added free menu, desktop
+        // restart) can still exhibit it. The exact micro-mechanism (why the
+        // browser loses the foreground when no window of ours takes it) was not
+        // pinned down.
         let mut labels = self
             .app
             .webview_windows()
             .into_keys()
-            .filter(|label| {
-                label.starts_with(&menu_prefix)
-                    || label.starts_with(&popup_prefix)
-                    || label.starts_with(&free_prefix)
-            })
+            .filter(|label| label.starts_with(&menu_prefix) || label.starts_with(&popup_prefix))
             .collect::<Vec<_>>();
         labels.sort_by_key(|label| !label.starts_with(&popup_prefix));
 
@@ -1311,16 +1336,12 @@ impl NativeReactor {
         self.sync_active_paired_hwnds();
         if let Ok(mut levels) = self.window_levels.lock() {
             levels.retain(|label, _| {
-                !label.starts_with(&menu_prefix)
-                    && !label.starts_with(&popup_prefix)
-                    && !label.starts_with(&free_prefix)
+                !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix)
             });
         }
         if let Ok(mut owners) = self.window_owners.lock() {
             owners.retain(|label, _| {
-                !label.starts_with(&menu_prefix)
-                    && !label.starts_with(&popup_prefix)
-                    && !label.starts_with(&free_prefix)
+                !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix)
             });
         }
 
