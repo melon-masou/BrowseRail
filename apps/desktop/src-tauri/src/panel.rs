@@ -181,9 +181,12 @@ pub fn clear_window_owner(window: &WebviewWindow) -> Result<(), String> {
 }
 
 pub fn safely_destroy_window(window: &WebviewWindow) -> Result<(), String> {
-    // Detach first so window managers never observe a hide/destroy transition
-    // on a window that still belongs to the external browser owner.
-    let _ = clear_window_owner(window);
+    // Keep the browser owner attached through destroy. When an owned window is
+    // destroyed, Windows hands activation back to its owner; clearing the owner
+    // first breaks that fallback, so the window manager can't reactivate the
+    // browser and may minimize it during a resync's mass teardown (cf. The Old
+    // New Thing on activation fallback when destroying an owned/active window).
+    // Hidden with NOACTIVATE so hiding itself never reassigns activation.
     let _ = set_window_visible_without_activation(window, false);
     window.destroy().map_err(|error| error.to_string())
 }

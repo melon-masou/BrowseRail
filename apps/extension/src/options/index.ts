@@ -3139,7 +3139,7 @@ function renderNativeShortcuts(): void {
 function renderShortcuts(): void {
   shortcutsList.replaceChildren();
 
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 9; i++) {
     const slotKey = `slot_${i}`;
     const row = document.createElement("div");
     row.className = "shortcut-row";

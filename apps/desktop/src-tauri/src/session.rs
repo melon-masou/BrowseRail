@@ -215,6 +215,19 @@ impl SessionRegistry {
             .cloned()
     }
 
+    pub fn all_active_shortcut_keys(&self) -> HashSet<String> {
+        self.sessions
+            .read()
+            .map(|sessions| {
+                sessions
+                    .values()
+                    .filter(|s| s.outgoing.is_some())
+                    .flat_map(|s| s.native_shortcuts.iter().map(|sc| sc.key.to_ascii_lowercase()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Report a free surface's new absolute screen position back to the
     /// extension for persistence.
     pub fn update_free_placement(

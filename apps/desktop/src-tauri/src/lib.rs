@@ -54,6 +54,7 @@ pub const TRAY_ID: &str = "browserail";
 #[cfg(target_os = "windows")]
 pub struct AppState {
     pub display_panels: Arc<AtomicBool>,
+    pub enable_shortcuts: Arc<AtomicBool>,
     pub lock_editing: Arc<AtomicBool>,
     pub font_family: Arc<Mutex<String>>,
     pub popups: Arc<panel::PopupRegistry>,
@@ -117,6 +118,7 @@ async fn set_listener_port(
     let mut settings = settings::load(&app).unwrap_or_default();
     settings.listener_port = port;
     settings.display_panels = state.display_panels.load(Ordering::Relaxed);
+    settings.enable_shortcuts = state.enable_shortcuts.load(Ordering::Relaxed);
     settings::save(&app, &settings)?;
     let listener = socket::bind(port).await?;
     state
@@ -138,6 +140,7 @@ fn set_debug_enabled(
     let mut settings = settings::load(&app).unwrap_or_default();
     settings.debug_enabled = enabled;
     settings.display_panels = state.display_panels.load(Ordering::Relaxed);
+    settings.enable_shortcuts = state.enable_shortcuts.load(Ordering::Relaxed);
     settings::save(&app, &settings)?;
     Ok(listener_state(state))
 }
@@ -214,6 +217,7 @@ fn set_font_family(
     let mut settings = settings::load(&app).unwrap_or_default();
     settings.font_family = font_family.clone();
     settings.display_panels = state.display_panels.load(Ordering::Relaxed);
+    settings.enable_shortcuts = state.enable_shortcuts.load(Ordering::Relaxed);
     settings.lock_editing = state.lock_editing.load(Ordering::Relaxed);
     settings::save(&app, &settings)?;
 
@@ -990,6 +994,14 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
         state.display_panels,
         None::<&str>,
     )?;
+    let enable_shortcuts = CheckMenuItem::with_id(
+        manager,
+        "enable_shortcuts",
+        i18n::Msg::EnableShortcuts.localized(),
+        true,
+        state.enable_shortcuts,
+        None::<&str>,
+    )?;
     // "Edit menus" shows the positive edit-mode state; internally lock_editing is
     // its inverse (true = browsing), so the check reflects !lock_editing.
     let lock_editing = CheckMenuItem::with_id(
@@ -1022,6 +1034,7 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
     }
     menu_items.push(&surfaces_item);
     menu_items.push(&display);
+    menu_items.push(&enable_shortcuts);
     menu_items.push(&lock_editing);
     menu_items.push(&settings);
     menu_items.push(&quit);
@@ -1030,13 +1043,19 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
 }
 
 #[cfg(target_os = "windows")]
-fn create_tray(app: &tauri::App, initial_display: bool, initial_lock: bool) -> tauri::Result<()> {
+fn create_tray(
+    app: &tauri::App,
+    initial_display: bool,
+    initial_shortcuts: bool,
+    initial_lock: bool,
+) -> tauri::Result<()> {
     let initial_state = native::TrayStateSnapshot {
         server_text: i18n::Msg::ListenerStarting.localized(),
         extension_lines: vec![i18n::Msg::ExtensionDisconnected.localized()],
         surfaces_text: i18n::Msg::MenusNone.localized(),
         tooltip: "BrowseRail".into(),
         display_panels: initial_display,
+        enable_shortcuts: initial_shortcuts,
         lock_editing: initial_lock,
     };
     let menu = build_tray_menu(app, &initial_state)?;
@@ -1053,6 +1072,12 @@ fn create_tray(app: &tauri::App, initial_display: bool, initial_lock: bool) -> t
                 let _ = state
                     .native_sender
                     .send(native::NativeCommand::ToggleDisplayPanels);
+            }
+            "enable_shortcuts" => {
+                let state = app.state::<AppState>();
+                let _ = state
+                    .native_sender
+                    .send(native::NativeCommand::ToggleEnableShortcuts);
             }
             "lock_editing" => {
                 let state = app.state::<AppState>();
@@ -1125,6 +1150,7 @@ fn set_ui_language(language: String, state: tauri::State<'_, AppState>) {
 #[cfg(target_os = "windows")]
 pub fn run() {
     let display_panels = Arc::new(AtomicBool::new(true));
+    let enable_shortcuts = Arc::new(AtomicBool::new(true));
     // Browsing by default; the persisted setting overwrites this during setup.
     let lock_editing = Arc::new(AtomicBool::new(true));
     let font_family = Arc::new(Mutex::new(settings::DEFAULT_FONT_FAMILY.into()));
@@ -1137,6 +1163,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .setup({
             let display_panels = display_panels.clone();
+            let enable_shortcuts = enable_shortcuts.clone();
             let lock_editing = lock_editing.clone();
             let font_family = font_family.clone();
             let popups = popups.clone();
@@ -1152,17 +1179,24 @@ pub fn run() {
                     .lock()
                     .expect("collapsed menu lock poisoned") = settings.collapsed_menus.clone();
                 display_panels.store(settings.display_panels, Ordering::Relaxed);
+                enable_shortcuts.store(settings.enable_shortcuts, Ordering::Relaxed);
                 lock_editing.store(settings.lock_editing, Ordering::Relaxed);
                 *font_family.lock().expect("font family lock poisoned") =
                     settings.font_family.clone();
                 crate::debug::set_debug_enabled(settings.debug_enabled);
                 i18n::set_language(i18n::detect_system_lang());
 
-                create_tray(app, settings.display_panels, settings.lock_editing)?;
+                create_tray(
+                    app,
+                    settings.display_panels,
+                    settings.enable_shortcuts,
+                    settings.lock_editing,
+                )?;
 
                 let native_sender = native::NativeReactor::start(
                     app.handle().clone(),
                     display_panels.clone(),
+                    enable_shortcuts.clone(),
                     lock_editing.clone(),
                     popups.clone(),
                     registry.clone(),
@@ -1173,6 +1207,7 @@ pub fn run() {
 
                 app.manage(AppState {
                     display_panels,
+                    enable_shortcuts,
                     lock_editing,
                     font_family,
                     popups,

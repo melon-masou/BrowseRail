@@ -34,6 +34,8 @@ pub struct DesktopSettings {
     pub debug_enabled: bool,
     #[serde(default)]
     pub lock_editing: bool,
+    #[serde(default = "enable_shortcuts_by_default")]
+    pub enable_shortcuts: bool,
     #[serde(default = "font_family_by_default")]
     pub font_family: String,
     #[serde(default)]
@@ -48,6 +50,7 @@ impl Default for DesktopSettings {
             debug_enabled: false,
             // Default to browsing: edit mode is a deliberate, explicit toggle.
             lock_editing: true,
+            enable_shortcuts: true,
             font_family: DEFAULT_FONT_FAMILY.into(),
             collapsed_menus: Vec::new(),
         }
@@ -87,6 +90,10 @@ pub fn save(app: &tauri::AppHandle, settings: &DesktopSettings) -> Result<(), St
 }
 
 fn display_panels_by_default() -> bool {
+    true
+}
+
+fn enable_shortcuts_by_default() -> bool {
     true
 }
 

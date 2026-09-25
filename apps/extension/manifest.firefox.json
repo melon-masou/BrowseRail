@@ -51,7 +51,6 @@
     "slot_6": { "description": "BrowseRail shortcut slot 6" },
     "slot_7": { "description": "BrowseRail shortcut slot 7" },
     "slot_8": { "description": "BrowseRail shortcut slot 8" },
-    "slot_9": { "description": "BrowseRail shortcut slot 9" },
-    "slot_10": { "description": "BrowseRail shortcut slot 10" }
+    "slot_9": { "description": "BrowseRail shortcut slot 9" }
   }
 }

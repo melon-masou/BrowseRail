@@ -89,6 +89,7 @@ pub enum Msg<'a> {
     MenusNone,
     // Tray: actionable items
     DisplayMenus,
+    EnableShortcuts,
     EditMenus,
     Settings,
     Quit,
@@ -135,6 +136,7 @@ impl Msg<'_> {
             Msg::MenusHidden { hidden } => format!("○ Menus: {hidden} hidden (ready)"),
             Msg::MenusNone => "○ Menus: None".into(),
             Msg::DisplayMenus => "Display menus".into(),
+            Msg::EnableShortcuts => "Enable shortcuts".into(),
             Msg::EditMenus => "Edit menus".into(),
             Msg::Settings => "Settings…".into(),
             Msg::Quit => "Quit".into(),
@@ -166,6 +168,7 @@ impl Msg<'_> {
             Msg::MenusHidden { hidden } => format!("○ 菜单：{hidden} 隐藏（就绪）"),
             Msg::MenusNone => "○ 菜单：无".into(),
             Msg::DisplayMenus => "显示菜单".into(),
+            Msg::EnableShortcuts => "启用快捷键".into(),
             Msg::EditMenus => "编辑菜单".into(),
             Msg::Settings => "设置…".into(),
             Msg::Quit => "退出".into(),
