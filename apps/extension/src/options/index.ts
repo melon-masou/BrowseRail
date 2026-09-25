@@ -170,10 +170,8 @@ const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
 const menuSettingOpacity = element<HTMLInputElement>("menu-setting-opacity");
 const menuSettingDefaultColor = element<HTMLButtonElement>("menu-setting-default-color");
 const menuSettingDefaultColorValue = element<HTMLOutputElement>("menu-setting-default-color-value");
-const menuSettingDefaultColorBox = element<HTMLDivElement>("menu-setting-default-color-box");
 const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
 const menuSettingDockColorValue = element<HTMLOutputElement>("menu-setting-dock-color-value");
-const menuSettingDockColorBox = element<HTMLDivElement>("menu-setting-dock-color-box");
 
 const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
 const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
@@ -1763,7 +1761,6 @@ function updateMenuSettingColorControls(menu: StoredMenu): void {
     ? t("menu.colorSwatchSet", { color: menu.color })
     : t("menu.colorSwatchEmpty");
   menuSettingDefaultColor.setAttribute("aria-label", menuSettingDefaultColor.title);
-  menuSettingDefaultColorBox.title = menuSettingDefaultColor.title;
   menuSettingDefaultColorValue.value = menu.color?.toUpperCase() ?? t("expandDirection.default");
 
   updateSwatchAppearance(menuSettingDockColor, menu.dockColor);
@@ -1771,7 +1768,6 @@ function updateMenuSettingColorControls(menu: StoredMenu): void {
     ? t("menu.dockColorSwatchSet", { color: menu.dockColor })
     : t("menu.dockColorSwatchEmpty");
   menuSettingDockColor.setAttribute("aria-label", menuSettingDockColor.title);
-  menuSettingDockColorBox.title = menuSettingDockColor.title;
   menuSettingDockColorValue.value = menu.dockColor?.toUpperCase() ?? t("expandDirection.default");
 }
 
@@ -1875,19 +1871,9 @@ function initMenuSettingsDialog(): void {
     if (menu) openColorPopover(menu, menuSettingDefaultColor, "color");
   });
 
-  menuSettingDefaultColorBox.addEventListener("click", (event) => {
-    if (event.target === menuSettingDefaultColor) return;
-    menuSettingDefaultColor.click();
-  });
-
   menuSettingDockColor.addEventListener("click", () => {
     const menu = menus[activeMenuSettingsIndex];
     if (menu) openColorPopover(menu, menuSettingDockColor, "dockColor");
-  });
-
-  menuSettingDockColorBox.addEventListener("click", (event) => {
-    if (event.target === menuSettingDockColor) return;
-    menuSettingDockColor.click();
   });
 
   menuSettingOrientation.addEventListener("change", () => {
