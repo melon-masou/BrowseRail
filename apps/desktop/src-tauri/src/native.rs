@@ -27,8 +27,8 @@ use windows::core::PWSTR;
 
 use crate::panel::{
     PopupPointerAction, PopupPointerSource, PopupRegistry, PopupRequest, SurfaceRegistry,
-    free_label, instance_surface_prefix, is_window_always_on_top, menu_label, popup_label,
-    set_window_always_on_top, set_window_no_activate, set_window_owner,
+    ensure_popup_window, free_label, instance_surface_prefix, is_window_always_on_top, menu_label,
+    popup_label, set_window_always_on_top, set_window_no_activate, set_window_owner,
     set_window_visible_without_activation, surface_prefix,
 };
 use crate::protocol::{
@@ -1446,14 +1446,37 @@ impl NativeReactor {
         }
         let desired_labels: HashSet<String> = desired.iter().map(|i| i.label.clone()).collect();
 
-        let to_destroy: Vec<String> = self
+        // Free menus use an empty window_uid, so their popups share this prefix
+        // (distinct from any bound window's popups). Keep a popup only for a free
+        // menu that still exists and can still expand.
+        let free_popup_prefix = surface_prefix("popup", instance_uid, "");
+        let desired_free_popups: HashSet<String> = desired
+            .iter()
+            .filter(|i| {
+                i.menu
+                    .view
+                    .items
+                    .iter()
+                    .any(|entry| matches!(entry, crate::protocol::LayoutEntry::Folder { .. }))
+            })
+            .map(|i| popup_label(instance_uid, "", &i.menu.view.uid))
+            .collect();
+
+        let mut to_destroy: Vec<String> = self
             .app
             .webview_windows()
             .into_keys()
-            .filter(|label| label.starts_with(&free_prefix) && !desired_labels.contains(label))
+            .filter(|label| {
+                (label.starts_with(&free_prefix) && !desired_labels.contains(label))
+                    || (label.starts_with(&free_popup_prefix)
+                        && !desired_free_popups.contains(label))
+            })
             .collect();
         if !to_destroy.is_empty() {
+            to_destroy.sort();
+            to_destroy.dedup();
             self.surfaces.remove_labels(&to_destroy);
+            self.popups.forget_labels(&to_destroy);
             if let Ok(mut levels) = self.window_levels.lock() {
                 levels.retain(|label, _| !to_destroy.contains(label));
             }
@@ -1592,6 +1615,19 @@ impl NativeReactor {
                     collapsed: item.collapsed,
                 };
                 let _ = window.emit_to(&item.label, "menu-state", &event);
+
+                // Pair a hidden popup window with this free bar (same as bound),
+                // so the first expand never creates it on the fly. Free menus use
+                // an empty window_uid. Only for expandable menus; idempotent.
+                if item
+                    .menu
+                    .view
+                    .items
+                    .iter()
+                    .any(|entry| matches!(entry, crate::protocol::LayoutEntry::Folder { .. }))
+                {
+                    let _ = ensure_popup_window(&app, &window, &instance_uid, "", &item.menu.view.uid);
+                }
             }
         });
     }
@@ -1721,6 +1757,27 @@ impl NativeReactor {
                 }
             }
 
+            // Reconcile popup windows (pre-warmed or opened): keep one only for a
+            // menu that still exists AND can still expand (a top-level folder),
+            // and destroy the rest, so a pre-warmed popup does not leak after its
+            // menu is removed or loses its last folder.
+            let desired_popups = menus
+                .iter()
+                .filter(|m| {
+                    m.view
+                        .items
+                        .iter()
+                        .any(|entry| matches!(entry, crate::protocol::LayoutEntry::Folder { .. }))
+                })
+                .map(|m| popup_label(&instance_uid, &window_uid, &m.view.uid))
+                .collect::<HashSet<_>>();
+            let popup_prefix = surface_prefix("popup", &instance_uid, &window_uid);
+            for (label, _) in self.app.webview_windows() {
+                if label.starts_with(&popup_prefix) && !desired_popups.contains(&label) {
+                    labels_to_destroy.push(label);
+                }
+            }
+
             for menu in &menus {
                 let label = menu_label(&instance_uid, &window_uid, &menu.view.uid);
                 let collapsed =
@@ -1778,6 +1835,9 @@ impl NativeReactor {
         labels_to_destroy.sort();
         labels_to_destroy.dedup();
         self.surfaces.remove_labels(&labels_to_destroy);
+        // Drop popup registry state for any popup windows being destroyed, so a
+        // removed / no-longer-expandable menu leaves nothing behind.
+        self.popups.forget_labels(&labels_to_destroy);
         if let Ok(mut levels) = self.window_levels.lock() {
             for label in &labels_to_destroy {
                 levels.remove(label);
@@ -1940,6 +2000,27 @@ impl NativeReactor {
                     collapsed: item.collapsed,
                 };
                 let _ = window.emit_to(&item.label, "menu-state", &event);
+
+                // Create this menu's popup as a paired hidden window as soon as
+                // the bar exists, so the first expand never pays the WebView2
+                // startup cost (which otherwise recurs for every new browser
+                // window). Only for menus that can expand (a top-level folder);
+                // idempotent — a no-op once the popup exists.
+                if item
+                    .menu
+                    .view
+                    .items
+                    .iter()
+                    .any(|entry| matches!(entry, crate::protocol::LayoutEntry::Folder { .. }))
+                {
+                    let _ = ensure_popup_window(
+                        &app,
+                        &window,
+                        &instance_uid_for_event,
+                        &item.window_uid,
+                        &item.menu.view.uid,
+                    );
+                }
             }
         });
     }

@@ -51,22 +51,16 @@ export async function initializePopupSurface(): Promise<void> {
   const windowUid = requiredQuery(query, "windowUid", true);
   const surfaceLabel = getCurrentWindow().label;
   const root = requiredElement("app");
-  const initial = await invoke<PopupSurfaceState>("surface_state", {
-    instanceUid,
-    menuUid,
-    surface: "popup",
-    windowUid,
-  }).catch(() => undefined);
 
   document.body.dataset.surface = "popup";
-  if (initial) {
-    document.documentElement.style.setProperty("--desktop-font-family", initial.fontFamily);
-  }
 
   let currentPayload: PopupPayload | undefined;
   let editingLocked = false;
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverTarget: HTMLElement | undefined;
+  // True once a live popup-state event has rendered, so the one-shot initial
+  // read below never overwrites newer content with its (possibly older) payload.
+  let receivedStateEvent = false;
 
   const setContentVisible = (visible: boolean): void => {
     root.toggleAttribute("data-popup-content-hidden", !visible);
@@ -82,6 +76,7 @@ export async function initializePopupSurface(): Promise<void> {
   };
 
   await listen<PopupPayload>("popup-state", ({ payload }) => {
+    receivedStateEvent = true;
     render(payload);
   }, { target: surfaceLabel });
   await listen<boolean>("popup-content-visibility", ({ payload }) => {
@@ -94,7 +89,23 @@ export async function initializePopupSurface(): Promise<void> {
     document.documentElement.style.setProperty("--desktop-font-family", payload);
   });
 
-  if (initial?.payload) render(initial.payload);
+  // Read the current state once, after the listeners are registered. Because a
+  // popup window is created (paired with its menu bar) before it is ever opened,
+  // its first load runs while the registry entry is still empty — the read then
+  // returns just the font. Registering listeners first means an open that races
+  // this read still delivers its `popup-state`; the read itself picks up state
+  // already set. Either order renders correctly, with no ready handshake.
+  const state = await invoke<PopupSurfaceState>("surface_state", {
+    instanceUid,
+    menuUid,
+    surface: "popup",
+    windowUid,
+  }).catch(() => undefined);
+  if (state) {
+    document.documentElement.style.setProperty("--desktop-font-family", state.fontFamily);
+    // Skip if a live event already rendered, so we never overwrite newer content.
+    if (state.payload && !receivedStateEvent) render(state.payload);
+  }
 
   function render(payload: PopupPayload): void {
     currentPayload = payload;

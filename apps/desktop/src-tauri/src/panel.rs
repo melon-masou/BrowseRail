@@ -580,6 +580,19 @@ impl PopupRegistry {
         }
     }
 
+    /// Drop the stored state for any of these window labels. The registry is
+    /// keyed by popup label, so passing a mixed list (e.g. the surfaces being
+    /// destroyed in a reconcile) only affects popup entries; other labels are
+    /// simply absent. Keeps the registry from retaining payload/close state for
+    /// popups whose windows were destroyed (menu removed or lost its folder).
+    pub fn forget_labels(&self, labels: &[String]) {
+        if let Ok(mut entries) = self.entries.lock() {
+            for label in labels {
+                entries.remove(label);
+            }
+        }
+    }
+
     pub fn remove_instance(&self, instance_uid: &str) {
         if let Ok(mut entries) = self.entries.lock() {
             entries.retain(|_, popup| popup.surface.instance_uid != instance_uid);
@@ -755,41 +768,20 @@ pub fn open_popup(
     let parent = app
         .get_webview_window(&popup.surface.parent_label)
         .ok_or("Menu window is unavailable")?;
-    let (window, is_new) = match app.get_webview_window(&label) {
-        Some(window) => (window, false),
-        None => {
-            let url = format!(
-                "index.html?surface=popup&instanceUid={}&windowUid={}&menuUid={}",
-                urlencoding::encode(instance_uid),
-                urlencoding::encode(window_uid),
-                urlencoding::encode(menu_uid),
-            );
-            WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
-                .title("BrowseRail menu")
-                .inner_size(popup.width, popup.height)
-                .decorations(false)
-                .focused(false)
-                .focusable(false)
-                .resizable(false)
-                .shadow(false)
-                .skip_taskbar(true)
-                .transparent(true)
-                .visible(false)
-                .build()
-                .map(|window| (window, true))
-                .map_err(|error| error.to_string())?
-        }
+    // The popup window is created paired with its menu bar (see
+    // ensure_popup_window), so open_popup never builds it. If it is missing the
+    // menu is not ready or not expandable, and there is nothing to open; the next
+    // sync re-pairs it. open_popup only writes payload, positions, and shows.
+    let Some(window) = app.get_webview_window(&label) else {
+        crate::debug::log(
+            "Native:Popup",
+            format!("open_popup: popup window {label} does not exist; skipped"),
+        );
+        return Ok(());
     };
 
-    if !is_new {
-        set_window_visible_without_activation(&window, false)?;
-    }
+    set_window_visible_without_activation(&window, false)?;
     place_popup(&parent, &window, &popup.anchor, popup.width, popup.height)?;
-    if is_new {
-        set_window_no_activate(&window)?;
-        let parent_hwnd = parent.hwnd().map_err(|error| error.to_string())?;
-        set_window_owner(&window, parent_hwnd.0 as isize)?;
-    }
     let is_always_on_top = is_window_always_on_top(&parent).unwrap_or(false);
     let _ = set_window_always_on_top(&window, is_always_on_top);
     window
@@ -798,6 +790,62 @@ pub fn open_popup(
     window
         .emit_to(&label, "popup-state", &popup.surface.payload)
         .map_err(|error| error.to_string())
+}
+
+/// Ensure a menu's popup window exists, created paired with its menu bar so the
+/// first expand never pays the WebView2 startup cost. The window is built hidden,
+/// no-activate, and owned by `parent` (the menu bar) with the parent's topmost
+/// level, exactly like the `is_new` branch of `open_popup` — but it is neither
+/// placed, shown, nor given content. `open_popup` then takes the reuse path
+/// (place + emit + show). No-op if the popup already exists. Built at a
+/// placeholder 1x1 size; `place_popup` sets the real size on open.
+pub fn ensure_popup_window(
+    app: &tauri::AppHandle,
+    parent: &WebviewWindow,
+    instance_uid: &str,
+    window_uid: &str,
+    menu_uid: &str,
+) -> Result<(), String> {
+    let label = popup_label(instance_uid, window_uid, menu_uid);
+    if app.get_webview_window(&label).is_some() {
+        return Ok(());
+    }
+    let url = format!(
+        "index.html?surface=popup&instanceUid={}&windowUid={}&menuUid={}",
+        urlencoding::encode(instance_uid),
+        urlencoding::encode(window_uid),
+        urlencoding::encode(menu_uid),
+    );
+    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+        .title("BrowseRail menu")
+        .inner_size(1.0, 1.0)
+        .decorations(false)
+        .focused(false)
+        .focusable(false)
+        .resizable(false)
+        .shadow(false)
+        .skip_taskbar(true)
+        .transparent(true)
+        .visible(false)
+        .build()
+        .map_err(|error| error.to_string())?;
+    // If any post-build initialization fails, destroy the half-built window so a
+    // later sync rebuilds it cleanly. Otherwise it would linger and open_popup,
+    // seeing it already exists, would reuse a window that never got its
+    // no-activate style or browser owner.
+    let init = (|| -> Result<(), String> {
+        set_window_no_activate(&window)?;
+        let parent_hwnd = parent.hwnd().map_err(|error| error.to_string())?;
+        set_window_owner(&window, parent_hwnd.0 as isize)?;
+        Ok(())
+    })();
+    if let Err(error) = init {
+        let _ = window.destroy();
+        return Err(error);
+    }
+    let is_always_on_top = is_window_always_on_top(parent).unwrap_or(false);
+    let _ = set_window_always_on_top(&window, is_always_on_top);
+    Ok(())
 }
 
 pub fn show_popup(

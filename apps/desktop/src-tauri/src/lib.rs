@@ -463,14 +463,19 @@ fn surface_state(
             })
         }
         "popup" => {
-            let popup = state
+            // A pre-warmed popup window loads before it is ever opened, so its
+            // registry entry does not exist yet. Return the (global) font with an
+            // empty payload rather than erroring, so the pre-warmed surface still
+            // picks up the correct font on load; the content arrives via the
+            // `popup-state` event when the popup is first opened.
+            let payload = state
                 .popups
                 .surface(&instance_uid, &window_uid, &menu_uid)
-                .ok_or("Popup state is unavailable")?;
+                .map(|popup| popup.payload);
             Ok(SurfaceState {
                 kind: surface,
                 menu: None,
-                payload: Some(popup.payload),
+                payload,
                 collapsed: false,
                 font_family: current_font_family(&state),
             })
