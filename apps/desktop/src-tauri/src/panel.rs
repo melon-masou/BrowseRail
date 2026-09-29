@@ -606,6 +606,28 @@ impl PopupRegistry {
             });
         }
     }
+
+    /// Identities of every currently open popup: (instance, window, menu,
+    /// parent_label). Used by the cursor safety-net to force-close popups the
+    /// pointer has left when a dropped mouseleave stalled their normal close.
+    pub fn open_identities(&self) -> Vec<(String, String, String, String)> {
+        self.entries
+            .lock()
+            .map(|entries| {
+                entries
+                    .values()
+                    .map(|popup| {
+                        (
+                            popup.surface.instance_uid.clone(),
+                            popup.surface.window_uid.clone(),
+                            popup.surface.menu_uid.clone(),
+                            popup.surface.parent_label.clone(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]

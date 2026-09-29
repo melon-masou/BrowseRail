@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use uuid::Uuid;
-use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
@@ -18,10 +18,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_RETURN, VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, EVENT_SYSTEM_FOREGROUND, GA_ROOT, GetAncestor, GetForegroundWindow,
-    GetGUIThreadInfo, GetWindowThreadProcessId, GUITHREADINFO, HHOOK, IsWindow, KBDLLHOOKSTRUCT,
-    SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS, WM_KEYDOWN, WM_SYSKEYDOWN,
+    CallNextHookEx, EVENT_SYSTEM_FOREGROUND, GA_ROOT, GetAncestor, GetCursorPos,
+    GetForegroundWindow, GetGUIThreadInfo, GetWindowRect, GetWindowThreadProcessId, GUITHREADINFO,
+    HHOOK, IsWindow, KBDLLHOOKSTRUCT, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL,
+    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_KEYDOWN, WM_SYSKEYDOWN,
 };
 use windows::core::PWSTR;
 
@@ -565,6 +565,30 @@ fn is_valid_window(hwnd: isize) -> bool {
     unsafe { IsWindow(Some(HWND(hwnd as *mut core::ffi::c_void))).as_bool() }
 }
 
+/// Current mouse cursor position in physical screen coordinates.
+fn cursor_pos() -> Option<(i32, i32)> {
+    let mut pt = POINT::default();
+    unsafe { GetCursorPos(&mut pt).ok()? };
+    Some((pt.x, pt.y))
+}
+
+/// Whether the point (physical screen coords) is inside `label`'s window rect.
+/// A missing window counts as "not containing" it.
+fn window_contains(app: &AppHandle, label: &str, point: (i32, i32)) -> bool {
+    let Some(window) = app.get_webview_window(label) else {
+        return false;
+    };
+    let Ok(hwnd) = window.hwnd() else {
+        return false;
+    };
+    let mut rect = RECT::default();
+    if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
+        return false;
+    }
+    let (x, y) = point;
+    x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
+}
+
 fn is_menu_collapsed(
     collapsed_menus: &Arc<Mutex<Vec<CollapsedMenu>>>,
     instance_uid: &str,
@@ -644,6 +668,46 @@ impl NativeReactor {
 
         install_foreground_event_hook(&reactor.app, sender.clone());
         let _ = KEYBOARD_EVENT_SENDER.set(sender.clone());
+
+        // Cursor safety-net: WebView2 occasionally drops a mouseleave, leaving a
+        // popup's pointer-inside state stuck true so its normal close never fires
+        // and it hangs open under a still-visible bar (nothing else hides it).
+        // While any popup is open, every 2s verify the real cursor position
+        // against the popup + bar rects and force-close any the cursor has left.
+        {
+            let app = reactor.app.clone();
+            let popups = reactor.popups.clone();
+            let surfaces = reactor.surfaces.clone();
+            let guard_sender = sender.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(2));
+                loop {
+                    ticker.tick().await;
+                    let open = popups.open_identities();
+                    if open.is_empty() {
+                        continue;
+                    }
+                    let Some(cursor) = cursor_pos() else {
+                        continue;
+                    };
+                    for (instance_uid, window_uid, menu_uid, parent_label) in open {
+                        let label = popup_label(&instance_uid, &window_uid, &menu_uid);
+                        if !surfaces.is_visible(&label) {
+                            continue;
+                        }
+                        if !window_contains(&app, &label, cursor)
+                            && !window_contains(&app, &parent_label, cursor)
+                        {
+                            let _ = guard_sender.send(NativeCommand::ClosePopup {
+                                instance_uid,
+                                window_uid,
+                                menu_uid,
+                            });
+                        }
+                    }
+                }
+            });
+        }
 
         tauri::async_runtime::spawn(async move {
             reactor.run(receiver).await;
