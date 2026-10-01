@@ -237,11 +237,12 @@ fn invoke_action(
     state: tauri::State<'_, AppState>,
     instance_uid: String,
     window_uid: String,
+    menu_uid: String,
     action_uid: String,
 ) -> Result<(), String> {
     state
         .registry
-        .invoke(&instance_uid, &window_uid, action_uid)
+        .invoke(&instance_uid, &window_uid, menu_uid, action_uid)
 }
 
 #[cfg(target_os = "windows")]

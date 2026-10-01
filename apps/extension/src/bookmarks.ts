@@ -573,10 +573,10 @@ export async function resolveMenuItems(
   const registerTarget = context.registerTarget ?? (() => crypto.randomUUID());
   const dynamicResolve = context.dynamicResolve ?? (() => undefined);
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, transparent, showPageTitle }): Promise<LayoutEntry[]> => {
-      if (type === "menuToggle") {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, transparent, showPageTitle, browserAction }): Promise<LayoutEntry[]> => {
+      if (type === "menuFold") {
         const entry: LayoutEntry = {
-          kind: "menuToggle",
+          kind: "menuFold",
           uid,
           label: rename || t("menu.foldButton"),
           ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
@@ -594,6 +594,21 @@ export async function resolveMenuItems(
           transparent: isTransparent,
         };
         return [spaceEntry];
+      }
+
+      if (type === "browserAction" || type === "menusToggle") {
+        const labels = {
+          back: "menuAction.back",
+          forward: "menuAction.forward",
+          reload: "menuAction.reload",
+        } as const;
+        if (type === "browserAction" && !browserAction) return [];
+        return [{
+          kind: type === "menusToggle" ? "menusToggle" : "browserAction",
+          uid: `${type}:${encodeURIComponent(uid)}`,
+          label: rename || t(type === "menusToggle" ? "menuAction.menusToggle" : labels[browserAction!]),
+          ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
+        }];
       }
 
       if (type === "dynamic") {

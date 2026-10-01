@@ -24,7 +24,6 @@ import { createBookmarkTargetDraft } from "../bookmark-registry";
 import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser-adapter";
 import {
   DEFAULT_FONT_SIZE,
-  type ExtensionConfig,
   loadBookmarkRootPrefix,
   loadConfig,
   loadFreePlacements,
@@ -36,6 +35,7 @@ import {
   removeMenuPlacements,
   resolveGapPx,
   resolveMenuPlacement,
+  saveConfig,
   saveFreePlacement,
   saveMenuPlacement,
   saveWidgetEnabled,
@@ -45,6 +45,7 @@ import { ExtensionStateMachine, type ExtensionConnectionState } from "../state-m
 import { navigateBookmark, navigateToUrl } from "../tab-actions/navigate";
 import { initDynamicBookmarks } from "./dynamic";
 import { captureTemporaryUrl } from "./temporary";
+import { runTabAction, toggleTargetMenus } from "./menu-actions";
 
 export const connectionStateMachine = new ExtensionStateMachine("disconnected");
 
@@ -252,15 +253,11 @@ function scheduleReconcile(): void {
   }, 50);
 }
 
-let previewConfigOverride: ExtensionConfig | null = null;
-
 browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && (changes.config || changes.widget_enabled)) {
-    previewConfigOverride = null;
     scheduleReconcile();
   }
   if (areaName === "sync" && changes.sync_menus) {
-    previewConfigOverride = null;
     scheduleReconcile();
   }
 });
@@ -270,27 +267,6 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       state: connectionStateMachine.getState(),
       detail: connectionStateMachine.getDetail(),
     });
-  }
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    (message as { type?: string }).type === "previewConfig" &&
-    "config" in message
-  ) {
-    previewConfigOverride = (message as { config: ExtensionConfig }).config;
-    requestSync();
-    return Promise.resolve({ ok: true, message: "Preview updated" });
-  }
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    (message as { type?: string }).type === "cancelPreview"
-  ) {
-    if (previewConfigOverride !== null) {
-      previewConfigOverride = null;
-      requestSync();
-    }
-    return Promise.resolve({ ok: true });
   }
   if (
     typeof message === "object" &&
@@ -346,7 +322,6 @@ browser.runtime.onMessage.addListener((message: unknown) => {
     });
   }
   if (isConfigSavedMessage(message)) {
-    previewConfigOverride = null;
     scheduleReconcile();
   }
   if (isSetWidgetEnabledMessage(message)) {
@@ -509,6 +484,22 @@ async function handleMessage(raw: unknown): Promise<void> {
       if (value.actionUid.startsWith("shortcut:")) {
         const shortcutId = value.actionUid.slice("shortcut:".length);
         await executeNativeShortcut(shortcutId, targetWindowUid);
+      } else if (value.actionUid.startsWith("browserAction:") || value.actionUid.startsWith("menusToggle:")) {
+        const separator = value.actionUid.indexOf(":");
+        const type = value.actionUid.slice(0, separator);
+        const uid = decodeURIComponent(value.actionUid.slice(separator + 1));
+        const config = await loadConfig();
+        const sourceMenu = config.panel.menus.find((menu) => menu.uid === value.menuUid);
+        const action = sourceMenu?.items.find((item) => item.uid === uid && item.type === type);
+        if (sourceMenu && action?.type === "menusToggle") {
+          const menus = toggleTargetMenus(config.panel.menus, sourceMenu.uid, action.targetMenuUids ?? []);
+          if (menus) {
+            await saveConfig({ ...config, panel: { menus } });
+            requestSync();
+          }
+        } else if (action?.type === "browserAction" && action.browserAction) {
+          await runTabAction(browser.tabs, targetWindowUid, action.browserAction);
+        }
       } else if (isDynamicAction(value.actionUid)) {
         const { dynamicUid, tabMode } = parseDynamicAction(value.actionUid);
         const live = (await loadDynamicValues())[dynamicUid];
@@ -520,7 +511,7 @@ async function handleMessage(raw: unknown): Promise<void> {
         const queryIndex = raw.indexOf("?");
         const uid = decodeURIComponent(queryIndex < 0 ? raw : raw.slice(0, queryIndex));
         const params = new URLSearchParams(queryIndex < 0 ? "" : raw.slice(queryIndex + 1));
-        const config = previewConfigOverride ?? await loadConfig();
+        const config = await loadConfig();
         const tree = await browser.bookmarks.getTree();
         const result = await captureTemporaryUrl(
           browser.tabs,
@@ -638,7 +629,7 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [loadedConfig, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues, temporaryNotes] = await Promise.all([
+  const [config, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues, temporaryNotes] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
@@ -648,7 +639,6 @@ async function syncOnce(): Promise<void> {
     loadDynamicValues(),
     loadTemporaryNotes(),
   ]);
-  const config = previewConfigOverride ?? loadedConfig;
   const dynamicByUid = new Map((config.dynamicBookmarks ?? []).map((db) => [db.uid, db]));
   const dynamicResolve = (dynamicUid: string) => {
     const def = dynamicByUid.get(dynamicUid);

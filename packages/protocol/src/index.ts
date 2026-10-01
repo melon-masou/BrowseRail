@@ -11,8 +11,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuToggle", "space", "dynamic", "temporary"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuFold", "menusToggle", "browserAction", "space", "dynamic", "temporary"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
+export const BROWSER_ACTION_KINDS = ["back", "forward", "reload"] as const;
+export type BrowserActionKind = (typeof BROWSER_ACTION_KINDS)[number];
 export type StoredMenuItemType = MenuItemType;
 export type ExportedItemType = MenuItemType;
 
@@ -45,6 +47,8 @@ export interface StoredMenuItem {
   units?: number;
   transparent?: boolean;
   showPageTitle?: boolean;
+  browserAction?: BrowserActionKind;
+  targetMenuUids?: string[];
 }
 
 export interface StoredShortcut {
@@ -226,6 +230,8 @@ export interface ExportedMenuItem {
   // against ExportedSettingsData.dynamicBookmarks on import).
   dynamicUid?: string;
   showPageTitle?: boolean;
+  browserAction?: BrowserActionKind;
+  targetMenuUids?: string[];
 }
 
 export interface ExportedDynamicBookmark {

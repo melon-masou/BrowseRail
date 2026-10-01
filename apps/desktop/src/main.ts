@@ -77,7 +77,7 @@ async function initializeSurface(): Promise<void> {
     document.body.dataset.free = "1";
   }
 
-  // Dispatch a bookmark action. A free surface sends no windowUid (the extension
+  // Dispatch a menu action. A free surface sends no windowUid (the extension
   // targets its current lastFocused window); a bound surface sends its window.
   const dispatchAction = (actionUid: string): void => {
     void (async () => {
@@ -85,7 +85,7 @@ async function initializeSurface(): Promise<void> {
         if (isFree) {
           await invoke("invoke_free_action", { actionUid, instanceUid, menuUid });
         } else {
-          await invoke("invoke_action", { actionUid, instanceUid, windowUid });
+          await invoke("invoke_action", { actionUid, instanceUid, windowUid, menuUid });
         }
       } catch (error) {
         root.dataset.error = "";
@@ -342,8 +342,7 @@ async function initializeSurface(): Promise<void> {
     const folderBlock = Math.min(8, Math.max(6, fontSize * 0.5));
     let maxContentWidth = 0;
     for (const entry of entries) {
-      if (entry.kind === "space") continue;
-      if (entry.kind === "menuToggle") continue;
+      if (entry.kind !== "bookmark" && entry.kind !== "folder") continue;
       const displayText =
         entry.rename && entry.rename !== entry.label && !entry.label.startsWith(entry.rename)
           ? `${entry.rename} (${entry.label})`
@@ -516,8 +515,8 @@ async function initializeSurface(): Promise<void> {
     });
 
     if (menuCollapsed) {
-      const toggle = menu.items.find((entry) => entry.kind === "menuToggle");
-      if (toggle && toggle.kind === "menuToggle") {
+      const toggle = menu.items.find((entry) => entry.kind === "menuFold");
+      if (toggle && toggle.kind === "menuFold") {
         const toggleEl = renderMenuEntry(toggle, menuBar);
         menuBar.replaceChildren(toggleEl);
       } else {
@@ -591,7 +590,7 @@ async function initializeSurface(): Promise<void> {
     };
     menuBar.oncontextmenu = (event) => event.preventDefault();
 
-    if (isFree && !(menuCollapsed && menu.items.some((entry) => entry.kind === "menuToggle"))) {
+    if (isFree && !(menuCollapsed && menu.items.some((entry) => entry.kind === "menuFold"))) {
       // Dedicated drag handle: the only way to move a free surface (buttons stay
       // clickable). Position updates preserve the no-activate window contract;
       // onMoved persists the settled spot.
@@ -675,7 +674,7 @@ async function initializeSurface(): Promise<void> {
       return spaceEl;
     }
 
-    if (entry.kind === "menuToggle") {
+    if (entry.kind === "menuFold") {
       const button = menuButton(entry, false);
       button.classList.add("menu-toggle-button");
       button.title = menuCollapsed ? t("menu.expand") : t("menu.collapse");
@@ -712,6 +711,18 @@ async function initializeSurface(): Promise<void> {
     }
 
     const button = menuButton(entry, false);
+    if (entry.kind === "browserAction" || entry.kind === "menusToggle") {
+      button.addEventListener("pointerenter", () => {
+        if (activePopupFolderUid) scheduleIntentClose();
+      });
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0 || !editingLocked) return;
+        event.preventDefault();
+        void closePopup();
+        dispatchAction(entry.uid);
+      });
+      return button;
+    }
     if (entry.kind === "bookmark") {
       button.addEventListener("pointerenter", () => {
         if (activePopupFolderUid) {
@@ -849,7 +860,7 @@ async function initializeSurface(): Promise<void> {
       function popupEnvelope(entries: LayoutEntry[]): { height: number; width: number } {
         const columnWidth = calculateColumnWidth(entries, theme.popupFontSize, maxColumnHeight);
         const visibleEntries = entries.filter(
-          (item) => item.kind !== "space" && item.kind !== "menuToggle",
+          (item) => item.kind === "bookmark" || item.kind === "folder",
         );
         const columnHeight = Math.min(
           maxColumnHeight,
@@ -1351,7 +1362,7 @@ async function initializeSurface(): Promise<void> {
 
   const labelSpan = document.createElement("span");
   labelSpan.className = "menu-button-label";
-  const displayText = entry.kind === "menuToggle" ? undefined : entry.rename;
+  const displayText = entry.kind === "bookmark" || entry.kind === "folder" ? entry.rename : undefined;
   if (displayText) {
     if (popup) {
       labelSpan.textContent =

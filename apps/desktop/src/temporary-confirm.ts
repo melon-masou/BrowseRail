@@ -48,7 +48,7 @@ export function initializeTemporaryConfirmation(root: HTMLElement): void {
     const actionUid = `temporarySave:${encodeURIComponent(uid)}?${params}`;
     const command = windowUid ? "invoke_action" : "invoke_free_action";
     const args = windowUid
-      ? { actionUid, instanceUid, windowUid }
+      ? { actionUid, instanceUid, windowUid, menuUid }
       : { actionUid, instanceUid, menuUid };
     void invoke(command, args).then(() => getCurrentWindow().close()).catch((error: unknown) => {
       status.textContent = t("status.saveFailed", { error: String(error) });

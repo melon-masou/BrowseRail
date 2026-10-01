@@ -1,4 +1,4 @@
-import { AUTO_FONT_SIZE, isAutoFontSize } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize } from "@browserail/protocol";
 import type {
   AttachmentMode,
   ExpandDirection,
@@ -433,11 +433,11 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const normalizedItems = Array.isArray(value.items)
     ? value.items.map(normalizeStoredMenuItem).filter((i): i is StoredMenuItem => i !== undefined)
     : [];
-  let hasMenuToggle = false;
+  let hasMenuFold = false;
   const items = normalizedItems.filter((item) => {
-    if (item.type !== "menuToggle") return true;
-    if (hasMenuToggle) return false;
-    hasMenuToggle = true;
+    if (item.type !== "menuFold") return true;
+    if (hasMenuFold) return false;
+    hasMenuFold = true;
     return true;
   });
 
@@ -510,6 +510,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     ? (value.type as StoredMenuItemType)
     : undefined;
   const uid = typeof value.uid === "string" && value.uid ? value.uid : crypto.randomUUID();
+  if (rawType === "menuToggle") return undefined;
 
   if (rawType === "space") {
     const units = typeof value.units === "number" && Number.isFinite(value.units)
@@ -526,12 +527,28 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     };
   }
 
-  if (rawType === "menuToggle") {
+  if (rawType === "menuFold") {
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     return {
       uid,
-      type: "menuToggle",
+      type: "menuFold",
+      ...(rename ? { rename } : {}),
+      ...(color ? { color } : {}),
+    };
+  }
+
+  if (rawType === "browserAction" || rawType === "menusToggle") {
+    if (rawType === "browserAction" && !BROWSER_ACTION_KINDS.includes(value.browserAction as (typeof BROWSER_ACTION_KINDS)[number])) return undefined;
+    const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
+    const color = typeof value.color === "string" && value.color ? value.color : undefined;
+    const targetMenuUids = Array.isArray(value.targetMenuUids)
+      ? [...new Set(value.targetMenuUids.filter((target): target is string => typeof target === "string" && target.length > 0))]
+      : [];
+    return {
+      uid,
+      type: rawType,
+      ...(rawType === "browserAction" ? { browserAction: value.browserAction as (typeof BROWSER_ACTION_KINDS)[number] } : { targetMenuUids }),
       ...(rename ? { rename } : {}),
       ...(color ? { color } : {}),
     };

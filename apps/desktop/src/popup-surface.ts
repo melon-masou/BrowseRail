@@ -191,7 +191,7 @@ export async function initializePopupSurface(): Promise<void> {
       if (actionUid.startsWith("noop")) return;
       const action = payload.isFree
         ? invoke("invoke_free_action", { actionUid, instanceUid, menuUid })
-        : invoke("invoke_action", { actionUid, instanceUid, windowUid });
+        : invoke("invoke_action", { actionUid, instanceUid, windowUid, menuUid });
       void action.catch(() => {});
     };
 
@@ -249,7 +249,7 @@ export async function initializePopupSurface(): Promise<void> {
       }
 
       for (const entry of entries) {
-        if (entry.kind === "space" || entry.kind === "menuToggle") continue;
+        if (entry.kind !== "bookmark" && entry.kind !== "folder") continue;
         const button = menuButton(entry);
         if (payload.color) {
           button.style.setProperty("--button-custom-color", payload.color);
@@ -454,7 +454,7 @@ export async function initializePopupSurface(): Promise<void> {
 }
 
 function menuButton(
-  entry: Exclude<LayoutEntry, { kind: "space" } | { kind: "menuToggle" }>,
+  entry: Extract<LayoutEntry, { kind: "bookmark" } | { kind: "folder" }>,
 ): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
@@ -521,7 +521,7 @@ function calculateColumnWidth(
   const folderBlock = Math.min(8, Math.max(6, fontSize * 0.5));
   let width = 0;
   for (const entry of entries) {
-    if (entry.kind === "space" || entry.kind === "menuToggle") continue;
+    if (entry.kind !== "bookmark" && entry.kind !== "folder") continue;
     const text = entry.rename && entry.rename !== entry.label && !entry.label.startsWith(entry.rename)
       ? `${entry.rename} (${entry.label})`
       : entry.label;

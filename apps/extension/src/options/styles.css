@@ -728,23 +728,6 @@ output {
   color: #1e40af;
 }
 
-.preview-btn {
-  background: #f8fafc;
-  color: #334155;
-  border-color: #cbd5e1;
-  height: auto;
-  min-height: 36px;
-  padding: 8px 24px;
-  font-size: inherit;
-  line-height: normal;
-}
-
-.preview-btn:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-  color: #0f172a;
-}
-
 .export-btn,
 .import-btn {
   background: #f8fafc;
@@ -1805,6 +1788,21 @@ output {
   flex-direction: column;
   height: 520px;
   max-height: 80vh;
+}
+
+.action-modal {
+  max-width: 360px;
+}
+
+.action-modal .picker-modal-inner {
+  height: auto;
+  gap: 14px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.action-modal .picker-header {
+  padding: 0 0 14px;
 }
 
 .picker-header {

@@ -128,6 +128,7 @@ impl SessionRegistry {
         &self,
         instance_uid: &str,
         window_uid: &str,
+        menu_uid: String,
         action_uid: String,
     ) -> Result<(), String> {
         let sessions = self.sessions.read().map_err(|_| "Session lock failed")?;
@@ -141,6 +142,12 @@ impl SessionRegistry {
         {
             return Err("The bound browser window is unavailable".into());
         }
+        if !session
+            .menus
+            .contains_key(&(Some(window_uid.to_owned()), menu_uid.clone()))
+        {
+            return Err("The bound menu is unavailable".into());
+        }
 
         session
             .outgoing
@@ -149,7 +156,7 @@ impl SessionRegistry {
             .send(NativeMessage::Invoke {
                 action_uid,
                 window_uid: Some(window_uid.to_owned()),
-                menu_uid: None,
+                menu_uid: Some(menu_uid),
             })
             .map_err(|_| "The browser instance is disconnected".into())
     }
@@ -482,14 +489,21 @@ mod tests {
             .unwrap();
 
         registry
-            .invoke("instance-a", "window-a", "bookmark:same".into())
+            .invoke(
+                "instance-a",
+                "window-a",
+                "menu-window-a".into(),
+                "bookmark:same".into(),
+            )
             .unwrap();
 
         let message = receiver_a.try_recv().unwrap();
         assert!(matches!(
             message,
-            NativeMessage::Invoke { window_uid, action_uid, .. }
-                if window_uid.as_deref() == Some("window-a") && action_uid == "bookmark:same"
+            NativeMessage::Invoke { window_uid, action_uid, menu_uid }
+                if window_uid.as_deref() == Some("window-a")
+                    && menu_uid.as_deref() == Some("menu-window-a")
+                    && action_uid == "bookmark:same"
         ));
         assert!(receiver_b.try_recv().is_err());
     }
@@ -511,7 +525,12 @@ mod tests {
             .sync(connection_b, 1, vec![menu("window-b")], Vec::new(), Vec::new())
             .unwrap();
 
-        let result = registry.invoke("instance-a", "window-b", "bookmark:same".into());
+        let result = registry.invoke(
+            "instance-a",
+            "window-b",
+            "menu-window-b".into(),
+            "bookmark:same".into(),
+        );
 
         assert_eq!(
             result.unwrap_err(),

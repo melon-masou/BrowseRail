@@ -60,8 +60,22 @@ export interface BookmarkEntry {
   rename?: string;
 }
 
-export interface MenuToggleEntry {
-  kind: "menuToggle";
+export interface MenuFoldEntry {
+  kind: "menuFold";
+  uid: string;
+  label: string;
+  color?: string;
+}
+
+export interface MenusToggleEntry {
+  kind: "menusToggle";
+  uid: string;
+  label: string;
+  color?: string;
+}
+
+export interface BrowserActionEntry {
+  kind: "browserAction";
   uid: string;
   label: string;
   color?: string;
@@ -86,7 +100,7 @@ export interface SpaceEntry {
   transparent?: boolean;
 }
 
-export type LayoutEntry = BookmarkEntry | FolderEntry | MenuToggleEntry | SpaceEntry;
+export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry | SpaceEntry;
 
 /**
  * Render content for one menu: the item tree plus its appearance. Everything

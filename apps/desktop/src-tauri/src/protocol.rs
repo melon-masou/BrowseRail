@@ -450,7 +450,19 @@ pub enum LayoutEntry {
         #[serde(default)]
         rename: Option<String>,
     },
-    MenuToggle {
+    MenuFold {
+        uid: String,
+        label: String,
+        #[serde(default)]
+        color: Option<String>,
+    },
+    MenusToggle {
+        uid: String,
+        label: String,
+        #[serde(default)]
+        color: Option<String>,
+    },
+    BrowserAction {
         uid: String,
         label: String,
         #[serde(default)]
@@ -535,7 +547,7 @@ pub fn menu_total_size_for_state(
 }
 
 /// Geometry for a detached menu surface in its current state. The full state
-/// includes the drag handle; the collapsed state places the MenuToggle at its
+/// includes the drag handle; the collapsed state places the MenuFold at its
 /// absolute full-state position.
 pub fn free_menu_geometry_for_state(
     view: &MenuView,
@@ -589,11 +601,11 @@ pub fn free_menu_geometry_for_state(
     }
 }
 
-/// Position of the MenuToggle button inside the full menu grid.
+/// Position of the MenuFold button inside the full menu grid.
 pub fn menu_toggle_position(view: &MenuView, placement: &MenuPlacement) -> (f64, f64) {
     let mut units = 0.0;
     for item in &view.items {
-        if matches!(item, LayoutEntry::MenuToggle { .. }) {
+        if matches!(item, LayoutEntry::MenuFold { .. }) {
             break;
         }
         units += match item {
@@ -620,7 +632,7 @@ pub fn compute_menu_geometry(
 }
 
 /// Derives geometry for the menu's current state. In the collapsed state, the
-/// MenuToggle keeps the absolute position it occupies in the full menu, so
+/// MenuFold keeps the absolute position it occupies in the full menu, so
 /// right/bottom anchors must first resolve against the full-menu size.
 pub fn compute_menu_geometry_for_state(
     window: &BrowserWindowSnapshot,
@@ -878,7 +890,7 @@ mod tests {
                 "items": [
                     { "kind": "bookmark", "uid": "a", "label": "A" },
                     { "kind": "bookmark", "uid": "b", "label": "B" },
-                    { "kind": "menuToggle", "uid": "toggle", "label": "D" },
+                    { "kind": "menuFold", "uid": "toggle", "label": "D" },
                     { "kind": "bookmark", "uid": "e", "label": "E" }
                 ]
             }"#,
@@ -919,7 +931,7 @@ mod tests {
                 "gap": 5,
                 "items": [
                     { "kind": "bookmark", "uid": "a", "label": "A" },
-                    { "kind": "menuToggle", "uid": "toggle", "label": "D" }
+                    { "kind": "menuFold", "uid": "toggle", "label": "D" }
                 ]
             },
             "placement": {
@@ -947,16 +959,35 @@ mod tests {
             "uid": "menu-custom",
             "dockColor": "#ff0000",
             "items": [
-                { "kind": "menuToggle", "uid": "toggle-1", "label": "Toggle", "color": "#00ff00" }
+                { "kind": "menuFold", "uid": "toggle-1", "label": "Toggle", "color": "#00ff00" }
             ]
         }"##;
         let view: MenuView = serde_json::from_str(json).unwrap();
         assert_eq!(view.dock_color.as_deref(), Some("#ff0000"));
         match &view.items[0] {
-            LayoutEntry::MenuToggle { color, .. } => {
+            LayoutEntry::MenuFold { color, .. } => {
                 assert_eq!(color.as_deref(), Some("#00ff00"));
             }
-            _ => panic!("Expected MenuToggle"),
+            _ => panic!("Expected MenuFold"),
         }
+    }
+
+    #[test]
+    fn preserves_action_buttons_when_forwarding_menu_views_to_the_webview() {
+        let view: MenuView = serde_json::from_value(serde_json::json!({
+            "uid": "actions",
+            "items": [
+                { "kind": "browserAction", "uid": "browserAction:back", "label": "Back" },
+                { "kind": "menusToggle", "uid": "menusToggle:others", "label": "Menus" },
+                { "kind": "menuFold", "uid": "fold", "label": "Fold" }
+            ]
+        }))
+        .unwrap();
+        let forwarded = serde_json::to_value(view).unwrap();
+        assert_eq!(forwarded["items"][0]["kind"], "browserAction");
+        assert_eq!(forwarded["items"][0]["label"], "Back");
+        assert_eq!(forwarded["items"][1]["kind"], "menusToggle");
+        assert_eq!(forwarded["items"][1]["uid"], "menusToggle:others");
+        assert_eq!(forwarded["items"][2]["kind"], "menuFold");
     }
 }

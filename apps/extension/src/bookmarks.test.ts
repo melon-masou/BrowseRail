@@ -136,12 +136,12 @@ describe("resolveMenuItems", () => {
 
   it("resolves a configured menu toggle entry", async () => {
     const entries = await resolveMenuItems([
-      { uid: "menu-toggle-main", type: "menuToggle" },
+      { uid: "menu-toggle-main", type: "menuFold" },
     ]);
 
     expect(entries).toEqual([
       {
-        kind: "menuToggle",
+        kind: "menuFold",
         uid: "menu-toggle-main",
         label: "Fold",
       },
@@ -150,16 +150,29 @@ describe("resolveMenuItems", () => {
 
   it("uses a menu toggle rename as its button text", async () => {
     const entries = await resolveMenuItems([
-      { uid: "menu-toggle-main", type: "menuToggle", rename: "收起" },
+      { uid: "menu-toggle-main", type: "menuFold", rename: "收起" },
     ]);
 
     expect(entries).toEqual([
       {
-        kind: "menuToggle",
+        kind: "menuFold",
         uid: "menu-toggle-main",
         label: "收起",
       },
     ]);
+  });
+
+  it("renders browser actions and menu visibility controls without resolving browser bookmarks", async () => {
+    const registerTarget = vi.fn();
+    const entries = await resolveMenuItems([
+      { uid: "back-button", type: "browserAction", browserAction: "back", rename: "←", color: "#123456" },
+      { uid: "menus-button", type: "menusToggle", targetMenuUids: ["other-menu"] },
+    ], undefined, undefined, undefined, undefined, { tree: [], registerTarget });
+    expect(entries).toEqual([
+      { kind: "browserAction", uid: "browserAction:back-button", label: "←", color: "#123456" },
+      { kind: "menusToggle", uid: "menusToggle:menus-button", label: "Menu Toggle" },
+    ]);
+    expect(registerTarget).not.toHaveBeenCalled();
   });
 
   it("turns flattened BrowseRailSpace bookmarks into configured spaces", async () => {
@@ -846,13 +859,30 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     const menu = normalizeMenu({
       uid: "menu-toggle-menu",
       items: [
-        { uid: "toggle-1", type: "menuToggle" },
-        { uid: "toggle-2", type: "menuToggle" },
+        { uid: "toggle-1", type: "menuFold" },
+        { uid: "toggle-2", type: "menuFold" },
       ],
     });
 
     expect(menu?.items).toHaveLength(1);
-    expect(menu?.items[0]?.type).toBe("menuToggle");
+    expect(menu?.items[0]?.type).toBe("menuFold");
+  });
+
+  it("loads the new action configuration and discards the removed fold type", async () => {
+    const { normalizeMenu } = await import("./config");
+    const menu = normalizeMenu({
+      uid: "source",
+      items: [
+        { uid: "old-fold", type: "menuToggle" },
+        { uid: "fold", type: "menuFold", rename: "折叠" },
+        { uid: "next", type: "browserAction", browserAction: "forward" },
+        { uid: "invalid", type: "browserAction", browserAction: "invalid" },
+        { uid: "visibility", type: "menusToggle", targetMenuUids: ["a", "b"] },
+      ],
+    });
+    expect(menu?.items.map((item) => item.uid)).toEqual(["fold", "next", "visibility"]);
+    expect(menu?.items.find((item) => item.uid === "next")?.browserAction).toBe("forward");
+    expect(menu?.items.find((item) => item.uid === "visibility")?.targetMenuUids).toEqual(["a", "b"]);
   });
 
   it("preserves up and left expansion directions", async () => {
@@ -878,13 +908,13 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     const { normalizeStoredMenuItem } = await import("./config");
     const item = normalizeStoredMenuItem({
       uid: "toggle-1",
-      type: "menuToggle",
+      type: "menuFold",
       rename: "收起",
     });
 
     expect(item).toEqual({
       uid: "toggle-1",
-      type: "menuToggle",
+      type: "menuFold",
       rename: "收起",
     });
   });

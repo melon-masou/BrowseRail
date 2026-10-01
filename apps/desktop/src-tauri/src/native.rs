@@ -2093,7 +2093,7 @@ impl NativeReactor {
         let has_toggle = |view: &crate::protocol::MenuView| {
             view.items
                 .iter()
-                .any(|item| matches!(item, crate::protocol::LayoutEntry::MenuToggle { .. }))
+                .any(|item| matches!(item, crate::protocol::LayoutEntry::MenuFold { .. }))
         };
         let valid_menu_uids: HashSet<&str> = synced_menus
             .iter()

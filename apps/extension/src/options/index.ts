@@ -1,6 +1,7 @@
 import {
   type AttachmentMode,
   AUTO_FONT_SIZE,
+  type BrowserActionKind,
   EXPORT_SCHEMA_VERSION,
   type ExportedMenuItem,
   type ExportedSettingsData,
@@ -19,14 +20,15 @@ import {
   DEFAULT_MENU_GAP_PERCENT,
   type DynamicBookmark,
   type DynamicValuesMap,
-  type ExtensionConfig,
   loadBookmarkRootPrefix,
   loadDynamicValues,
   loadConfig,
   loadSyncEnabled,
   loadWidgetEnabled,
   normalizeFontSize,
+  normalizeConfig,
   normalizeMenu,
+  normalizeStoredMenuItem,
   pruneTemporaryValues,
   saveBookmarkRootPrefix,
   saveConfig,
@@ -120,7 +122,6 @@ const desktopTestStatus = element<HTMLOutputElement>("desktop-test-status");
 const menusContainer = element<HTMLDivElement>("menus");
 const addMenu = element<HTMLButtonElement>("add-menu");
 const saveBtn = element<HTMLButtonElement>("save-btn");
-const previewBtn = element<HTMLButtonElement>("preview-btn");
 const exportBtn = element<HTMLButtonElement>("export-btn");
 const importBtn = element<HTMLButtonElement>("import-btn");
 const importFileInput = element<HTMLInputElement>("import-file-input");
@@ -243,7 +244,14 @@ const temporaryBookmarkResult = element<HTMLOutputElement>("temporary-bookmark-r
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
-const addPopoverMenuToggleBtn = element<HTMLButtonElement>("add-popover-menu-toggle-btn");
+const addPopoverActionBtn = element<HTMLButtonElement>("add-popover-action-btn");
+const addActionDialog = element<HTMLDialogElement>("add-action-dialog");
+const addActionForm = element<HTMLFormElement>("add-action-form");
+const addActionKind = element<HTMLSelectElement>("add-action-kind");
+const addActionTargets = element<HTMLDivElement>("add-action-targets");
+const addActionClose = element<HTMLButtonElement>("add-action-close");
+const addActionError = element<HTMLOutputElement>("add-action-error");
+const itemSettingsActionTargets = element<HTMLDivElement>("item-settings-action-targets");
 const menusCardTabs = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"),
 );
@@ -413,12 +421,6 @@ window.addEventListener("beforeunload", (event) => {
   }
 });
 
-window.addEventListener("pagehide", () => {
-  if (isMenusDirty) {
-    void browser.runtime.sendMessage({ type: "cancelPreview" });
-  }
-});
-
 connectionForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void persistConnection();
@@ -427,10 +429,6 @@ connectionForm.addEventListener("submit", (event) => {
 menusForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void persistMenus();
-});
-
-previewBtn.addEventListener("click", () => {
-  void previewCurrentConfig();
 });
 
 instanceLabel.addEventListener("input", markConnectionDirty);
@@ -905,7 +903,7 @@ function enrichMenuItems(
         }
       }
     }
-    if (item.type === "space" || item.type === "menuToggle" || item.type === "temporary") continue;
+    if (item.type === "space" || item.type === "menuFold" || item.type === "menusToggle" || item.type === "browserAction" || item.type === "temporary") continue;
     const node = getItemNode(item);
     if (!node) continue;
     const refreshedPath = getItemRelativePath(
@@ -1345,6 +1343,19 @@ async function initialize(): Promise<void> {
   dynamicBookmarks = structuredClone(config.dynamicBookmarks ?? []);
   shortcuts = structuredClone(config.shortcuts ?? []);
   nativeShortcuts = structuredClone(config.nativeShortcuts ?? []);
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes.config?.newValue) return;
+    const stored = normalizeConfig(changes.config.newValue, instanceLabel.value);
+    let changed = false;
+    for (const menu of menus) {
+      const savedMenu = stored.panel.menus.find((saved) => saved.uid === menu.uid);
+      if (savedMenu && menu.enabled !== savedMenu.enabled) {
+        menu.enabled = savedMenu.enabled !== false;
+        changed = true;
+      }
+    }
+    if (changed) renderMenus();
+  });
   updateDesktopControls();
   renderMenus();
   renderUrlRules();
@@ -1450,50 +1461,6 @@ async function persistMenuEnabled(menu: StoredMenu, enabled: boolean): Promise<b
   return true;
 }
 
-
-async function previewCurrentConfig(): Promise<void> {
-  await saveBookmarkRootPrefix(bookmarkRootPrefix);
-
-  const previewConfig: ExtensionConfig = {
-    desktopWidget: {
-      url: desktopUrl.value,
-    },
-    instanceLabel: instanceLabel.value,
-    panel: {
-      menus,
-    },
-    urlRules,
-    dynamicBookmarks,
-    shortcuts: structuredClone(shortcuts),
-    nativeShortcuts: structuredClone(nativeShortcuts),
-  };
-
-  try {
-    previewBtn.disabled = true;
-    status.value = t("preview.updating");
-    const result = (await browser.runtime.sendMessage({
-      type: "previewConfig",
-      config: previewConfig,
-    })) as { ok?: boolean; message?: string } | undefined;
-
-    let previewingMsg = "";
-    if (result?.ok) {
-      previewingMsg = t("preview.active");
-      status.value = previewingMsg;
-    } else {
-      status.value = t("preview.failed", { message: result?.message ?? t("preview.desktopUnavailable") });
-    }
-    setTimeout(() => {
-      if (previewingMsg && status.value === previewingMsg) {
-        status.value = "";
-      }
-    }, 3_500);
-  } catch (err) {
-    status.value = t("preview.failed", { message: String(err) });
-  } finally {
-    previewBtn.disabled = false;
-  }
-}
 
 function initColorPopover(): void {
   colorPopoverPresets.replaceChildren(
@@ -2318,18 +2285,44 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     itemSettingsSpaceControls.style.display = "none";
     itemSettingsBookmarkControls.style.display = "block";
 
-    const isMenuToggle = item.type === "menuToggle";
+    const isMenuFold = item.type === "menuFold";
+    const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction";
     const isDynamic = item.type === "dynamic";
     const tabModeField = itemSettingTabMode.parentElement;
     const changeActions = itemSettingChangeBtn.parentElement;
-    if (tabModeField) tabModeField.style.display = isMenuToggle ? "none" : "";
-    if (changeActions) changeActions.style.display = (isMenuToggle || isDynamic || item.type === "temporary") ? "none" : "";
+    if (tabModeField) tabModeField.style.display = isAction ? "none" : "";
+    if (changeActions) changeActions.style.display = (isAction || isDynamic || item.type === "temporary") ? "none" : "";
+    itemSettingsActionTargets.style.display = "none";
 
-    if (isMenuToggle) {
+    if (isMenuFold) {
       itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
       itemSettingsDynamicControls.style.display = "none";
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
+
+    if (item.type === "menusToggle" || item.type === "browserAction") {
+      const actionLabel = item.type === "menusToggle"
+        ? t("menuAction.menusToggle")
+        : browserActionLabel(item.browserAction);
+      itemSettingsTitle.textContent = item.rename || actionLabel;
+      itemSettingRename.value = item.rename ?? "";
+      itemSettingsFolderControls.style.display = "none";
+      itemSettingsDynamicControls.style.display = "none";
+      if (item.type === "menusToggle") {
+        itemSettingsActionTargets.style.display = "flex";
+        renderActionTargetChoices(
+          itemSettingsActionTargets,
+          menuIndex,
+          new Set(item.targetMenuUids ?? []),
+          (uids) => {
+            item.targetMenuUids = uids;
+            markDirty();
+          },
+        );
+      }
       positionPopover(itemSettingsPopover, rect, 250);
       return;
     }
@@ -3440,7 +3433,73 @@ function renderShortcuts(): void {
   }
 }
 
+function browserActionLabel(kind: BrowserActionKind | undefined): string {
+  const labels = { back: "menuAction.back", forward: "menuAction.forward", reload: "menuAction.reload" } as const;
+  return kind ? t(labels[kind]) : "";
+}
+
+function renderActionTargetChoices(
+  container: HTMLElement,
+  sourceMenuIndex: number,
+  selected: Set<string>,
+  onChange: (uids: string[]) => void,
+): void {
+  container.replaceChildren();
+  const heading = document.createElement("span");
+  heading.className = "item-setting-field-title";
+  heading.textContent = t("menuAction.targets");
+  container.appendChild(heading);
+  if (menus.length <= 1) {
+    const hint = document.createElement("span");
+    hint.textContent = t("menuAction.noTargets");
+    container.appendChild(hint);
+  }
+  menus.forEach((menu, index) => {
+    if (index === sourceMenuIndex) return;
+    const label = document.createElement("label");
+    label.className = "item-setting-check-label";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selected.has(menu.uid);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) selected.add(menu.uid);
+      else selected.delete(menu.uid);
+      onChange([...selected]);
+    });
+    const name = document.createElement("span");
+    name.textContent = t("menu.title", { n: index + 1 });
+    label.append(checkbox, name);
+    container.appendChild(label);
+  });
+}
+
 function initAddItemPopover(): void {
+  let actionMenuIndex = -1;
+  const selectedTargets = new Set<string>();
+  addActionClose.addEventListener("click", () => addActionDialog.close());
+  addActionKind.addEventListener("change", () => {
+    addActionTargets.style.display = addActionKind.value === "menusToggle" ? "flex" : "none";
+    addActionError.value = "";
+  });
+  addActionForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const menu = menus[actionMenuIndex];
+    if (!menu) return;
+    const kind = addActionKind.value;
+    if (kind === "menuFold" && menu.items.some((item) => item.type === "menuFold")) {
+      addActionError.value = t("menu.menuFoldAlreadyExists");
+      return;
+    }
+    const item: StoredMenuItem = kind === "menuFold"
+      ? { uid: crypto.randomUUID(), type: "menuFold" }
+      : kind === "menusToggle"
+        ? { uid: crypto.randomUUID(), type: "menusToggle", targetMenuUids: [...selectedTargets] }
+        : { uid: crypto.randomUUID(), type: "browserAction", browserAction: kind as BrowserActionKind };
+    menu.items.push(item);
+    addActionDialog.close();
+    renderMenus();
+    markDirty();
+  });
   addPopoverBookmarkBtn.addEventListener("click", () => {
     const menuIdx = activeAddMenuIndex;
     closeAddItemDropdown();
@@ -3468,22 +3527,16 @@ function initAddItemPopover(): void {
     }
   });
 
-  addPopoverMenuToggleBtn.addEventListener("click", () => {
-    const menuIdx = activeAddMenuIndex;
+  addPopoverActionBtn.addEventListener("click", () => {
+    actionMenuIndex = activeAddMenuIndex;
     closeAddItemDropdown();
-    if (menuIdx < 0 || menuIdx >= menus.length) return;
-    const menu = menus[menuIdx];
-    if (!menu) return;
-    if (menu.items.some((item) => item.type === "menuToggle")) {
-      status.value = t("menu.menuToggleAlreadyExists");
-      return;
-    }
-    menu.items.push({
-      uid: crypto.randomUUID(),
-      type: "menuToggle",
-    });
-    renderMenus();
-    markDirty();
+    if (actionMenuIndex < 0 || actionMenuIndex >= menus.length) return;
+    selectedTargets.clear();
+    addActionError.value = "";
+    addActionKind.value = "back";
+    addActionTargets.style.display = "none";
+    renderActionTargetChoices(addActionTargets, actionMenuIndex, selectedTargets, () => { addActionError.value = ""; });
+    addActionDialog.showModal();
   });
 
   addPopoverDynamicBtn.addEventListener("click", () => {
@@ -3679,16 +3732,19 @@ function renderMenus(): void {
           const row = document.createElement("li");
           row.className = "menu-item-row";
 
-          if (item.type === "menuToggle") {
+          if (item.type === "menuFold" || item.type === "menusToggle" || item.type === "browserAction") {
             const label = document.createElement("span");
             label.className = "item-label";
 
             const titleSpan = document.createElement("span");
             titleSpan.className = "item-title";
-            titleSpan.textContent = item.rename
-              ? `${item.rename} (${t("menu.addMenuToggle")})`
-              : `⇕ ${t("menu.addMenuToggle")}`;
-            titleSpan.title = t("menu.addMenuToggle");
+            const actionLabel = item.type === "menuFold"
+              ? t("menu.addMenuFold")
+              : item.type === "menusToggle"
+                ? t("menuAction.menusToggle")
+                : browserActionLabel(item.browserAction);
+            titleSpan.textContent = item.rename ? `${item.rename} (${actionLabel})` : actionLabel;
+            titleSpan.title = actionLabel;
             label.appendChild(titleSpan);
 
             const controls = document.createElement("div");
@@ -4531,10 +4587,12 @@ function exportSettings(): void {
       ...(menu.onTopMode ? { onTopMode: menu.onTopMode } : {}),
       ...(menu.tabMode ? { tabMode: menu.tabMode } : {}),
       items: menu.items.map((item) => {
-        if (item.type === "menuToggle") {
+        if (item.type === "menuFold" || item.type === "menusToggle" || item.type === "browserAction") {
           return {
             uid: item.uid,
-            type: "menuToggle",
+            type: item.type,
+            ...(item.type === "browserAction" ? { browserAction: item.browserAction } : {}),
+            ...(item.type === "menusToggle" ? { targetMenuUids: item.targetMenuUids ?? [] } : {}),
             ...(item.rename ? { rename: item.rename } : {}),
             ...(item.color ? { color: item.color } : {}),
           } satisfies ExportedMenuItem;
@@ -4627,7 +4685,7 @@ async function importSettings(file: File): Promise<void> {
       const rawItems = Array.isArray(menuRecord.items) ? menuRecord.items : [];
 
       const items: StoredMenuItem[] = [];
-      let hasMenuToggle = false;
+      let hasMenuFold = false;
       for (const rawItem of rawItems) {
         if (typeof rawItem !== "object" || rawItem === null) continue;
         const itemRecord = rawItem as Record<string, unknown>;
@@ -4658,12 +4716,18 @@ async function importSettings(file: File): Promise<void> {
           ? itemRecord.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
           : undefined;
 
-        if (type === "menuToggle") {
-          if (hasMenuToggle) continue;
-          hasMenuToggle = true;
+        if (type === "menusToggle" || type === "browserAction") {
+          const action = normalizeStoredMenuItem(itemRecord);
+          if (action) items.push(action);
+          continue;
+        }
+
+        if (type === "menuFold") {
+          if (hasMenuFold) continue;
+          hasMenuFold = true;
           items.push({
             uid,
-            type: "menuToggle",
+            type: "menuFold",
             ...(rename ? { rename } : {}),
             ...(typeof itemRecord.color === "string" && itemRecord.color
               ? { color: itemRecord.color }

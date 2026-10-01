@@ -190,7 +190,6 @@
 
         <div class="form-actions-row">
           <button type="submit" id="save-btn" class="save-btn" data-i18n="btn.save">Save</button>
-          <button type="button" id="preview-btn" class="preview-btn action-btn" data-i18n="btn.preview">Preview</button>
           <output id="status"></output>
         </div>
       </form>
@@ -507,6 +506,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
                 <span data-i18n="dynamic.showPageTitle">Show current bookmark title</span>
               </label>
             </div>
+            <div id="item-settings-action-targets" class="item-settings-folder-controls" style="display: none;"></div>
             <div class="item-settings-actions">
               <button type="button" id="item-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
             </div>
@@ -544,9 +544,9 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <span class="add-popover-icon">␣</span>
           <span class="add-popover-text" data-i18n="menu.addSpace">Space</span>
         </button>
-        <button type="button" id="add-popover-menu-toggle-btn" class="add-popover-item">
+        <button type="button" id="add-popover-action-btn" class="add-popover-item">
           <span class="add-popover-icon">⇕</span>
-          <span class="add-popover-text" data-i18n="menu.addMenuToggle">Menu toggle</span>
+          <span class="add-popover-text" data-i18n="menu.action">Action</span>
         </button>
         <button type="button" id="add-popover-dynamic-btn" class="add-popover-item">
           <span class="add-popover-icon">🜂</span>
@@ -557,6 +557,27 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <span class="add-popover-text" data-i18n="menu.addTemporary">Temporary bookmark</span>
         </button>
       </div>
+
+      <dialog id="add-action-dialog" class="picker-modal action-modal">
+        <form method="dialog" class="picker-modal-inner" id="add-action-form">
+          <div class="picker-header">
+            <h3 data-i18n="menu.addAction">Action</h3>
+            <button type="button" id="add-action-close" class="picker-close-btn" data-i18n-aria="common.close" aria-label="Close">✕</button>
+          </div>
+          <div class="item-setting-field">
+            <select id="add-action-kind" class="item-setting-select">
+              <option value="back" data-i18n="menuAction.back">Back</option>
+              <option value="forward" data-i18n="menuAction.forward">Forward</option>
+              <option value="reload" data-i18n="menuAction.reload">Reload</option>
+              <option value="menusToggle" data-i18n="menuAction.menusToggle">Menu Toggle</option>
+              <option value="menuFold" data-i18n="menu.addMenuFold">Fold Toggle</option>
+            </select>
+          </div>
+          <div id="add-action-targets" class="item-settings-folder-controls" style="display: none;"></div>
+          <output id="add-action-error" class="status"></output>
+          <button type="submit" id="add-action-submit" class="action-btn" data-i18n="menu.addAction">Action</button>
+        </form>
+      </dialog>
 
       <dialog id="bookmark-picker-dialog" class="picker-modal">
         <div class="picker-modal-inner">
