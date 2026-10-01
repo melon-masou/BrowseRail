@@ -27,6 +27,7 @@ import {
   loadWidgetEnabled,
   normalizeFontSize,
   normalizeMenu,
+  pruneTemporaryValues,
   saveBookmarkRootPrefix,
   saveConfig,
   saveSyncEnabled,
@@ -239,6 +240,7 @@ const menusCardTabs = Array.from(
 const dynamicList = element<HTMLDivElement>("dynamic-list");
 const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
 const addPopoverDynamicBtn = element<HTMLButtonElement>("add-popover-dynamic-btn");
+const addPopoverTemporaryBtn = element<HTMLButtonElement>("add-popover-temporary-btn");
 const pickDynamicDialog = element<HTMLDialogElement>("pick-dynamic-dialog");
 const pickDynamicTitle = element<HTMLSpanElement>("pick-dynamic-title");
 const pickDynamicClose = element<HTMLButtonElement>("pick-dynamic-close");
@@ -892,7 +894,7 @@ function enrichMenuItems(
         }
       }
     }
-    if (item.type === "space" || item.type === "menuToggle") continue;
+    if (item.type === "space" || item.type === "menuToggle" || item.type === "temporary") continue;
     const node = getItemNode(item);
     if (!node) continue;
     const refreshedPath = getItemRelativePath(
@@ -1403,6 +1405,7 @@ async function persistMenus(): Promise<void> {
     shortcuts,
     nativeShortcuts,
   });
+  await pruneTemporaryValues(menus);
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearMenusDirty();
   const savedMsg = t("status.saved");
@@ -2305,7 +2308,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     const tabModeField = itemSettingTabMode.parentElement;
     const changeActions = itemSettingChangeBtn.parentElement;
     if (tabModeField) tabModeField.style.display = isMenuToggle ? "none" : "";
-    if (changeActions) changeActions.style.display = (isMenuToggle || isDynamic) ? "none" : "";
+    if (changeActions) changeActions.style.display = (isMenuToggle || isDynamic || item.type === "temporary") ? "none" : "";
 
     if (isMenuToggle) {
       itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
@@ -2324,6 +2327,16 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
       itemSettingsFolderControls.style.display = "none";
       itemSettingsDynamicControls.style.display = "block";
       itemSettingDynamicShowPageTitle.checked = item.showPageTitle === true;
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
+
+    if (item.type === "temporary") {
+      itemSettingsTitle.textContent = `📌 ${item.rename || t("temporary.defaultName")}`;
+      itemSettingRename.value = item.rename ?? "";
+      itemSettingTabMode.value = item.tabMode ?? "";
+      itemSettingsFolderControls.style.display = "none";
+      itemSettingsDynamicControls.style.display = "none";
       positionPopover(itemSettingsPopover, rect, 250);
       return;
     }
@@ -3412,6 +3425,16 @@ function initAddItemPopover(): void {
     openPickDynamicBookmarkDialog(menuIdx);
   });
 
+  addPopoverTemporaryBtn.addEventListener("click", () => {
+    const menuIdx = activeAddMenuIndex;
+    closeAddItemDropdown();
+    const menu = menus[menuIdx];
+    if (!menu) return;
+    menu.items.push({ uid: crypto.randomUUID(), type: "temporary" });
+    renderMenus();
+    markDirty();
+  });
+
   document.addEventListener("pointerdown", (e) => {
     if (addItemPopover.style.display === "none") return;
     const target = e.target as Node | null;
@@ -3842,9 +3865,9 @@ function renderMenus(): void {
             return row;
           }
 
-          if (item.type === "dynamic") {
+          if (item.type === "dynamic" || item.type === "temporary") {
             const db = dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
-            const rawLabel = db?.name || t("dynamic.defaultName");
+            const rawLabel = item.type === "temporary" ? t("temporary.defaultName") : db?.name || t("dynamic.defaultName");
             const customRename = item.rename;
 
             const label = document.createElement("span");
@@ -3855,7 +3878,7 @@ function renderMenus(): void {
             if (customRename) {
               titleSpan.textContent = `${customRename} (${rawLabel.trim()})`;
             } else {
-              titleSpan.textContent = `🜂 ${rawLabel.trim()}`;
+              titleSpan.textContent = `${item.type === "temporary" ? "📌" : "🜂"} ${rawLabel.trim()}`;
             }
             const liveUrl = db?.uid ? dynamicValuesCache[db.uid]?.url : undefined;
             titleSpan.title = liveUrl ? `${rawLabel.trim()}\n${liveUrl}` : rawLabel.trim();
@@ -3863,7 +3886,7 @@ function renderMenus(): void {
 
             const dynamicTag = document.createElement("span");
             dynamicTag.className = "item-tag item-tag-dynamic";
-            dynamicTag.textContent = t("section.dynamic");
+            dynamicTag.textContent = item.type === "temporary" ? t("menu.addTemporary") : t("section.dynamic");
             label.appendChild(dynamicTag);
 
 
@@ -4458,6 +4481,16 @@ function exportSettings(): void {
             ...(item.color ? { color: item.color } : {}),
             ...(item.tabMode ? { tabMode: item.tabMode } : {}),
             ...(item.showPageTitle ? { showPageTitle: true } : {}),
+          } satisfies ExportedMenuItem;
+        }
+
+        if (item.type === "temporary") {
+          return {
+            uid: item.uid,
+            type: "temporary",
+            ...(item.rename ? { rename: item.rename } : {}),
+            ...(item.color ? { color: item.color } : {}),
+            ...(item.tabMode ? { tabMode: item.tabMode } : {}),
           } satisfies ExportedMenuItem;
         }
 

@@ -3,6 +3,7 @@ import {
   isNativeMessage,
   isUrlMatchingSet,
   parseDynamicAction,
+  parseTemporaryAction,
   PROTOCOL_VERSION,
   type BrowserInstance,
   type ExtensionMessage,
@@ -30,6 +31,8 @@ import {
   loadMenuPlacements,
   loadWidgetEnabled,
   loadDynamicValues,
+  loadTemporaryValues,
+  loadTemporaryNotes,
   removeMenuPlacements,
   resolveGapPx,
   resolveMenuPlacement,
@@ -41,6 +44,7 @@ import { loadInstanceUid } from "../instance-identity";
 import { ExtensionStateMachine, type ExtensionConnectionState } from "../state-machine";
 import { navigateBookmark, navigateToUrl } from "../tab-actions/navigate";
 import { initDynamicBookmarks } from "./dynamic";
+import { captureTemporaryUrl } from "./temporary";
 
 export const connectionStateMachine = new ExtensionStateMachine("disconnected");
 
@@ -511,6 +515,25 @@ async function handleMessage(raw: unknown): Promise<void> {
         if (live?.url) {
           await navigateToUrl(browser, targetWindowUid, live.url, tabMode);
         }
+      } else if (value.actionUid.startsWith("temporarySave:")) {
+        const raw = value.actionUid.slice("temporarySave:".length);
+        const queryIndex = raw.indexOf("?");
+        const uid = decodeURIComponent(queryIndex < 0 ? raw : raw.slice(0, queryIndex));
+        const params = new URLSearchParams(queryIndex < 0 ? "" : raw.slice(queryIndex + 1));
+        const config = previewConfigOverride ?? await loadConfig();
+        const result = await captureTemporaryUrl(
+          browser.tabs,
+          config.panel.menus,
+          uid,
+          targetWindowUid,
+          params.get("confirmed") === "1",
+          params.get("note") ?? "",
+        );
+        if (result === "saved") requestSync();
+      } else if (value.actionUid.startsWith("temporary:")) {
+        const { uid, tabMode } = parseTemporaryAction(value.actionUid);
+        const url = (await loadTemporaryValues())[uid];
+        if (url) await navigateToUrl(browser, targetWindowUid, url, tabMode);
       } else {
         await navigateBookmark(browser, targetWindowUid, value.actionUid);
       }
@@ -613,7 +636,7 @@ async function syncOnce(): Promise<void> {
     return;
   }
 
-  const [loadedConfig, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues] = await Promise.all([
+  const [loadedConfig, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues, temporaryNotes] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
@@ -621,6 +644,7 @@ async function syncOnce(): Promise<void> {
     loadFreePlacements(),
     browser.bookmarks.getTree().catch(() => []),
     loadDynamicValues(),
+    loadTemporaryNotes(),
   ]);
   const config = previewConfigOverride ?? loadedConfig;
   const dynamicByUid = new Map((config.dynamicBookmarks ?? []).map((db) => [db.uid, db]));
@@ -648,6 +672,7 @@ async function syncOnce(): Promise<void> {
           tree: bookmarkTree as BookmarkNode[],
           registerTarget: (browserBookmarkId) => bookmarkTargets.register(browserBookmarkId),
           dynamicResolve,
+          temporaryNotes,
         },
       );
       const placement = resolveMenuPlacement(

@@ -468,6 +468,7 @@ export async function resolveMenuItems(
     tree?: BookmarkNode[];
     registerTarget?: (browserBookmarkId: string) => string;
     dynamicResolve?: DynamicResolver;
+    temporaryNotes?: Record<string, string>;
   } = {},
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = context.tree ?? null;
@@ -503,6 +504,15 @@ export async function resolveMenuItems(
         if (!info) return []; // orphan (definition removed): omit
         const effectiveTabMode: TabMode = tabMode || menuTabMode || "replace";
         return [dynamicBookmarkEntry(dynamicUid, info, effectiveTabMode, color || menuColor, rename, showPageTitle)];
+      }
+
+      if (type === "temporary") {
+        return [{
+          kind: "bookmark",
+          uid: actionUid("temporary", uid, tabMode || menuTabMode || "replace"),
+          label: context.temporaryNotes?.[uid] || rename || t("temporary.defaultName"),
+          ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
+        }];
       }
 
       const effectivePath = combineRootAndItemPath(rootPrefix, path);

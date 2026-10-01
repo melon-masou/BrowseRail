@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Panel capabilities",
-  "windows": ["listener-settings", "menu-*", "popup-*", "free-*"],
-  "permissions": ["core:default"]
+  "windows": ["listener-settings", "menu-*", "popup-*", "free-*", "temporary-confirm-*"],
+  "permissions": ["core:default", "core:window:allow-close", "core:window:allow-show"]
 }

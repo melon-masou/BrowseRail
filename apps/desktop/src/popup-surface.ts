@@ -8,6 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { measureTextWidth } from "./text-measure";
+import { attachTemporaryBookmarkButton } from "./temporary-bookmark";
 
 interface PopupPayload {
   color?: string;
@@ -306,16 +307,27 @@ export async function initializePopupSurface(): Promise<void> {
             expandedDirections = expandedDirections.slice(0, level);
             renderLevels();
           }, () => submenuSwitchDelay(level));
-          button.addEventListener("pointerdown", (event) => {
-            if (event.button === 0) {
-              event.preventDefault();
-              dispatchAction(entry.uid);
-            } else if (event.button === 2 && editingLocked) {
-              event.preventDefault();
-              event.stopPropagation();
-              dispatchAction(invertBookmarkActionUid(entry.uid));
-            }
-          });
+          if (entry.uid.startsWith("temporary:")) {
+            attachTemporaryBookmarkButton(
+              button,
+              entry,
+              dispatchAction,
+              { instanceUid, menuUid, windowUid: payload.isFree ? null : windowUid },
+              undefined,
+              () => editingLocked,
+            );
+          } else {
+            button.addEventListener("pointerdown", (event) => {
+              if (event.button === 0) {
+                event.preventDefault();
+                dispatchAction(entry.uid);
+              } else if (event.button === 2 && editingLocked) {
+                event.preventDefault();
+                event.stopPropagation();
+                dispatchAction(invertBookmarkActionUid(entry.uid));
+              }
+            });
+          }
         }
         column.appendChild(button);
       }

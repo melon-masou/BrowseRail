@@ -14,6 +14,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getLanguage, type Lang, LANGUAGES, onLanguageChange, saveLanguage, t } from "@browserail/i18n";
 import { initializePopupSurface } from "./popup-surface";
 import { measureTextWidth } from "./text-measure";
+import { attachTemporaryBookmarkButton } from "./temporary-bookmark";
+import { initializeTemporaryConfirmation } from "./temporary-confirm";
+import { showWindowWhenReady } from "./window-ready";
 import "./styles.css";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -43,6 +46,8 @@ if (query.get("view") === "host") {
   document.body.replaceChildren();
 } else if (query.get("view") === "settings") {
   void initializeListenerSettings();
+} else if (query.get("view") === "temporaryConfirm") {
+  initializeTemporaryConfirmation(root);
 } else if (query.get("surface") === "popup") {
   void initializePopupSurface();
 } else {
@@ -141,6 +146,7 @@ async function initializeSurface(): Promise<void> {
   let hoverOpenPending = false;
   let pendingMenuRender = false;
   let barPointerInside = false;
+  let beginCustomizationFromBar: (() => void) | null = null;
 
   window.addEventListener(
     "pointerout",
@@ -531,60 +537,57 @@ async function initializeSurface(): Promise<void> {
       );
     }
 
-    menuBar.onpointerdown = async (event) => {
-      // In edit mode, any click (left or right) on a non-collapsed menu enters
-      // its customize; the child button handlers bail out in edit mode so the
-      // click falls through to here. In browsing mode the bar does nothing and
-      // the buttons handle open / new-tab themselves.
-      if (editingLocked) return;
+    const enterCustomization = async (): Promise<void> => {
       if (menuCollapsed) return;
       if (customizing) return;
-      {
-        event.preventDefault();
-        event.stopPropagation();
+      // If a popup is open, close it and wait for size and position to restore completely before customizing.
+      await closePopup();
 
-        // If a popup is open, close it and wait for size and position to restore completely before customizing
-        await closePopup();
-
-        const fromAnchor = elementOrigin(menuBar);
-        const menuHeight = menuBar.getBoundingClientRect().height;
-        customizationStartPosition = await windowOrigin();
-        customizing = true;
-        const menuToCustomize = currentMenu ?? menu;
-        const toolbar = renderCustomize(menuToCustomize);
-        const toolbarSpace = customizationToolbarSpace(toolbar);
-        void invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
-          anchorOffsetY: fromAnchor.y,
-          instanceUid,
-          menuHeight,
-          menuUid,
-          toolbarSpace,
-          windowUid,
+      const fromAnchor = elementOrigin(menuBar);
+      const menuHeight = menuBar.getBoundingClientRect().height;
+      customizationStartPosition = await windowOrigin();
+      customizing = true;
+      const menuToCustomize = currentMenu ?? menu;
+      const toolbar = renderCustomize(menuToCustomize);
+      const toolbarSpace = customizationToolbarSpace(toolbar);
+      void invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
+        anchorOffsetY: fromAnchor.y,
+        instanceUid,
+        menuHeight,
+        menuUid,
+        toolbarSpace,
+        windowUid,
+      })
+        .then(async (info) => {
+          if (info?.toolbarPosition === "top") {
+            renderCustomize(menuToCustomize, "top");
+          }
+          const rail = root.querySelector<HTMLElement>(".customize-rail");
+          const content = root.querySelector<HTMLElement>(".customize-content");
+          if (!rail || !content) return;
+          const contentRect = content.getBoundingClientRect();
+          await resizeAndPosition(
+            fromAnchor,
+            elementOrigin(rail),
+            contentRect.width,
+            contentRect.height,
+          );
+          delete root.dataset.error;
+          root.removeAttribute("title");
         })
-          .then(async (info) => {
-            if (info?.toolbarPosition === "top") {
-              renderCustomize(menuToCustomize, "top");
-            }
-            const rail = root.querySelector<HTMLElement>(".customize-rail");
-            const content = root.querySelector<HTMLElement>(".customize-content");
-            if (!rail || !content) return;
-            const contentRect = content.getBoundingClientRect();
-            await resizeAndPosition(
-              fromAnchor,
-              elementOrigin(rail),
-              contentRect.width,
-              contentRect.height,
-            );
-            delete root.dataset.error;
-            root.removeAttribute("title");
-          })
-          .catch((err) => {
-            customizing = false;
-            customizationStartPosition = null;
-            renderSurface(menuToCustomize);
-            showSurfaceError(err);
-          });
-      }
+        .catch((err) => {
+          customizing = false;
+          customizationStartPosition = null;
+          renderSurface(menuToCustomize);
+          showSurfaceError(err);
+        });
+    };
+    beginCustomizationFromBar = () => { void enterCustomization(); };
+    menuBar.onpointerdown = (event) => {
+      if (editingLocked || menuCollapsed || customizing) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void enterCustomization();
     };
     menuBar.oncontextmenu = (event) => event.preventDefault();
 
@@ -715,27 +718,41 @@ async function initializeSurface(): Promise<void> {
           scheduleIntentClose();
         }
       });
-      button.addEventListener("pointerdown", (event) => {
-        if (event.button === 0) {
-          // In edit mode a left-click enters customize (via the bar), not open.
-          if (!editingLocked) return;
-          event.preventDefault();
+      if (entry.uid.startsWith("temporary:")) {
+        attachTemporaryBookmarkButton(button, entry, (actionUid) => {
           void closePopup();
-          if (!entry.uid.startsWith("noop")) {
+          dispatchAction(actionUid);
+        }, { instanceUid, menuUid, windowUid: isFree ? null : windowUid }, () => {
+          if (editingLocked) {
+            void closePopup();
             dispatchAction(entry.uid);
+          } else {
+            beginCustomizationFromBar?.();
           }
-        }
-      });
-      button.addEventListener("pointerdown", (event) => {
-        if (event.button === 2 && editingLocked) {
-          event.preventDefault();
-          event.stopPropagation();
-          void closePopup();
-          if (!entry.uid.startsWith("noop")) {
-            dispatchAction(invertBookmarkActionUid(entry.uid));
+        }, () => editingLocked);
+      } else {
+        button.addEventListener("pointerdown", (event) => {
+          if (event.button === 0) {
+            // In edit mode a left-click enters customize (via the bar), not open.
+            if (!editingLocked) return;
+            event.preventDefault();
+            void closePopup();
+            if (!entry.uid.startsWith("noop")) {
+              dispatchAction(entry.uid);
+            }
           }
-        }
-      });
+        });
+        button.addEventListener("pointerdown", (event) => {
+          if (event.button === 2 && editingLocked) {
+            event.preventDefault();
+            event.stopPropagation();
+            void closePopup();
+            if (!entry.uid.startsWith("noop")) {
+              dispatchAction(invertBookmarkActionUid(entry.uid));
+            }
+          }
+        });
+      }
     } else {
       const expandOnHover = entry.expandOnHover !== false;
       const hasChildren = Boolean(entry.children && entry.children.length > 0);
@@ -1843,6 +1860,8 @@ async function initializeListenerSettings(): Promise<void> {
         }
       });
   });
+
+  await showWindowWhenReady();
 }
 
 interface SurfaceState {

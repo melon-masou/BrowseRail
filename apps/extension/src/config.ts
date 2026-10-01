@@ -553,6 +553,13 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     };
   }
 
+  if (rawType === "temporary") {
+    const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
+    const color = typeof value.color === "string" && value.color ? value.color : undefined;
+    const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
+    return { uid, type: "temporary", ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(tabMode ? { tabMode } : {}) };
+  }
+
   const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")
     ? value.path
     : undefined;
@@ -748,4 +755,56 @@ export async function removeDynamicValues(uid: string): Promise<void> {
   if (!(uid in current)) return;
   delete current[uid];
   await browser.storage.local.set({ [DYNAMIC_VALUES_STORAGE_KEY]: current });
+}
+
+const TEMPORARY_VALUES_STORAGE_KEY = "temporary_bookmark_values";
+const TEMPORARY_NOTES_STORAGE_KEY = "temporary_bookmark_notes";
+
+export async function loadTemporaryValues(): Promise<Record<string, string>> {
+  const stored = await browser.storage.local.get(TEMPORARY_VALUES_STORAGE_KEY);
+  const raw = stored[TEMPORARY_VALUES_STORAGE_KEY];
+  if (!isRecord(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0),
+  );
+}
+
+export async function loadTemporaryNotes(): Promise<Record<string, string>> {
+  const stored = await browser.storage.local.get(TEMPORARY_NOTES_STORAGE_KEY);
+  const raw = stored[TEMPORARY_NOTES_STORAGE_KEY];
+  if (!isRecord(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0),
+  );
+}
+
+export async function saveTemporaryValue(uid: string, url: string, note = ""): Promise<void> {
+  const values = await loadTemporaryValues();
+  const notes = await loadTemporaryNotes();
+  values[uid] = url;
+  if (note.trim()) {
+    notes[uid] = note.trim();
+  } else {
+    delete notes[uid];
+  }
+  await browser.storage.local.set({
+    [TEMPORARY_VALUES_STORAGE_KEY]: values,
+    [TEMPORARY_NOTES_STORAGE_KEY]: notes,
+  });
+}
+
+export async function pruneTemporaryValues(menus: StoredMenu[]): Promise<void> {
+  const retainedUids = new Set(
+    menus.flatMap((menu) => menu.items.filter((item) => item.type === "temporary").map((item) => item.uid)),
+  );
+  const values = await loadTemporaryValues();
+  const notes = await loadTemporaryNotes();
+  const retainedValues = Object.fromEntries(Object.entries(values).filter(([uid]) => retainedUids.has(uid)));
+  const retainedNotes = Object.fromEntries(Object.entries(notes).filter(([uid]) => retainedUids.has(uid)));
+  if (Object.keys(retainedValues).length !== Object.keys(values).length || Object.keys(retainedNotes).length !== Object.keys(notes).length) {
+    await browser.storage.local.set({
+      [TEMPORARY_VALUES_STORAGE_KEY]: retainedValues,
+      [TEMPORARY_NOTES_STORAGE_KEY]: retainedNotes,
+    });
+  }
 }

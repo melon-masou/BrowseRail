@@ -4,10 +4,12 @@ import {
   EXPORT_SCHEMA_VERSION,
   formatActionUid,
   invertBookmarkActionUid,
+  invertTemporaryActionUid,
   isExportedSettingsData,
   isNativeMessage,
   isSpecialRootPlaceholder,
   parseBookmarkAction,
+  parseTemporaryAction,
   PROTOCOL_VERSION,
 } from "./index";
 
@@ -116,6 +118,15 @@ describe("actionUid wire protocol", () => {
   it("inverts bookmark open mode for one-off right-click invocation", () => {
     expect(invertBookmarkActionUid("bookmark:123")).toBe("bookmark:123?tab=newTab");
     expect(invertBookmarkActionUid("bookmark:123?tab=newTab")).toBe("bookmark:123");
+  });
+
+  it("opens a temporary bookmark in the alternate tab mode on right-click", () => {
+    const regular = formatActionUid("temporary", "slot/one", "newTab");
+    expect(parseTemporaryAction(regular)).toEqual({ uid: "slot/one", tabMode: "newTab" });
+    expect(parseTemporaryAction(invertTemporaryActionUid(regular))).toEqual({
+      uid: "slot/one",
+      tabMode: "replace",
+    });
   });
 });
 

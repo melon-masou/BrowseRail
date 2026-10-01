@@ -11,7 +11,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuToggle", "space", "dynamic"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuToggle", "space", "dynamic", "temporary"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export type StoredMenuItemType = MenuItemType;
 export type ExportedItemType = MenuItemType;
@@ -120,18 +120,33 @@ export function isSpecialRootPlaceholder(value: unknown): value is string {
 
 // Action UID Wire Protocol
 export function formatActionUid(
-  kind: "bookmark" | "folder" | "dynamic",
+  kind: "bookmark" | "folder" | "dynamic" | "temporary",
   uid: string,
   tabMode?: TabMode,
 ): string {
   const base = `${kind}:${encodeURIComponent(uid)}`;
-  if ((kind === "bookmark" || kind === "dynamic") && tabMode === "newTab") {
+  if ((kind === "bookmark" || kind === "dynamic" || kind === "temporary") && tabMode === "newTab") {
     return `${base}?tab=newTab`;
   }
   return base;
 }
 
 export const actionUid = formatActionUid;
+
+export function parseTemporaryAction(actionUid: string): { uid: string; tabMode: TabMode } {
+  if (!actionUid.startsWith("temporary:")) throw new Error("The action is not a temporary bookmark");
+  const raw = actionUid.slice("temporary:".length);
+  const qIndex = raw.indexOf("?tab=");
+  return {
+    uid: decodeURIComponent(qIndex < 0 ? raw : raw.slice(0, qIndex)),
+    tabMode: qIndex >= 0 && raw.slice(qIndex + 5) === "newTab" ? "newTab" : "replace",
+  };
+}
+
+export function invertTemporaryActionUid(actionUid: string): string {
+  const { uid, tabMode } = parseTemporaryAction(actionUid);
+  return formatActionUid("temporary", uid, tabMode === "newTab" ? "replace" : "newTab");
+}
 
 // Dynamic-bookmark navigation action. The target URL is not a browser bookmark
 // but the dynamic bookmark's current live value, resolved at dispatch time.

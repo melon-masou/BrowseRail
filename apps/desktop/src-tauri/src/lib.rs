@@ -50,6 +50,8 @@ use windows::Win32::Graphics::Gdi::{
 
 #[cfg(target_os = "windows")]
 pub const TRAY_ID: &str = "browserail";
+#[cfg(target_os = "windows")]
+const FORM_WINDOW_BACKGROUND: tauri::window::Color = tauri::window::Color(244, 246, 251, 255);
 
 #[cfg(target_os = "windows")]
 pub struct AppState {
@@ -1114,14 +1116,47 @@ fn open_listener_settings(app: &tauri::AppHandle) {
         WebviewUrl::App("index.html?view=settings".into()),
     )
     .title(i18n::Msg::WindowSettingsTitle.localized())
+    .background_color(FORM_WINDOW_BACKGROUND)
     .inner_size(440.0, 380.0)
     .min_inner_size(360.0, 260.0)
-    .resizable(true);
+    .resizable(true)
+    .visible(false);
 
     if let Some(icon) = icon {
         builder = builder.icon(icon).expect("valid settings window icon");
     }
     let _ = builder.build();
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+async fn open_temporary_confirmation(
+    app: tauri::AppHandle,
+    instance_uid: String,
+    menu_uid: String,
+    window_uid: Option<String>,
+    uid: String,
+    label: String,
+) -> Result<(), String> {
+    let url = format!(
+        "index.html?view=temporaryConfirm&instanceUid={}&menuUid={}&windowUid={}&uid={}",
+        urlencoding::encode(&instance_uid),
+        urlencoding::encode(&menu_uid),
+        urlencoding::encode(window_uid.as_deref().unwrap_or("")),
+        urlencoding::encode(&uid),
+    );
+    let window_label = format!("temporary-confirm-{}", uuid::Uuid::new_v4());
+    WebviewWindowBuilder::new(&app, &window_label, WebviewUrl::App(url.into()))
+        .title(label)
+        .background_color(FORM_WINDOW_BACKGROUND)
+        .inner_size(420.0, 230.0)
+        .resizable(false)
+        .center()
+        .always_on_top(true)
+        .visible(false)
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -1273,7 +1308,8 @@ pub fn run() {
             move_free_surface,
             save_menu_placement,
             cancel_menu_customization,
-            set_ui_language
+            set_ui_language,
+            open_temporary_confirmation
         ])
         .build(tauri::generate_context!())
         .expect("BrowseRail failed to start");

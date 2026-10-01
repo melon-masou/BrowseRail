@@ -663,6 +663,17 @@ mod tests {
     };
 
     #[test]
+    fn preserves_temporary_bookmark_action_without_its_url() {
+        let entry: LayoutEntry = serde_json::from_str(
+            r#"{"kind":"bookmark","uid":"temporary:slot","label":"Later"}"#,
+        )
+        .unwrap();
+        let encoded = serde_json::to_value(entry).unwrap();
+        assert_eq!(encoded["uid"], "temporary:slot");
+        assert!(encoded.get("url").is_none());
+    }
+
+    #[test]
     fn reads_the_extension_hello_contract() {
         let message = serde_json::from_str::<ExtensionMessage>(
             r#"{"type":"hello","protocolVersion":1,"instance":{"uid":"instance-a","browser":"chrome","label":"Work"}}"#,
