@@ -521,6 +521,7 @@ async function handleMessage(raw: unknown): Promise<void> {
         const uid = decodeURIComponent(queryIndex < 0 ? raw : raw.slice(0, queryIndex));
         const params = new URLSearchParams(queryIndex < 0 ? "" : raw.slice(queryIndex + 1));
         const config = previewConfigOverride ?? await loadConfig();
+        const tree = await browser.bookmarks.getTree();
         const result = await captureTemporaryUrl(
           browser.tabs,
           config.panel.menus,
@@ -528,6 +529,7 @@ async function handleMessage(raw: unknown): Promise<void> {
           targetWindowUid,
           params.get("confirmed") === "1",
           params.get("note") ?? "",
+          tree,
         );
         if (result === "saved") requestSync();
       } else if (value.actionUid.startsWith("temporary:")) {

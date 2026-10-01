@@ -200,6 +200,7 @@
         <div class="toolkit-card-row">
           <h2 class="toolkit-card-title" data-i18n="section.toolkit">Tools</h2>
           <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap to bookmarks</button>
+          <button type="button" id="add-temporary-bookmark-btn" class="action-btn" data-i18n="toolkit.addTemporaryBookmark">Add temporary bookmark to bookmarks</button>
         </div>
       </section>
 
@@ -269,6 +270,34 @@ The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dyna
             <button type="submit" id="dynamic-marker-add" class="save-btn" data-i18n="toolkit.add">Add</button>
             <button type="button" id="dynamic-marker-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
             <output id="dynamic-marker-result" class="toolkit-status" aria-live="polite"></output>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Add Temporary Bookmark Dialog -->
+      <dialog id="temporary-bookmark-dialog" class="space-bookmark-dialog">
+        <div class="space-bookmark-dialog-header">
+          <span data-i18n="toolkit.temporaryBookmarkDialogTitle">Add temporary bookmark to bookmarks</span>
+          <button type="button" id="temporary-bookmark-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
+        </div>
+        <form id="temporary-bookmark-form" class="space-bookmark-dialog-body">
+          <div class="space-bookmark-fields">
+            <label>
+              <span data-i18n="toolkit.temporaryName">Name</span>
+              <input id="temporary-bookmark-name" type="text" data-i18n-placeholder="temporary.defaultName" placeholder="Temporary bookmark" />
+            </label>
+          </div>
+          <div class="space-bookmark-folder-row">
+            <span data-i18n="toolkit.destination">Destination folder</span>
+            <button type="button" id="temporary-bookmark-folder-btn" class="action-btn" data-i18n="toolkit.chooseFolder">Choose…</button>
+            <span id="temporary-bookmark-folder-display" class="space-bookmark-folder-name"></span>
+          </div>
+          <p class="space-bookmark-help" data-i18n="toolkit.temporaryBookmarkHelp">For flattened folders: inserts a temporary bookmark between the folder’s bookmarks on the rail.
+The temporary bookmark is stored as a bookmark whose URL is https://browserail.local/#Temporary:id=&lt;id&gt;.</p>
+          <div class="space-bookmark-dialog-actions">
+            <button type="submit" id="temporary-bookmark-add" class="save-btn" data-i18n="toolkit.add">Add</button>
+            <button type="button" id="temporary-bookmark-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
+            <output id="temporary-bookmark-result" class="toolkit-status" aria-live="polite"></output>
           </div>
         </form>
       </dialog>

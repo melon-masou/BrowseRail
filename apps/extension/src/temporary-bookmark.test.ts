@@ -14,7 +14,7 @@ vi.mock("webextension-polyfill", () => ({
   },
 }));
 
-import { resolveMenuItems } from "./bookmarks";
+import { buildTemporaryDirectiveUrl, resolveMenuItems } from "./bookmarks";
 import { loadConfig, loadTemporaryNotes, loadTemporaryValues, pruneTemporaryValues, saveConfig, saveTemporaryValue } from "./config";
 import { captureTemporaryUrl } from "./background/temporary";
 
@@ -96,4 +96,69 @@ it("removes a deleted temporary bookmark's URL after its menu changes are saved"
   await pruneTemporaryValues(config.panel.menus);
   expect(await loadTemporaryValues()).toEqual({ keep: "https://example.com/keep" });
   expect(await loadTemporaryNotes()).toEqual({ keep: "Keep" });
+});
+
+it("captures and preserves temporary bookmarks originating from bookmark tree folders", async () => {
+  const tree = [
+    {
+      id: "0",
+      title: "",
+      children: [
+        {
+          id: "folder-temp",
+          title: "MyFolder",
+          children: [
+            { id: "bm-temp", title: "Temp Slot", url: buildTemporaryDirectiveUrl({ id: "tree-slot" }) },
+          ],
+        },
+      ],
+    },
+  ] as any;
+
+  const tabs = { query: vi.fn(async () => [{ url: "https://example.com/tree-page" }]) };
+
+  // captureTemporaryUrl succeeds because the uid is in the bookmark tree
+  expect(await captureTemporaryUrl(tabs, [], "tree-slot", "1", true, "From Tree", tree)).toBe("saved");
+  expect((await loadTemporaryValues())["tree-slot"]).toBe("https://example.com/tree-page");
+  expect((await loadTemporaryNotes())["tree-slot"]).toBe("From Tree");
+
+  // pruneTemporaryValues retains tree-slot because it exists in bookmarkTree
+  await pruneTemporaryValues([], tree);
+  expect((await loadTemporaryValues())["tree-slot"]).toBe("https://example.com/tree-page");
+  expect((await loadTemporaryNotes())["tree-slot"]).toBe("From Tree");
+
+  // Without the bookmark tree, prune removes it
+  await pruneTemporaryValues([]);
+  expect((await loadTemporaryValues())["tree-slot"]).toBeUndefined();
+  expect((await loadTemporaryNotes())["tree-slot"]).toBeUndefined();
+});
+
+it("ignores a malformed temporary marker and keeps other temporary slots usable", async () => {
+  const tree = [{
+    id: "0",
+    title: "",
+    children: [{
+      id: "folder-temp",
+      title: "Temps",
+      children: [
+        { id: "broken", title: "Broken", url: "https://browserail.local/#Temporary:%" },
+        { id: "valid", title: "Usable", url: buildTemporaryDirectiveUrl({ id: "tree-slot" }) },
+      ],
+    }],
+  }];
+  const tabs = { query: vi.fn(async () => [{ url: "https://example.com/usable" }]) };
+
+  expect(await captureTemporaryUrl(tabs, [], "tree-slot", "1", true, "Usable note", tree)).toBe("saved");
+  expect((await loadTemporaryValues())["tree-slot"]).toBe("https://example.com/usable");
+
+  const entries = await resolveMenuItems(
+    [{ uid: "flatten-temp", path: ["Temps"], type: "flattenFolder" }],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { tree, temporaryNotes: await loadTemporaryNotes() },
+  );
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toMatchObject({ kind: "bookmark", label: "Usable note" });
 });

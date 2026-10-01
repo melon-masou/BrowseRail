@@ -19,6 +19,7 @@ import browser from "webextension-polyfill";
 import { parseBookmarkAction, type BookmarkEntry, type FolderEntry } from "@browserail/protocol";
 import {
   buildSpaceDirectiveUrl,
+  buildTemporaryDirectiveUrl,
   findBookmarkNodeByPath,
   resolveBookmarkNodeByPath,
   resolveMenuItems,
@@ -242,6 +243,48 @@ describe("resolveMenuItems", () => {
         transparent: false,
       },
     ]);
+  });
+
+  it("creates Temporary bookmarks that flatten back into the configured temporary bookmark entry", async () => {
+    const url = buildTemporaryDirectiveUrl({ id: "slot-temp", color: "#123456", tabMode: "newTab" });
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-temps",
+            title: "Temps",
+            children: [
+              { id: "temp-url", title: "My Custom Slot", url },
+              { id: "temp-title", title: "BrowseRailTemporary:id=slot-two:name=SecondSlot", url: "https://example.com/dummy" },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-temps", path: ["Temps"], type: "flattenFolder" }],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { temporaryNotes: { "slot-temp": "Note for slot 1" } },
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: "bookmark",
+      uid: "temporary:slot-temp?tab=newTab",
+      label: "Note for slot 1",
+      color: "#123456",
+    });
+    expect(entries[1]).toMatchObject({
+      kind: "bookmark",
+      uid: "temporary:slot-two",
+      label: "SecondSlot",
+    });
   });
 
   it("flatten skips sub-folders by default and includes them when includeFolders is set", async () => {

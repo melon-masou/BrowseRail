@@ -41,6 +41,7 @@ import {
 } from "../config";
 import {
   buildSpaceDirectiveUrl,
+  buildTemporaryDirectiveUrl,
   type BookmarkNode,
   combineRootAndItemPath,
   findBookmarkNodeByPath,
@@ -230,6 +231,15 @@ const dynamicMarkerForm = element<HTMLFormElement>("dynamic-marker-form");
 const dynamicMarkerFolderBtn = element<HTMLButtonElement>("dynamic-marker-folder-btn");
 const dynamicMarkerFolderDisplay = element<HTMLSpanElement>("dynamic-marker-folder-display");
 const dynamicMarkerResult = element<HTMLOutputElement>("dynamic-marker-result");
+const addTemporaryBookmarkBtn = element<HTMLButtonElement>("add-temporary-bookmark-btn");
+const temporaryBookmarkDialog = element<HTMLDialogElement>("temporary-bookmark-dialog");
+const temporaryBookmarkClose = element<HTMLButtonElement>("temporary-bookmark-close");
+const temporaryBookmarkCloseBtn = element<HTMLButtonElement>("temporary-bookmark-close-btn");
+const temporaryBookmarkForm = element<HTMLFormElement>("temporary-bookmark-form");
+const temporaryBookmarkName = element<HTMLInputElement>("temporary-bookmark-name");
+const temporaryBookmarkFolderBtn = element<HTMLButtonElement>("temporary-bookmark-folder-btn");
+const temporaryBookmarkFolderDisplay = element<HTMLSpanElement>("temporary-bookmark-folder-display");
+const temporaryBookmarkResult = element<HTMLOutputElement>("temporary-bookmark-result");
 const addItemPopover = element<HTMLDivElement>("add-item-popover");
 const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
 const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
@@ -534,6 +544,7 @@ pickerConfirmBtn.addEventListener("click", () => {
     gapBookmarkFolderId = targetId;
     updateGapBookmarkFolderDisplay();
     updateDynamicMarkerFolderDisplay();
+    updateTemporaryBookmarkFolderDisplay();
     pickerDialog.close();
     return;
   }
@@ -1257,6 +1268,9 @@ function rerenderForLanguage(): void {
   if (spaceBookmarkDialog.open) {
     updateGapBookmarkFolderDisplay();
   }
+  if (temporaryBookmarkDialog.open) {
+    updateTemporaryBookmarkFolderDisplay();
+  }
 }
 
 function initHeaderLinks(): void {
@@ -1291,6 +1305,7 @@ async function initialize(): Promise<void> {
   initMenuSettingsDialog();
   initItemSettingsPopover();
   initSpaceBookmarkDialog();
+  initTemporaryBookmarkDialog();
   initAddItemPopover();
   initDynamicPanel();
   initShortcutsPanel();
@@ -1405,7 +1420,7 @@ async function persistMenus(): Promise<void> {
     shortcuts,
     nativeShortcuts,
   });
-  await pruneTemporaryValues(menus);
+  await pruneTemporaryValues(menus, rawBookmarkTree);
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearMenusDirty();
   const savedMsg = t("status.saved");
@@ -2463,6 +2478,59 @@ async function addSpaceBookmark(): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
     spaceBookmarkResult.dataset.state = "error";
+  }
+}
+
+function initTemporaryBookmarkDialog(): void {
+  addTemporaryBookmarkBtn.addEventListener("click", () => {
+    temporaryBookmarkResult.textContent = "";
+    delete temporaryBookmarkResult.dataset.state;
+    updateTemporaryBookmarkFolderDisplay();
+    temporaryBookmarkDialog.showModal();
+  });
+  temporaryBookmarkClose.addEventListener("click", () => temporaryBookmarkDialog.close());
+  temporaryBookmarkCloseBtn.addEventListener("click", () => temporaryBookmarkDialog.close());
+  temporaryBookmarkDialog.addEventListener("click", (e) => {
+    if (e.target === temporaryBookmarkDialog) temporaryBookmarkDialog.close();
+  });
+  temporaryBookmarkFolderBtn.addEventListener("click", () => {
+    void openBookmarkPicker("pickFolder");
+  });
+
+  temporaryBookmarkForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void addTemporaryBookmark();
+  });
+}
+
+function updateTemporaryBookmarkFolderDisplay(): void {
+  const node = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
+  const label =
+    gapBookmarkFolderId === "0"
+      ? t("toolkit.defaultLocation")
+      : node?.title || t("common.folder");
+  temporaryBookmarkFolderDisplay.textContent = label;
+}
+
+async function addTemporaryBookmark(): Promise<void> {
+  const uid = crypto.randomUUID();
+  const url = buildTemporaryDirectiveUrl({ id: uid });
+  const rawName = temporaryBookmarkName.value.trim();
+  const title = rawName || t("temporary.defaultName");
+  try {
+    await browser.bookmarks.create({
+      title,
+      url,
+      ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
+    });
+    rawBookmarkTree = await browser.bookmarks.getTree();
+    temporaryBookmarkResult.textContent = t("toolkit.added");
+    temporaryBookmarkResult.dataset.state = "success";
+  } catch (error) {
+    temporaryBookmarkResult.textContent = t("toolkit.addFailed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    temporaryBookmarkResult.dataset.state = "error";
   }
 }
 

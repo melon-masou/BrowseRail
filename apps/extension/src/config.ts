@@ -21,6 +21,8 @@ import browser from "webextension-polyfill";
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "./desktop-connection";
 import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
+import type { BookmarkNode } from "./bookmarks";
+import { collectTemporaryUidsFromBookmarkTree } from "./bookmarks";
 
 const STORAGE_KEY = "config";
 
@@ -793,10 +795,15 @@ export async function saveTemporaryValue(uid: string, url: string, note = ""): P
   });
 }
 
-export async function pruneTemporaryValues(menus: StoredMenu[]): Promise<void> {
+export async function pruneTemporaryValues(menus: StoredMenu[], bookmarkTree?: BookmarkNode[]): Promise<void> {
   const retainedUids = new Set(
     menus.flatMap((menu) => menu.items.filter((item) => item.type === "temporary").map((item) => item.uid)),
   );
+  if (bookmarkTree) {
+    for (const uid of collectTemporaryUidsFromBookmarkTree(bookmarkTree)) {
+      retainedUids.add(uid);
+    }
+  }
   const values = await loadTemporaryValues();
   const notes = await loadTemporaryNotes();
   const retainedValues = Object.fromEntries(Object.entries(values).filter(([uid]) => retainedUids.has(uid)));

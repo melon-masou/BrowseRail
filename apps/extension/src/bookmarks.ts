@@ -415,6 +415,104 @@ function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
   };
 }
 
+const FLATTEN_TEMPORARY_PREFIX = "BrowseRailTemporary:";
+const FLATTEN_TEMPORARY_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/)?browserail\.local\/?#Temporary:(.*)$/i;
+
+export interface TemporaryDirectiveOptions {
+  id?: string;
+  color?: string;
+  tabMode?: TabMode;
+}
+
+export function buildTemporaryDirectiveUrl(options?: TemporaryDirectiveOptions): string {
+  const id = options?.id || crypto.randomUUID();
+  const fields = [`id=${id}`];
+  if (options?.color && /^#[0-9a-f]{6}$/i.test(options.color)) {
+    fields.push(`color=${options.color}`);
+  }
+  if (options?.tabMode && options.tabMode === "newTab") {
+    fields.push(`tabMode=${options.tabMode}`);
+  }
+  return `https://browserail.local/#Temporary:${fields.join(":")}`;
+}
+
+export interface FlattenTemporaryDirective {
+  uid: string;
+  color?: string;
+  tabMode?: TabMode;
+  name?: string;
+}
+
+export function parseFlattenTemporaryDirective(child: BookmarkNode): FlattenTemporaryDirective | null {
+  if (child.url === undefined) return null;
+
+  const titleDirective = child.title.startsWith(FLATTEN_TEMPORARY_PREFIX)
+    ? child.title.slice(FLATTEN_TEMPORARY_PREFIX.length)
+    : undefined;
+  let directive = titleDirective;
+  if (directive === undefined) {
+    const urlMatch = FLATTEN_TEMPORARY_URL_PATTERN.exec(child.url);
+    if (!urlMatch || urlMatch[1] === undefined) return null;
+    try {
+      directive = decodeURIComponent(urlMatch[1]);
+    } catch {
+      return null;
+    }
+  }
+
+  const fields = new Map<string, string>();
+  let implicitId: string | undefined;
+  for (const part of directive.split(":")) {
+    const [key, ...rawValue] = part.split("=");
+    if (!key) continue;
+    if (rawValue.length === 0) {
+      if (!implicitId) implicitId = key;
+    } else {
+      fields.set(key.toLowerCase(), rawValue.join("="));
+    }
+  }
+
+  const id = fields.get("id") || fields.get("uid") || implicitId || (child.id ? `bm-${child.id}` : crypto.randomUUID());
+  const color = fields.get("color");
+  const isColor = color !== undefined && /^#[0-9a-f]{6}$/i.test(color);
+  const rawTabMode = fields.get("tabmode");
+  const tabMode: TabMode | undefined = rawTabMode === "newTab" || rawTabMode === "replace" ? rawTabMode : undefined;
+  const name = fields.get("name") || fields.get("rename") || fields.get("label");
+
+  return {
+    uid: id,
+    ...(isColor ? { color } : {}),
+    ...(tabMode ? { tabMode } : {}),
+    ...(name ? { name } : {}),
+  };
+}
+
+export function isTemporaryUidInTree(tree: BookmarkNode[], uid: string): boolean {
+  for (const node of tree) {
+    const parsed = parseFlattenTemporaryDirective(node);
+    if (parsed && parsed.uid === uid) return true;
+    if (node.children && isTemporaryUidInTree(node.children, uid)) return true;
+  }
+  return false;
+}
+
+export function collectTemporaryUidsFromBookmarkTree(tree: BookmarkNode[]): Set<string> {
+  const result = new Set<string>();
+  function walk(nodes: BookmarkNode[]) {
+    for (const node of nodes) {
+      const parsed = parseFlattenTemporaryDirective(node);
+      if (parsed) {
+        result.add(parsed.uid);
+      }
+      if (node.children) {
+        walk(node.children);
+      }
+    }
+  }
+  walk(tree);
+  return result;
+}
+
 export interface DynamicResolved {
   name: string;
   url?: string;
@@ -570,6 +668,23 @@ export async function resolveMenuItems(
         return (node.children ?? []).flatMap((child): LayoutEntry[] => {
           const directive = parseFlattenSpaceDirective(child);
           if (directive) return [directive];
+          const tempDirective = parseFlattenTemporaryDirective(child);
+          if (tempDirective) {
+            const itemColor = tempDirective.color || (colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor);
+            flattenedIdx++;
+            const effectiveMode = tempDirective.tabMode || effectiveTabMode;
+            const note = context.temporaryNotes?.[tempDirective.uid];
+            const isTitleDirective = child.title.startsWith(FLATTEN_TEMPORARY_PREFIX);
+            const bookmarkTitle = !isTitleDirective && child.title.trim() ? child.title.trim() : undefined;
+            const label = note || bookmarkTitle || tempDirective.name || t("temporary.defaultName");
+            return [{
+              kind: "bookmark",
+              uid: actionUid("temporary", tempDirective.uid, effectiveMode),
+              label,
+              ...(itemColor ? { color: itemColor } : {}),
+            }];
+          }
+          if (child.url && FLATTEN_TEMPORARY_URL_PATTERN.test(child.url)) return [];
           const dynamicId = parseDynamicMarkerUrl(child.url);
           if (dynamicId) {
             const info = dynamicResolve(dynamicId);

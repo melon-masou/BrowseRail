@@ -118,6 +118,7 @@ export const en = {
   // Toolkit card
   "section.toolkit": "Tools",
   "toolkit.addGapBookmark": "Add gap to bookmarks",
+  "toolkit.addTemporaryBookmark": "Add temporary bookmark to bookmarks",
   "section.dynamic": "Dynamic bookmarks",
   "dynamic.hint": "A function decides a bookmark's URL as you browse.",
   "dynamic.add": "+ Add",
@@ -175,6 +176,9 @@ export const en = {
   "toolkit.added": "Added.",
   "toolkit.addFailed": "Failed to add: {error}",
   "toolkit.gapHelp": "For flattened folders: inserts a gap between the folder’s bookmarks on the rail.\nThe gap is stored as a bookmark whose URL is https://browserail.local/#Space:units=5:transparent=false:color=#cd123f.\nFields: units (0.1–20), transparent (true/false), color (#rrggbb).",
+  "toolkit.temporaryBookmarkDialogTitle": "Add temporary bookmark to bookmarks",
+  "toolkit.temporaryName": "Name",
+  "toolkit.temporaryBookmarkHelp": "For flattened folders: inserts a temporary bookmark between the folder’s bookmarks on the rail.\nThe temporary bookmark is stored as a bookmark whose URL is https://browserail.local/#Temporary:id=<id>.",
 
   // Color popover
   "color.title": "Color",
@@ -492,6 +496,7 @@ export const zhCN: Record<MessageKey, string> = {
   // Toolkit card
   "section.toolkit": "工具",
   "toolkit.addGapBookmark": "增加间隙到书签",
+  "toolkit.addTemporaryBookmark": "增加临时书签到书签",
   "section.dynamic": "动态书签",
   "dynamic.hint": "在页面浏览时，通过自定义函数动态更新书签的网址。",
   "dynamic.add": "+ 添加",
@@ -549,6 +554,9 @@ export const zhCN: Record<MessageKey, string> = {
   "toolkit.added": "已添加。",
   "toolkit.addFailed": "添加失败：{error}",
   "toolkit.gapHelp": "用于文件夹摊平时：在文件夹内的书签之间插入间隙。\n间隙会存为 URL 形如 https://browserail.local/#Space:units=5:transparent=false:color=#cd123f 的书签。\n字段：units（0.1–20）、transparent（true/false）、color（#rrggbb）。",
+  "toolkit.temporaryBookmarkDialogTitle": "增加临时书签到书签",
+  "toolkit.temporaryName": "名称",
+  "toolkit.temporaryBookmarkHelp": "用于文件夹摊平时：在文件夹内的书签之间插入临时书签。\n该书签将存储为一个 URL 为 https://browserail.local/#Temporary:id=<id> 的书签。",
 
   // Color popover
   "color.title": "颜色",
