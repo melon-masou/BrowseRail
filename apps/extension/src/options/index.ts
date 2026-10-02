@@ -328,9 +328,8 @@ let pickerTargetItemIndex = -1;
 let pickerTargetShortcutSlot = "";
 let pickerTargetNativeShortcutId = "";
 let activeRecordingKeyId: string | null = null;
-// Remembers the destination folder chosen for gap-bookmark and dynamic-marker tools so the next
-// open reuses it. Only the dialogs (pickFolder mode) read this.
-let gapBookmarkFolderId = "0";
+// Shared by the bookmark tools for this page only; refreshing resets it to the bookmarks bar.
+let gapBookmarkFolderId: string | undefined;
 let activeDynamicMarkerDb: DynamicBookmark | null = null;
 let activeShortcutSettingsTarget: StoredShortcut | StoredNativeShortcut | null = null;
 let activeShortcutSettingsBtn: HTMLElement | null = null;
@@ -553,6 +552,8 @@ pickerConfirmBtn.addEventListener("click", () => {
   if (pickerMode === "pickFolder") {
     const targetId =
       pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : "0");
+    const node = findBookmarkNode(targetId, rawBookmarkTree);
+    if (targetId === "0" || !node || node.url !== undefined) return;
     gapBookmarkFolderId = targetId;
     updateGapBookmarkFolderDisplay();
     updateDynamicMarkerFolderDisplay();
@@ -787,9 +788,7 @@ async function openBookmarkPicker(
       }
     }
   } else if (mode === "pickFolder") {
-    // Reuse the folder chosen last time; fall back to the configured root.
-    const remembered = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
-    const target = remembered ?? rootNode;
+    const target = gapBookmarkFolderId ? findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree) : undefined;
     pickerSelectedId = target?.id ?? null;
     if (target) {
       const path = getFolderPath(target.id, rawBookmarkTree as BookmarkNode[]);
@@ -1087,8 +1086,8 @@ function updateSelectedInfo(): void {
     // the folder currently open can be confirmed directly.
     const targetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
     const targetNode = targetId ? findBookmarkNode(targetId, rawBookmarkTree) : undefined;
-    const isFolder = targetNode?.children !== undefined || targetNode?.url === undefined;
-    pickerConfirmBtn.disabled = !(targetId && isFolder);
+    const isFolder = targetNode !== undefined && targetNode.url === undefined;
+    pickerConfirmBtn.disabled = !(targetId && targetId !== "0" && isFolder);
     return;
   }
 
@@ -1342,9 +1341,7 @@ async function initialize(): Promise<void> {
   widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
   bookmarkRootPrefix = rootPrefix;
-  // Default the gap-bookmark destination to the configured root, matching the
-  // location gap bookmarks landed in before the picker existed.
-  gapBookmarkFolderId = getRootNode()?.id ?? "0";
+  gapBookmarkFolderId = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], [SPECIAL_ROOT_PLACEHOLDERS["bookmarks-bar"]])?.id;
   if (bookmarkRootInput) {
     // Read-only display: the root is set only via the "pick root" button, so a
     // folder title containing "/" can be represented (a typed string can't).
@@ -2433,12 +2430,14 @@ function initSpaceBookmarkDialog(): void {
 }
 
 function updateGapBookmarkFolderDisplay(): void {
-  const node = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
-  const label =
-    gapBookmarkFolderId === "0"
-      ? t("toolkit.defaultLocation")
-      : node?.title || t("common.folder");
-  spaceBookmarkFolderDisplay.textContent = label;
+  const node = gapBookmarkFolderId ? findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree) : undefined;
+  spaceBookmarkFolderDisplay.textContent = node?.title || t("toolkit.noDestination");
+}
+
+function bookmarkDestination(): string {
+  const node = gapBookmarkFolderId ? findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree) : undefined;
+  if (!node || node.url !== undefined || node.id === "0") throw new Error(t("toolkit.noDestination"));
+  return node.id;
 }
 
 async function addSpaceBookmark(): Promise<void> {
@@ -2450,7 +2449,7 @@ async function addSpaceBookmark(): Promise<void> {
     await browser.bookmarks.create({
       title: "Space",
       url,
-      ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
+      parentId: bookmarkDestination(),
     });
     rawBookmarkTree = await browser.bookmarks.getTree();
     spaceBookmarkResult.textContent = t("toolkit.added");
@@ -2486,12 +2485,8 @@ function initTemporaryBookmarkDialog(): void {
 }
 
 function updateTemporaryBookmarkFolderDisplay(): void {
-  const node = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
-  const label =
-    gapBookmarkFolderId === "0"
-      ? t("toolkit.defaultLocation")
-      : node?.title || t("common.folder");
-  temporaryBookmarkFolderDisplay.textContent = label;
+  const node = gapBookmarkFolderId ? findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree) : undefined;
+  temporaryBookmarkFolderDisplay.textContent = node?.title || t("toolkit.noDestination");
 }
 
 async function addTemporaryBookmark(): Promise<void> {
@@ -2503,7 +2498,7 @@ async function addTemporaryBookmark(): Promise<void> {
     await browser.bookmarks.create({
       title,
       url,
-      ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
+      parentId: bookmarkDestination(),
     });
     rawBookmarkTree = await browser.bookmarks.getTree();
     temporaryBookmarkResult.textContent = t("toolkit.added");
@@ -2918,12 +2913,8 @@ function openPickDynamicBookmarkDialog(target: number | { shortcutSlot: string }
 }
 
 function updateDynamicMarkerFolderDisplay(): void {
-  const node = findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree);
-  const label =
-    gapBookmarkFolderId === "0"
-      ? t("toolkit.defaultLocation")
-      : node?.title || gapBookmarkFolderId;
-  dynamicMarkerFolderDisplay.textContent = label;
+  const node = gapBookmarkFolderId ? findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree) : undefined;
+  dynamicMarkerFolderDisplay.textContent = node?.title || t("toolkit.noDestination");
 }
 
 function openDynamicMarkerDialog(db: DynamicBookmark): void {
@@ -2940,7 +2931,7 @@ async function addDynamicMarkerBookmark(): Promise<void> {
     await browser.bookmarks.create({
       title: activeDynamicMarkerDb.name || t("dynamic.defaultName"),
       url: buildDynamicMarkerUrl(activeDynamicMarkerDb.uid),
-      ...(gapBookmarkFolderId !== "0" ? { parentId: gapBookmarkFolderId } : {}),
+      parentId: bookmarkDestination(),
     });
     rawBookmarkTree = await browser.bookmarks.getTree();
     dynamicMarkerResult.textContent = t("toolkit.added");
