@@ -4532,6 +4532,9 @@ function updateDesktopControls(): void {
   toggleEnabledButton.dataset.action = widgetEnabled ? "disable" : "enable";
   desktopUrl.disabled = savedDisplayMode === "browser";
   testDesktop.disabled = savedDisplayMode === "browser";
+  for (const hint of document.querySelectorAll<HTMLElement>("[data-native-only]")) {
+    hint.hidden = savedDisplayMode !== "browser";
+  }
 }
 
 async function testDesktopAddress(): Promise<void> {

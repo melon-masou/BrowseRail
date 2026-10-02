@@ -72,6 +72,7 @@
           <label id="desktop-url-field">
             <span class="label-row">
               <span data-i18n="form.desktopAddress">Desktop Widget address</span>
+              <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
               <output id="desktop-test-status" class="field-status" aria-live="polite"></output>
             </span>
             <span class="input-row">
@@ -94,8 +95,8 @@
               <span id="site-authorization-warning" class="site-permission-warning" hidden></span>
             </span>
             <select id="display-mode">
-              <option value="native" data-i18n="form.displayMode.native">Native window</option>
-              <option value="browser" data-i18n="form.displayMode.browser">Browser injection</option>
+              <option value="native" data-i18n="form.displayMode.native">Native mode</option>
+              <option value="browser" data-i18n="form.displayMode.browser">Browser mode</option>
             </select>
           </label>
           <div id="site-authorization-controls" class="site-authorization" hidden></div>
@@ -183,7 +184,10 @@
         <section id="shortcuts-panel" class="shortcuts-section" role="tabpanel" aria-labelledby="shortcuts-tab" hidden>
           <div class="shortcuts-subtabs" role="tablist">
             <button type="button" id="shortcuts-subtab-browser" class="shortcuts-subtab-btn is-active" data-subtab-target="shortcuts-browser-panel" data-i18n="shortcuts.tabBrowser">🌐 Browser Shortcuts</button>
-            <button type="button" id="shortcuts-subtab-native" class="shortcuts-subtab-btn" data-subtab-target="shortcuts-native-panel" data-i18n="shortcuts.tabNative">🖥️ Native Shortcuts</button>
+            <button type="button" id="shortcuts-subtab-native" class="shortcuts-subtab-btn" data-subtab-target="shortcuts-native-panel">
+              <span data-i18n="shortcuts.tabNative">🖥️ Native Shortcuts</span>
+              <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
+            </button>
           </div>
 
           <!-- Browser Shortcuts Sub-panel -->
@@ -426,6 +430,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
             <div class="menu-settings-body">
               <label>
                 <span data-i18n="form.attachTo">Attach menu to</span>
+                <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
                 <select id="menu-setting-attachment-mode">
                   <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
                   <option value="all" data-i18n="form.attach.all">All windows</option>
@@ -434,6 +439,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               </label>
               <label>
                 <span data-i18n="form.onTopMode">On-top mode</span>
+                <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
                 <select id="menu-setting-on-top-mode">
                   <option value="aboveBrowser" data-i18n="form.onTopMode.aboveBrowser">Above browser</option>
                   <option value="alwaysOnTop" data-i18n="form.onTopMode.alwaysOnTop">Always on top</option>

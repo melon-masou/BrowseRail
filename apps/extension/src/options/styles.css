@@ -279,6 +279,12 @@ li span {
   font-size: 13px;
 }
 
+.native-mode-hint {
+  color: #687287;
+  font-size: 12px;
+  font-weight: 400;
+}
+
 #menus {
   display: grid;
   gap: 12px;
