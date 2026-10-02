@@ -4,10 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { build } from "vite";
 
-const target = process.argv[2];
-if (target !== "chrome" && target !== "firefox") {
-  throw new Error("Expected a chrome or firefox build target");
-}
+const target = process.argv[2] === "firefox" ? "firefox" : "chrome";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = resolve(root, "..", "..", "build", "extension", target);
@@ -21,6 +18,7 @@ const releaseVersion = isRelease ? rawVersion.replace(/^v/, "") : "0.1.0";
 const releaseTag = isRelease ? (process.env.BROWSERAIL_RELEASE_TAG || `v${releaseVersion}`) : "";
 
 const define = {
+  __BROWSERAIL_TARGET__: JSON.stringify(target),
   __BROWSERAIL_IS_RELEASE__: JSON.stringify(isRelease),
   __BROWSERAIL_RELEASE_TAG__: JSON.stringify(releaseTag),
   __BROWSERAIL_RELEASE_VERSION__: JSON.stringify(releaseVersion),
@@ -49,6 +47,21 @@ await build({
       fileName: () => "background.js",
       formats: ["iife"],
       name: "BrowseRailBackground",
+    },
+    outDir,
+  },
+});
+
+await build({
+  configFile: false,
+  define,
+  build: {
+    emptyOutDir: false,
+    lib: {
+      entry: resolve(root, "src/page-operations/index.ts"),
+      fileName: () => "content.js",
+      formats: ["iife"],
+      name: "BrowseRailContent",
     },
     outDir,
   },

@@ -168,8 +168,18 @@ form,
   align-items: start;
 }
 
+.connection-mode-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 16px;
+  align-items: end;
+}
+
 @media (max-width: 640px) {
   .fields-row {
+    grid-template-columns: 1fr;
+  }
+  .connection-mode-row {
     grid-template-columns: 1fr;
   }
 }
@@ -2950,4 +2960,46 @@ button.item-tag {
 }
 
 
-
+.site-authorization {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 36px;
+  font-size: 12px;
+}
+.site-authorization[hidden], .site-permission-warning[hidden], .site-authorization-rule-list[hidden] {
+  display: none;
+}
+.site-permission-warning {
+  color: #c76a0a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.site-authorization-dialog {
+  width: min(620px, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.site-authorization-dialog ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.site-authorization-choices, .site-authorization-rule-list {
+  display: grid;
+  gap: 8px;
+}
+.site-authorization-choices label, .site-authorization-rule-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.site-authorization-dialog input[type="radio"], .site-authorization-dialog input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  min-height: 15px;
+  margin: 0;
+}

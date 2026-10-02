@@ -135,7 +135,7 @@ export function defaultMenuPlacement(
   _orientation: MenuOrientation = "column",
   _itemCount = 1,
   fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
-): MenuPlacement {
+): MenuPlacement & { itemWidth: number; itemHeight: number } {
   const { itemWidth, itemHeight } = getItemDimensions(fontSize);
 
   return {
@@ -613,6 +613,87 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export const PLACEMENTS_STORAGE_KEY = "menu_placements";
+
+export type DisplayMode = "native" | "browser";
+export const DISPLAY_MODE_STORAGE_KEY = "display_mode";
+export const BROWSER_PLACEMENTS_STORAGE_KEY = "browser_menu_placements";
+export const BROWSER_COLLAPSED_STORAGE_KEY = "browser_menu_collapsed";
+export const BROWSER_EDITING_STORAGE_KEY = "browser_menu_editing";
+
+export async function loadBrowserEditing(): Promise<boolean> {
+  const stored = await browser.storage.local.get(BROWSER_EDITING_STORAGE_KEY);
+  return stored[BROWSER_EDITING_STORAGE_KEY] === true;
+}
+
+export async function saveBrowserEditing(editing: boolean): Promise<void> {
+  await browser.storage.local.set({ [BROWSER_EDITING_STORAGE_KEY]: editing });
+}
+
+export interface BrowserMenuPlacement {
+  anchor: MenuAnchor;
+  offsetX: number;
+  offsetY: number;
+  itemWidth: number;
+  itemHeight: number;
+}
+
+export async function loadDisplayMode(): Promise<DisplayMode> {
+  const stored = await browser.storage.local.get(DISPLAY_MODE_STORAGE_KEY);
+  return stored[DISPLAY_MODE_STORAGE_KEY] === "browser" ? "browser" : "native";
+}
+
+export async function saveDisplayMode(mode: DisplayMode): Promise<void> {
+  await browser.storage.local.set({ [DISPLAY_MODE_STORAGE_KEY]: mode });
+}
+
+export function normalizeBrowserPlacement(value: unknown): BrowserMenuPlacement | undefined {
+  if (!isRecord(value) || !isAnchor(value.anchor)) return undefined;
+  if (![value.offsetX, value.offsetY, value.itemWidth, value.itemHeight].every(part => typeof part === "number" && Number.isFinite(part))) return undefined;
+  return {
+    anchor: value.anchor,
+    offsetX: boundedNumber(value.offsetX, -10_000, 10_000, 12),
+    offsetY: boundedNumber(value.offsetY, -10_000, 10_000, 12),
+    itemWidth: boundedNumber(value.itemWidth, 26, 400, DEFAULT_ITEM_WIDTH),
+    itemHeight: boundedNumber(value.itemHeight, 26, 200, DEFAULT_ITEM_HEIGHT),
+  };
+}
+
+export async function loadBrowserPlacements(): Promise<Record<string, BrowserMenuPlacement>> {
+  const stored = await browser.storage.local.get(BROWSER_PLACEMENTS_STORAGE_KEY);
+  const raw = stored[BROWSER_PLACEMENTS_STORAGE_KEY];
+  if (!isRecord(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).flatMap(([uid, value]) => {
+    const placement = normalizeBrowserPlacement(value);
+    return placement ? [[uid, placement]] : [];
+  }));
+}
+
+export async function saveBrowserPlacement(uid: string, placement: BrowserMenuPlacement): Promise<void> {
+  const normalized = normalizeBrowserPlacement(placement);
+  if (!normalized) throw new Error("Invalid browser menu placement");
+  const current = await loadBrowserPlacements();
+  current[uid] = normalized;
+  await browser.storage.local.set({ [BROWSER_PLACEMENTS_STORAGE_KEY]: current });
+}
+
+export async function removeBrowserPlacement(uid: string): Promise<void> {
+  const current = await loadBrowserPlacements();
+  delete current[uid];
+  await browser.storage.local.set({ [BROWSER_PLACEMENTS_STORAGE_KEY]: current });
+}
+
+export async function loadBrowserCollapsed(): Promise<Record<string, boolean>> {
+  const stored = await browser.storage.local.get(BROWSER_COLLAPSED_STORAGE_KEY);
+  const raw = stored[BROWSER_COLLAPSED_STORAGE_KEY];
+  if (!isRecord(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"));
+}
+
+export async function toggleBrowserCollapsed(uid: string): Promise<void> {
+  const current = await loadBrowserCollapsed();
+  current[uid] = !current[uid];
+  await browser.storage.local.set({ [BROWSER_COLLAPSED_STORAGE_KEY]: current });
+}
 
 export type MenuPlacementsMap = Record<string, MenuPlacement>;
 

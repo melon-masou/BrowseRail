@@ -1,9 +1,5 @@
 import {
-  isDynamicAction,
   isNativeMessage,
-  isUrlMatchingSet,
-  parseDynamicAction,
-  parseTemporaryAction,
   PROTOCOL_VERSION,
   type BrowserInstance,
   type ExtensionMessage,
@@ -26,26 +22,40 @@ import {
   DEFAULT_FONT_SIZE,
   loadBookmarkRootPrefix,
   loadConfig,
+  loadDisplayMode,
+  loadBrowserEditing,
+  loadBrowserPlacements,
+  loadBrowserCollapsed,
+  removeBrowserPlacement,
   loadFreePlacements,
   loadMenuPlacements,
   loadWidgetEnabled,
   loadDynamicValues,
-  loadTemporaryValues,
   loadTemporaryNotes,
   removeMenuPlacements,
   resolveGapPx,
   resolveMenuPlacement,
-  saveConfig,
   saveFreePlacement,
   saveMenuPlacement,
   saveWidgetEnabled,
 } from "../config";
 import { loadInstanceUid } from "../instance-identity";
 import { ExtensionStateMachine, type ExtensionConnectionState } from "../state-machine";
-import { navigateBookmark, navigateToUrl } from "../tab-actions/navigate";
+import { navigateToUrl } from "../tab-actions/navigate";
 import { initDynamicBookmarks } from "./dynamic";
-import { captureTemporaryUrl } from "./temporary";
-import { runTabAction, toggleTargetMenus } from "./menu-actions";
+import { executeMenuAction } from "./execute-menu-action";
+
+import { createBrowserMenus, menuVisibleForUrl as isMenuVisibleForUrl } from "./browser-menus";
+import { createBrowserEditingMenu } from "./browser-editing";
+import { createBrowserInjection } from "./browser-injection";
+
+const browserMenus = createBrowserMenus(requestSync);
+const browserInjection = createBrowserInjection({
+  hasMenus: async tabId => (await browserMenus.forTab(tabId)).length > 0,
+  connectedTabs: browserMenus.connectedTabs,
+});
+const editingMenu = createBrowserEditingMenu();
+let widgetActive = true;
 
 export const connectionStateMachine = new ExtensionStateMachine("disconnected");
 
@@ -61,7 +71,7 @@ connectionStateMachine.subscribe((next, _prev, detail) => {
 });
 
 function updateActionBadge(state: ExtensionConnectionState, detail?: string): void {
-  const disabled = state === "disabled";
+  const disabled = !widgetActive;
   // Clicking the toolbar icon toggles enable/disable, so the tooltip states the
   // current state and what a click will do. When disabled, the corner badge
   // shows two blue bars with a transparent background.
@@ -84,7 +94,7 @@ function updateActionBadge(state: ExtensionConnectionState, detail?: string): vo
       title = `${t("action.iconTitleEnabled")} — Disconnected`;
       break;
     case "disabled":
-      title = t("action.iconTitleDisabled");
+      title = disabled ? t("action.iconTitleDisabled") : t("action.iconTitleEnabled");
       break;
   }
   void browser.action.setBadgeText({ text: disabled ? "OFF" : "" });
@@ -254,13 +264,16 @@ function scheduleReconcile(): void {
 }
 
 browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local" && (changes.config || changes.widget_enabled)) {
+  if (areaName === "local") requestSync();
+  if (areaName === "local" && (changes.config || changes.widget_enabled || changes.display_mode)) {
     scheduleReconcile();
   }
   if (areaName === "sync" && changes.sync_menus) {
     scheduleReconcile();
   }
 });
+browser.permissions.onAdded.addListener(requestSync);
+browser.permissions.onRemoved.addListener(requestSync);
 browser.runtime.onMessage.addListener((message: unknown) => {
   if (isGetStateMessage(message)) {
     return Promise.resolve({
@@ -308,21 +321,21 @@ browser.runtime.onMessage.addListener((message: unknown) => {
       .then(() => ({ ok: true, debugLoggingEnabled }));
   }
   if (isManualReconnectMessage(message)) {
-    manualReconnect();
-    return Promise.resolve({ ok: true });
+    return reconcileConnection(true).then(() => ({ ok: true }));
   }
   if (isResyncWindowsMessage(message)) {
     return rebuildDesktopWindows();
   }
   if (isResetMenuLayoutMessage(message)) {
-    return removeMenuPlacements(message.menuUid).then(() => {
-      resetMenuUids.add(message.menuUid);
+    return (async () => {
+      if (await loadDisplayMode() === "browser") await removeBrowserPlacement(message.menuUid);
+      else { await removeMenuPlacements(message.menuUid); resetMenuUids.add(message.menuUid); }
       requestSync();
       return { ok: true };
-    });
+    })();
   }
   if (isConfigSavedMessage(message)) {
-    scheduleReconcile();
+    return reconcileConnection().then(() => ({ ok: true }));
   }
   if (isSetWidgetEnabledMessage(message)) {
     void applyWidgetEnabled(message.enabled);
@@ -337,13 +350,8 @@ browser.action.onClicked.addListener((_tab, info) => {
 });
 
 async function applyWidgetEnabled(enabled: boolean): Promise<void> {
-  connectionEnabled = enabled;
   await saveWidgetEnabled(enabled);
-  if (!enabled) {
-    stopConnection();
-  } else {
-    scheduleReconcile();
-  }
+  await reconcileConnection();
 }
 
 async function toggleWidgetEnabled(): Promise<void> {
@@ -351,15 +359,18 @@ async function toggleWidgetEnabled(): Promise<void> {
   await applyWidgetEnabled(!enabled);
 }
 
-async function reconcileConnection(): Promise<void> {
+async function reconcileConnection(forceReconnect = false): Promise<void> {
   clearTimeout(reconcileTimer);
   const generation = ++connectionGeneration;
-  const [config, enabled] = await Promise.all([loadConfig(), loadWidgetEnabled()]);
+  const [config, enabled, mode] = await Promise.all([loadConfig(), loadWidgetEnabled(), loadDisplayMode()]);
   if (generation !== connectionGeneration) {
     return;
   }
 
-  connectionEnabled = enabled;
+  widgetActive = enabled;
+  connectionEnabled = enabled && mode === "native";
+  await editingMenu.update(mode, enabled);
+  if (generation !== connectionGeneration) return;
   const connectionMatches =
     desiredSocketUrl === config.desktopWidget.url &&
     desiredInstanceLabel === config.instanceLabel &&
@@ -371,13 +382,14 @@ async function reconcileConnection(): Promise<void> {
 
   if (!connectionEnabled) {
     stopConnection();
-  } else if (connectionMatches) {
-    requestSync();
-  } else {
+  } else if (!connectionMatches || forceReconnect) {
     stopConnection();
+    reconnectAttempts = 0;
     connectionStateMachine.transition("disconnected", "Connection parameters changed");
     await connect(generation);
   }
+  updateActionBadge(connectionStateMachine.getState(), connectionStateMachine.getDetail());
+  requestSync();
 }
 
 async function connect(generation = connectionGeneration): Promise<void> {
@@ -484,51 +496,8 @@ async function handleMessage(raw: unknown): Promise<void> {
       if (value.actionUid.startsWith("shortcut:")) {
         const shortcutId = value.actionUid.slice("shortcut:".length);
         await executeNativeShortcut(shortcutId, targetWindowUid);
-      } else if (value.actionUid.startsWith("browserAction:") || value.actionUid.startsWith("menusToggle:")) {
-        const separator = value.actionUid.indexOf(":");
-        const type = value.actionUid.slice(0, separator);
-        const uid = decodeURIComponent(value.actionUid.slice(separator + 1));
-        const config = await loadConfig();
-        const sourceMenu = config.panel.menus.find((menu) => menu.uid === value.menuUid);
-        const action = sourceMenu?.items.find((item) => item.uid === uid && item.type === type);
-        if (sourceMenu && action?.type === "menusToggle") {
-          const menus = toggleTargetMenus(config.panel.menus, sourceMenu.uid, action.targetMenuUids ?? []);
-          if (menus) {
-            await saveConfig({ ...config, panel: { menus } });
-            requestSync();
-          }
-        } else if (action?.type === "browserAction" && action.browserAction) {
-          await runTabAction(browser.tabs, targetWindowUid, action.browserAction);
-        }
-      } else if (isDynamicAction(value.actionUid)) {
-        const { dynamicUid, tabMode } = parseDynamicAction(value.actionUid);
-        const live = (await loadDynamicValues())[dynamicUid];
-        if (live?.url) {
-          await navigateToUrl(browser, targetWindowUid, live.url, tabMode);
-        }
-      } else if (value.actionUid.startsWith("temporarySave:")) {
-        const raw = value.actionUid.slice("temporarySave:".length);
-        const queryIndex = raw.indexOf("?");
-        const uid = decodeURIComponent(queryIndex < 0 ? raw : raw.slice(0, queryIndex));
-        const params = new URLSearchParams(queryIndex < 0 ? "" : raw.slice(queryIndex + 1));
-        const config = await loadConfig();
-        const tree = await browser.bookmarks.getTree();
-        const result = await captureTemporaryUrl(
-          browser.tabs,
-          config.panel.menus,
-          uid,
-          targetWindowUid,
-          params.get("confirmed") === "1",
-          params.get("note") ?? "",
-          tree,
-        );
-        if (result === "saved") requestSync();
-      } else if (value.actionUid.startsWith("temporary:")) {
-        const { uid, tabMode } = parseTemporaryAction(value.actionUid);
-        const url = (await loadTemporaryValues())[uid];
-        if (url) await navigateToUrl(browser, targetWindowUid, url, tabMode);
       } else {
-        await navigateBookmark(browser, targetWindowUid, value.actionUid);
+        await executeMenuAction(value.actionUid, value.menuUid, targetWindowUid, requestSync);
       }
     } catch {
       requestSync();
@@ -625,11 +594,7 @@ async function drainSync(): Promise<void> {
 }
 
 async function syncOnce(): Promise<void> {
-  if (socket?.readyState !== WebSocket.OPEN) {
-    return;
-  }
-
-  const [config, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues, temporaryNotes] = await Promise.all([
+  const [config, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues, temporaryNotes, mode, enabled, browserPlacements, browserCollapsed, browserEditing] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadMenuPlacements(),
@@ -638,6 +603,11 @@ async function syncOnce(): Promise<void> {
     browser.bookmarks.getTree().catch(() => []),
     loadDynamicValues(),
     loadTemporaryNotes(),
+    loadDisplayMode(),
+    loadWidgetEnabled(),
+    loadBrowserPlacements(),
+    loadBrowserCollapsed(),
+    loadBrowserEditing(),
   ]);
   const dynamicByUid = new Map((config.dynamicBookmarks ?? []).map((db) => [db.uid, db]));
   const dynamicResolve = (dynamicUid: string) => {
@@ -703,27 +673,16 @@ async function syncOnce(): Promise<void> {
   bookmarkTargets.commit();
   updateLastFocusedWindow(windows);
 
-  const urlRules = config.urlRules;
-  const urlRuleMap = new Map(urlRules.map((ws) => [ws.uid, ws]));
-  const origByUid = new Map(activeMenus.map((m) => [m.uid, m]));
+  const menuVisibleForUrl = (uid: string, url: string | undefined): boolean => isMenuVisibleForUrl(config, uid, url);
 
-  // A menu with no URL rules is always visible; otherwise it must match the
-  // given tab URL against at least one of its rules.
-  const menuVisibleForUrl = (menuUid: string, activeTabUrl: string | undefined): boolean => {
-    const setUids = origByUid.get(menuUid)?.urlRuleUids;
-    if (!setUids || setUids.length === 0) return true;
-    return (
-      Boolean(activeTabUrl) &&
-      setUids.some((setUid) => {
-        const ws = urlRuleMap.get(setUid);
-        return ws ? isUrlMatchingSet(activeTabUrl!, ws.patterns) : false;
-      })
-    );
-  };
+  await browserMenus.publish(config, menuStates.map(menu => menu.view), browserPlacements, browserCollapsed, enabled && mode === "browser", browserEditing);
+  await browserInjection.reconcile(enabled && mode === "browser");
+  if (socket?.readyState !== WebSocket.OPEN) return;
 
   // Bound menus are emitted once for each browser window because URL visibility, focus state,
   // geometry, and the native owner are window-specific.
-  const boundMenus = menuStates.filter((menu) => !menu.isFree);
+  const nativeMenuStates = mode === "native" && enabled ? menuStates : [];
+  const boundMenus = nativeMenuStates.filter((menu) => !menu.isFree);
   const syncedBoundMenus: SyncedMenu[] = windows.flatMap((window) => {
     const windowSnapshot = {
       uid: window.uid,
@@ -749,7 +708,7 @@ async function syncOnce(): Promise<void> {
   // URL change never destroys and recreates the free surface.
   const syncedFreeMenus: SyncedMenu[] = windows.length === 0
     ? []
-    : menuStates
+    : nativeMenuStates
         .filter((menu) => menu.isFree)
         .map((menu) => {
           const pos = freePlacements[menu.uid];
@@ -900,17 +859,6 @@ function reconnect(): void {
   reconnectTimer = setTimeout(() => void connect(), RECONNECT_DELAY_MS);
 }
 
-function manualReconnect(): void {
-  reconnectAttempts = 0;
-  clearTimeout(reconnectTimer);
-  clearInterval(heartbeatTimer);
-  const currentSocket = socket;
-  socket = undefined;
-  currentSocket?.close();
-  connectionStateMachine.transition("connecting", `Manual reconnect initiated`);
-  void connect();
-}
-
 function stopConnection(): void {
   clearInterval(heartbeatTimer);
   clearTimeout(reconnectTimer);
@@ -920,9 +868,17 @@ function stopConnection(): void {
   socket = undefined;
   if (currentSocket) {
     try {
-      currentSocket.close(1000, "Disabled");
-    } catch {
-      // Ignore
+      if (currentSocket.readyState === WebSocket.OPEN) {
+        currentSocket.send(JSON.stringify({ type: "detach" } satisfies ExtensionMessage));
+      }
+    } catch (error) {
+      console.error("Failed to notify desktop of detach", error);
+    } finally {
+      try {
+        currentSocket.close(1000, "Disabled");
+      } catch {
+        // The socket may already have closed.
+      }
     }
   }
   if (connectionEnabled) {

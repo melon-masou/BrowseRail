@@ -20,9 +20,7 @@ Save the configuration, then place the panel anywhere on your desktop or attach 
 
 ## How it works
 
-BrowseRail consists of a browser extension and a desktop app.
-
-The extension manages bookmarks and configuration, while the desktop app displays the panels as separate desktop windows. They communicate locally, so BrowseRail does not inject scripts into or modify the browser page.
+BrowseRail consists of a browser extension and a desktop app. The extension manages bookmarks and configuration, while the desktop app displays the panels as separate desktop windows.
 
 ## Development
 

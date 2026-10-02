@@ -23,6 +23,9 @@ import {
   loadBookmarkRootPrefix,
   loadDynamicValues,
   loadConfig,
+  loadDisplayMode,
+  saveDisplayMode,
+  type DisplayMode,
   loadSyncEnabled,
   loadWidgetEnabled,
   normalizeFontSize,
@@ -69,6 +72,7 @@ import {
 } from "@browserail/i18n";
 
 import { positionPopover } from "./popover-position";
+import { createSiteAuthorization } from "./site-authorization";
 
 import "./styles.css";
 
@@ -110,6 +114,7 @@ const connectionForm = element<HTMLFormElement>("connection-form");
 const saveConnectionBtn = element<HTMLButtonElement>("save-connection-btn");
 const connectionStatus = element<HTMLOutputElement>("connection-status");
 const menusForm = element<HTMLFormElement>("menus-form");
+const displayMode = element<HTMLSelectElement>("display-mode");
 const instanceLabel = element<HTMLInputElement>("instance-label");
 const randomInstanceLabel = element<HTMLButtonElement>("random-instance-label");
 const toggleEnabledButton = element<HTMLButtonElement>("toggle-enabled-button");
@@ -275,6 +280,7 @@ const bookmarkRootInput = document.getElementById("bookmark-root-input") as HTML
 const pickBookmarkRootBtn = document.getElementById("pick-bookmark-root-btn") as HTMLButtonElement | null;
 
 let widgetEnabled = true;
+let savedDisplayMode: DisplayMode = "native";
 let isConnectionDirty = false;
 let isMenusDirty = false;
 let bookmarkRootPrefix: string[] = [];
@@ -285,6 +291,13 @@ let shortcuts: StoredShortcut[] = [];
 let nativeShortcuts: StoredNativeShortcut[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
 let desktopTestGeneration = 0;
+const siteAuthorization = createSiteAuthorization({
+  root: element<HTMLDivElement>("site-authorization-controls"),
+  warning: element<HTMLSpanElement>("site-authorization-warning"),
+  getMode: () => savedDisplayMode,
+  getRules: () => urlRules,
+  hasUnsavedRules: () => isMenusDirty,
+});
 
 // Popover state
 let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
@@ -432,6 +445,7 @@ menusForm.addEventListener("submit", (event) => {
 });
 
 instanceLabel.addEventListener("input", markConnectionDirty);
+displayMode.addEventListener("change", markConnectionDirty);
 desktopUrl.addEventListener("input", () => {
   clearDesktopTestStatus();
   markConnectionDirty();
@@ -447,8 +461,8 @@ toggleEnabledButton.addEventListener("click", () => {
   clearResyncStatus();
   widgetEnabled = !widgetEnabled;
   updateDesktopControls();
-  if (!widgetEnabled) {
-    renderDesktopState("disabled", t("state.detail.disabledConnection"));
+  if (!widgetEnabled || savedDisplayMode === "browser") {
+    renderDesktopState("disabled");
   } else {
     renderDesktopState("connecting", t("state.detail.connectingToWidget"));
   }
@@ -1178,6 +1192,7 @@ function renderDesktopState(state: string, detail?: string): void {
   stateBadge.textContent = badgeLabel(state);
   stateDetail.textContent = detail || defaultDetailForState(state);
   resyncButton.disabled = state !== "connected";
+  reconnectButton.disabled = state === "disabled";
   if (state !== "connected") {
     clearResyncStatus();
   }
@@ -1211,7 +1226,7 @@ function defaultDetailForState(state: string): string {
     case "reconnecting":
       return t("state.detail.reconnecting");
     case "disabled":
-      return t("state.detail.disabled");
+      return t(widgetEnabled && savedDisplayMode === "browser" ? "state.detail.browserInjection" : "state.detail.disabled");
     case "disconnected":
     default:
       return t("state.detail.disconnected");
@@ -1312,15 +1327,18 @@ async function initialize(): Promise<void> {
   window.addEventListener("focus", () => {
     void refreshBrowserCommands();
   });
-  const [config, enabled, tree, rootPrefix] = await Promise.all([
+  const [config, enabled, tree, rootPrefix, mode] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
     browser.bookmarks.getTree(),
     loadBookmarkRootPrefix(),
+    loadDisplayMode(),
   ]);
   rawBookmarkTree = tree;
 
   instanceLabel.value = config.instanceLabel;
+  displayMode.value = mode;
+  savedDisplayMode = mode;
   widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
   bookmarkRootPrefix = rootPrefix;
@@ -1357,11 +1375,13 @@ async function initialize(): Promise<void> {
     if (changed) renderMenus();
   });
   updateDesktopControls();
+  renderDesktopState(stateCard.dataset.state ?? "disconnected");
   renderMenus();
   renderUrlRules();
   renderDynamicList();
   renderShortcuts();
   renderNativeShortcuts();
+  siteAuthorization.refresh(config.urlRules);
   clearDirty();
 }
 
@@ -1387,7 +1407,12 @@ async function persistConnection(): Promise<void> {
     },
     instanceLabel: instanceLabel.value.trim(),
   });
+  await saveDisplayMode(displayMode.value as DisplayMode);
+  savedDisplayMode = displayMode.value as DisplayMode;
+  updateDesktopControls();
+  siteAuthorization.refresh(currentConfig.urlRules);
   await browser.runtime.sendMessage({ type: "configSaved" });
+  await refreshDesktopState();
   clearConnectionDirty();
   const savedMsg = t("status.saved");
   connectionStatus.value = savedMsg;
@@ -1421,16 +1446,18 @@ async function persistMenus(): Promise<void> {
   }
 
   const currentConfig = await loadConfig();
+  const savedRules = structuredClone(urlRules);
   await saveConfig({
     ...currentConfig,
     panel: {
       menus,
     },
-    urlRules,
+    urlRules: savedRules,
     dynamicBookmarks,
     shortcuts,
     nativeShortcuts,
   });
+  siteAuthorization.refresh(savedRules);
   await pruneTemporaryValues(menus, rawBookmarkTree);
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearMenusDirty();
@@ -4431,7 +4458,11 @@ function renderUrlRules(): void {
     countPill.className = "url-rule-count-pill";
     countPill.textContent = t("urlRules.patternCount", { count: ws.patterns.length });
 
-    titleGroup.append(nameInput, countPill);
+    const permissionWarning = document.createElement("span");
+    permissionWarning.className = "site-permission-warning";
+    permissionWarning.dataset.rulePermission = ws.uid;
+    permissionWarning.hidden = true;
+    titleGroup.append(nameInput, countPill, permissionWarning);
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
@@ -4475,6 +4506,7 @@ function renderUrlRules(): void {
     card.append(header, patternsTextarea);
     urlRulesList.appendChild(card);
   });
+  siteAuthorization.render();
 }
 
 addUrlRuleBtn.addEventListener("click", () => {
@@ -4498,6 +4530,8 @@ addUrlRuleBtn.addEventListener("click", () => {
 function updateDesktopControls(): void {
   toggleEnabledButton.textContent = widgetEnabled ? t("btn.disable") : t("btn.enable");
   toggleEnabledButton.dataset.action = widgetEnabled ? "disable" : "enable";
+  desktopUrl.disabled = savedDisplayMode === "browser";
+  testDesktop.disabled = savedDisplayMode === "browser";
 }
 
 async function testDesktopAddress(): Promise<void> {

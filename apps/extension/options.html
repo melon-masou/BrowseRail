@@ -61,7 +61,7 @@
           </div>
         </div>
 
-        <div class="fields-row">
+        <div class="fields-row connection-primary-row">
           <label>
             <span data-i18n="form.instanceLabel">Instance label</span>
             <span class="input-row">
@@ -85,6 +85,32 @@
               <button id="test-desktop" type="button" data-i18n="btn.test">Test</button>
             </span>
           </label>
+        </div>
+
+        <div class="connection-mode-row">
+          <label id="embedding-mode-field">
+            <span class="label-row">
+              <span data-i18n="form.displayMode">Embedding mode</span>
+              <span id="site-authorization-warning" class="site-permission-warning" hidden></span>
+            </span>
+            <select id="display-mode">
+              <option value="native" data-i18n="form.displayMode.native">Native window</option>
+              <option value="browser" data-i18n="form.displayMode.browser">Browser injection</option>
+            </select>
+          </label>
+          <div id="site-authorization-controls" class="site-authorization" hidden></div>
+        </div>
+
+        <div class="fields-row connection-shared-row">
+          <label id="bookmark-root-field">
+            <span class="label-row">
+              <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
+            </span>
+            <span class="input-row">
+              <input id="bookmark-root-input" type="text" placeholder="/" readonly />
+              <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
+            </span>
+          </label>
           <label id="sync-enabled-field">
             <span class="label-row">
               <span data-i18n="form.chromeSync">Chrome Sync</span>
@@ -95,15 +121,6 @@
                 <span class="switch-slider"></span>
               </label>
               <span style="font-size: 12px; color: #8a99ad;" data-i18n="form.chromeSyncHint">Sync menus across devices</span>
-            </span>
-          </label>
-          <label id="bookmark-root-field">
-            <span class="label-row">
-              <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
-            </span>
-            <span class="input-row">
-              <input id="bookmark-root-input" type="text" placeholder="/" readonly />
-              <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
             </span>
           </label>
         </div>
