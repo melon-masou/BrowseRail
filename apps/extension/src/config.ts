@@ -1,6 +1,7 @@
-import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
 import type {
   AttachmentMode,
+  ExpandAlignment,
   ExpandDirection,
   MenuAnchor,
   MenuFontSize,
@@ -15,14 +16,14 @@ import type {
   StoredNativeShortcut,
   TabMode,
   UrlRule,
+  StaticBookmark,
+  TemporaryBookmark,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "./desktop-connection";
 import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
-import type { BookmarkNode } from "./bookmarks";
-import { collectTemporaryUidsFromBookmarkTree } from "./bookmarks";
 
 const STORAGE_KEY = "config";
 
@@ -55,6 +56,8 @@ export type {
   StoredShortcut,
   StoredNativeShortcut,
   UrlRule,
+  StaticBookmark,
+  TemporaryBookmark,
 };
 
 // A user-defined dynamic bookmark: its function body maintains a live URL/title
@@ -79,6 +82,8 @@ export interface ExtensionConfig {
   urlRules: UrlRule[];
   defaultUrlRuleUid?: string;
   dynamicBookmarks: DynamicBookmark[];
+  staticBookmarks: StaticBookmark[];
+  temporaryBookmarks: TemporaryBookmark[];
   shortcuts: StoredShortcut[];
   nativeShortcuts: StoredNativeShortcut[];
 }
@@ -133,6 +138,8 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   },
   urlRules: [],
   dynamicBookmarks: [],
+  staticBookmarks: [],
+  temporaryBookmarks: [],
   shortcuts: [],
   nativeShortcuts: [],
 };
@@ -243,7 +250,8 @@ export async function loadConfig(): Promise<ExtensionConfig> {
         );
       } else if (isRecord(syncData)) {
         config = normalizeConfig(
-          { ...config, panel: { ...config.panel, ...syncData }, urlRules: syncData.urlRules, defaultUrlRuleUid: syncData.defaultUrlRuleUid },
+          { ...config, panel: { ...config.panel, ...syncData }, urlRules: syncData.urlRules, defaultUrlRuleUid: syncData.defaultUrlRuleUid,
+            dynamicBookmarks: syncData.dynamicBookmarks, staticBookmarks: syncData.staticBookmarks, temporaryBookmarks: syncData.temporaryBookmarks },
           instanceLabelFromUid(instanceUid),
         );
       }
@@ -271,6 +279,8 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
           urlRules: normalized.urlRules,
           ...(normalized.defaultUrlRuleUid ? { defaultUrlRuleUid: normalized.defaultUrlRuleUid } : {}),
           dynamicBookmarks: normalized.dynamicBookmarks,
+          staticBookmarks: normalized.staticBookmarks,
+          temporaryBookmarks: normalized.temporaryBookmarks,
         },
       });
     } catch (e) {
@@ -331,11 +341,13 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
   const shortcuts: StoredShortcut[] = rawShortcuts.flatMap((sc) => {
     if (!isRecord(sc)) return [];
     if (typeof sc.slot !== "string" || !sc.slot.startsWith("slot_")) return [];
-    const type = sc.type === "dynamic" ? "dynamic" : "bookmark";
+    const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" ? sc.type : "bookmark";
     const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
     const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
     const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
+    const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
+    const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
     const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
     return [
       {
@@ -345,6 +357,8 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         ...(url ? { url } : {}),
         ...(title ? { title } : {}),
         ...(dynamicUid ? { dynamicUid } : {}),
+        ...(staticUid ? { staticUid } : {}),
+        ...(temporaryUid ? { temporaryUid } : {}),
         ...(tabMode ? { tabMode } : {}),
       },
     ];
@@ -355,11 +369,13 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     if (!isRecord(sc)) return [];
     if (typeof sc.id !== "string" || !sc.id) return [];
     const key = typeof sc.key === "string" ? sc.key.trim() : "";
-    const type = sc.type === "dynamic" ? "dynamic" : "bookmark";
+    const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" ? sc.type : "bookmark";
     const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
     const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
     const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
+    const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
+    const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
     const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
     return [
       {
@@ -370,6 +386,8 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         ...(url ? { url } : {}),
         ...(title ? { title } : {}),
         ...(dynamicUid ? { dynamicUid } : {}),
+        ...(staticUid ? { staticUid } : {}),
+        ...(temporaryUid ? { temporaryUid } : {}),
         ...(tabMode ? { tabMode } : {}),
       },
     ];
@@ -392,9 +410,25 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     urlRules,
     ...(typeof value.defaultUrlRuleUid === "string" && urlRules.some(rule => rule.uid === value.defaultUrlRuleUid) ? { defaultUrlRuleUid: value.defaultUrlRuleUid } : {}),
     dynamicBookmarks,
+    staticBookmarks: normalizeStaticBookmarks(value.staticBookmarks),
+    temporaryBookmarks: normalizeTemporaryBookmarks(value.temporaryBookmarks),
     shortcuts,
     nativeShortcuts,
   };
+}
+
+export function normalizeStaticBookmarks(value: unknown): StaticBookmark[] {
+  return (Array.isArray(value) ? value : []).flatMap((entry): StaticBookmark[] => {
+    if (!isRecord(entry) || typeof entry.uid !== "string" || !entry.uid) return [];
+    return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "", url: typeof entry.url === "string" ? entry.url.trim() : "" }];
+  });
+}
+
+export function normalizeTemporaryBookmarks(value: unknown): TemporaryBookmark[] {
+  return (Array.isArray(value) ? value : []).flatMap((entry): TemporaryBookmark[] => {
+    if (!isRecord(entry) || typeof entry.uid !== "string" || !entry.uid) return [];
+    return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "" }];
+  });
 }
 
 export function normalizeMenu(value: unknown): StoredMenu | undefined {
@@ -428,6 +462,10 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     value.expandDirection === "left"
       ? value.expandDirection
       : undefined;
+  const expandAlignment: ExpandAlignment | undefined =
+    value.expandAlignment === "edge" || value.expandAlignment === "center"
+      ? value.expandAlignment
+      : undefined;
   const attachmentMode: AttachmentMode = isAttachmentMode(value.attachmentMode)
     ? value.attachmentMode
     : "lastFocused";
@@ -456,6 +494,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ...(dockColor !== undefined ? { dockColor } : {}),
     enabled,
     ...(expandDirection !== undefined ? { expandDirection } : {}),
+    ...(expandAlignment !== undefined ? { expandAlignment } : {}),
     ...(buttonFontSize !== undefined ? { buttonFontSize } : {}),
     ...(popupFontSize !== undefined ? { popupFontSize } : {}),
     gap,
@@ -578,11 +617,13 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     };
   }
 
-  if (rawType === "temporary") {
+  if (rawType === "temporary" || rawType === "static") {
+    const targetUid = rawType === "temporary" ? value.temporaryUid : value.staticUid;
+    if (typeof targetUid !== "string" || !targetUid) return undefined;
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
-    return { uid, type: "temporary", ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(tabMode ? { tabMode } : {}) };
+    return { uid, ...customBookmarkReference(rawType === "static" ? "static" : "temporary", targetUid), ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(tabMode ? { tabMode } : {}) };
   }
 
   const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")
@@ -899,15 +940,16 @@ export async function saveTemporaryValue(uid: string, url: string, note = ""): P
   });
 }
 
-export async function pruneTemporaryValues(menus: StoredMenu[], bookmarkTree?: BookmarkNode[]): Promise<void> {
-  const retainedUids = new Set(
-    menus.flatMap((menu) => menu.items.filter((item) => item.type === "temporary").map((item) => item.uid)),
-  );
-  if (bookmarkTree) {
-    for (const uid of collectTemporaryUidsFromBookmarkTree(bookmarkTree)) {
-      retainedUids.add(uid);
-    }
-  }
+export async function clearTemporaryValue(uid: string): Promise<void> {
+  const values = await loadTemporaryValues();
+  const notes = await loadTemporaryNotes();
+  delete values[uid];
+  delete notes[uid];
+  await browser.storage.local.set({ [TEMPORARY_VALUES_STORAGE_KEY]: values, [TEMPORARY_NOTES_STORAGE_KEY]: notes });
+}
+
+export async function pruneTemporaryValues(definitions: TemporaryBookmark[]): Promise<void> {
+  const retainedUids = new Set(definitions.map(entry => entry.uid));
   const values = await loadTemporaryValues();
   const notes = await loadTemporaryNotes();
   const retainedValues = Object.fromEntries(Object.entries(values).filter(([uid]) => retainedUids.has(uid)));

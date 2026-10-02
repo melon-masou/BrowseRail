@@ -60,8 +60,30 @@ it.each(["left", "right"] as const)("moves the first %s column up when a bar fol
   expect(surface.bottom).toBeLessThanOrEqual(viewport.bottom);
 });
 
-it.each(["down", "up"] as const)("keeps the first %s column outside the bar button instead of shifting over it", direction => {
+it.each(["left", "right"] as const)("centers the first %s column on the bar folder when there is enough space", direction => {
   const input = request(direction);
+  input.expandAlignment = "center";
+  input.folder.children = Array.from({ length: 5 }, (_, i) => ({ kind: "bookmark", uid: String(i), label: `Bookmark ${i}` }));
+  input.anchor = { left: 400, right: 484, top: 280, bottom: 316 };
+  const { surface } = planFolderPopup(measure, input, viewport);
+  expect((surface.top + surface.bottom) / 2).toBe((input.anchor.top + input.anchor.bottom) / 2);
+});
+
+it.each(["edge", "center"] as const)("keeps lateral columns inside the top boundary (alignment=%s)", expandAlignment => {
+  const input = request("right");
+  input.expandAlignment = expandAlignment;
+  input.anchor = { left: 400, right: 484, top: 4, bottom: 40 };
+  input.folder.children = Array.from({ length: 30 }, (_, i) => ({ kind: "bookmark", uid: String(i), label: `Bookmark ${i}` }));
+  const { surface } = planFolderPopup(measure, input, viewport);
+  expect(surface.top).toBeGreaterThanOrEqual(viewport.top);
+  expect(surface.bottom).toBeLessThanOrEqual(viewport.bottom);
+});
+
+it.each([
+  ["down", "edge"], ["down", "center"], ["up", "edge"], ["up", "center"],
+] as const)("keeps the first %s column outside the bar button (alignment=%s)", (direction, expandAlignment) => {
+  const input = request(direction);
+  input.expandAlignment = expandAlignment;
   input.folder.children = Array.from({ length: 30 }, (_, i) => ({ kind: "bookmark", uid: String(i), label: `Bookmark ${i}` }));
   input.anchor = direction === "down" ? { left: 400, right: 484, top: 350, bottom: 386 } : { left: 400, right: 484, top: 200, bottom: 236 };
   const { surface, state } = planFolderPopup(measure, input, viewport);

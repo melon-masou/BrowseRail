@@ -42,189 +42,222 @@
         </label>
       </header>
 
-      <!-- Card 1: Desktop Widget & Connection Settings -->
-      <form id="connection-form" class="options-card connection-card">
-        <div id="state-card" class="state-bar state-card" data-state="disconnected">
-          <div class="state-indicator"></div>
-          <div class="state-info">
-            <div class="state-header">
-              <span class="state-title" data-i18n="state.desktopWidget">Desktop Widget:</span>
-              <span id="state-badge" class="state-badge" data-i18n="state.badge.disconnected">Disconnected</span>
-            </div>
-            <div id="state-detail" class="state-detail" data-i18n="state.waiting">Waiting for connection…</div>
-            <output id="resync-status" class="resync-status" aria-live="polite"></output>
-          </div>
-          <div class="state-actions">
-            <button id="resync-button" class="action-btn" type="button" data-i18n="btn.resync" disabled>Resync</button>
-            <button id="reconnect-button" class="action-btn reconnect-btn" type="button" data-i18n="btn.reconnect">Reconnect</button>
-            <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button" data-i18n="btn.disable">Disable</button>
-          </div>
-        </div>
-
-        <div class="fields-row connection-primary-row">
-          <label>
-            <span data-i18n="form.instanceLabel">Instance label</span>
-            <span class="input-row">
-              <input id="instance-label" required />
-              <button id="random-instance-label" type="button" data-i18n="btn.random">Random</button>
-            </span>
-          </label>
-          <label id="desktop-url-field">
-            <span class="label-row">
-              <span data-i18n="form.desktopAddress">Desktop Widget address</span>
-              <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
-              <output id="desktop-test-status" class="field-status" aria-live="polite"></output>
-            </span>
-            <span class="input-row">
-              <input
-                id="desktop-url"
-                type="url"
-                required
-                spellcheck="false"
-                placeholder="ws://127.0.0.1:17654"
-              />
-              <button id="test-desktop" type="button" data-i18n="btn.test">Test</button>
-            </span>
-          </label>
-        </div>
-
-        <div class="connection-mode-row">
-          <label id="embedding-mode-field">
-            <span class="label-row">
-              <span data-i18n="form.displayMode">Embedding mode</span>
-              <span id="site-authorization-warning" class="site-permission-warning" hidden></span>
-            </span>
-            <select id="display-mode">
-              <option value="native" data-i18n="form.displayMode.native">Native mode</option>
-              <option value="browser" data-i18n="form.displayMode.browser">Browser mode</option>
-            </select>
-          </label>
-          <div id="site-authorization-controls" class="site-authorization" hidden></div>
-        </div>
-
-        <div class="fields-row connection-shared-row">
-          <label id="bookmark-root-field">
-            <span class="label-row">
-              <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
-            </span>
-            <span class="input-row">
-              <input id="bookmark-root-input" type="text" placeholder="/" readonly />
-              <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
-            </span>
-          </label>
-          <div id="sync-enabled-field">
-            <span class="label-row">
-              <span data-i18n="form.chromeSync">Chrome Sync</span>
-            </span>
-            <span class="input-row" style="display: flex; align-items: center; gap: 8px; height: 38px;">
-              <label class="switch-toggle" data-i18n-title="form.chromeSyncTitle" title="Sync menus and bookmarks across devices via Chrome Sync">
-                <input type="checkbox" id="sync-enabled-toggle" />
-                <span class="switch-slider"></span>
-              </label>
-              <span style="font-size: 12px; color: #8a99ad;" data-i18n="form.chromeSyncHint">Sync menus across devices</span>
-            </span>
-          </div>
-        </div>
-
-        <div class="form-actions-row connection-actions-row">
-          <button type="submit" id="save-connection-btn" class="save-btn" data-i18n="btn.save">Save</button>
-          <output id="connection-status"></output>
-        </div>
-      </form>
-
-      <!-- Card 2: Menus + URL rules -->
-      <form id="menus-form" class="options-card menus-card">
-        <div class="menus-card-tabs" role="tablist">
+      <section class="settings-shell">
+        <nav class="menus-card-tabs" role="tablist">
+          <button type="button" id="instance-tab" class="menus-card-tab" role="tab"
+            data-tab-target="connection-form" aria-selected="true" aria-controls="connection-form"
+            data-i18n="section.instance">Instance</button>
           <button type="button" id="menus-tab" class="menus-card-tab" role="tab"
-            data-tab-target="menus-panel" aria-selected="true" aria-controls="menus-panel"
+            data-tab-target="menus-panel" aria-selected="false" aria-controls="menus-panel"
             data-i18n="section.menus">Menus</button>
           <button type="button" id="url-rules-tab" class="menus-card-tab" role="tab"
             data-tab-target="url-rules-panel" aria-selected="false" aria-controls="url-rules-panel"
             data-i18n="section.urlRules">URL matching</button>
-          <button type="button" id="dynamic-tab" class="menus-card-tab" role="tab"
-            data-tab-target="dynamic-panel" aria-selected="false" aria-controls="dynamic-panel"
-            data-i18n="section.dynamic">Dynamic bookmarks</button>
+          <button type="button" id="custom-bookmarks-tab" class="menus-card-tab" role="tab"
+            data-tab-target="custom-bookmarks-panel" aria-selected="false" aria-controls="custom-bookmarks-panel"
+            data-i18n="section.customBookmarks">Custom bookmarks</button>
           <button type="button" id="shortcuts-tab" class="menus-card-tab" role="tab"
             data-tab-target="shortcuts-panel" aria-selected="false" aria-controls="shortcuts-panel"
             data-i18n="section.shortcuts">Shortcuts</button>
-        </div>
+        </nav>
+        <div id="settings-content" class="settings-content">
+          <form id="connection-form" class="settings-panel connection-card" role="tabpanel" aria-labelledby="instance-tab">
+            <div id="state-card" class="state-bar state-card" data-state="disconnected">
+              <div class="state-indicator"></div>
+              <div class="state-info">
+                <div class="state-header">
+                  <span class="state-title" data-i18n="state.desktopWidget">Desktop Widget:</span>
+                  <span id="state-badge" class="state-badge" data-i18n="state.badge.disconnected">Disconnected</span>
+                </div>
+                <div id="state-detail" class="state-detail" data-i18n="state.waiting">Waiting for connection…</div>
+                <output id="resync-status" class="resync-status" aria-live="polite"></output>
+              </div>
+              <div class="state-actions">
+                <button id="resync-button" class="action-btn" type="button" data-i18n="btn.resync" disabled>Resync</button>
+                <button id="reconnect-button" class="action-btn reconnect-btn" type="button" data-i18n="btn.reconnect">Reconnect</button>
+                <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button" data-i18n="btn.disable">Disable</button>
+              </div>
+            </div>
 
-        <section id="menus-panel" class="menus-section" role="tabpanel" aria-labelledby="menus-tab">
-          <div id="menus"></div>
-          <div class="menus-toolbar">
-            <button id="add-menu" class="menu-action-btn add-menu-btn" type="button" data-i18n="btn.addMenu">+ Add menu</button>
+            <div class="fields-row connection-primary-row">
+              <label>
+                <span data-i18n="form.instanceLabel">Instance label</span>
+                <span class="input-row">
+                  <input id="instance-label" required />
+                  <button id="random-instance-label" type="button" data-i18n="btn.random">Random</button>
+                </span>
+              </label>
+              <label id="desktop-url-field">
+                <span class="label-row">
+                  <span data-i18n="form.desktopAddress">Desktop Widget address</span>
+                  <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
+                  <output id="desktop-test-status" class="field-status" aria-live="polite"></output>
+                </span>
+                <span class="input-row">
+                  <input
+                    id="desktop-url"
+                    type="url"
+                    required
+                    spellcheck="false"
+                    placeholder="ws://127.0.0.1:17654"
+                  />
+                  <button id="test-desktop" type="button" data-i18n="btn.test">Test</button>
+                </span>
+              </label>
+            </div>
+
+            <div class="connection-mode-row">
+              <label id="embedding-mode-field">
+                <span class="label-row">
+                  <span data-i18n="form.displayMode">Embedding mode</span>
+                  <span id="site-authorization-warning" class="site-permission-warning" hidden></span>
+                </span>
+                <select id="display-mode">
+                  <option value="native" data-i18n="form.displayMode.native">Native mode</option>
+                  <option value="browser" data-i18n="form.displayMode.browser">Browser mode</option>
+                </select>
+              </label>
+              <div id="site-authorization-controls" class="site-authorization" hidden></div>
+            </div>
+
+            <div class="fields-row connection-shared-row">
+              <label id="bookmark-root-field">
+                <span class="label-row">
+                  <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
+                </span>
+                <span class="input-row">
+                  <input id="bookmark-root-input" type="text" placeholder="/" readonly />
+                  <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
+                </span>
+              </label>
+              <div id="sync-enabled-field">
+                <span class="label-row">
+                  <span data-i18n="form.chromeSync">Chrome Sync</span>
+                </span>
+                <span class="input-row" style="display: flex; align-items: center; gap: 8px; height: 38px;">
+                  <label class="switch-toggle" data-i18n-title="form.chromeSyncTitle" title="Sync menus and bookmarks across devices via Chrome Sync">
+                    <input type="checkbox" id="sync-enabled-toggle" />
+                    <span class="switch-slider"></span>
+                  </label>
+                  <span style="font-size: 12px; color: #8a99ad;" data-i18n="form.chromeSyncHint">Sync menus across devices</span>
+                </span>
+              </div>
+            </div>
+
+            <section class="instance-diagnostics">
+              <div class="debug-card-row">
+                <h2 class="debug-card-title" data-i18n="section.diagnostics">Diagnostics</h2>
+                <label class="switch-toggle" data-i18n-title="diagnostics.enableLogging" title="Enable diagnostics logging">
+                  <input type="checkbox" id="debug-logging-toggle" />
+                  <span class="switch-slider"></span>
+                </label>
+                <button type="button" id="copy-debug-btn" class="action-btn" data-i18n="btn.copyJson">Copy JSON</button>
+                <span id="copy-debug-status" class="debug-copy-status"></span>
+              </div>
+            </section>
+          </form>
+
+          <form id="menus-form" class="settings-panel" hidden>
+
+            <section id="menus-panel" class="menus-section" role="tabpanel" aria-labelledby="menus-tab">
+              <div class="menus-toolbar menus-add-toolbar">
+                <span class="url-rules-hint" data-i18n="menus.hint">Combine bookmarks and actions, and configure menu style and behavior.</span>
+                <button id="add-menu" class="menu-action-btn add-menu-btn add-toolbar-action" type="button" data-i18n="btn.addMenu">+ Add menu</button>
+              </div>
+              <div id="menus"></div>
+              <section class="menus-tools">
+                <h2 class="toolkit-card-title" data-i18n="section.toolkit">Tools</h2>
+                <div class="toolkit-card-row">
+                  <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap to bookmarks</button>
+                  <button type="button" id="add-temporary-bookmark-btn" class="action-btn" data-i18n="toolkit.addTemporaryBookmark">Add temporary bookmark to bookmarks</button>
+                </div>
+              </section>
+            </section>
+
+            <!-- URL Rules Panel -->
+            <section id="url-rules-panel" class="url-rules-section" role="tabpanel" aria-labelledby="url-rules-tab" hidden>
+              <div class="url-rules-header">
+                <div class="url-rules-title-row">
+                  <span class="url-rules-hint" data-i18n="urlRules.hint">Define URL patterns to only show menus on specific sites</span>
+                </div>
+              </div>
+              <p class="url-rules-syntax-guide" data-i18n="urlRules.syntaxHint">Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line</p>
+              <div class="url-rules-global">
+                <span data-i18n="urlRules.default">Default matching rule</span>
+                <select id="global-url-rule"></select>
+                <button id="add-url-rule-btn" class="menu-action-btn add-url-rule-btn add-toolbar-action" type="button" data-i18n="btn.addUrlRule">+ Add</button>
+              </div>
+              <div id="url-rules-list" class="url-rules-list"></div>
+            </section>
+
+            <section id="custom-bookmarks-panel" role="tabpanel" aria-labelledby="custom-bookmarks-tab" hidden>
+              <div class="shortcuts-subtabs" role="tablist">
+                <button type="button" id="static-tab" class="shortcuts-subtab-btn is-active" role="tab" aria-selected="true" aria-controls="static-panel" data-custom-bookmark-panel="static-panel" data-i18n="section.static">Static bookmarks</button>
+                <button type="button" id="temporary-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="temporary-panel" data-custom-bookmark-panel="temporary-panel" data-i18n="section.temporary">Temporary bookmarks</button>
+                <button type="button" id="dynamic-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="dynamic-panel" data-custom-bookmark-panel="dynamic-panel" data-i18n="section.dynamic">Dynamic bookmarks</button>
+              </div>
+              <section id="static-panel" role="tabpanel" aria-labelledby="static-tab">
+                <div class="dynamic-toolbar">
+                  <span class="url-rules-hint" data-i18n="static.hint">Set a URL, then add it to menus or assign a shortcut.</span>
+                  <button id="add-static-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="customBookmarks.add">+ Add</button>
+                </div>
+                <div id="static-list" class="dynamic-list"></div>
+              </section>
+              <section id="temporary-panel" role="tabpanel" aria-labelledby="temporary-tab" hidden>
+                <div class="dynamic-toolbar">
+                  <span class="url-rules-hint" data-i18n="temporary.hint">Long-press a temporary bookmark button to remember the current page's URL.</span>
+                  <button id="add-temporary-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="customBookmarks.add">+ Add</button>
+                </div>
+                <div id="temporary-list" class="dynamic-list"></div>
+              </section>
+              <section id="dynamic-panel" class="dynamic-section" role="tabpanel" aria-labelledby="dynamic-tab" hidden>
+                <div class="dynamic-toolbar">
+                  <span class="url-rules-hint" data-i18n="dynamic.hint">Use a custom function to update a bookmark's URL dynamically.</span>
+                  <button id="add-dynamic-btn" class="menu-action-btn add-dynamic-btn add-toolbar-action" type="button" data-i18n="dynamic.add">+ Add</button>
+                </div>
+                <div id="dynamic-list" class="dynamic-list"></div>
+              </section>
+            </section>
+
+            <!-- Shortcuts Panel -->
+            <section id="shortcuts-panel" class="shortcuts-section" role="tabpanel" aria-labelledby="shortcuts-tab" hidden>
+              <div class="shortcuts-subtabs" role="tablist">
+                <button type="button" id="shortcuts-subtab-browser" class="shortcuts-subtab-btn is-active" data-subtab-target="shortcuts-browser-panel" data-i18n="shortcuts.tabBrowser">🌐 Browser Shortcuts</button>
+                <button type="button" id="shortcuts-subtab-native" class="shortcuts-subtab-btn" data-subtab-target="shortcuts-native-panel">
+                  <span data-i18n="shortcuts.tabNative">🖥️ Native Shortcuts</span>
+                </button>
+              </div>
+
+              <!-- Browser Shortcuts Sub-panel -->
+              <div id="shortcuts-browser-panel" class="shortcuts-subpanel is-active">
+                <div class="shortcuts-toolbar">
+                  <span class="url-rules-hint" data-i18n="shortcuts.browserHint">Assign browser shortcut slots to bookmarks.</span>
+                  <button id="configure-browser-shortcuts-btn" class="menu-action-btn" type="button" data-i18n="shortcuts.configureKeys">Configure keys…</button>
+                </div>
+                <div id="shortcuts-list" class="shortcuts-list"></div>
+              </div>
+
+              <!-- Native Shortcuts Sub-panel -->
+              <div id="shortcuts-native-panel" class="shortcuts-subpanel" hidden>
+                <div class="shortcuts-toolbar">
+                  <span class="url-rules-hint" data-i18n="shortcuts.nativeHint">Only applies in Native mode; requires the desktop client. Supports more key combinations (including single letter keys).</span>
+                  <button id="add-native-shortcut-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="shortcuts.addNative">+ Add</button>
+                </div>
+                <div id="native-shortcuts-list" class="shortcuts-list"></div>
+              </div>
+            </section>
+
+          </form>
+        </div>
+        <footer class="settings-save-bar">
+          <button type="submit" id="save-btn" form="connection-form" class="save-btn" data-i18n="btn.saveInstance">Save instance</button>
+          <output id="status" aria-live="polite"></output>
+          <div id="settings-transfer-actions" class="settings-transfer-actions" hidden>
             <button type="button" id="export-btn" class="menu-action-btn export-btn" data-i18n="btn.export">Export</button>
             <button type="button" id="import-btn" class="menu-action-btn import-btn" data-i18n="btn.import">Import</button>
-            <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+            <input type="file" id="import-file-input" accept=".json" hidden />
           </div>
-        </section>
-
-        <!-- URL Rules Panel -->
-        <section id="url-rules-panel" class="url-rules-section" role="tabpanel" aria-labelledby="url-rules-tab" hidden>
-          <div class="url-rules-header">
-            <div class="url-rules-title-row">
-              <span class="url-rules-hint" data-i18n="urlRules.hint">Define URL patterns to only show menus on specific sites</span>
-            </div>
-          </div>
-          <div class="url-rules-global">
-            <span data-i18n="urlRules.default">Default matching rule</span>
-            <select id="global-url-rule"></select>
-            <button id="add-url-rule-btn" class="menu-action-btn add-url-rule-btn" type="button" data-i18n="btn.addUrlRule">+ Add</button>
-          </div>
-          <div id="url-rules-list" class="url-rules-list"></div>
-          <p class="url-rules-syntax-guide" data-i18n="urlRules.syntaxHint">Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line</p>
-        </section>
-
-        <!-- Dynamic Bookmarks Panel -->
-        <section id="dynamic-panel" class="dynamic-section" role="tabpanel" aria-labelledby="dynamic-tab" hidden>
-          <div class="dynamic-toolbar">
-            <span class="url-rules-hint" data-i18n="dynamic.hint">A function decides a bookmark's URL as you browse.</span>
-            <button id="add-dynamic-btn" class="menu-action-btn add-dynamic-btn" type="button" data-i18n="dynamic.add">+ Add</button>
-          </div>
-          <div id="dynamic-list" class="dynamic-list"></div>
-        </section>
-
-        <!-- Shortcuts Panel -->
-        <section id="shortcuts-panel" class="shortcuts-section" role="tabpanel" aria-labelledby="shortcuts-tab" hidden>
-          <div class="shortcuts-subtabs" role="tablist">
-            <button type="button" id="shortcuts-subtab-browser" class="shortcuts-subtab-btn is-active" data-subtab-target="shortcuts-browser-panel" data-i18n="shortcuts.tabBrowser">🌐 Browser Shortcuts</button>
-            <button type="button" id="shortcuts-subtab-native" class="shortcuts-subtab-btn" data-subtab-target="shortcuts-native-panel">
-              <span data-i18n="shortcuts.tabNative">🖥️ Native Shortcuts</span>
-            </button>
-          </div>
-
-          <!-- Browser Shortcuts Sub-panel -->
-          <div id="shortcuts-browser-panel" class="shortcuts-subpanel is-active">
-            <div class="shortcuts-toolbar">
-              <span class="url-rules-hint" data-i18n="shortcuts.browserHint">Assign browser shortcut slots to bookmarks or dynamic bookmarks.</span>
-              <button id="configure-browser-shortcuts-btn" class="menu-action-btn" type="button" data-i18n="shortcuts.configureKeys">Configure keys…</button>
-            </div>
-            <div id="shortcuts-list" class="shortcuts-list"></div>
-          </div>
-
-          <!-- Native Shortcuts Sub-panel -->
-          <div id="shortcuts-native-panel" class="shortcuts-subpanel" hidden>
-            <div class="shortcuts-toolbar">
-              <span class="url-rules-hint" data-i18n="shortcuts.nativeHint">Only applies in Native mode; requires the desktop client. Supports more key combinations (including single letter keys).</span>
-              <button id="add-native-shortcut-btn" class="menu-action-btn" type="button" data-i18n="shortcuts.addNative">+ Add</button>
-            </div>
-            <div id="native-shortcuts-list" class="shortcuts-list"></div>
-          </div>
-        </section>
-
-        <div class="form-actions-row">
-          <button type="submit" id="save-btn" class="save-btn" data-i18n="btn.save">Save</button>
-          <output id="status"></output>
-        </div>
-      </form>
-
-      <!-- Toolkit Card -->
-      <section class="card toolkit-card">
-        <div class="toolkit-card-row">
-          <h2 class="toolkit-card-title" data-i18n="section.toolkit">Tools</h2>
-          <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap to bookmarks</button>
-          <button type="button" id="add-temporary-bookmark-btn" class="action-btn" data-i18n="toolkit.addTemporaryBookmark">Add temporary bookmark to bookmarks</button>
-        </div>
+        </footer>
       </section>
 
       <!-- Pick Dynamic Bookmark / Menu Dialog -->
@@ -264,9 +297,9 @@
 The gap is stored as a bookmark whose URL is https://browserail.local/#Space:units=5:color=#cd123fff.
 Fields: units (0.1–20), color (#rrggbbaa, including opacity).</p>
           <div class="space-bookmark-dialog-actions">
-            <button type="submit" id="space-bookmark-add" class="save-btn" data-i18n="toolkit.add">Add</button>
-            <button type="button" id="space-bookmark-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
             <output id="space-bookmark-result" class="toolkit-status" aria-live="polite"></output>
+            <button type="button" id="space-bookmark-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
+            <button type="submit" id="space-bookmark-add" class="save-btn" data-i18n="toolkit.add">Add</button>
           </div>
         </form>
       </dialog>
@@ -286,9 +319,9 @@ Fields: units (0.1–20), color (#rrggbbaa, including opacity).</p>
           <p class="space-bookmark-help" data-i18n="toolkit.dynamicMarkerHelp">For flattened folders: inserts a dynamic bookmark between the folder’s bookmarks on the rail.
 The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dynamic:&lt;id&gt;.</p>
           <div class="space-bookmark-dialog-actions">
-            <button type="submit" id="dynamic-marker-add" class="save-btn" data-i18n="toolkit.add">Add</button>
-            <button type="button" id="dynamic-marker-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
             <output id="dynamic-marker-result" class="toolkit-status" aria-live="polite"></output>
+            <button type="button" id="dynamic-marker-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
+            <button type="submit" id="dynamic-marker-add" class="save-btn" data-i18n="toolkit.add">Add</button>
           </div>
         </form>
       </dialog>
@@ -302,8 +335,8 @@ The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dyna
         <form id="temporary-bookmark-form" class="space-bookmark-dialog-body">
           <div class="space-bookmark-fields">
             <label>
-              <span data-i18n="toolkit.temporaryName">Name</span>
-              <input id="temporary-bookmark-name" type="text" data-i18n-placeholder="temporary.defaultName" placeholder="Temporary bookmark" />
+              <span data-i18n="menu.addTemporary">Temporary bookmark</span>
+              <select id="temporary-bookmark-definition"></select>
             </label>
           </div>
           <div class="space-bookmark-folder-row">
@@ -314,25 +347,12 @@ The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dyna
           <p class="space-bookmark-help" data-i18n="toolkit.temporaryBookmarkHelp">For flattened folders: inserts a temporary bookmark between the folder’s bookmarks on the rail.
 The temporary bookmark is stored as a bookmark whose URL is https://browserail.local/#Temporary:id=&lt;id&gt;.</p>
           <div class="space-bookmark-dialog-actions">
-            <button type="submit" id="temporary-bookmark-add" class="save-btn" data-i18n="toolkit.add">Add</button>
-            <button type="button" id="temporary-bookmark-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
             <output id="temporary-bookmark-result" class="toolkit-status" aria-live="polite"></output>
+            <button type="button" id="temporary-bookmark-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
+            <button type="submit" id="temporary-bookmark-add" class="save-btn" data-i18n="toolkit.add">Add</button>
           </div>
         </form>
       </dialog>
-
-      <!-- Diagnostics Card -->
-      <section class="card debug-card">
-        <div class="debug-card-row">
-          <h2 class="debug-card-title" data-i18n="section.diagnostics">Diagnostics</h2>
-          <label class="switch-toggle" data-i18n-title="diagnostics.enableLogging" title="Enable diagnostics logging">
-            <input type="checkbox" id="debug-logging-toggle" />
-            <span class="switch-slider"></span>
-          </label>
-          <button type="button" id="copy-debug-btn" class="action-btn" data-i18n="btn.copyJson">Copy JSON</button>
-          <span id="copy-debug-status" class="debug-copy-status"></span>
-        </div>
-      </section>
 
       <!-- Color Palette Popover -->
       <div id="color-popover" class="color-popover" style="display: none;">
@@ -431,29 +451,37 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
                 </select>
               </label>
               <label>
+                <span data-i18n="menuSettings.expandAlignment">Expand alignment</span>
+                <select id="menu-setting-expand-alignment">
+                  <option value="edge" data-i18n="expandAlignment.edge">Edge alignment</option>
+                  <option value="center" data-i18n="expandAlignment.center">Center alignment</option>
+                </select>
+              </label>
+              <label>
                 <span data-i18n="menuSettings.openIn">Open in</span>
                 <select id="menu-setting-tab-mode">
                   <option value="replace" data-i18n="menuSettings.replaceTab">Replace current tab</option>
                   <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
                 </select>
               </label>
-              <label>
-                <span data-i18n="form.attachTo">Attach menu to</span>
-                <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
-                <select id="menu-setting-attachment-mode">
-                  <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
-                  <option value="all" data-i18n="form.attach.all">All windows</option>
-                  <option value="free" data-i18n="form.attach.free">Free floating bar</option>
-                </select>
-              </label>
-              <label>
-                <span data-i18n="form.onTopMode">On-top mode</span>
-                <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
-                <select id="menu-setting-on-top-mode">
-                  <option value="aboveBrowser" data-i18n="form.onTopMode.aboveBrowser">Above browser</option>
-                  <option value="alwaysOnTop" data-i18n="form.onTopMode.alwaysOnTop">Always on top</option>
-                </select>
-              </label>
+              <section class="menu-settings-native" aria-labelledby="menu-settings-native-title">
+                <h3 id="menu-settings-native-title" class="menu-settings-native-title" data-i18n="form.nativeOnly">Only applies in Native mode</h3>
+                <label>
+                  <span data-i18n="form.attachTo">Attach menu to</span>
+                  <select id="menu-setting-attachment-mode">
+                    <option value="lastFocused" data-i18n="form.attach.lastFocused">Last focused window</option>
+                    <option value="all" data-i18n="form.attach.all">All windows</option>
+                    <option value="free" data-i18n="form.attach.free">Free floating bar</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-i18n="form.onTopMode">On-top mode</span>
+                  <select id="menu-setting-on-top-mode">
+                    <option value="aboveBrowser" data-i18n="form.onTopMode.aboveBrowser">Above browser</option>
+                    <option value="alwaysOnTop" data-i18n="form.onTopMode.alwaysOnTop">Always on top</option>
+                  </select>
+                </label>
+              </section>
             </div>
           </section>
           <section id="menu-url-rules-panel" class="menu-settings-panel" role="tabpanel" aria-labelledby="menu-url-rules-tab" hidden>
@@ -547,25 +575,46 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <option value="newTab" data-i18n="itemSettings.newTab">New tab</option>
             </select>
           </div>
-          <div class="item-settings-actions">
-            <button type="button" id="shortcut-setting-change-btn" class="action-btn item-setting-change-btn" data-i18n="itemSettings.change">Change bookmark / folder…</button>
-          </div>
         </div>
+      </div>
+
+      <!-- Shortcut "Change bookmark" pop-down (Bookmark or Dynamic) -->
+      <div id="shortcut-pick-popover" class="add-item-popover" style="display: none;">
+        <button type="button" id="shortcut-pick-bookmark-btn" class="add-popover-item">
+          <span class="add-popover-icon">🔖</span>
+          <span class="add-popover-text" data-i18n="menu.addBookmark">Bookmarks</span>
+        </button>
+        <button type="button" id="shortcut-pick-static-btn" class="add-popover-item">
+          <span class="add-popover-icon">🔖</span>
+          <span class="add-popover-text" data-i18n="menu.addStatic">Static bookmark</span>
+        </button>
+        <button type="button" id="shortcut-pick-temporary-btn" class="add-popover-item">
+          <span class="add-popover-icon">📌</span>
+          <span class="add-popover-text" data-i18n="menu.addTemporary">Temporary bookmark</span>
+        </button>
+        <button type="button" id="shortcut-pick-dynamic-btn" class="add-popover-item">
+          <span class="add-popover-icon">🜂</span>
+          <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
+        </button>
       </div>
 
       <!-- Add Item Popover (Bookmark or Space) -->
       <div id="add-item-popover" class="add-item-popover" style="display: none;">
         <button type="button" id="add-popover-bookmark-btn" class="add-popover-item">
           <span class="add-popover-icon">🔖</span>
-          <span class="add-popover-text" data-i18n="menu.addBookmark">Bookmark / Folder</span>
+          <span class="add-popover-text" data-i18n="menu.addBookmark">Bookmarks</span>
         </button>
-        <button type="button" id="add-popover-dynamic-btn" class="add-popover-item">
-          <span class="add-popover-icon">🜂</span>
-          <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
+        <button type="button" id="add-popover-static-btn" class="add-popover-item">
+          <span class="add-popover-icon">🔖</span>
+          <span class="add-popover-text" data-i18n="menu.addStatic">Static bookmark</span>
         </button>
         <button type="button" id="add-popover-temporary-btn" class="add-popover-item">
           <span class="add-popover-icon">📌</span>
           <span class="add-popover-text" data-i18n="menu.addTemporary">Temporary bookmark</span>
+        </button>
+        <button type="button" id="add-popover-dynamic-btn" class="add-popover-item">
+          <span class="add-popover-icon">🜂</span>
+          <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
         </button>
         <button type="button" id="add-popover-space-btn" class="add-popover-item">
           <span class="add-popover-icon">␣</span>

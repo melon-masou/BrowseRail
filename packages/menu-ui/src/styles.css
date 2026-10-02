@@ -243,19 +243,6 @@
   transition: background-color 0.15s ease;
 }
 
-:where(.browserail-menu-ui) .popup-container[data-direction="left"] .menu-button[data-folder]::after,
-:where(.browserail-menu-ui) .popup-container .menu-button[data-expand-direction="left"]::after {
-  right: auto;
-  left: 0;
-  border: none !important;
-}
-
-:where(.browserail-menu-ui) .popup-container .menu-button[data-expand-direction="right"]::after {
-  right: 0;
-  left: auto;
-  border: none !important;
-}
-
 :where(.browserail-menu-ui) .menu-button[data-folder]:hover::after,
 :where(.browserail-menu-ui) .menu-button[data-folder]:focus-visible::after {
   background-color: rgba(0, 0, 0, 0.36);

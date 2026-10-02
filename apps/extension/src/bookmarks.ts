@@ -563,13 +563,17 @@ export async function resolveMenuItems(
     registerTarget?: (browserBookmarkId: string) => string;
     dynamicResolve?: DynamicResolver;
     temporaryNotes?: Record<string, string>;
+    staticBookmarks?: Array<{ uid: string; name: string }>;
+    temporaryBookmarks?: Array<{ uid: string; name: string }>;
   } = {},
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = context.tree ?? null;
   const registerTarget = context.registerTarget ?? (() => crypto.randomUUID());
   const dynamicResolve = context.dynamicResolve ?? (() => undefined);
+  const staticByUid = new Map(context.staticBookmarks?.map(entry => [entry.uid, entry]));
+  const temporaryByUid = new Map(context.temporaryBookmarks?.map(entry => [entry.uid, entry]));
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, showPageTitle, browserAction }): Promise<LayoutEntry[]> => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, temporaryUid, expandOnHover, includeFolders, tabMode, units, showPageTitle, browserAction }): Promise<LayoutEntry[]> => {
       if (type === "menuFold") {
         const entry: LayoutEntry = {
           kind: "menuFold",
@@ -613,11 +617,20 @@ export async function resolveMenuItems(
         return [dynamicBookmarkEntry(dynamicUid, info, effectiveTabMode, color || menuColor, rename, showPageTitle)];
       }
 
+      if (type === "static") {
+        const definition = staticUid ? staticByUid.get(staticUid) : undefined;
+        if (!definition) return [];
+        return [{ kind: "bookmark", uid: actionUid("static", definition.uid, tabMode || menuTabMode || "replace"),
+          label: rename || definition.name || t("static.defaultName"), ...(color || menuColor ? { color: (color || menuColor) as string } : {}) }];
+      }
+
       if (type === "temporary") {
+        const definition = temporaryUid ? temporaryByUid.get(temporaryUid) : undefined;
+        if (!definition) return [];
         return [{
           kind: "bookmark",
-          uid: actionUid("temporary", uid, tabMode || menuTabMode || "replace"),
-          label: context.temporaryNotes?.[uid] || rename || t("temporary.defaultName"),
+          uid: actionUid("temporary", definition.uid, tabMode || menuTabMode || "replace"),
+          label: context.temporaryNotes?.[definition.uid] || rename || definition.name || t("temporary.defaultName"),
           ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
         }];
       }
@@ -679,13 +692,15 @@ export async function resolveMenuItems(
           if (directive) return [directive];
           const tempDirective = parseFlattenTemporaryDirective(child);
           if (tempDirective) {
+            const definition = temporaryByUid.get(tempDirective.uid);
+            if (!definition) return [];
             const itemColor = tempDirective.color || (colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor);
             flattenedIdx++;
             const effectiveMode = tempDirective.tabMode || effectiveTabMode;
             const note = context.temporaryNotes?.[tempDirective.uid];
             const isTitleDirective = child.title.startsWith(FLATTEN_TEMPORARY_PREFIX);
             const bookmarkTitle = !isTitleDirective && child.title.trim() ? child.title.trim() : undefined;
-            const label = note || bookmarkTitle || tempDirective.name || t("temporary.defaultName");
+            const label = note || bookmarkTitle || tempDirective.name || definition.name || t("temporary.defaultName");
             return [{
               kind: "bookmark",
               uid: actionUid("temporary", tempDirective.uid, effectiveMode),

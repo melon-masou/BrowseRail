@@ -180,6 +180,13 @@ pub enum ExpandDirection {
     Left,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ExpandAlignment {
+    Edge,
+    Center,
+}
+
 pub fn deserialize_optional_expand_direction<'de, D>(
     deserializer: D,
 ) -> Result<Option<ExpandDirection>, D::Error>
@@ -220,6 +227,8 @@ pub struct MenuView {
     pub color: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
     pub expand_direction: Option<ExpandDirection>,
+    #[serde(default)]
+    pub expand_alignment: Option<ExpandAlignment>,
     #[serde(default)]
     pub button_font_size: Option<f64>,
     #[serde(default)]
@@ -810,6 +819,22 @@ mod tests {
 
         assert_eq!(left.expand_direction, Some(super::ExpandDirection::Left));
         assert_eq!(up.expand_direction, Some(super::ExpandDirection::Up));
+    }
+
+    #[test]
+    fn relays_popup_alignment_to_the_menu_webview() {
+        for alignment in ["edge", "center"] {
+            let view: MenuView = serde_json::from_value(serde_json::json!({
+                "uid": "menu",
+                "expandAlignment": alignment,
+                "items": []
+            }))
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(view).unwrap()["expandAlignment"],
+                alignment
+            );
+        }
     }
 
     #[test]

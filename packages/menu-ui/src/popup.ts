@@ -1,4 +1,4 @@
-import { invertBookmarkActionUid, type ExpandDirection, type LayoutEntry } from "@browserail/protocol";
+import { invertNavigationActionUid, type ExpandDirection, type LayoutEntry } from "@browserail/protocol";
 import { menuButton } from "./appearance";
 import { calculateColumnWidth as columnWidth, createTextMeasure, submenuHeightLimit } from "./layout";
 import { createLifetime, showMenuError, type Lifetime } from "./lifetime";
@@ -35,6 +35,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
       const sameLayout = next.entries === state.entries && next.direction === state.direction
         && next.rootDirection === state.rootDirection && next.rootOffsetX === state.rootOffsetX
         && next.rootOffsetY === state.rootOffsetY
+        && next.expandAlignment === state.expandAlignment
         && next.maxColumnHeight === state.maxColumnHeight && next.bounds === state.bounds
         && next.theme.fontSize === state.theme.fontSize && next.theme.itemHeight === state.theme.itemHeight
         && next.theme.color === state.theme.color;
@@ -253,7 +254,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
               } else if (event.button === 2 && state.editingLocked) {
                 event.preventDefault();
                 event.stopPropagation();
-                dispatchAction(invertBookmarkActionUid(entry.uid));
+                dispatchAction(invertNavigationActionUid(entry.uid));
               }
             }, { signal: columnLifetime.signal });
           }
@@ -281,7 +282,10 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
           const width = Number.parseFloat(column.style.width);
           column.style.left = `${Math.max(payload.bounds.left, Math.min(payload.rootOffsetX, payload.bounds.right - width))}px`;
           if (payload.direction === "up") column.style.bottom = `${popupRect.height - payload.rootOffsetY}px`;
-          else column.style.top = `${payload.rootOffsetY}px`;
+          else if (payload.expandAlignment === "center" && (payload.direction === "left" || payload.direction === "right")) {
+            const height = column.getBoundingClientRect().height;
+            column.style.top = `${Math.max(payload.bounds.top, Math.min(payload.rootOffsetY - height / 2, payload.bounds.bottom - height))}px`;
+          } else column.style.top = `${payload.rootOffsetY}px`;
           continue;
         }
         const parent = columns[level - 1]?.querySelector<HTMLElement>(
@@ -293,7 +297,11 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
         const parentBottom = parentRect.bottom - popupRect.top;
         const parentLeft = parentRect.left - popupRect.left;
         const parentRight = parentRect.right - popupRect.left;
-        const available = payload.direction === "up" ? parentBottom - payload.bounds.top : payload.bounds.bottom - parentTop;
+        const centered = payload.expandAlignment === "center";
+        const parentCenter = (parentTop + parentBottom) / 2;
+        const available = centered
+          ? 2 * Math.min(parentCenter - payload.bounds.top, payload.bounds.bottom - parentCenter)
+          : payload.direction === "up" ? parentBottom - payload.bounds.top : payload.bounds.bottom - parentTop;
         const contentHeight = column.scrollHeight + column.offsetHeight - column.clientHeight;
         const maxHeight = Math.min(payload.bounds.bottom - payload.bounds.top,
           contentHeight <= available ? available : submenuHeightLimit(payload.itemHeight));
@@ -309,7 +317,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
         const left = direction === "left" ? parentLeft - columnWidth : parentRight;
         column.style.left = `${Math.max(payload.bounds.left, Math.min(left, payload.bounds.right - columnWidth))}px`;
         const height = column.getBoundingClientRect().height;
-        const preferredTop = payload.direction === "up" ? parentBottom - height : parentTop;
+        const preferredTop = centered ? parentCenter - height / 2 : payload.direction === "up" ? parentBottom - height : parentTop;
         column.style.top = `${Math.max(payload.bounds.top, Math.min(preferredTop, payload.bounds.bottom - height))}px`;
       }
     };

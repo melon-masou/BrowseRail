@@ -55,6 +55,7 @@ export function isAutoFontSize(value: unknown): boolean {
 }
 
 export type ExpandDirection = "down" | "up" | "right" | "left";
+export type ExpandAlignment = "edge" | "center";
 
 export interface BookmarkEntry {
   kind: "bookmark";
@@ -125,6 +126,7 @@ export interface MenuView {
   orientation: MenuOrientation;
   color?: MenuColor;
   expandDirection?: ExpandDirection;
+  expandAlignment?: ExpandAlignment;
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
   gap?: number;

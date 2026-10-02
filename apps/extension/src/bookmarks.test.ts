@@ -279,7 +279,10 @@ describe("resolveMenuItems", () => {
       undefined,
       undefined,
       undefined,
-      { temporaryNotes: { "slot-temp": "Note for slot 1" } },
+      {
+        temporaryNotes: { "slot-temp": "Note for slot 1" },
+        temporaryBookmarks: [{ uid: "slot-temp", name: "First" }, { uid: "slot-two", name: "Second" }],
+      },
     );
 
     expect(entries).toHaveLength(2);

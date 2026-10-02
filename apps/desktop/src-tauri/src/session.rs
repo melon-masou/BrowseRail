@@ -750,6 +750,7 @@ mod tests {
                 orientation: MenuOrientation::Row,
                 color: None,
                 expand_direction: None,
+                expand_alignment: None,
                 button_font_size: None,
                 popup_font_size: None,
                 gap: None,

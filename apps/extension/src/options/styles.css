@@ -13,12 +13,17 @@
 
 body {
   margin: 0;
+  overflow: hidden;
 }
 
 main {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
   max-width: 720px;
-  margin: 48px auto;
-  padding: 0 24px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
 .page-header {
@@ -27,6 +32,7 @@ main {
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 24px;
+  flex-shrink: 0;
 }
 
 .page-logo {
@@ -133,8 +139,7 @@ main {
   outline-offset: -1px;
 }
 
-form,
-.options-card {
+form {
   display: grid;
   gap: 18px;
   padding: 24px;
@@ -152,13 +157,64 @@ form,
   box-shadow: none;
 }
 
-.connection-actions-row {
+.settings-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #dce1eb;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 12px 32px rgb(26 35 54 / 8%);
+}
+
+.settings-content {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.settings-panel {
+  padding: 20px;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.settings-content [hidden] {
+  display: none !important;
+}
+
+.settings-save-bar {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   gap: 12px;
-  padding-top: 14px;
-  border-top: 1px solid #edf2f7;
+  padding: 14px 20px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.settings-save-bar output {
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-save-bar > button {
+  flex-shrink: 0;
+}
+
+.settings-transfer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.settings-transfer-actions[hidden] {
+  display: none;
 }
 
 .fields-row {
@@ -573,15 +629,14 @@ output {
   background: #dcf2e3;
 }
 
-/* Menus card tab switcher (Menus / URL rules share one card and one Save) */
+/* Settings tab switcher */
 .menus-card-tabs {
   display: flex;
   gap: 4px;
   padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border-bottom: 1px solid #e2e8f0;
   background: #f8fafc;
-  width: fit-content;
+  overflow-x: auto;
 }
 
 .menus-card-tab {
@@ -593,6 +648,8 @@ output {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .menus-card-tab:hover {
@@ -634,6 +691,7 @@ output {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  margin-left: auto;
 }
 
 .remove-item-btn.menu-remove-btn {
@@ -702,13 +760,23 @@ output {
   color: #1d4ed8;
 }
 
-/* Menus toolbar (Add menu, Export, Import) */
+/* Menu creation toolbar */
 .menus-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 14px;
+}
+
+.menus-add-toolbar {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.add-toolbar-action {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .menu-action-btn {
@@ -757,14 +825,6 @@ output {
   background: #f1f5f9;
   border-color: #94a3b8;
   color: #0f172a;
-}
-
-/* Form action buttons */
-.form-actions-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 6px;
 }
 
 .save-btn {
@@ -1553,8 +1613,55 @@ output {
   text-overflow: ellipsis;
 }
 
-.menu-settings-body .native-mode-hint {
-  font-size: 10px;
+.menu-settings-native {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.menu-settings-native-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #687287;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.custom-bookmark-card {
+  gap: 8px;
+}
+
+.custom-bookmark-card > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.custom-bookmark-card .dynamic-name-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-bookmark-body {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+}
+
+.custom-bookmark-note {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.temporary-bookmark-card .dynamic-subtitle-row {
+  padding-left: 0;
 }
 
 .menu-settings-body select,
@@ -2097,16 +2204,12 @@ output {
   accent-color: #2563eb;
 }
 
-/* Diagnostics Card */
-.toolkit-card {
-  margin-top: 24px;
-  margin-bottom: 24px;
-  padding: 14px 18px;
-  border-radius: 12px;
-  border: 1px solid #dce1eb;
-  background: white;
-  box-shadow: 0 4px 16px rgb(26 35 54 / 5%);
-  box-sizing: border-box;
+.menus-tools {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .toolkit-card-row {
@@ -2209,21 +2312,26 @@ output {
   gap: 12px;
 }
 
-.debug-card {
-  margin-top: 24px;
-  margin-bottom: 24px;
-  padding: 12px 18px;
-  border-radius: 12px;
-  border: 1px solid #dce1eb;
-  background: white;
-  box-shadow: 0 4px 16px rgb(26 35 54 / 5%);
-  box-sizing: border-box;
+.space-bookmark-dialog-actions output {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#add-action-submit {
+  align-self: flex-end;
+}
+
+.instance-diagnostics {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
 }
 
 .debug-card-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .debug-card-title {
@@ -2334,10 +2442,6 @@ output {
   min-width: 160px;
 }
 
-.url-rules-global .add-url-rule-btn {
-  margin-left: auto;
-}
-
 .url-rules-list {
   display: flex;
   flex-direction: column;
@@ -2440,8 +2544,7 @@ output {
 .url-rules-syntax-guide {
   font-size: 12px;
   color: #64748b;
-  margin-top: 10px;
-  margin-bottom: 0;
+  margin: 0 0 12px;
   line-height: 1.4;
 }
 
@@ -2829,6 +2932,7 @@ button.item-tag {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 12px;
   background: #f8fafc;
@@ -2902,16 +3006,6 @@ button.item-tag {
   max-width: 260px;
 }
 
-.shortcut-target-url {
-  font-size: 12px;
-  color: #64748b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .shortcut-empty-label {
   font-size: 13px;
   color: #94a3b8;
@@ -2923,6 +3017,11 @@ button.item-tag {
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  /* When the row runs out of width the whole action group wraps onto its own
+     line; margin-left:auto keeps it right-aligned there and on the main line. */
+  margin-left: auto;
 }
 
 .shortcut-settings-btn {

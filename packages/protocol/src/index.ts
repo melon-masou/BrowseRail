@@ -1,4 +1,4 @@
-import type { MenuColor, ExpandDirection, MenuFontSize, MenuOrientation } from "./menu";
+import type { MenuColor, ExpandDirection, ExpandAlignment, MenuFontSize, MenuOrientation } from "./menu";
 import type { AttachmentMode, OnTopMode } from "./native";
 
 export * from "./menu";
@@ -11,7 +11,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuFold", "menusToggle", "browserAction", "space", "dynamic", "temporary"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuFold", "menusToggle", "browserAction", "space", "static", "dynamic", "temporary"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export const BROWSER_ACTION_KINDS = ["back", "forward", "reload"] as const;
 export type BrowserActionKind = (typeof BROWSER_ACTION_KINDS)[number];
@@ -39,6 +39,8 @@ export interface StoredMenuItem {
   // For `dynamic` items: the dynamic bookmark definition this item renders (see
   // ExtensionConfig.dynamicBookmarks). Its live URL/title come from local state.
   dynamicUid?: string;
+  staticUid?: string;
+  temporaryUid?: string;
   expandOnHover?: boolean;
   // For flattenFolder items: also emit the folder's sub-folders (as folders
   // inheriting this item's folder options), not just its bookmarks. Default off.
@@ -50,25 +52,38 @@ export interface StoredMenuItem {
   targetMenuUids?: string[];
 }
 
-export interface StoredShortcut {
-  slot: string;
-  type?: "bookmark" | "dynamic";
+export type CustomBookmarkType = "static" | "temporary" | "dynamic";
+
+export interface BookmarkTarget {
+  type?: "bookmark" | CustomBookmarkType;
   path?: string[];
   url?: string;
   title?: string;
   dynamicUid?: string;
+  staticUid?: string;
+  temporaryUid?: string;
   tabMode?: TabMode;
 }
 
-export interface StoredNativeShortcut {
+export function isCustomBookmarkType(type: unknown): type is CustomBookmarkType {
+  return type === "static" || type === "temporary" || type === "dynamic";
+}
+
+export function customBookmarkUid(target: { type?: string; dynamicUid?: string; staticUid?: string; temporaryUid?: string }): string | undefined {
+  return target.type === "static" ? target.staticUid : target.type === "temporary" ? target.temporaryUid : target.type === "dynamic" ? target.dynamicUid : undefined;
+}
+
+export function customBookmarkReference(type: CustomBookmarkType, uid: string) {
+  return { type, ...(type === "static" ? { staticUid: uid } : type === "temporary" ? { temporaryUid: uid } : { dynamicUid: uid }) };
+}
+
+export interface StoredShortcut extends BookmarkTarget {
+  slot: string;
+}
+
+export interface StoredNativeShortcut extends BookmarkTarget {
   id: string;
   key: string;
-  type?: "bookmark" | "dynamic";
-  path?: string[];
-  url?: string;
-  title?: string;
-  dynamicUid?: string;
-  tabMode?: TabMode;
 }
 
 export interface SyncedNativeShortcut {
@@ -87,6 +102,7 @@ export interface StoredMenu {
   color?: MenuColor;
   enabled?: boolean;
   expandDirection?: ExpandDirection;
+  expandAlignment?: ExpandAlignment;
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
   gap?: number;
@@ -122,12 +138,12 @@ export function isSpecialRootPlaceholder(value: unknown): value is string {
 
 // Action UID Wire Protocol
 export function formatActionUid(
-  kind: "bookmark" | "folder" | "dynamic" | "temporary",
+  kind: "bookmark" | "folder" | CustomBookmarkType,
   uid: string,
   tabMode?: TabMode,
 ): string {
   const base = `${kind}:${encodeURIComponent(uid)}`;
-  if ((kind === "bookmark" || kind === "dynamic" || kind === "temporary") && tabMode === "newTab") {
+  if (kind !== "folder" && tabMode === "newTab") {
     return `${base}?tab=newTab`;
   }
   return base;
@@ -148,6 +164,29 @@ export function parseTemporaryAction(actionUid: string): { uid: string; tabMode:
 export function invertTemporaryActionUid(actionUid: string): string {
   const { uid, tabMode } = parseTemporaryAction(actionUid);
   return formatActionUid("temporary", uid, tabMode === "newTab" ? "replace" : "newTab");
+}
+
+export function parseStaticAction(actionUid: string): { uid: string; tabMode: TabMode } {
+  if (!actionUid.startsWith("static:")) throw new Error("The action is not a static bookmark");
+  const raw = actionUid.slice("static:".length);
+  const qIndex = raw.indexOf("?tab=");
+  return {
+    uid: decodeURIComponent(qIndex < 0 ? raw : raw.slice(0, qIndex)),
+    tabMode: qIndex >= 0 && raw.slice(qIndex + 5) === "newTab" ? "newTab" : "replace",
+  };
+}
+
+export function invertNavigationActionUid(actionUid: string): string {
+  if (actionUid.startsWith("temporary:")) return invertTemporaryActionUid(actionUid);
+  if (actionUid.startsWith("static:")) {
+    const { uid, tabMode } = parseStaticAction(actionUid);
+    return formatActionUid("static", uid, tabMode === "newTab" ? "replace" : "newTab");
+  }
+  if (isDynamicAction(actionUid)) {
+    const { dynamicUid, tabMode } = parseDynamicAction(actionUid);
+    return formatActionUid("dynamic", dynamicUid, tabMode === "newTab" ? "replace" : "newTab");
+  }
+  return invertBookmarkActionUid(actionUid);
 }
 
 // Dynamic-bookmark navigation action. The target URL is not a browser bookmark
@@ -226,6 +265,8 @@ export interface ExportedMenuItem {
   // For `dynamic` items: the dynamic bookmark id they reference (resolved
   // against ExportedSettingsData.dynamicBookmarks on import).
   dynamicUid?: string;
+  staticUid?: string;
+  temporaryUid?: string;
   showPageTitle?: boolean;
   browserAction?: BrowserActionKind;
   targetMenuUids?: string[];
@@ -238,6 +279,17 @@ export interface ExportedDynamicBookmark {
   urlRuleUids?: string[];
 }
 
+export interface StaticBookmark {
+  uid: string;
+  name: string;
+  url: string;
+}
+
+export interface TemporaryBookmark {
+  uid: string;
+  name: string;
+}
+
 export interface ExportedMenu {
   uid?: string;
   enabled?: boolean;
@@ -247,6 +299,7 @@ export interface ExportedMenu {
   gap?: number;
   color?: MenuColor;
   expandDirection?: ExpandDirection;
+  expandAlignment?: ExpandAlignment;
   attachmentMode?: AttachmentMode;
   onTopMode?: OnTopMode;
   tabMode?: TabMode;
@@ -262,6 +315,8 @@ export interface ExportedSettingsData {
   urlRules?: UrlRule[];
   defaultUrlRuleUid?: string;
   dynamicBookmarks?: ExportedDynamicBookmark[];
+  staticBookmarks?: StaticBookmark[];
+  temporaryBookmarks?: TemporaryBookmark[];
   shortcuts?: StoredShortcut[];
   nativeShortcuts?: StoredNativeShortcut[];
 }

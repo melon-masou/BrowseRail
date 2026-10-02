@@ -79,8 +79,9 @@ async function fixture() {
   await saveDisplayMode("browser");
   const config = await loadConfig();
   config.panel.menus = [{ uid: "source", orientation: "row", attachmentMode: "free", items: [
-    { uid: "reload", type: "browserAction", browserAction: "reload" }, { uid: "slot", type: "temporary" },
+    { uid: "reload", type: "browserAction", browserAction: "reload" }, { uid: "slot-button", type: "temporary", temporaryUid: "slot" },
   ] }];
+  config.temporaryBookmarks = [{ uid: "slot", name: "Later" }];
   await saveConfig(config);
   return config;
 }
@@ -161,6 +162,18 @@ it("restores the selected global matching and its definitions from Chrome sync",
   expect(await service.forTab(17)).toHaveLength(1);
   mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://other.com/" });
   expect(await service.forTab(17)).toEqual([]);
+});
+
+it("keeps popup alignment after a fresh config read and restores it from Chrome sync", async () => {
+  const config = await fixture();
+  config.panel.menus[0]!.expandAlignment = "center";
+  await saveConfig(config);
+  expect((await loadConfig()).panel.menus[0]!.expandAlignment).toBe("center");
+
+  await saveSyncEnabled(true);
+  await saveConfig(config);
+  mocks.storage.config = { ...config, panel: { menus: [{ ...config.panel.menus[0]!, expandAlignment: "edge" }] } };
+  expect((await loadConfig()).panel.menus[0]!.expandAlignment).toBe("center");
 });
 
 it("executes a webpage's browser action on its own window and rejects it after switching to native", async () => {

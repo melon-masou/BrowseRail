@@ -1,5 +1,5 @@
 import browser from "webextension-polyfill";
-import { isDynamicAction, parseDynamicAction, parseTemporaryAction } from "@browserail/protocol";
+import { isDynamicAction, parseDynamicAction, parseTemporaryAction, parseStaticAction } from "@browserail/protocol";
 import { loadConfig, saveConfig, loadDynamicValues, loadTemporaryValues } from "../config";
 import { navigateBookmark, navigateToUrl } from "../tab-actions/navigate";
 import { captureTemporaryUrl } from "./temporary";
@@ -23,6 +23,10 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     } else if (action?.type === "browserAction" && action.browserAction) {
       await runTabAction(browser.tabs, targetWindowUid, action.browserAction);
     }
+  } else if (actionUid.startsWith("static:")) {
+    const { uid, tabMode } = parseStaticAction(actionUid);
+    const definition = (await loadConfig()).staticBookmarks.find(entry => entry.uid === uid);
+    if (definition?.url) await navigateToUrl(browser, targetWindowUid, definition.url, tabMode);
   } else if (isDynamicAction(actionUid)) {
     const { dynamicUid, tabMode } = parseDynamicAction(actionUid);
     const live = (await loadDynamicValues())[dynamicUid];
@@ -35,19 +39,18 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     const uid = decodeURIComponent(queryIndex < 0 ? raw : raw.slice(0, queryIndex));
     const params = new URLSearchParams(queryIndex < 0 ? "" : raw.slice(queryIndex + 1));
     const config = await loadConfig();
-    const tree = await browser.bookmarks.getTree();
     const result = await captureTemporaryUrl(
       browser.tabs,
-      config.panel.menus,
+      config.temporaryBookmarks,
       uid,
       targetWindowUid,
       params.get("confirmed") === "1",
       params.get("note") ?? "",
-      tree,
     );
     if (result === "saved") changed();
   } else if (actionUid.startsWith("temporary:")) {
     const { uid, tabMode } = parseTemporaryAction(actionUid);
+    if (!(await loadConfig()).temporaryBookmarks.some(entry => entry.uid === uid)) return;
     const url = (await loadTemporaryValues())[uid];
     if (url) await navigateToUrl(browser, targetWindowUid, url, tabMode);
   } else {

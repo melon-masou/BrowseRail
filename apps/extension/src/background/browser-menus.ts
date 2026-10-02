@@ -1,5 +1,5 @@
 import browser, { type Runtime } from "webextension-polyfill";
-import { isUrlMatchingSet, parseTemporaryAction, invertBookmarkActionUid, invertTemporaryActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
+import { isUrlMatchingSet, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
   defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, saveBrowserPlacement, toggleBrowserCollapsed, menuUrlPatterns,
   type BrowserMenuPlacement, type ExtensionConfig,
@@ -62,7 +62,7 @@ export function createBrowserMenus(changed: () => void) {
     if (clients.has(port)) port.postMessage({ type: "reply", id, ...(error ? { error } : {}), ...(result ? { result } : {}) });
   }
   async function saveTemporary(config: ExtensionConfig, uid: string, windowId: number, note: string): Promise<void> {
-    const result = await captureTemporaryUrl(browser.tabs, config.panel.menus, uid, String(windowId), true, note, await browser.bookmarks.getTree());
+    const result = await captureTemporaryUrl(browser.tabs, config.temporaryBookmarks, uid, String(windowId), true, note);
     if (result !== "saved") throw new Error("Temporary bookmark was not saved");
     changed();
   }
@@ -89,7 +89,7 @@ export function createBrowserMenus(changed: () => void) {
     const entries = leaves(menu.view.items);
     switch (request.type) {
       case "invoke":
-        if (!entries.some(entry => (entry.kind === "bookmark" || entry.kind === "browserAction" || entry.kind === "menusToggle") && (entry.uid === request.actionUid || (entry.kind === "bookmark" && (entry.uid.startsWith("temporary:") ? invertTemporaryActionUid(entry.uid) : entry.uid.startsWith("bookmark:") ? invertBookmarkActionUid(entry.uid) : undefined) === request.actionUid)))) throw new Error("Action is unavailable");
+        if (!entries.some(entry => (entry.kind === "bookmark" || entry.kind === "browserAction" || entry.kind === "menusToggle") && (entry.uid === request.actionUid || (entry.kind === "bookmark" && !entry.uid.startsWith("noop") && invertNavigationActionUid(entry.uid) === request.actionUid)))) throw new Error("Action is unavailable");
         await executeMenuAction(request.actionUid, request.menuUid, String(tab.windowId), changed);
         break;
       case "fold":

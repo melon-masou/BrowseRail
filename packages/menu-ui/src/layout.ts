@@ -31,9 +31,13 @@ export function planFolderPopup(
   if (direction === "down" && below < Math.min(120, above)) direction = "up";
   else if (direction === "up" && above < Math.min(120, below)) direction = "down";
   const sideways = direction === "left" || direction === "right";
+  const centered = sideways && request.expandAlignment === "center";
+  const anchorCenter = (anchor.top + anchor.bottom) / 2;
   const limit = submenuHeightLimit(theme.itemHeight);
   const contentHeight = columnContentHeight(request.folder.children.filter(entry => entry.kind === "folder" || entry.kind === "bookmark").length, theme.itemHeight);
-  const beside = Math.max(1, bounds.bottom - Math.max(bounds.top, anchor.top));
+  const beside = Math.max(1, centered
+    ? 2 * Math.min(anchorCenter - bounds.top, bounds.bottom - anchorCenter)
+    : bounds.bottom - Math.max(bounds.top, anchor.top));
   const maxColumnHeight = direction === "up" ? above : direction === "down" ? below
     : contentHeight > beside ? Math.min(bounds.bottom - bounds.top, limit) : beside;
   const columnWidth = Math.min(width, calculateColumnWidth(measure, request.folder.children, theme.fontSize, maxColumnHeight, theme.itemHeight));
@@ -46,12 +50,12 @@ export function planFolderPopup(
     x = rootDirection === "left" ? anchor.left - columnWidth : anchor.right;
   }
   x = Math.max(bounds.left, Math.min(x, bounds.right - columnWidth));
-  const y = Math.max(bounds.top, Math.min(direction === "down" ? anchor.bottom : anchor.top,
-    sideways ? bounds.bottom - Math.min(contentHeight, maxColumnHeight) : bounds.bottom));
+  const firstHeight = Math.min(contentHeight, maxColumnHeight);
+  const preferredY = centered ? anchorCenter - firstHeight / 2 : direction === "down" ? anchor.bottom : anchor.top;
+  const y = Math.max(bounds.top, Math.min(preferredY, sideways ? bounds.bottom - firstHeight : bounds.bottom));
   const envelope = popupEnvelope(measure, request.folder.children, theme.fontSize, theme.itemHeight, Math.min(maxColumnHeight, limit), direction);
   const hasChildren = request.folder.children.some(entry => entry.kind === "folder");
   const reserve = hasChildren ? Math.max(0, envelope.width - columnWidth) : 0;
-  const firstHeight = Math.min(contentHeight, maxColumnHeight);
   // Reserve child movement before mounting, so opening another level keeps the anchor fixed.
   const top = direction === "up" ? hasChildren ? bounds.top : y - firstHeight
     : hasChildren ? Math.max(bounds.top, y - limit) : y;
@@ -63,7 +67,8 @@ export function planFolderPopup(
   };
   return { surface, state: {
     entries: request.folder.children, theme, direction, rootDirection,
-    rootOffsetX: x - surface.left, rootOffsetY: y - surface.top,
+    rootOffsetX: x - surface.left, rootOffsetY: (centered ? anchorCenter : y) - surface.top,
+    expandAlignment: request.expandAlignment ?? "edge",
     bounds: { left: 0, top: 0, right: surface.right - surface.left, bottom: surface.bottom - surface.top },
     maxColumnHeight, editingLocked: request.editingLocked,
   } };

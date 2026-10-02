@@ -1,5 +1,7 @@
 import {
   isNativeMessage,
+  actionUid,
+  customBookmarkUid,
   PROTOCOL_VERSION,
   type BrowserInstance,
   type ExtensionMessage,
@@ -638,6 +640,8 @@ async function syncOnce(): Promise<void> {
           registerTarget: (browserBookmarkId) => bookmarkTargets.register(browserBookmarkId),
           dynamicResolve,
           temporaryNotes,
+          staticBookmarks: config.staticBookmarks,
+          temporaryBookmarks: config.temporaryBookmarks,
         },
       );
       const placement = resolveMenuPlacement(
@@ -655,6 +659,7 @@ async function syncOnce(): Promise<void> {
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
+        ...(menu.expandAlignment ? { expandAlignment: menu.expandAlignment } : {}),
         buttonFontSize: menu.buttonFontSize ?? DEFAULT_FONT_SIZE,
         popupFontSize: menu.popupFontSize ?? DEFAULT_FONT_SIZE,
         gap: resolveGapPx(menu.buttonFontSize, menu.gap),
@@ -757,7 +762,7 @@ async function syncOnce(): Promise<void> {
       (s) =>
         s.key &&
         s.key.trim().length > 0 &&
-        (s.type === "dynamic" ? Boolean(s.dynamicUid) : Boolean(s.path || s.url)),
+        (s.type && s.type !== "bookmark" ? Boolean(customBookmarkUid(s)) : Boolean(s.path || s.url)),
     )
     .map((s) => ({
       id: s.id,
@@ -946,11 +951,9 @@ browser.commands.onCommand.addListener(async (command) => {
 
   const tabMode = target.tabMode || "replace";
 
-  if (target.type === "dynamic" && target.dynamicUid) {
-    const live = (await loadDynamicValues())[target.dynamicUid];
-    if (live?.url) {
-      await navigateToUrl(browser, windowId, live.url, tabMode);
-    }
+  if (target.type && target.type !== "bookmark") {
+    const uid = customBookmarkUid(target);
+    if (uid) await executeMenuAction(actionUid(target.type, uid, tabMode), undefined, String(windowId), requestSync);
     return;
   }
 
@@ -974,11 +977,9 @@ async function executeNativeShortcut(shortcutId: string, targetWindowUid?: strin
   const targetWindow = targetWindowUid ?? lastFocusedWindowUid ?? (await browser.windows.getLastFocused())?.id;
   if (!targetWindow) return;
   const tabMode = target.tabMode || "replace";
-  if (target.type === "dynamic" && target.dynamicUid) {
-    const live = (await loadDynamicValues())[target.dynamicUid];
-    if (live?.url) {
-      await navigateToUrl(browser, targetWindow, live.url, tabMode);
-    }
+  if (target.type && target.type !== "bookmark") {
+    const uid = customBookmarkUid(target);
+    if (uid) await executeMenuAction(actionUid(target.type, uid, tabMode), undefined, String(targetWindow), requestSync);
     return;
   }
   if (target.path) {

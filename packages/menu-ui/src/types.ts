@@ -1,4 +1,4 @@
-import type { ExpandDirection, FolderEntry, LayoutEntry, MenuView } from "@browserail/protocol";
+import type { ExpandAlignment, ExpandDirection, FolderEntry, LayoutEntry, MenuView } from "@browserail/protocol";
 
 export interface Size { width: number; height: number }
 export interface Rect { left: number; top: number; right: number; bottom: number }
@@ -21,8 +21,9 @@ export interface PopupState {
   direction: ExpandDirection;
   rootDirection: ExpandDirection;
   rootOffsetX: number;
-  /** First column's top edge, or bottom edge when expanding upwards. */
+  /** Top edge, bottom edge when expanding up, or anchor center for lateral center alignment. */
   rootOffsetY: number;
+  expandAlignment?: ExpandAlignment;
   bounds: Rect;
   maxColumnHeight: number;
   editingLocked: boolean;
@@ -42,6 +43,7 @@ export interface PopupRequest {
   anchor: Rect;
   theme: PopupTheme;
   direction: ExpandDirection;
+  expandAlignment?: ExpandAlignment;
   editingLocked: boolean;
 }
 export interface BarHost extends MenuActions {

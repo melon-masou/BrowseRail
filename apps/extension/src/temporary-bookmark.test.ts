@@ -15,7 +15,7 @@ vi.mock("webextension-polyfill", () => ({
 }));
 
 import { buildTemporaryDirectiveUrl, resolveMenuItems } from "./bookmarks";
-import { loadConfig, loadTemporaryNotes, loadTemporaryValues, pruneTemporaryValues, saveConfig, saveTemporaryValue } from "./config";
+import { loadConfig, loadTemporaryNotes, loadTemporaryValues, pruneTemporaryValues, saveConfig, saveTemporaryValue, clearTemporaryValue, normalizeMenu } from "./config";
 import { captureTemporaryUrl } from "./background/temporary";
 
 beforeEach(() => { storage = {}; });
@@ -25,12 +25,12 @@ it("keeps a temporary URL across a fresh storage read and resolves it without a 
   const reloadedValues = await loadTemporaryValues();
   const reloadedNotes = await loadTemporaryNotes();
   const [entry] = await resolveMenuItems(
-    [{ uid: "slot-one", type: "temporary", rename: "Later" }],
+    [{ uid: "button-one", type: "temporary", temporaryUid: "slot-one", rename: "Later" }],
     undefined,
     undefined,
     undefined,
     undefined,
-    { temporaryNotes: reloadedNotes },
+    { temporaryNotes: reloadedNotes, temporaryBookmarks: [{ uid: "slot-one", name: "Later" }] },
   );
 
   expect(entry).toMatchObject({
@@ -42,49 +42,50 @@ it("keeps a temporary URL across a fresh storage read and resolves it without a 
 });
 
 it("requires confirmation before both the first save and replacement", async () => {
-  const menus = [{ uid: "menu", orientation: "column" as const, items: [{ uid: "slot", type: "temporary" }] }];
+  const definitions = [{ uid: "slot", name: "Later" }];
   const tabs = { query: vi.fn(async () => [{ url: "https://example.com/first" }]) };
 
-  expect(await captureTemporaryUrl(tabs, menus, "slot", "12", false)).toBe("needsConfirmation");
+  expect(await captureTemporaryUrl(tabs, definitions, "slot", "12", false)).toBe("needsConfirmation");
   expect((await loadTemporaryValues()).slot).toBeUndefined();
 
-  expect(await captureTemporaryUrl(tabs, menus, "slot", "12", true, "First note")).toBe("saved");
+  expect(await captureTemporaryUrl(tabs, definitions, "slot", "12", true, "First note")).toBe("saved");
   expect((await loadTemporaryValues()).slot).toBe("https://example.com/first");
   expect((await loadTemporaryNotes()).slot).toBe("First note");
 
   tabs.query.mockResolvedValue([{ url: "https://example.com/second" }]);
-  expect(await captureTemporaryUrl(tabs, menus, "slot", "12", false)).toBe("needsConfirmation");
+  expect(await captureTemporaryUrl(tabs, definitions, "slot", "12", false)).toBe("needsConfirmation");
   expect((await loadTemporaryValues()).slot).toBe("https://example.com/first");
 
-  expect(await captureTemporaryUrl(tabs, menus, "slot", "12", true, "Second note")).toBe("saved");
+  expect(await captureTemporaryUrl(tabs, definitions, "slot", "12", true, "Second note")).toBe("saved");
   expect((await loadTemporaryValues()).slot).toBe("https://example.com/second");
   expect((await loadTemporaryNotes()).slot).toBe("Second note");
 
   tabs.query.mockResolvedValue([{ url: "https://example.com/third" }]);
-  expect(await captureTemporaryUrl(tabs, menus, "slot", "12", true)).toBe("saved");
+  expect(await captureTemporaryUrl(tabs, definitions, "slot", "12", true)).toBe("saved");
   expect((await loadTemporaryValues()).slot).toBe("https://example.com/third");
   expect((await loadTemporaryNotes()).slot).toBeUndefined();
   const [entry] = await resolveMenuItems(
-    [{ uid: "slot", type: "temporary", rename: "Fixed name" }],
+    [{ uid: "button", type: "temporary", temporaryUid: "slot", rename: "Fixed name" }],
     undefined,
     undefined,
     undefined,
     undefined,
-    { temporaryNotes: await loadTemporaryNotes() },
+    { temporaryNotes: await loadTemporaryNotes(), temporaryBookmarks: definitions },
   );
   expect(entry).toMatchObject({ kind: "bookmark", label: "Fixed name" });
 });
 
-it("removes a deleted temporary bookmark's URL after its menu changes are saved", async () => {
+it("keeps a temporary value after removing its button and removes it only after deleting the definition", async () => {
   const config = await loadConfig();
   config.panel.menus = [{
     uid: "menu",
     orientation: "column",
     items: [
-      { uid: "keep", type: "temporary" },
-      { uid: "remove", type: "temporary" },
+      { uid: "keep-button", type: "temporary", temporaryUid: "keep" },
+      { uid: "remove-button", type: "temporary", temporaryUid: "remove" },
     ],
   }];
+  config.temporaryBookmarks = [{ uid: "keep", name: "Keep" }, { uid: "remove", name: "Remove" }];
   await saveConfig(config);
   await saveTemporaryValue("keep", "https://example.com/keep", "Keep");
   await saveTemporaryValue("remove", "https://example.com/remove", "Remove");
@@ -93,41 +94,27 @@ it("removes a deleted temporary bookmark's URL after its menu changes are saved"
   expect((await loadTemporaryValues()).remove).toBe("https://example.com/remove");
 
   await saveConfig(config);
-  await pruneTemporaryValues(config.panel.menus);
+  await pruneTemporaryValues(config.temporaryBookmarks);
+  expect((await loadTemporaryValues()).remove).toBe("https://example.com/remove");
+  config.temporaryBookmarks = config.temporaryBookmarks.filter(entry => entry.uid !== "remove");
+  await saveConfig(config);
+  await pruneTemporaryValues(config.temporaryBookmarks);
   expect(await loadTemporaryValues()).toEqual({ keep: "https://example.com/keep" });
   expect(await loadTemporaryNotes()).toEqual({ keep: "Keep" });
 });
 
-it("captures and preserves temporary bookmarks originating from bookmark tree folders", async () => {
-  const tree = [
-    {
-      id: "0",
-      title: "",
-      children: [
-        {
-          id: "folder-temp",
-          title: "MyFolder",
-          children: [
-            { id: "bm-temp", title: "Temp Slot", url: buildTemporaryDirectiveUrl({ id: "tree-slot" }) },
-          ],
-        },
-      ],
-    },
-  ] as any;
-
+it("captures a defined slot even when it is not currently placed in a menu", async () => {
+  const definitions = [{ uid: "tree-slot", name: "From Tree" }];
   const tabs = { query: vi.fn(async () => [{ url: "https://example.com/tree-page" }]) };
 
-  // captureTemporaryUrl succeeds because the uid is in the bookmark tree
-  expect(await captureTemporaryUrl(tabs, [], "tree-slot", "1", true, "From Tree", tree)).toBe("saved");
+  expect(await captureTemporaryUrl(tabs, definitions, "tree-slot", "1", true, "From Tree")).toBe("saved");
   expect((await loadTemporaryValues())["tree-slot"]).toBe("https://example.com/tree-page");
   expect((await loadTemporaryNotes())["tree-slot"]).toBe("From Tree");
 
-  // pruneTemporaryValues retains tree-slot because it exists in bookmarkTree
-  await pruneTemporaryValues([], tree);
+  await pruneTemporaryValues(definitions);
   expect((await loadTemporaryValues())["tree-slot"]).toBe("https://example.com/tree-page");
   expect((await loadTemporaryNotes())["tree-slot"]).toBe("From Tree");
 
-  // Without the bookmark tree, prune removes it
   await pruneTemporaryValues([]);
   expect((await loadTemporaryValues())["tree-slot"]).toBeUndefined();
   expect((await loadTemporaryNotes())["tree-slot"]).toBeUndefined();
@@ -148,7 +135,8 @@ it("ignores a malformed temporary marker and keeps other temporary slots usable"
   }];
   const tabs = { query: vi.fn(async () => [{ url: "https://example.com/usable" }]) };
 
-  expect(await captureTemporaryUrl(tabs, [], "tree-slot", "1", true, "Usable note", tree)).toBe("saved");
+  const definitions = [{ uid: "tree-slot", name: "Usable" }];
+  expect(await captureTemporaryUrl(tabs, definitions, "tree-slot", "1", true, "Usable note")).toBe("saved");
   expect((await loadTemporaryValues())["tree-slot"]).toBe("https://example.com/usable");
 
   const entries = await resolveMenuItems(
@@ -157,8 +145,24 @@ it("ignores a malformed temporary marker and keeps other temporary slots usable"
     undefined,
     undefined,
     undefined,
-    { tree, temporaryNotes: await loadTemporaryNotes() },
+    { tree, temporaryNotes: await loadTemporaryNotes(), temporaryBookmarks: definitions },
   );
   expect(entries).toHaveLength(1);
   expect(entries[0]).toMatchObject({ kind: "bookmark", label: "Usable note" });
+});
+
+it("clears a slot's URL and note together without changing another slot", async () => {
+  await saveTemporaryValue("clear", "https://example.com/clear", "Clear");
+  await saveTemporaryValue("keep", "https://example.com/keep", "Keep");
+  await clearTemporaryValue("clear");
+  expect(await loadTemporaryValues()).toEqual({ keep: "https://example.com/keep" });
+  expect(await loadTemporaryNotes()).toEqual({ keep: "Keep" });
+});
+
+it("does not migrate an old inline temporary button or authorize an undefined slot", async () => {
+  const menu = normalizeMenu({ uid: "menu", orientation: "row", items: [{ uid: "old", type: "temporary" }] });
+  expect(menu?.items).toEqual([]);
+  const tabs = { query: vi.fn(async () => [{ url: "https://example.com" }]) };
+  expect(await captureTemporaryUrl(tabs, [], "old", "1", true)).toBe("unavailable");
+  expect(await loadTemporaryValues()).toEqual({});
 });

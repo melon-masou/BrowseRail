@@ -1,4 +1,4 @@
-import { DEFAULT_DOCK_COLOR, invertBookmarkActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
+import { DEFAULT_DOCK_COLOR, invertNavigationActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 import { applyBarTheme, barDimensions, menuButton } from "./appearance";
 import { createLifetime, showMenuError } from "./lifetime";
@@ -94,6 +94,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
           itemHeight: theme.itemHeight,
         },
         direction: entry.expandDirection ?? state.menu.expandDirection ?? (state.menu.orientation === "column" ? "right" : "down"),
+        expandAlignment: state.menu.expandAlignment ?? "edge",
         editingLocked: state.editingLocked,
       });
       if (!lifetime.alive || token !== opening) { await opened.close(); return; }
@@ -157,7 +158,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
           if (!state.editingLocked) return;
           if (event.button === 0) { event.preventDefault(); dispatch(entry.uid); }
           else if (event.button === 2) {
-            event.preventDefault(); event.stopPropagation(); dispatch(invertBookmarkActionUid(entry.uid));
+            event.preventDefault(); event.stopPropagation(); dispatch(invertNavigationActionUid(entry.uid));
           }
         }, options);
       }

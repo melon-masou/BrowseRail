@@ -12,6 +12,10 @@ import {
   type MenuOrientation,
   type OnTopMode,
   type TabMode,
+  type CustomBookmarkType,
+  customBookmarkUid,
+  customBookmarkReference,
+  isCustomBookmarkType,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -21,8 +25,13 @@ import {
   DEFAULT_MENU_GAP_PERCENT,
   type DynamicBookmark,
   type DynamicValuesMap,
+  type StaticBookmark,
+  type TemporaryBookmark,
   loadBookmarkRootPrefix,
   loadDynamicValues,
+  loadTemporaryValues,
+  loadTemporaryNotes,
+  clearTemporaryValue,
   loadConfig,
   loadDisplayMode,
   saveDisplayMode,
@@ -32,6 +41,8 @@ import {
   normalizeFontSize,
   normalizeConfig,
   normalizeUrlRules,
+  normalizeStaticBookmarks,
+  normalizeTemporaryBookmarks,
   normalizeMenu,
   normalizeStoredMenuItem,
   pruneTemporaryValues,
@@ -114,9 +125,8 @@ const SETTINGS_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill=
 const REMOVE_ICON_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
 
 const connectionForm = element<HTMLFormElement>("connection-form");
-const saveConnectionBtn = element<HTMLButtonElement>("save-connection-btn");
-const connectionStatus = element<HTMLOutputElement>("connection-status");
 const menusForm = element<HTMLFormElement>("menus-form");
+const settingsContent = element<HTMLDivElement>("settings-content");
 const displayMode = element<HTMLSelectElement>("display-mode");
 const instanceLabel = element<HTMLInputElement>("instance-label");
 const randomInstanceLabel = element<HTMLButtonElement>("random-instance-label");
@@ -130,6 +140,7 @@ const desktopTestStatus = element<HTMLOutputElement>("desktop-test-status");
 const menusContainer = element<HTMLDivElement>("menus");
 const addMenu = element<HTMLButtonElement>("add-menu");
 const saveBtn = element<HTMLButtonElement>("save-btn");
+const settingsTransferActions = element<HTMLDivElement>("settings-transfer-actions");
 const exportBtn = element<HTMLButtonElement>("export-btn");
 const importBtn = element<HTMLButtonElement>("import-btn");
 const importFileInput = element<HTMLInputElement>("import-file-input");
@@ -172,6 +183,7 @@ const menuSettingsTabs = Array.from(
 );
 const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientation");
 const menuSettingExpandDirection = element<HTMLSelectElement>("menu-setting-expand-direction");
+const menuSettingExpandAlignment = element<HTMLSelectElement>("menu-setting-expand-alignment");
 const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
 const menuSettingFontSizeAuto = element<HTMLInputElement>("menu-setting-font-size-auto");
 const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
@@ -212,7 +224,11 @@ const shortcutSettingsPopover = element<HTMLDivElement>("shortcut-settings-popov
 const shortcutSettingsTitle = element<HTMLSpanElement>("shortcut-settings-title");
 const shortcutSettingsClose = element<HTMLButtonElement>("shortcut-settings-close");
 const shortcutSettingTabMode = element<HTMLSelectElement>("shortcut-setting-tab-mode");
-const shortcutSettingChangeBtn = element<HTMLButtonElement>("shortcut-setting-change-btn");
+const shortcutPickPopover = element<HTMLDivElement>("shortcut-pick-popover");
+const shortcutPickBookmarkBtn = element<HTMLButtonElement>("shortcut-pick-bookmark-btn");
+const shortcutPickDynamicBtn = element<HTMLButtonElement>("shortcut-pick-dynamic-btn");
+const shortcutPickStaticBtn = element<HTMLButtonElement>("shortcut-pick-static-btn");
+const shortcutPickTemporaryBtn = element<HTMLButtonElement>("shortcut-pick-temporary-btn");
 const colorPopoverCycleRow = element<HTMLDivElement>("color-popover-cycle-row");
 const colorPopoverCycleToggle = element<HTMLInputElement>("color-popover-cycle-toggle");
 const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-section");
@@ -240,7 +256,7 @@ const temporaryBookmarkDialog = element<HTMLDialogElement>("temporary-bookmark-d
 const temporaryBookmarkClose = element<HTMLButtonElement>("temporary-bookmark-close");
 const temporaryBookmarkCloseBtn = element<HTMLButtonElement>("temporary-bookmark-close-btn");
 const temporaryBookmarkForm = element<HTMLFormElement>("temporary-bookmark-form");
-const temporaryBookmarkName = element<HTMLInputElement>("temporary-bookmark-name");
+const temporaryBookmarkDefinition = element<HTMLSelectElement>("temporary-bookmark-definition");
 const temporaryBookmarkFolderBtn = element<HTMLButtonElement>("temporary-bookmark-folder-btn");
 const temporaryBookmarkFolderDisplay = element<HTMLSpanElement>("temporary-bookmark-folder-display");
 const temporaryBookmarkResult = element<HTMLOutputElement>("temporary-bookmark-result");
@@ -259,8 +275,11 @@ const menusCardTabs = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"),
 );
 const dynamicList = element<HTMLDivElement>("dynamic-list");
+const staticList = element<HTMLDivElement>("static-list");
+const temporaryList = element<HTMLDivElement>("temporary-list");
 const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
 const addPopoverDynamicBtn = element<HTMLButtonElement>("add-popover-dynamic-btn");
+const addPopoverStaticBtn = element<HTMLButtonElement>("add-popover-static-btn");
 const addPopoverTemporaryBtn = element<HTMLButtonElement>("add-popover-temporary-btn");
 const pickDynamicDialog = element<HTMLDialogElement>("pick-dynamic-dialog");
 const pickDynamicTitle = element<HTMLSpanElement>("pick-dynamic-title");
@@ -282,11 +301,25 @@ let widgetEnabled = true;
 let savedDisplayMode: DisplayMode = "native";
 let isConnectionDirty = false;
 let isMenusDirty = false;
+let activeSettingsPanel = "connection-form";
+let isSaving = false;
+interface InstanceSettings {
+  label: string;
+  desktopUrl: string;
+  displayMode: DisplayMode;
+  rootPrefix: string[];
+  syncEnabled: boolean;
+}
+let savedInstanceSettings: InstanceSettings | undefined;
 let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
 let urlRules: UrlRule[] = [];
 let defaultUrlRuleUid: string | undefined;
 let dynamicBookmarks: DynamicBookmark[] = [];
+let staticBookmarks: StaticBookmark[] = [];
+let temporaryBookmarks: TemporaryBookmark[] = [];
+let temporaryValuesCache: Record<string, string> = {};
+let temporaryNotesCache: Record<string, string> = {};
 let shortcuts: StoredShortcut[] = [];
 let nativeShortcuts: StoredNativeShortcut[] = [];
 let rawBookmarkTree: browser.Bookmarks.BookmarkTreeNode[] = [];
@@ -336,6 +369,9 @@ let gapBookmarkFolderId: string | undefined;
 let activeDynamicMarkerDb: DynamicBookmark | null = null;
 let activeShortcutSettingsTarget: StoredShortcut | StoredNativeShortcut | null = null;
 let activeShortcutSettingsBtn: HTMLElement | null = null;
+type ShortcutPickTarget = { kind: "slot"; slot: string } | { kind: "native"; id: string };
+let activeShortcutPickTarget: ShortcutPickTarget | null = null;
+let activeShortcutPickBtn: HTMLElement | null = null;
 
 let browserCommandsMap: Record<string, string> = {};
 
@@ -360,12 +396,13 @@ async function refreshBrowserCommands(): Promise<void> {
 }
 
 function findItemShortcut(item: StoredMenuItem): StoredShortcut | undefined {
-  if (item.type === "dynamic" && item.dynamicUid) {
-    return shortcuts.find((s) => s.type === "dynamic" && s.dynamicUid === item.dynamicUid);
+  if (isCustomBookmarkType(item.type)) {
+    const uid = customBookmarkUid(item);
+    return uid ? shortcuts.find(s => s.type === item.type && customBookmarkUid(s) === uid) : undefined;
   }
   if (item.type === "bookmark" || (!item.type && item.url)) {
     return shortcuts.find((s) => {
-      if (s.type === "dynamic") return false;
+      if (isCustomBookmarkType(s.type)) return false;
       if (item.url && s.url && item.url === s.url) return true;
       if (
         item.path &&
@@ -397,27 +434,76 @@ browser.runtime.onMessage.addListener((message: unknown) => {
 });
 
 function markConnectionDirty(): void {
-  if (!isConnectionDirty) {
-    isConnectionDirty = true;
-    saveConnectionBtn.classList.add("is-dirty");
-  }
+  isConnectionDirty = true;
+  updateSaveButton();
 }
 
 function clearConnectionDirty(): void {
   isConnectionDirty = false;
-  saveConnectionBtn.classList.remove("is-dirty");
+  updateSaveButton();
 }
 
 function markMenusDirty(): void {
-  if (!isMenusDirty) {
-    isMenusDirty = true;
-    saveBtn.classList.add("is-dirty");
-  }
+  isMenusDirty = true;
+  updateSaveButton();
 }
 
 function clearMenusDirty(): void {
   isMenusDirty = false;
-  saveBtn.classList.remove("is-dirty");
+  updateSaveButton();
+}
+
+function updateSaveButton(): void {
+  const instance = activeSettingsPanel === "connection-form";
+  const key = instance ? "btn.saveInstance" : "btn.saveSettings";
+  saveBtn.dataset.i18n = key;
+  saveBtn.textContent = t(key);
+  saveBtn.setAttribute("form", instance ? connectionForm.id : menusForm.id);
+  saveBtn.classList.toggle("is-dirty", instance ? isConnectionDirty : isMenusDirty);
+  saveBtn.disabled = isSaving;
+  settingsTransferActions.hidden = instance;
+  for (const tab of menusCardTabs) tab.disabled = isSaving;
+}
+
+function readInstanceSettings(): InstanceSettings {
+  return {
+    label: instanceLabel.value,
+    desktopUrl: desktopUrl.value,
+    displayMode: displayMode.value as DisplayMode,
+    rootPrefix: [...bookmarkRootPrefix],
+    syncEnabled: syncEnabledToggle?.checked ?? false,
+  };
+}
+
+function discardInstanceChanges(): void {
+  if (!savedInstanceSettings) return;
+  instanceLabel.value = savedInstanceSettings.label;
+  desktopUrl.value = savedInstanceSettings.desktopUrl;
+  displayMode.value = savedInstanceSettings.displayMode;
+  setBookmarkRootPrefix(savedInstanceSettings.rootPrefix);
+  if (syncEnabledToggle) syncEnabledToggle.checked = savedInstanceSettings.syncEnabled;
+  desktopUrl.setCustomValidity("");
+  clearDesktopTestStatus();
+  clearConnectionDirty();
+  updateDesktopControls();
+  renderMenus();
+  renderShortcuts();
+  renderNativeShortcuts();
+}
+
+async function saveCurrentSettings(): Promise<void> {
+  if (isSaving) return;
+  isSaving = true;
+  updateSaveButton();
+  try {
+    if (activeSettingsPanel === "connection-form") await persistConnection();
+    else await persistMenus();
+  } catch (error) {
+    status.value = t("status.saveFailed", { error: String(error) });
+  } finally {
+    isSaving = false;
+    updateSaveButton();
+  }
 }
 
 function markDirty(): void {
@@ -438,17 +524,18 @@ window.addEventListener("beforeunload", (event) => {
 
 connectionForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  void persistConnection();
+  void saveCurrentSettings();
 });
 
 menusForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  void persistMenus();
+  void saveCurrentSettings();
 });
 
 instanceLabel.addEventListener("input", markConnectionDirty);
 displayMode.addEventListener("change", markConnectionDirty);
 desktopUrl.addEventListener("input", () => {
+  desktopUrl.setCustomValidity("");
   clearDesktopTestStatus();
   markConnectionDirty();
 });
@@ -636,6 +723,8 @@ pickerConfirmBtn.addEventListener("click", () => {
       existing.url = selectedNode.url;
       existing.title = selectedNode.title;
       delete existing.dynamicUid;
+      delete existing.staticUid;
+      delete existing.temporaryUid;
     } else {
       shortcuts.push({
         slot: pickerTargetShortcutSlot,
@@ -674,6 +763,8 @@ pickerConfirmBtn.addEventListener("click", () => {
       existing.url = selectedNode.url;
       existing.title = selectedNode.title;
       delete existing.dynamicUid;
+      delete existing.staticUid;
+      delete existing.temporaryUid;
       renderNativeShortcuts();
       markDirty();
     }
@@ -919,7 +1010,7 @@ function enrichMenuItems(
         }
       }
     }
-    if (item.type === "space" || item.type === "menuFold" || item.type === "menusToggle" || item.type === "browserAction" || item.type === "temporary") continue;
+    if (item.type === "space" || item.type === "menuFold" || item.type === "menusToggle" || item.type === "browserAction" || isCustomBookmarkType(item.type)) continue;
     const node = getItemNode(item);
     if (!node) continue;
     const refreshedPath = getItemRelativePath(
@@ -1275,6 +1366,8 @@ function rerenderForLanguage(): void {
   renderMenus();
   renderUrlRules();
   renderDynamicList();
+  renderSimpleBookmarks();
+  updateSaveButton();
   updateDesktopControls();
   renderDesktopState(stateCard.dataset.state ?? "disconnected");
   if (pickerDialog.open) {
@@ -1323,18 +1416,20 @@ async function initialize(): Promise<void> {
   initTemporaryBookmarkDialog();
   initAddItemPopover();
   initDynamicPanel();
+  initCustomBookmarksPanel();
   initShortcutsPanel();
   void refreshDesktopState();
   void refreshBrowserCommands();
   window.addEventListener("focus", () => {
     void refreshBrowserCommands();
   });
-  const [config, enabled, tree, rootPrefix, mode] = await Promise.all([
+  const [config, enabled, tree, rootPrefix, mode, syncEnabled] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
     browser.bookmarks.getTree(),
     loadBookmarkRootPrefix(),
     loadDisplayMode(),
+    loadSyncEnabled(),
   ]);
   rawBookmarkTree = tree;
 
@@ -1344,6 +1439,8 @@ async function initialize(): Promise<void> {
   widgetEnabled = enabled;
   desktopUrl.value = config.desktopWidget.url;
   bookmarkRootPrefix = rootPrefix;
+  if (syncEnabledToggle) syncEnabledToggle.checked = syncEnabled;
+  savedInstanceSettings = readInstanceSettings();
   gapBookmarkFolderId = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], [SPECIAL_ROOT_PLACEHOLDERS["bookmarks-bar"]])?.id;
   if (bookmarkRootInput) {
     // Read-only display: the root is set only via the "pick root" button, so a
@@ -1360,11 +1457,24 @@ async function initialize(): Promise<void> {
   urlRules = structuredClone(config.urlRules);
   defaultUrlRuleUid = config.defaultUrlRuleUid;
   dynamicBookmarks = structuredClone(config.dynamicBookmarks ?? []);
+  for (const db of dynamicBookmarks) collapsedDynamicUids.add(db.uid);
+  staticBookmarks = structuredClone(config.staticBookmarks);
+  temporaryBookmarks = structuredClone(config.temporaryBookmarks);
+  await refreshTemporaryValues();
   shortcuts = structuredClone(config.shortcuts ?? []);
   nativeShortcuts = structuredClone(config.nativeShortcuts ?? []);
   browser.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && (changes.temporary_bookmark_values || changes.temporary_bookmark_notes)) void refreshTemporaryValues();
     if (area !== "local" || !changes.config?.newValue) return;
     const stored = normalizeConfig(changes.config.newValue, instanceLabel.value);
+    const previous = normalizeConfig(changes.config.oldValue, instanceLabel.value);
+    const addedStatic = stored.staticBookmarks.filter(entry =>
+      !previous.staticBookmarks.some(old => old.uid === entry.uid)
+      && !staticBookmarks.some(draft => draft.uid === entry.uid));
+    if (addedStatic.length) {
+      staticBookmarks.push(...structuredClone(addedStatic));
+      renderSimpleBookmarks();
+    }
     let changed = false;
     for (const menu of menus) {
       const savedMenu = stored.panel.menus.find((saved) => saved.uid === menu.uid);
@@ -1394,32 +1504,34 @@ async function persistConnection(): Promise<void> {
   }
   desktopUrl.setCustomValidity("");
 
-  await saveBookmarkRootPrefix(bookmarkRootPrefix);
+  const savingSettings = readInstanceSettings();
+  await saveBookmarkRootPrefix(savingSettings.rootPrefix);
 
   if (syncEnabledToggle) {
-    await saveSyncEnabled(syncEnabledToggle.checked);
+    await saveSyncEnabled(savingSettings.syncEnabled);
   }
 
   const currentConfig = await loadConfig();
   await saveConfig({
     ...currentConfig,
     desktopWidget: {
-      url: desktopUrl.value.trim(),
+      url: savingSettings.desktopUrl.trim(),
     },
-    instanceLabel: instanceLabel.value.trim(),
+    instanceLabel: savingSettings.label.trim(),
   });
-  await saveDisplayMode(displayMode.value as DisplayMode);
-  savedDisplayMode = displayMode.value as DisplayMode;
+  await saveDisplayMode(savingSettings.displayMode);
+  savedDisplayMode = savingSettings.displayMode;
+  savedInstanceSettings = savingSettings;
   updateDesktopControls();
   siteAuthorization.refresh(currentConfig.urlRules);
   await browser.runtime.sendMessage({ type: "configSaved" });
   await refreshDesktopState();
-  clearConnectionDirty();
+  if (JSON.stringify(readInstanceSettings()) === JSON.stringify(savingSettings)) clearConnectionDirty();
   const savedMsg = t("status.saved");
-  connectionStatus.value = savedMsg;
+  status.value = savedMsg;
   setTimeout(() => {
-    if (connectionStatus.value === savedMsg) {
-      connectionStatus.value = "";
+    if (status.value === savedMsg) {
+      status.value = "";
     }
   }, 1_500);
 }
@@ -1428,7 +1540,18 @@ function initMenusCardTabs(): void {
   for (const tab of menusCardTabs) {
     tab.addEventListener("click", () => {
       const targetId = tab.dataset.tabTarget;
-      if (!targetId) return;
+      if (!targetId || targetId === activeSettingsPanel || isSaving) return;
+      if (activeSettingsPanel === "connection-form" && isConnectionDirty) {
+        if (!window.confirm(t("settings.discardInstance"))) return;
+        discardInstanceChanges();
+      }
+      if (colorPopover.style.display !== "none") closeColorPopover();
+      closeAddItemDropdown();
+      closeItemSettingsPopover();
+      closeShortcutSettingsPopover();
+      closeShortcutPickPopover();
+      if (menuSettingsDialog.open) closeMenuSettingsDialog();
+      activeSettingsPanel = targetId;
       for (const other of menusCardTabs) {
         const panelId = other.dataset.tabTarget;
         if (!panelId) continue;
@@ -1437,8 +1560,19 @@ function initMenusCardTabs(): void {
         other.setAttribute("aria-selected", String(selected));
         if (panel) panel.toggleAttribute("hidden", !selected);
       }
+      menusForm.hidden = targetId === "connection-form";
+      settingsContent.scrollTop = 0;
+      status.value = "";
+      updateSaveButton();
     });
   }
+  settingsContent.addEventListener("scroll", () => {
+    if (colorPopover.style.display !== "none") closeColorPopover();
+    closeAddItemDropdown();
+    closeItemSettingsPopover();
+    closeShortcutSettingsPopover();
+    closeShortcutPickPopover();
+  });
 }
 
 async function persistMenus(): Promise<void> {
@@ -1457,11 +1591,13 @@ async function persistMenus(): Promise<void> {
     },
     urlRules: savedRules,
     dynamicBookmarks,
+    staticBookmarks,
+    temporaryBookmarks,
     shortcuts,
     nativeShortcuts,
   });
   siteAuthorization.refresh(savedRules);
-  await pruneTemporaryValues(menus, rawBookmarkTree);
+  await pruneTemporaryValues(temporaryBookmarks);
   await browser.runtime.sendMessage({ type: "configSaved" });
   clearMenusDirty();
   const savedMsg = t("status.saved");
@@ -1890,6 +2026,14 @@ function initMenuSettingsDialog(): void {
     }
   });
 
+  menuSettingExpandAlignment.addEventListener("change", () => {
+    const menu = menus[activeMenuSettingsIndex];
+    if (menu) {
+      menu.expandAlignment = menuSettingExpandAlignment.value === "center" ? "center" : "edge";
+      markDirty();
+    }
+  });
+
   menuSettingFontSize.addEventListener("input", () => {
     const menu = menus[activeMenuSettingsIndex];
     const val = parseInt(menuSettingFontSize.value, 10);
@@ -1982,6 +2126,7 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
   menuSettingOrientation.value = menu.orientation;
   menuSettingExpandDirection.value = menu.expandDirection ?? "";
+  menuSettingExpandAlignment.value = menu.expandAlignment ?? "edge";
   menuSettingFontSize.value = String(barFs);
   menuSettingFontSizeAuto.checked = barFontAuto;
   menuSettingFontSize.disabled = barFontAuto;
@@ -2285,7 +2430,7 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     const tabModeField = itemSettingTabMode.parentElement;
     const changeActions = itemSettingChangeBtn.parentElement;
     if (tabModeField) tabModeField.style.display = isAction ? "none" : "";
-    if (changeActions) changeActions.style.display = (isAction || isDynamic || item.type === "temporary") ? "none" : "";
+    if (changeActions) changeActions.style.display = (isAction || isCustomBookmarkType(item.type)) ? "none" : "";
     itemSettingsActionTargets.style.display = "none";
 
     if (isMenuFold) {
@@ -2333,8 +2478,8 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
       return;
     }
 
-    if (item.type === "temporary") {
-      itemSettingsTitle.textContent = `📌 ${item.rename || t("temporary.defaultName")}`;
+    if (item.type === "temporary" || item.type === "static") {
+      itemSettingsTitle.textContent = `${customTargetIcon(item.type === "static" ? "static" : "temporary")} ${item.rename || customTargetName(item)}`;
       itemSettingRename.value = item.rename ?? "";
       itemSettingTabMode.value = item.tabMode ?? "";
       itemSettingsFolderControls.style.display = "none";
@@ -2394,6 +2539,7 @@ function openShortcutSettingsPopover(
   closeColorPopover();
   closeItemSettingsPopover();
   closeAddItemDropdown();
+  closeShortcutPickPopover();
 
   activeShortcutSettingsTarget = target;
   activeShortcutSettingsBtn = anchorEl;
@@ -2409,6 +2555,45 @@ function closeShortcutSettingsPopover(): void {
   shortcutSettingsPopover.style.display = "none";
   activeShortcutSettingsTarget = null;
   activeShortcutSettingsBtn = null;
+}
+
+// Pop-down shown under a row's "Change bookmark" button to pick a bookmark or a
+// dynamic bookmark, mirroring the add-item dropdown.
+function openShortcutPickPopover(target: ShortcutPickTarget, anchorEl: HTMLElement): void {
+  if (activeShortcutPickBtn === anchorEl && shortcutPickPopover.style.display !== "none") {
+    closeShortcutPickPopover();
+    return;
+  }
+  closeColorPopover();
+  closeItemSettingsPopover();
+  closeAddItemDropdown();
+  closeShortcutSettingsPopover();
+
+  activeShortcutPickTarget = target;
+  activeShortcutPickBtn = anchorEl;
+  shortcutPickDynamicBtn.hidden = dynamicBookmarks.length === 0;
+  shortcutPickStaticBtn.hidden = staticBookmarks.length === 0;
+  shortcutPickTemporaryBtn.hidden = temporaryBookmarks.length === 0;
+
+  positionPopover(shortcutPickPopover, anchorEl.getBoundingClientRect(), 180, "right");
+}
+
+function closeShortcutPickPopover(): void {
+  shortcutPickPopover.style.display = "none";
+  activeShortcutPickTarget = null;
+  activeShortcutPickBtn = null;
+}
+
+function buildChangeBookmarkButton(target: ShortcutPickTarget): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "action-btn shortcut-change-btn";
+  btn.textContent = t("shortcuts.changeBookmark");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openShortcutPickPopover(target, btn);
+  });
+  return btn;
 }
 
 function initSpaceBookmarkDialog(): void {
@@ -2475,10 +2660,7 @@ async function addSpaceBookmark(): Promise<void> {
 
 function initTemporaryBookmarkDialog(): void {
   addTemporaryBookmarkBtn.addEventListener("click", () => {
-    temporaryBookmarkResult.textContent = "";
-    delete temporaryBookmarkResult.dataset.state;
-    updateTemporaryBookmarkFolderDisplay();
-    temporaryBookmarkDialog.showModal();
+    openTemporaryMarkerDialog();
   });
   temporaryBookmarkClose.addEventListener("click", () => temporaryBookmarkDialog.close());
   temporaryBookmarkCloseBtn.addEventListener("click", () => temporaryBookmarkDialog.close());
@@ -2501,10 +2683,10 @@ function updateTemporaryBookmarkFolderDisplay(): void {
 }
 
 async function addTemporaryBookmark(): Promise<void> {
-  const uid = crypto.randomUUID();
-  const url = buildTemporaryDirectiveUrl({ id: uid });
-  const rawName = temporaryBookmarkName.value.trim();
-  const title = rawName || t("temporary.defaultName");
+  const definition = temporaryBookmarks.find(entry => entry.uid === temporaryBookmarkDefinition.value);
+  if (!definition) return;
+  const url = buildTemporaryDirectiveUrl({ id: definition.uid });
+  const title = definition.name || t("temporary.defaultName");
   try {
     await browser.bookmarks.create({
       title,
@@ -2549,6 +2731,151 @@ function dynamicBookmark({ action, url, title, current }) {
   return { newUrl: null };
 }
 `;
+
+function definitionsFor(type: CustomBookmarkType): Array<StaticBookmark | TemporaryBookmark | DynamicBookmark> {
+  return type === "static" ? staticBookmarks : type === "temporary" ? temporaryBookmarks : dynamicBookmarks;
+}
+
+function customTargetName(target: StoredMenuItem | StoredShortcut | StoredNativeShortcut): string {
+  if (!isCustomBookmarkType(target.type)) return "";
+  const uid = customBookmarkUid(target);
+  return definitionsFor(target.type).find(entry => entry.uid === uid)?.name || t(`${target.type}.defaultName`);
+}
+
+function customTargetUrl(type: CustomBookmarkType, uid: string): string | undefined {
+  return type === "static" ? staticBookmarks.find(entry => entry.uid === uid)?.url
+    : type === "temporary" ? temporaryValuesCache[uid] : dynamicValuesCache[uid]?.url;
+}
+
+function customTargetIcon(type: CustomBookmarkType): string {
+  return type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : "🔖";
+}
+
+function setCustomTarget(target: StoredShortcut | StoredNativeShortcut, type: CustomBookmarkType, uid: string): void {
+  delete target.path; delete target.url; delete target.title;
+  delete target.dynamicUid; delete target.staticUid; delete target.temporaryUid;
+  Object.assign(target, customBookmarkReference(type, uid));
+}
+
+function removeCustomDefinition(type: CustomBookmarkType, uid: string): void {
+  if (type === "static") staticBookmarks = staticBookmarks.filter(entry => entry.uid !== uid);
+  else if (type === "temporary") temporaryBookmarks = temporaryBookmarks.filter(entry => entry.uid !== uid);
+  else { dynamicBookmarks = dynamicBookmarks.filter(entry => entry.uid !== uid); collapsedDynamicUids.delete(uid); }
+  for (const menu of menus) menu.items = menu.items.filter(item => item.type !== type || customBookmarkUid(item) !== uid);
+  for (const target of [...shortcuts, ...nativeShortcuts]) {
+    if (target.type !== type || customBookmarkUid(target) !== uid) continue;
+    delete target.type; delete target.dynamicUid; delete target.staticUid; delete target.temporaryUid;
+  }
+  closeItemSettingsPopover(); closeShortcutSettingsPopover();
+  renderSimpleBookmarks(); renderDynamicList(); renderMenus(); renderShortcuts(); renderNativeShortcuts();
+  markDirty();
+}
+
+async function refreshTemporaryValues(): Promise<void> {
+  [temporaryValuesCache, temporaryNotesCache] = await Promise.all([loadTemporaryValues(), loadTemporaryNotes()]);
+  renderSimpleBookmarks();
+}
+
+function renderSimpleBookmarks(): void {
+  for (const type of ["static", "temporary"] as const) {
+    const list = type === "static" ? staticList : temporaryList;
+    list.replaceChildren();
+    const definitions = definitionsFor(type);
+    if (!definitions.length) {
+      const empty = document.createElement("p"); empty.className = "url-rule-empty-hint";
+      empty.textContent = t("customBookmarks.empty"); list.append(empty);
+    }
+    for (const definition of definitions) {
+      if (type === "temporary") {
+        list.append(renderTemporaryCard(definition));
+        continue;
+      }
+      if (!("url" in definition)) continue;
+      const card = document.createElement("article"); card.className = "menu-card custom-bookmark-card";
+      const header = document.createElement("header");
+      const name = document.createElement("input"); name.type = "text"; name.className = "dynamic-name-input";
+      name.value = definition.name; name.placeholder = t("static.defaultName"); name.ariaLabel = t("toolkit.temporaryName");
+      name.addEventListener("input", () => { definition.name = name.value; markDirty(); });
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "remove-item-btn menu-remove-btn";
+      remove.textContent = t("common.delete"); remove.addEventListener("click", () => removeCustomDefinition("static", definition.uid));
+      header.append(name, remove);
+      const body = document.createElement("div"); body.className = "custom-bookmark-body";
+      const url = document.createElement("input"); url.type = "text"; url.inputMode = "url"; url.value = definition.url; url.placeholder = "https://";
+      url.ariaLabel = t("customBookmarks.url");
+      url.addEventListener("input", () => { definition.url = url.value; markDirty(); });
+      body.append(url); card.append(header, body); list.append(card);
+    }
+  }
+}
+
+function renderTemporaryCard(definition: TemporaryBookmark): HTMLElement {
+  const card = document.createElement("article"); card.className = "menu-card dynamic-card temporary-bookmark-card";
+  const header = document.createElement("header");
+  const titleRow = document.createElement("div"); titleRow.className = "menu-title-row";
+  const name = document.createElement("input"); name.type = "text"; name.className = "dynamic-name-input";
+  name.value = definition.name; name.placeholder = t("temporary.defaultName"); name.ariaLabel = t("toolkit.temporaryName");
+  name.addEventListener("input", () => { definition.name = name.value; markDirty(); });
+  titleRow.append(name);
+  const headerActions = document.createElement("div"); headerActions.className = "dynamic-header-actions";
+  const remove = document.createElement("button"); remove.type = "button"; remove.className = "remove-item-btn menu-remove-btn";
+  remove.innerHTML = `${REMOVE_ICON_SVG}<span>${t("common.delete")}</span>`;
+  remove.addEventListener("click", () => removeCustomDefinition("temporary", definition.uid));
+  headerActions.append(remove);
+
+  const subtitle = document.createElement("div"); subtitle.className = "dynamic-subtitle-row";
+  const current = document.createElement("div"); current.className = "dynamic-current-group";
+  const currentLabel = document.createElement("span"); currentLabel.className = "dynamic-current-label";
+  currentLabel.textContent = `${t("dynamic.currentLabel")}:`; current.append(currentLabel);
+  const url = temporaryValuesCache[definition.uid];
+  const note = temporaryNotesCache[definition.uid];
+  appendCurrentUrl(current, url, note);
+  const actions = document.createElement("div"); actions.className = "dynamic-card-actions";
+  const clear = document.createElement("button"); clear.type = "button"; clear.className = "action-btn dynamic-add-btn";
+  clear.textContent = t("customBookmarks.clear"); clear.disabled = !url && !note;
+  clear.addEventListener("click", () => {
+    void clearTemporaryValue(definition.uid).then(refreshTemporaryValues).catch(error => { status.value = String(error); });
+  });
+  const marker = document.createElement("button"); marker.type = "button"; marker.className = "action-btn dynamic-add-btn";
+  marker.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>${t("dynamic.addToBookmarks")}</span>`;
+  marker.addEventListener("click", () => openTemporaryMarkerDialog(definition.uid));
+  actions.append(clear, marker); subtitle.append(current, actions);
+  header.append(titleRow, headerActions, subtitle); card.append(header);
+  if (note) {
+    const row = document.createElement("div"); row.className = "custom-bookmark-note";
+    const title = document.createElement("span"); title.textContent = t("customBookmarks.note");
+    const text = document.createElement("span"); text.textContent = note; row.append(title, text); card.append(row);
+  }
+  return card;
+}
+
+function openTemporaryMarkerDialog(uid?: string): void {
+  if (!temporaryBookmarks.length) { status.value = t("customBookmarks.noneCreated"); return; }
+  temporaryBookmarkDefinition.replaceChildren(...temporaryBookmarks.map(entry => {
+    const option = document.createElement("option"); option.value = entry.uid; option.textContent = entry.name || t("temporary.defaultName"); return option;
+  }));
+  temporaryBookmarkDefinition.value = uid || temporaryBookmarks[0]!.uid;
+  temporaryBookmarkResult.textContent = ""; delete temporaryBookmarkResult.dataset.state;
+  updateTemporaryBookmarkFolderDisplay(); temporaryBookmarkDialog.showModal();
+}
+
+function initCustomBookmarksPanel(): void {
+  const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-custom-bookmark-panel]"));
+  for (const tab of tabs) tab.addEventListener("click", () => {
+    for (const candidate of tabs) {
+      const selected = candidate === tab;
+      candidate.classList.toggle("is-active", selected); candidate.setAttribute("aria-selected", String(selected));
+      document.getElementById(candidate.dataset.customBookmarkPanel!)!.hidden = !selected;
+    }
+    if (tab.id === "temporary-tab") void refreshTemporaryValues();
+  });
+  element<HTMLButtonElement>("add-static-btn").addEventListener("click", () => {
+    staticBookmarks.push({ uid: crypto.randomUUID(), name: t("static.defaultName"), url: "" }); renderSimpleBookmarks(); markDirty();
+  });
+  element<HTMLButtonElement>("add-temporary-btn").addEventListener("click", () => {
+    temporaryBookmarks.push({ uid: crypto.randomUUID(), name: t("temporary.defaultName") }); renderSimpleBookmarks(); markDirty();
+  });
+  document.getElementById("custom-bookmarks-tab")?.addEventListener("click", () => { void refreshTemporaryValues(); void refreshDynamicValues(); });
+}
 
 function createDynamicBookmark(): DynamicBookmark {
   return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), code: DEFAULT_DYNAMIC_CODE };
@@ -2663,6 +2990,49 @@ function renderDynamicUrlRulesContent(db: DynamicBookmark): void {
   }
 }
 
+function appendCurrentUrl(parent: HTMLElement, url: string | undefined, title?: string): void {
+  if (url) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "dynamic-current-chip";
+    const fullTooltip = `${title ? `${title}\n` : ""}${url}\n(${t("dynamic.copyTooltip")})`;
+    chip.title = fullTooltip;
+    chip.setAttribute("aria-label", fullTooltip);
+
+    const copyIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    const checkIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+    const displayTitle = url;
+    chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
+    const titleSpan = chip.querySelector(".dynamic-current-title") as HTMLElement;
+    titleSpan.textContent = displayTitle;
+
+    let resetTimer: ReturnType<typeof setTimeout> | undefined;
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void navigator.clipboard.writeText(url).then(() => {
+        chip.classList.add("is-copied");
+        chip.innerHTML = `${checkIcon}<span class="dynamic-current-title"></span>`;
+        (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent = t("dynamic.copied");
+        if (resetTimer) clearTimeout(resetTimer);
+        resetTimer = setTimeout(() => {
+          chip.classList.remove("is-copied");
+          chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
+          (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent = displayTitle;
+        }, 1500);
+      });
+    });
+
+    parent.append(chip);
+  } else {
+    const emptySpan = document.createElement("span");
+    emptySpan.className = "dynamic-current-empty";
+    emptySpan.textContent = t("dynamic.noValue");
+    parent.append(emptySpan);
+  }
+
+}
+
 function renderDynamicCard(db: DynamicBookmark): HTMLElement {
   const isCollapsed = collapsedDynamicUids.has(db.uid);
   const card = document.createElement("article");
@@ -2721,14 +3091,7 @@ function renderDynamicCard(db: DynamicBookmark): HTMLElement {
   del.setAttribute("aria-label", t("common.delete"));
   del.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("common.delete")}</span>`;
   del.addEventListener("click", () => {
-    collapsedDynamicUids.delete(db.uid);
-    dynamicBookmarks = dynamicBookmarks.filter((d) => d.uid !== db.uid);
-    for (const menu of menus) {
-      menu.items = menu.items.filter((i) => !(i.type === "dynamic" && i.dynamicUid === db.uid));
-    }
-    renderDynamicList();
-    renderMenus();
-    markDirty();
+    removeCustomDefinition("dynamic", db.uid);
   });
 
   headerActions.append(settingsBtn, del);
@@ -2745,45 +3108,7 @@ function renderDynamicCard(db: DynamicBookmark): HTMLElement {
   currentLabel.textContent = `${t("dynamic.currentLabel")}:`;
   currentGroup.append(currentLabel);
 
-  if (live?.url) {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "dynamic-current-chip";
-    const fullTooltip = `${live.title ? `${live.title}\n` : ""}${live.url}\n(${t("dynamic.copyTooltip")})`;
-    chip.title = fullTooltip;
-    chip.setAttribute("aria-label", fullTooltip);
-
-    const copyIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-    const checkIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-
-    const displayTitle = live.url;
-    chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
-    const titleSpan = chip.querySelector(".dynamic-current-title") as HTMLElement;
-    titleSpan.textContent = displayTitle;
-
-    let resetTimer: ReturnType<typeof setTimeout> | undefined;
-    chip.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void navigator.clipboard.writeText(live.url).then(() => {
-        chip.classList.add("is-copied");
-        chip.innerHTML = `${checkIcon}<span class="dynamic-current-title"></span>`;
-        (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent = t("dynamic.copied");
-        if (resetTimer) clearTimeout(resetTimer);
-        resetTimer = setTimeout(() => {
-          chip.classList.remove("is-copied");
-          chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
-          (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent = displayTitle;
-        }, 1500);
-      });
-    });
-
-    currentGroup.append(chip);
-  } else {
-    const emptySpan = document.createElement("span");
-    emptySpan.className = "dynamic-current-empty";
-    emptySpan.textContent = t("dynamic.noValue");
-    currentGroup.append(emptySpan);
-  }
+  appendCurrentUrl(currentGroup, live?.url, live?.title);
 
   const actionsGroup = document.createElement("div");
   actionsGroup.className = "dynamic-card-actions";
@@ -2832,20 +3157,21 @@ function renderDynamicCard(db: DynamicBookmark): HTMLElement {
   return card;
 }
 
-function openPickDynamicBookmarkDialog(target: number | { shortcutSlot: string } | { nativeShortcutId: string }): void {
+function openPickCustomBookmarkDialog(type: CustomBookmarkType, target: number | { shortcutSlot: string } | { nativeShortcutId: string }): void {
   if (typeof target === "number") {
     if (target < 0 || target >= menus.length) return;
     const menu = menus[target];
     if (!menu) return;
   }
 
-  if (dynamicBookmarks.length === 0) {
-    status.value = t("dynamic.noneCreated");
+  const definitions = definitionsFor(type);
+  if (definitions.length === 0) {
+    status.value = t("customBookmarks.noneCreated");
     return;
   }
-  pickDynamicTitle.textContent = t("dynamic.pickTitle");
+  pickDynamicTitle.textContent = t("customBookmarks.pickTitle");
   pickDynamicList.replaceChildren();
-  for (const db of dynamicBookmarks) {
+  for (const db of definitions) {
     const itemBtn = document.createElement("button");
     itemBtn.type = "button";
     itemBtn.className = "pick-menu-item";
@@ -2854,16 +3180,15 @@ function openPickDynamicBookmarkDialog(target: number | { shortcutSlot: string }
     info.className = "pick-menu-item-info";
     const icon = document.createElement("span");
     icon.className = "pick-menu-item-icon";
-    icon.textContent = "🜂";
+    icon.textContent = customTargetIcon(type);
     const title = document.createElement("span");
     title.className = "pick-menu-item-title";
-    title.textContent = db.name;
+    title.textContent = db.name || t(`${type}.defaultName`);
     info.append(icon, title);
 
     const meta = document.createElement("span");
     meta.className = "pick-menu-item-meta";
-    const liveVal = dynamicValuesCache[db.uid];
-    meta.textContent = liveVal?.url || t("dynamic.noValueShort");
+    meta.textContent = customTargetUrl(type, db.uid) || t("dynamic.noValueShort");
 
     itemBtn.append(info, meta);
     itemBtn.addEventListener("click", () => {
@@ -2872,8 +3197,7 @@ function openPickDynamicBookmarkDialog(target: number | { shortcutSlot: string }
         if (menu) {
           menu.items.push({
             uid: crypto.randomUUID(),
-            type: "dynamic",
-            dynamicUid: db.uid,
+            ...customBookmarkReference(type, db.uid),
           });
           renderMenus();
           markDirty();
@@ -2886,16 +3210,11 @@ function openPickDynamicBookmarkDialog(target: number | { shortcutSlot: string }
         const slot = target.shortcutSlot;
         const existing = shortcuts.find((s) => s.slot === slot);
         if (existing) {
-          existing.type = "dynamic";
-          existing.dynamicUid = db.uid;
-          delete existing.path;
-          delete existing.url;
-          delete existing.title;
+          setCustomTarget(existing, type, db.uid);
         } else {
           shortcuts.push({
             slot,
-            type: "dynamic",
-            dynamicUid: db.uid,
+            ...customBookmarkReference(type, db.uid),
             tabMode: "replace",
           });
         }
@@ -2907,11 +3226,7 @@ function openPickDynamicBookmarkDialog(target: number | { shortcutSlot: string }
         const id = target.nativeShortcutId;
         const existing = nativeShortcuts.find((s) => s.id === id);
         if (existing) {
-          existing.type = "dynamic";
-          existing.dynamicUid = db.uid;
-          delete existing.path;
-          delete existing.url;
-          delete existing.title;
+          setCustomTarget(existing, type, db.uid);
           renderNativeShortcuts();
           markDirty();
         }
@@ -3095,36 +3410,46 @@ function initShortcutsPanel(): void {
     }
   });
 
-  shortcutSettingChangeBtn.addEventListener("click", () => {
-    if (!activeShortcutSettingsTarget) return;
-    const target = activeShortcutSettingsTarget;
-    closeShortcutSettingsPopover();
+  shortcutPickBookmarkBtn.addEventListener("click", () => {
+    const target = activeShortcutPickTarget;
+    closeShortcutPickPopover();
+    if (!target) return;
+    if (target.kind === "slot") void openBookmarkPicker("pickShortcut", -1, -1, target.slot);
+    else void openBookmarkPicker("pickNativeShortcut", -1, -1, "", target.id);
+  });
 
-    if ("slot" in target) {
-      if (target.type === "dynamic") {
-        openPickDynamicBookmarkDialog({ shortcutSlot: target.slot });
-      } else {
-        void openBookmarkPicker("pickShortcut", -1, -1, target.slot);
-      }
-    } else {
-      if (target.type === "dynamic") {
-        openPickDynamicBookmarkDialog({ nativeShortcutId: target.id });
-      } else {
-        void openBookmarkPicker("pickNativeShortcut", -1, -1, "", target.id);
-      }
+  for (const [button, type] of [[shortcutPickStaticBtn, "static"], [shortcutPickTemporaryBtn, "temporary"], [shortcutPickDynamicBtn, "dynamic"]] as const) {
+    button.addEventListener("click", () => {
+      const target = activeShortcutPickTarget;
+      closeShortcutPickPopover();
+      if (!target) return;
+      if (target.kind === "slot") openPickCustomBookmarkDialog(type, { shortcutSlot: target.slot });
+      else openPickCustomBookmarkDialog(type, { nativeShortcutId: target.id });
+    });
+  }
+
+  document.addEventListener("pointerdown", (e) => {
+    const target = e.target as Node;
+    if (
+      shortcutSettingsPopover.style.display !== "none" &&
+      !shortcutSettingsPopover.contains(target) &&
+      !(activeShortcutSettingsBtn && activeShortcutSettingsBtn.contains(target))
+    ) {
+      closeShortcutSettingsPopover();
+    }
+    if (
+      shortcutPickPopover.style.display !== "none" &&
+      !shortcutPickPopover.contains(target) &&
+      !(activeShortcutPickBtn && activeShortcutPickBtn.contains(target))
+    ) {
+      closeShortcutPickPopover();
     }
   });
 
-  document.addEventListener("pointerdown", (e) => {
-    if (shortcutSettingsPopover.style.display === "none") return;
-    const target = e.target as Node;
-    if (
-      shortcutSettingsPopover.contains(target) ||
-      (activeShortcutSettingsBtn && activeShortcutSettingsBtn.contains(target))
-    ) {
-      return;
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && shortcutPickPopover.style.display !== "none") {
+      closeShortcutPickPopover();
     }
-    closeShortcutSettingsPopover();
   });
 }
 
@@ -3182,7 +3507,7 @@ function renderNativeShortcuts(): void {
     const actionsCol = document.createElement("div");
     actionsCol.className = "shortcut-actions-col";
 
-    const hasTarget = item.type === "dynamic" ? Boolean(item.dynamicUid) : Boolean(item.path || item.url);
+    const hasTarget = isCustomBookmarkType(item.type) ? Boolean(customBookmarkUid(item)) : Boolean(item.path || item.url);
 
     if (hasTarget) {
       const icon = document.createElement("span");
@@ -3191,72 +3516,28 @@ function renderNativeShortcuts(): void {
       const title = document.createElement("span");
       title.className = "shortcut-target-title";
 
-      const urlSpan = document.createElement("span");
-      urlSpan.className = "shortcut-target-url";
-
-      if (item.type === "dynamic") {
-        icon.textContent = "🜂";
-        const db = dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
-        title.textContent = db?.name || t("dynamic.defaultName");
-        const liveVal = item.dynamicUid ? dynamicValuesCache[item.dynamicUid] : undefined;
-        urlSpan.textContent = liveVal?.url || "";
-        urlSpan.title = liveVal?.url || "";
+      if (isCustomBookmarkType(item.type)) {
+        icon.textContent = customTargetIcon(item.type);
+        title.textContent = customTargetName(item);
       } else {
         icon.textContent = "🔖";
         let displayTitle = item.title || "";
-        let displayUrl = item.url || "";
         if (item.path) {
           const rootPrefix = bookmarkRootPrefix;
           const effectivePath = combineRootAndItemPath(rootPrefix, item.path);
           const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, item.url);
           if (node?.title) displayTitle = node.title;
-          if (node?.url) displayUrl = node.url;
         }
         title.textContent =
           displayTitle || (item.path ? item.path[item.path.length - 1] || "Bookmark" : "Bookmark");
-        urlSpan.textContent = displayUrl;
-        urlSpan.title = displayUrl;
       }
 
-      targetCol.append(icon, title, urlSpan);
-
-      // Settings button
-      const settingsBtn = document.createElement("button");
-      settingsBtn.type = "button";
-      settingsBtn.className = "item-settings-btn";
-      settingsBtn.title = t("itemSettings.title");
-      settingsBtn.innerHTML = SETTINGS_ICON_SVG;
-      settingsBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openShortcutSettingsPopover(item, item.key || t("itemSettings.title"), settingsBtn);
-      });
-
-      actionsCol.append(settingsBtn);
+      targetCol.append(icon, title);
     } else {
       const emptyLabel = document.createElement("span");
       emptyLabel.className = "shortcut-empty-label";
       emptyLabel.textContent = t("shortcuts.emptyTarget");
       targetCol.append(emptyLabel);
-
-      const pickBookmarkBtn = document.createElement("button");
-      pickBookmarkBtn.type = "button";
-      pickBookmarkBtn.className = "action-btn";
-      pickBookmarkBtn.textContent = t("shortcuts.pickBookmark");
-      pickBookmarkBtn.addEventListener("click", () => {
-        void openBookmarkPicker("pickNativeShortcut", -1, -1, "", item.id);
-      });
-      actionsCol.append(pickBookmarkBtn);
-
-      if (dynamicBookmarks.length > 0) {
-        const pickDynamicBtn = document.createElement("button");
-        pickDynamicBtn.type = "button";
-        pickDynamicBtn.className = "action-btn";
-        pickDynamicBtn.textContent = t("shortcuts.pickDynamic");
-        pickDynamicBtn.addEventListener("click", () => {
-          openPickDynamicBookmarkDialog({ nativeShortcutId: item.id });
-        });
-        actionsCol.append(pickDynamicBtn);
-      }
     }
 
     // Delete button (matches menu item remove-item-btn)
@@ -3275,7 +3556,22 @@ function renderNativeShortcuts(): void {
         markDirty();
       }
     });
+
+    // Actions left→right: delete, settings (only when a target is set), change bookmark (always rightmost).
     actionsCol.append(deleteBtn);
+    if (hasTarget) {
+      const settingsBtn = document.createElement("button");
+      settingsBtn.type = "button";
+      settingsBtn.className = "item-settings-btn";
+      settingsBtn.title = t("itemSettings.title");
+      settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+      settingsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openShortcutSettingsPopover(item, item.key || t("itemSettings.title"), settingsBtn);
+      });
+      actionsCol.append(settingsBtn);
+    }
+    actionsCol.append(buildChangeBookmarkButton({ kind: "native", id: item.id }));
 
     row.append(keyCol, targetCol, actionsCol);
     nativeShortcutsList.append(row);
@@ -3322,8 +3618,8 @@ function renderShortcuts(): void {
 
     if (
       target &&
-      (target.type === "dynamic"
-        ? Boolean(target.dynamicUid)
+      (isCustomBookmarkType(target.type)
+        ? Boolean(customBookmarkUid(target))
         : Boolean(target.path || target.url))
     ) {
       const icon = document.createElement("span");
@@ -3332,34 +3628,23 @@ function renderShortcuts(): void {
       const title = document.createElement("span");
       title.className = "shortcut-target-title";
 
-      const urlSpan = document.createElement("span");
-      urlSpan.className = "shortcut-target-url";
-
-      if (target.type === "dynamic") {
-        icon.textContent = "🜂";
-        const db = dynamicBookmarks.find((d) => d.uid === target.dynamicUid);
-        title.textContent = db?.name || t("dynamic.defaultName");
-        const liveVal = target.dynamicUid ? dynamicValuesCache[target.dynamicUid] : undefined;
-        urlSpan.textContent = liveVal?.url || "";
-        urlSpan.title = liveVal?.url || "";
+      if (isCustomBookmarkType(target.type)) {
+        icon.textContent = customTargetIcon(target.type);
+        title.textContent = customTargetName(target);
       } else {
         icon.textContent = "🔖";
         let displayTitle = target.title || "";
-        let displayUrl = target.url || "";
         if (target.path) {
           const rootPrefix = bookmarkRootPrefix;
           const effectivePath = combineRootAndItemPath(rootPrefix, target.path);
           const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, target.url);
           if (node?.title) displayTitle = node.title;
-          if (node?.url) displayUrl = node.url;
         }
         title.textContent =
           displayTitle || (target.path ? target.path[target.path.length - 1] || "Bookmark" : "Bookmark");
-        urlSpan.textContent = displayUrl;
-        urlSpan.title = displayUrl;
       }
 
-      targetCol.append(icon, title, urlSpan);
+      targetCol.append(icon, title);
 
       // Settings button
       const settingsBtn = document.createElement("button");
@@ -3391,33 +3676,16 @@ function renderShortcuts(): void {
         }
       });
 
-      actionsCol.append(settingsBtn, clearBtn);
+      // Actions left→right: clear, settings, change bookmark.
+      actionsCol.append(clearBtn, settingsBtn);
     } else {
       const emptyLabel = document.createElement("span");
       emptyLabel.className = "shortcut-empty-label";
       emptyLabel.textContent = t("shortcuts.emptyTarget");
       targetCol.append(emptyLabel);
-
-      const pickBookmarkBtn = document.createElement("button");
-      pickBookmarkBtn.type = "button";
-      pickBookmarkBtn.className = "action-btn";
-      pickBookmarkBtn.textContent = t("shortcuts.pickBookmark");
-      pickBookmarkBtn.addEventListener("click", () => {
-        void openBookmarkPicker("pickShortcut", -1, -1, slotKey);
-      });
-      actionsCol.append(pickBookmarkBtn);
-
-      if (dynamicBookmarks.length > 0) {
-        const pickDynamicBtn = document.createElement("button");
-        pickDynamicBtn.type = "button";
-        pickDynamicBtn.className = "action-btn";
-        pickDynamicBtn.textContent = t("shortcuts.pickDynamic");
-        pickDynamicBtn.addEventListener("click", () => {
-          openPickDynamicBookmarkDialog({ shortcutSlot: slotKey });
-        });
-        actionsCol.append(pickDynamicBtn);
-      }
     }
+    // "Change bookmark" is always present and stays rightmost.
+    actionsCol.append(buildChangeBookmarkButton({ kind: "slot", slot: slotKey }));
 
     row.append(slotCol, targetCol, actionsCol);
     shortcutsList.append(row);
@@ -3529,22 +3797,14 @@ function initAddItemPopover(): void {
     addActionDialog.showModal();
   });
 
-  addPopoverDynamicBtn.addEventListener("click", () => {
-    const menuIdx = activeAddMenuIndex;
-    closeAddItemDropdown();
-    if (menuIdx < 0 || menuIdx >= menus.length) return;
-    openPickDynamicBookmarkDialog(menuIdx);
-  });
-
-  addPopoverTemporaryBtn.addEventListener("click", () => {
-    const menuIdx = activeAddMenuIndex;
-    closeAddItemDropdown();
-    const menu = menus[menuIdx];
-    if (!menu) return;
-    menu.items.push({ uid: crypto.randomUUID(), type: "temporary" });
-    renderMenus();
-    markDirty();
-  });
+  for (const [button, type] of [[addPopoverStaticBtn, "static"], [addPopoverTemporaryBtn, "temporary"], [addPopoverDynamicBtn, "dynamic"]] as const) {
+    button.addEventListener("click", () => {
+      const menuIdx = activeAddMenuIndex;
+      closeAddItemDropdown();
+      if (menuIdx < 0 || menuIdx >= menus.length) return;
+      openPickCustomBookmarkDialog(type, menuIdx);
+    });
+  }
 
   document.addEventListener("pointerdown", (e) => {
     if (addItemPopover.style.display === "none") return;
@@ -3979,9 +4239,8 @@ function renderMenus(): void {
             return row;
           }
 
-          if (item.type === "dynamic" || item.type === "temporary") {
-            const db = dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
-            const rawLabel = item.type === "temporary" ? t("temporary.defaultName") : db?.name || t("dynamic.defaultName");
+          if (isCustomBookmarkType(item.type)) {
+            const rawLabel = customTargetName(item);
             const customRename = item.rename;
 
             const label = document.createElement("span");
@@ -3992,15 +4251,16 @@ function renderMenus(): void {
             if (customRename) {
               titleSpan.textContent = `${customRename} (${rawLabel.trim()})`;
             } else {
-              titleSpan.textContent = `${item.type === "temporary" ? "📌" : "🜂"} ${rawLabel.trim()}`;
+              titleSpan.textContent = `${customTargetIcon(item.type)} ${rawLabel.trim()}`;
             }
-            const liveUrl = db?.uid ? dynamicValuesCache[db.uid]?.url : undefined;
+            const targetUid = customBookmarkUid(item);
+            const liveUrl = targetUid ? customTargetUrl(item.type, targetUid) : undefined;
             titleSpan.title = liveUrl ? `${rawLabel.trim()}\n${liveUrl}` : rawLabel.trim();
             label.appendChild(titleSpan);
 
             const dynamicTag = document.createElement("span");
             dynamicTag.className = "item-tag item-tag-dynamic";
-            dynamicTag.textContent = item.type === "temporary" ? t("menu.addTemporary") : t("section.dynamic");
+            dynamicTag.textContent = t(item.type === "static" ? "menu.addStatic" : item.type === "temporary" ? "menu.addTemporary" : "section.dynamic");
             label.appendChild(dynamicTag);
 
 
@@ -4582,15 +4842,15 @@ function exportSettings(): void {
     enrichMenuItems(menu.items, rawBookmarkTree);
   }
 
-  // Export only the menus, in a portable shape: each item keeps its own uid,
-  // bookmark path, URL, type, and user settings. Instance label, desktop address,
-  // and language remain per-install.
+  // Runtime URLs/notes stay local; only definitions and references are portable.
   const exportData: ExportedSettingsData = {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
     ...(defaultUrlRuleUid ? { defaultUrlRuleUid } : {}),
     ...(dynamicBookmarks.length > 0 ? { dynamicBookmarks: structuredClone(dynamicBookmarks) } : {}),
+    ...(staticBookmarks.length > 0 ? { staticBookmarks: structuredClone(staticBookmarks) } : {}),
+    ...(temporaryBookmarks.length > 0 ? { temporaryBookmarks: structuredClone(temporaryBookmarks) } : {}),
     ...(shortcuts.length > 0 ? { shortcuts: structuredClone(shortcuts) } : {}),
     ...(nativeShortcuts.length > 0 ? { nativeShortcuts: structuredClone(nativeShortcuts) } : {}),
     menus: menus.map((menu) => ({
@@ -4604,6 +4864,7 @@ function exportSettings(): void {
       ...(menu.color ? { color: menu.color } : {}),
       ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
       ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
+      ...(menu.expandAlignment ? { expandAlignment: menu.expandAlignment } : {}),
       ...(menu.attachmentMode ? { attachmentMode: menu.attachmentMode } : {}),
       ...(menu.onTopMode ? { onTopMode: menu.onTopMode } : {}),
       ...(menu.tabMode ? { tabMode: menu.tabMode } : {}),
@@ -4631,10 +4892,12 @@ function exportSettings(): void {
           } satisfies ExportedMenuItem;
         }
 
-        if (item.type === "temporary") {
+        if (item.type === "temporary" || item.type === "static") {
           return {
             uid: item.uid,
-            type: "temporary",
+            type: item.type,
+            ...(item.staticUid ? { staticUid: item.staticUid } : {}),
+            ...(item.temporaryUid ? { temporaryUid: item.temporaryUid } : {}),
             ...(item.rename ? { rename: item.rename } : {}),
             ...(item.color ? { color: item.color } : {}),
             ...(item.tabMode ? { tabMode: item.tabMode } : {}),
@@ -4736,7 +4999,7 @@ async function importSettings(file: File): Promise<void> {
           ? itemRecord.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
           : undefined;
 
-        if (type === "menusToggle" || type === "browserAction") {
+        if (type === "menusToggle" || type === "browserAction" || type === "static" || type === "temporary") {
           const action = normalizeStoredMenuItem(itemRecord);
           if (action) items.push(action);
           continue;
@@ -4793,9 +5056,11 @@ async function importSettings(file: File): Promise<void> {
       if (normalizedMenu) importedMenus.push(normalizedMenu);
     }
 
-    // Only the menus, URL rules, and shortcuts are imported; instance label, desktop address, attachment
-    // mode, always-on-top, and language keep their current values.
+    // Installation settings stay local when importing portable bookmark definitions.
     menus = importedMenus;
+    staticBookmarks = normalizeStaticBookmarks(parsed.staticBookmarks);
+    temporaryBookmarks = normalizeTemporaryBookmarks(parsed.temporaryBookmarks);
+    renderSimpleBookmarks();
     if (Array.isArray(parsed.urlRules)) {
       urlRules = normalizeUrlRules(parsed.urlRules);
       renderUrlRules();
@@ -4819,6 +5084,7 @@ async function importSettings(file: File): Promise<void> {
           },
         ];
       });
+      for (const db of dynamicBookmarks) collapsedDynamicUids.add(db.uid);
       renderDynamicList();
     }
     if (Array.isArray(parsed.shortcuts)) {
@@ -4829,11 +5095,13 @@ async function importSettings(file: File): Promise<void> {
         return [
           {
             slot: record.slot,
-            type: record.type === "dynamic" ? "dynamic" : "bookmark",
+            type: isCustomBookmarkType(record.type) ? record.type : "bookmark",
             ...(Array.isArray(record.path) ? { path: record.path.filter((p): p is string => typeof p === "string") } : {}),
             ...(typeof record.url === "string" ? { url: record.url } : {}),
             ...(typeof record.title === "string" ? { title: record.title } : {}),
             ...(typeof record.dynamicUid === "string" ? { dynamicUid: record.dynamicUid } : {}),
+            ...(typeof record.staticUid === "string" ? { staticUid: record.staticUid } : {}),
+            ...(typeof record.temporaryUid === "string" ? { temporaryUid: record.temporaryUid } : {}),
             ...(record.tabMode === "newTab" || record.tabMode === "replace" ? { tabMode: record.tabMode } : {}),
           },
         ];
@@ -4849,11 +5117,13 @@ async function importSettings(file: File): Promise<void> {
           {
             id: record.id,
             key: typeof record.key === "string" ? record.key : "",
-            type: record.type === "dynamic" ? "dynamic" : "bookmark",
+            type: isCustomBookmarkType(record.type) ? record.type : "bookmark",
             ...(Array.isArray(record.path) ? { path: record.path.filter((p): p is string => typeof p === "string") } : {}),
             ...(typeof record.url === "string" ? { url: record.url } : {}),
             ...(typeof record.title === "string" ? { title: record.title } : {}),
             ...(typeof record.dynamicUid === "string" ? { dynamicUid: record.dynamicUid } : {}),
+            ...(typeof record.staticUid === "string" ? { staticUid: record.staticUid } : {}),
+            ...(typeof record.temporaryUid === "string" ? { temporaryUid: record.temporaryUid } : {}),
             ...(record.tabMode === "newTab" || record.tabMode === "replace" ? { tabMode: record.tabMode } : {}),
           },
         ];
@@ -4899,10 +5169,6 @@ importFileInput.addEventListener("change", () => {
 
 // Chrome Sync Toggle
 if (syncEnabledToggle) {
-  void loadSyncEnabled().then((enabled) => {
-    syncEnabledToggle.checked = enabled;
-  });
-
   syncEnabledToggle.addEventListener("change", () => {
     markConnectionDirty();
   });
