@@ -48,8 +48,7 @@ button {
   outline-offset: -2px;
 }
 
-body[data-view="settings"],
-body[data-view="temporary-confirm"] {
+body[data-view="settings"] {
   color-scheme: light;
   color: #172033;
   background: #f4f6fb;
@@ -85,8 +84,7 @@ body[data-view="temporary-confirm"] {
   gap: 8px;
 }
 
-.settings-inline-row input,
-.temporary-confirm-form input {
+.settings-inline-row input {
   flex: 1 1 auto;
   min-height: 34px;
   box-sizing: border-box;
@@ -99,14 +97,12 @@ body[data-view="temporary-confirm"] {
   font-family: inherit;
 }
 
-.settings-inline-row input:focus,
-.temporary-confirm-form input:focus {
+.settings-inline-row input:focus {
   outline: 2px solid #3b82f6;
   outline-offset: -1px;
 }
 
-.settings-inline-row button,
-.temporary-confirm-actions button[type="submit"] {
+.settings-inline-row button {
   min-height: 34px;
   padding: 0 16px;
   box-sizing: border-box;
@@ -120,71 +116,13 @@ body[data-view="temporary-confirm"] {
   font-family: inherit;
 }
 
-.settings-inline-row button:hover:not(:disabled),
-.temporary-confirm-actions button[type="submit"]:hover:not(:disabled) {
+.settings-inline-row button:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.settings-inline-row button:disabled,
-.temporary-confirm-actions button:disabled {
+.settings-inline-row button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-body[data-view="temporary-confirm"] #app,
-.temporary-confirm-form {
-  height: 100%;
-}
-
-.temporary-confirm-form {
-  gap: 12px;
-}
-
-.temporary-confirm-form h1,
-.temporary-confirm-form p {
-  margin: 0;
-}
-
-.temporary-confirm-form h1 {
-  font-size: 16px;
-}
-
-.temporary-confirm-form p {
-  font-size: 13px;
-}
-
-.temporary-confirm-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.temporary-confirm-form input {
-  width: 100%;
-}
-
-.temporary-confirm-status {
-  min-height: 16px;
-  color: #991b1b;
-}
-
-.temporary-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: auto;
-}
-
-.temporary-confirm-actions button[type="button"] {
-  min-height: 34px;
-  padding: 0 16px;
-  border: 1px solid #cbd2df;
-  border-radius: 6px;
-  background: white;
-  color: #172033;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
 }
 
 .settings-language-row {

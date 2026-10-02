@@ -1,7 +1,7 @@
 import browser, { type Runtime } from "webextension-polyfill";
 import menuStyles from "@browserail/menu-ui/styles.css?inline";
 import hostStyles from "./styles.css?inline";
-import type { BrowserMenuState, MenuReply } from "./messages";
+import type { BrowserMenuState, MenuReply, TemporaryConfirmationResult } from "./messages";
 import { mountBrowserMenu, type MenuCommand } from "./surface";
 
 function createPageController() {
@@ -13,7 +13,7 @@ function createPageController() {
   let container: HTMLElement | undefined;
   let reconnect: ReturnType<typeof setTimeout> | undefined;
   let suspended = false;
-  const pending = new Map<number, { resolve(): void; reject(error: unknown): void }>();
+  const pending = new Map<number, { resolve(result?: TemporaryConfirmationResult): void; reject(error: unknown): void }>();
   const menus = new Map<string, ReturnType<typeof mountBrowserMenu>>();
   let rendering = Promise.resolve();
   let stateRevision = 0;
@@ -40,7 +40,7 @@ function createPageController() {
       controller.signal.addEventListener("abort", cancel, { once: true });
     });
   }
-  function send(command: MenuCommand): Promise<void> {
+  function send(command: MenuCommand): Promise<TemporaryConfirmationResult | undefined> {
     if (!port) return Promise.reject(new Error("Extension is disconnected"));
     const id = ++nextId;
     return new Promise((resolve, reject) => {
@@ -87,7 +87,7 @@ function createPageController() {
       if (message.type === "reply") {
         const request = pending.get(message.id);
         pending.delete(message.id);
-        if (message.error) request?.reject(new Error(message.error)); else request?.resolve();
+        if (message.error) request?.reject(new Error(message.error)); else request?.resolve(message.result);
         return;
       }
       if (message.type !== "state") return;

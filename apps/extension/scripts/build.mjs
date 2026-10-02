@@ -32,7 +32,10 @@ await build({
     emptyOutDir: false,
     outDir,
     rollupOptions: {
-      input: resolve(root, "options.html"),
+      input: {
+        options: resolve(root, "options.html"),
+        temporaryConfirm: resolve(root, "temporary-confirm.html"),
+      },
     },
   },
 });

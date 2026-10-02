@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrowseRail</title>
+    <style>
+      body { width: 420px; }
+      body[data-view="temporary-confirm"].temporary-confirm-popup #app,
+      body.temporary-confirm-popup .temporary-confirm-form { height: auto; }
+    </style>
+  </head>
+  <body data-view="temporary-confirm" class="temporary-confirm-popup">
+    <div id="app"></div>
+    <script type="module" src="/src/temporary-confirm.ts"></script>
+  </body>
+</html>

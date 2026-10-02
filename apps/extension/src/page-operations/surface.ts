@@ -1,7 +1,6 @@
 import { t } from "@browserail/i18n";
 import { mountBar, barDimensions, type MenuActions, type PopupSession } from "@browserail/menu-ui";
-import type { BrowserMenu, MenuRequest } from "./messages";
-import { openDialog } from "./dialog";
+import type { BrowserMenu, MenuRequest, TemporaryConfirmationResult } from "./messages";
 import { openBrowserPopup } from "./popup";
 import { mountBrowserCustomization } from "./customization";
 import { placementPoint } from "./placement";
@@ -10,7 +9,7 @@ type WithoutId<T> = T extends unknown ? Omit<T, "id"> : never;
 export type MenuCommand = WithoutId<MenuRequest>;
 const FONT = 'Segoe UI, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
 
-export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, send: (command: MenuCommand) => Promise<void>) {
+export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, send: (command: MenuCommand) => Promise<TemporaryConfirmationResult | undefined>) {
   const doc = container.ownerDocument;
   const viewport = doc.defaultView!;
   const lifetime = new AbortController();
@@ -19,34 +18,28 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
   wrapper.append(root); container.append(wrapper);
   let state = initial;
   let popup: PopupSession | undefined;
-  let dialog: AbortController | undefined;
   let editor: ReturnType<typeof mountBrowserCustomization> | undefined;
   const report = (action: Promise<void>): void => {
     void action.catch(error => { if (!lifetime.signal.aborted) { wrapper.title = String(error); root.dataset.error = ""; } });
   };
   const closePopup = async (): Promise<void> => { const previous = popup; popup = undefined; await previous?.close(); };
-  async function ask(title: string, fields: Parameters<typeof openDialog>[3], hint?: string): Promise<string[] | undefined> {
-    dialog?.abort(); dialog = new AbortController();
-    const current = dialog;
-    const abort = (): void => current.abort();
-    lifetime.signal.addEventListener("abort", abort, { once: true });
-    try { return await openDialog(container, current.signal, title, fields, hint); }
-    finally { lifetime.signal.removeEventListener("abort", abort); if (dialog === current) dialog = undefined; }
-  }
   const actions: MenuActions = {
     async invokeAction(actionUid) { await closePopup(); await send({ type: "invoke", menuUid: state.view.uid, actionUid }); },
     async requestToggleFold() { await closePopup(); await send({ type: "fold", menuUid: state.view.uid }); },
     async requestTemporarySave({ uid }) {
       await closePopup();
-      const answer = await ask(t("temporary.confirmTitle"), [{ label: t("temporary.noteLabel"), value: "", placeholder: t("temporary.notePlaceholder") }], t("temporary.saveConfirm"));
-      if (answer && !lifetime.signal.aborted) await send({ type: "temporarySave", menuUid: state.view.uid, uid, note: answer[0]! });
+      if (lifetime.signal.aborted) return;
+      const result = await send({ type: "temporaryConfirm", menuUid: state.view.uid, uid });
+      if (result !== "prompt" || lifetime.signal.aborted) return;
+      const note = viewport.prompt(`${t("temporary.confirmTitle")}\n${t("temporary.noteLabel")}`, "");
+      if (note !== null && !lifetime.signal.aborted) await send({ type: "temporarySave", menuUid: state.view.uid, uid, note: note.trim() });
     },
   };
   async function customize(): Promise<void> {
     if (state.editingLocked || state.collapsed || editor) return;
     await closePopup();
     if (lifetime.signal.aborted || state.editingLocked || editor) return;
-    dialog?.abort(); renderer?.destroy(); renderer = undefined;
+    renderer?.destroy(); renderer = undefined;
     editor = mountBrowserCustomization(wrapper, root, barState(), state.placement,
       async placement => {
         await send({ type: "placement", menuUid: state.view.uid, placement });
@@ -108,8 +101,6 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
       if (lifetime.signal.aborted || JSON.stringify(next) === JSON.stringify(state)) return;
       await closePopup();
       if (lifetime.signal.aborted) return;
-      const enteringEdit = state.editingLocked && !next.editingLocked;
-      if (enteringEdit) dialog?.abort();
       state = next;
       if (editor) {
         if (next.editingLocked || next.collapsed) finishCustomization();
@@ -118,7 +109,7 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
       layout(); await renderer?.update(barState());
     },
     destroy(): void {
-      lifetime.abort(); dialog?.abort(); void closePopup(); editor?.destroy(); renderer?.destroy(); wrapper.remove();
+      lifetime.abort(); void closePopup(); editor?.destroy(); renderer?.destroy(); wrapper.remove();
     },
   };
 }

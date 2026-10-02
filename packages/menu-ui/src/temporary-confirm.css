@@ -1,0 +1,93 @@
+body[data-view="temporary-confirm"] {
+  color-scheme: light;
+  color: #172033;
+  background: #f4f6fb;
+  font-family: Segoe UI, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+body[data-view="temporary-confirm"] #app,
+.temporary-confirm-form {
+  height: 100%;
+}
+
+.temporary-confirm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  box-sizing: border-box;
+}
+
+.temporary-confirm-form h1,
+.temporary-confirm-form p {
+  margin: 0;
+}
+
+.temporary-confirm-form h1 { font-size: 16px; }
+.temporary-confirm-form p { font-size: 13px; }
+
+.temporary-confirm-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3b4861;
+}
+
+.temporary-confirm-form input {
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  border: 1px solid #cbd2df;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 14px;
+  background: white;
+  color: inherit;
+  font-family: inherit;
+  font-weight: normal;
+}
+
+.temporary-confirm-form input:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+}
+
+.temporary-confirm-status { min-height: 16px; color: #991b1b; }
+.temporary-confirm-status:empty { display: none; }
+
+.temporary-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.temporary-confirm-actions button {
+  min-height: 34px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border: 1px solid #cbd2df;
+  border-radius: 6px;
+  background: white;
+  color: #172033;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.temporary-confirm-actions button[type="submit"] {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  color: white;
+  font-weight: 500;
+}
+
+.temporary-confirm-actions button[type="submit"]:hover:not(:disabled) { background: #2563eb; }
+.temporary-confirm-actions button:disabled { opacity: 0.6; cursor: not-allowed; }

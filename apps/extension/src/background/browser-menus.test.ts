@@ -7,13 +7,22 @@ const mocks = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
   syncStorage: {} as Record<string, unknown>,
   connect: vi.fn<(listener: (port: Runtime.Port) => void) => void>(),
+  message: vi.fn<(listener: (message: unknown, sender: Runtime.MessageSender) => unknown) => void>(),
+  popupSupported: true,
+  popupUrls: {} as Record<number, string>,
+  setPopup: vi.fn(async (options: { tabId: number; popup: string }) => { mocks.popupUrls[options.tabId] = options.popup; }),
+  openPopup: vi.fn(async (_options: { windowId: number }) => {}),
   reload: vi.fn(),
   getTab: vi.fn(async (_id: number) => ({ id: 17, windowId: 42, url: "https://example.com/page" })),
   queryTabs: vi.fn(async (_query: { windowId: number }) => [{ id: 17, url: "https://example.com/page" }]),
   permission: vi.fn(async () => true),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
-  runtime: { onConnect: { addListener: mocks.connect }, onMessage: { addListener: vi.fn() } },
+  runtime: {
+    id: "browserail", getURL: (path: string) => `chrome-extension://browserail/${path}`,
+    onConnect: { addListener: mocks.connect }, onMessage: { addListener: mocks.message },
+  },
+  get action() { return { setPopup: mocks.setPopup, openPopup: mocks.popupSupported ? mocks.openPopup : undefined }; },
   permissions: { contains: mocks.permission },
   storage: { local: {
     get: async (key: string) => ({ [key]: mocks.storage[key] }),
@@ -38,8 +47,10 @@ beforeEach(() => {
   mocks.storage = {};
   mocks.syncStorage = {};
   mocks.connect.mockClear(); mocks.reload.mockClear();
+  mocks.message.mockClear(); mocks.popupSupported = true; mocks.popupUrls = {};
+  mocks.setPopup.mockClear(); mocks.openPopup.mockReset(); mocks.openPopup.mockResolvedValue();
   mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://example.com/page" });
-  mocks.queryTabs.mockClear();
+  mocks.queryTabs.mockClear().mockResolvedValue([{ id: 17, url: "https://example.com/page" }]);
   mocks.permission.mockResolvedValue(true);
 });
 
@@ -174,6 +185,70 @@ it("saves a confirmed temporary URL with its note and rejects unlisted actions",
   expect((await loadTemporaryNotes()).slot).toBe("Read later");
   await page.request({ id: 2, type: "invoke", menuUid: "source", actionUid: "temporarySave:slot?confirmed=1" });
   expect(page.posted.at(-1)).toMatchObject({ id: 2, error: expect.any(String) });
+});
+
+it("opens confirmation in the original window, restores icon clicks, and saves after a background restart", async () => {
+  const config = await fixture();
+  const service = createBrowserMenus(() => {}); const page = client();
+  await service.publish(config, [view], {}, {}, true);
+  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  expect(page.posted.at(-1)).toMatchObject({ result: "opened" });
+  expect(await loadTemporaryValues()).toEqual({});
+  const url = mocks.setPopup.mock.calls.find(([options]) => options.popup)![0].popup;
+  expect(new URL(url).protocol).toBe("chrome-extension:");
+  expect(mocks.openPopup).toHaveBeenCalledWith({ windowId: 42 });
+  expect(mocks.popupUrls[17]).toBe("");
+  const restarted = createBrowserMenus(() => {});
+  await restarted.publish(config, [view], {}, {}, true);
+  const message = mocks.message.mock.calls.at(-1)![0];
+  const result = await message({ type: "temporarySaveConfirmed", note: "Read later" }, {
+    id: "browserail", url,
+  });
+  expect(result).toEqual({ saved: true });
+  expect((await loadTemporaryValues()).slot).toBe("https://example.com/page");
+  expect((await loadTemporaryNotes()).slot).toBe("Read later");
+});
+
+it("only requests prompt fallback for popup opening failure, never for an unavailable temporary bookmark", async () => {
+  const config = await fixture();
+  const service = createBrowserMenus(() => {}); const page = client();
+  await service.publish(config, [view], {}, {}, true);
+  mocks.openPopup.mockRejectedValue(new Error("Toolbar popups are unsupported"));
+  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  expect(page.posted.at(-1)).toMatchObject({ result: "prompt" });
+  expect(await loadTemporaryValues()).toEqual({});
+  expect(mocks.popupUrls[17]).toBe("");
+  await page.request({ id: 2, type: "temporaryConfirm", menuUid: "source", uid: "missing" });
+  expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
+  expect(page.posted.at(-1)).not.toHaveProperty("result");
+});
+
+it("uses prompt when the toolbar popup API is absent without installing a confirmation entry", async () => {
+  const config = await fixture();
+  const service = createBrowserMenus(() => {}); const page = client();
+  await service.publish(config, [view], {}, {}, true);
+  mocks.popupSupported = false;
+  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  expect(page.posted.at(-1)).toMatchObject({ result: "prompt" });
+  expect(mocks.popupUrls[17]).toBeUndefined();
+  expect(await loadTemporaryValues()).toEqual({});
+});
+
+it("rejects confirmation messages from webpages and rechecks permissions before saving", async () => {
+  const config = await fixture();
+  const service = createBrowserMenus(() => {}); const page = client();
+  await service.publish(config, [view], {}, {}, true);
+  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  const url = mocks.setPopup.mock.calls.find(([options]) => options.popup)![0].popup;
+  const message = mocks.message.mock.calls.at(-1)![0];
+  expect(await message({ type: "temporarySaveConfirmed", note: "" }, {
+    id: "browserail", frameId: 0, url: "https://example.com/page",
+  })).toMatchObject({ error: expect.any(String) });
+  mocks.permission.mockResolvedValue(false);
+  expect(await message({ type: "temporarySaveConfirmed", note: "" }, {
+    id: "browserail", url,
+  })).toMatchObject({ error: expect.any(String) });
+  expect(await loadTemporaryValues()).toEqual({});
 });
 
 it("only saves webpage placement while browser editing is enabled", async () => {
