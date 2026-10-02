@@ -184,7 +184,8 @@ form,
   }
 }
 
-label {
+label,
+#sync-enabled-field {
   display: grid;
   gap: 6px;
   font-size: 14px;
@@ -2331,6 +2332,10 @@ output {
 .url-rules-global select {
   width: auto;
   min-width: 160px;
+}
+
+.url-rules-global .add-url-rule-btn {
+  margin-left: auto;
 }
 
 .url-rules-list {

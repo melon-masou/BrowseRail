@@ -260,7 +260,7 @@ export interface ExportedSettingsData {
   exportedAt: string;
   menus: ExportedMenu[];
   urlRules?: UrlRule[];
-  globalUrlRuleUid?: string;
+  defaultUrlRuleUid?: string;
   dynamicBookmarks?: ExportedDynamicBookmark[];
   shortcuts?: StoredShortcut[];
   nativeShortcuts?: StoredNativeShortcut[];

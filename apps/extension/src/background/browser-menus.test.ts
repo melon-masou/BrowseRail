@@ -125,7 +125,7 @@ it("follows saved global matching while separately configured menus use their ow
     { uid: "personal", name: "Personal", patterns: ["example.com"] },
     { uid: "work", name: "Work", patterns: ["other.com"] },
   ];
-  config.globalUrlRuleUid = "personal";
+  config.defaultUrlRuleUid = "personal";
   await saveConfig(config);
   const service = createBrowserMenus(() => {});
   const views = [view, { ...view, uid: "custom" }];
@@ -140,7 +140,7 @@ it("follows saved global matching while separately configured menus use their ow
   await service.publish(await loadConfig(), views, {}, {}, true);
   expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["custom"]);
 
-  delete config.globalUrlRuleUid;
+  delete config.defaultUrlRuleUid;
   await saveConfig(config);
   await service.publish(await loadConfig(), views, {}, {}, true);
   expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["source", "custom"]);
@@ -151,10 +151,10 @@ it("follows saved global matching while separately configured menus use their ow
 it("restores the selected global matching and its definitions from Chrome sync", async () => {
   const config = await fixture();
   config.urlRules = [{ uid: "personal", name: "Personal", patterns: ["example.com"] }];
-  config.globalUrlRuleUid = "personal";
+  config.defaultUrlRuleUid = "personal";
   await saveSyncEnabled(true);
   await saveConfig(config);
-  mocks.storage.config = { ...config, urlRules: [], globalUrlRuleUid: undefined };
+  mocks.storage.config = { ...config, urlRules: [], defaultUrlRuleUid: undefined };
 
   const service = createBrowserMenus(() => {});
   await service.publish(await loadConfig(), [view], {}, {}, true);

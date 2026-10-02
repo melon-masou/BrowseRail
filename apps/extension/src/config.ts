@@ -39,10 +39,10 @@ export function normalizeUrlRules(value: unknown): UrlRule[] {
   });
 }
 
-export function menuUrlPatterns(menu: StoredMenu, config: Pick<ExtensionConfig, "urlRules" | "globalUrlRuleUid">): string[][] {
+export function menuUrlPatterns(menu: StoredMenu, config: Pick<ExtensionConfig, "urlRules" | "defaultUrlRuleUid">): string[][] {
   const uids = menu.urlRuleUids?.length
     ? menu.urlRuleUids
-    : config.globalUrlRuleUid ? [config.globalUrlRuleUid] : [];
+    : config.defaultUrlRuleUid ? [config.defaultUrlRuleUid] : [];
   return uids.map(uid => config.urlRules.find(rule => rule.uid === uid)?.patterns ?? []);
 }
 
@@ -77,7 +77,7 @@ export interface ExtensionConfig {
     menus: StoredMenu[];
   };
   urlRules: UrlRule[];
-  globalUrlRuleUid?: string;
+  defaultUrlRuleUid?: string;
   dynamicBookmarks: DynamicBookmark[];
   shortcuts: StoredShortcut[];
   nativeShortcuts: StoredNativeShortcut[];
@@ -243,7 +243,7 @@ export async function loadConfig(): Promise<ExtensionConfig> {
         );
       } else if (isRecord(syncData)) {
         config = normalizeConfig(
-          { ...config, panel: { ...config.panel, ...syncData }, urlRules: syncData.urlRules, globalUrlRuleUid: syncData.globalUrlRuleUid },
+          { ...config, panel: { ...config.panel, ...syncData }, urlRules: syncData.urlRules, defaultUrlRuleUid: syncData.defaultUrlRuleUid },
           instanceLabelFromUid(instanceUid),
         );
       }
@@ -269,7 +269,7 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
         [SYNC_CONFIG_KEY]: {
           menus: normalized.panel.menus,
           urlRules: normalized.urlRules,
-          ...(normalized.globalUrlRuleUid ? { globalUrlRuleUid: normalized.globalUrlRuleUid } : {}),
+          ...(normalized.defaultUrlRuleUid ? { defaultUrlRuleUid: normalized.defaultUrlRuleUid } : {}),
           dynamicBookmarks: normalized.dynamicBookmarks,
         },
       });
@@ -390,7 +390,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
       menus: menus.length > 0 ? menus : [createMenu()],
     },
     urlRules,
-    ...(typeof value.globalUrlRuleUid === "string" && urlRules.some(rule => rule.uid === value.globalUrlRuleUid) ? { globalUrlRuleUid: value.globalUrlRuleUid } : {}),
+    ...(typeof value.defaultUrlRuleUid === "string" && urlRules.some(rule => rule.uid === value.defaultUrlRuleUid) ? { defaultUrlRuleUid: value.defaultUrlRuleUid } : {}),
     dynamicBookmarks,
     shortcuts,
     nativeShortcuts,

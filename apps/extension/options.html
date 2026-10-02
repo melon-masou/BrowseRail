@@ -112,7 +112,7 @@
               <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
             </span>
           </label>
-          <label id="sync-enabled-field">
+          <div id="sync-enabled-field">
             <span class="label-row">
               <span data-i18n="form.chromeSync">Chrome Sync</span>
             </span>
@@ -123,7 +123,7 @@
               </label>
               <span style="font-size: 12px; color: #8a99ad;" data-i18n="form.chromeSyncHint">Sync menus across devices</span>
             </span>
-          </label>
+          </div>
         </div>
 
         <div class="form-actions-row connection-actions-row">
@@ -165,12 +165,12 @@
             <div class="url-rules-title-row">
               <span class="url-rules-hint" data-i18n="urlRules.hint">Define URL patterns to only show menus on specific sites</span>
             </div>
+          </div>
+          <div class="url-rules-global">
+            <span data-i18n="urlRules.default">Default matching rule</span>
+            <select id="global-url-rule"></select>
             <button id="add-url-rule-btn" class="menu-action-btn add-url-rule-btn" type="button" data-i18n="btn.addUrlRule">+ Add</button>
           </div>
-          <label class="url-rules-global">
-            <span data-i18n="urlRules.global">Global</span>
-            <select id="global-url-rule"></select>
-          </label>
           <div id="url-rules-list" class="url-rules-list"></div>
           <p class="url-rules-syntax-guide" data-i18n="urlRules.syntaxHint">Supports domain (github.com), URL prefix (https://example.com/docs), wildcard (*.google.com), or /regex/, one per line</p>
         </section>
@@ -384,18 +384,8 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <label>
                 <span data-i18n="menuSettings.direction">Direction</span>
                 <select id="menu-setting-orientation">
-                  <option value="column" data-i18n="menuSettings.column" selected>Column</option>
-                  <option value="row" data-i18n="menuSettings.row">Row</option>
-                </select>
-              </label>
-              <label>
-                <span data-i18n="menuSettings.expandDirection">Folder expand direction</span>
-                <select id="menu-setting-expand-direction">
-                  <option value="" data-i18n="expandDirection.default" selected>Default</option>
-                  <option value="down" data-i18n="expandDirection.down">Down</option>
-                  <option value="up" data-i18n="expandDirection.up">Up</option>
-                  <option value="right" data-i18n="expandDirection.right">Right</option>
-                  <option value="left" data-i18n="expandDirection.left">Left</option>
+                  <option value="column" data-i18n="menuSettings.column" selected>Vertical</option>
+                  <option value="row" data-i18n="menuSettings.row">Horizontal</option>
                 </select>
               </label>
               <div class="menu-setting-field">
@@ -431,6 +421,23 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <section id="menu-behavior-panel" class="menu-settings-panel" role="tabpanel" aria-labelledby="menu-behavior-tab" hidden>
             <div class="menu-settings-body">
               <label>
+                <span data-i18n="menuSettings.expandDirection">Folder expand direction</span>
+                <select id="menu-setting-expand-direction">
+                  <option value="" data-i18n="expandDirection.default" selected>Default</option>
+                  <option value="down" data-i18n="expandDirection.down">Down</option>
+                  <option value="up" data-i18n="expandDirection.up">Up</option>
+                  <option value="right" data-i18n="expandDirection.right">Right</option>
+                  <option value="left" data-i18n="expandDirection.left">Left</option>
+                </select>
+              </label>
+              <label>
+                <span data-i18n="menuSettings.openIn">Open in</span>
+                <select id="menu-setting-tab-mode">
+                  <option value="replace" data-i18n="menuSettings.replaceTab">Replace current tab</option>
+                  <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
+                </select>
+              </label>
+              <label>
                 <span data-i18n="form.attachTo">Attach menu to</span>
                 <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
                 <select id="menu-setting-attachment-mode">
@@ -445,13 +452,6 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
                 <select id="menu-setting-on-top-mode">
                   <option value="aboveBrowser" data-i18n="form.onTopMode.aboveBrowser">Above browser</option>
                   <option value="alwaysOnTop" data-i18n="form.onTopMode.alwaysOnTop">Always on top</option>
-                </select>
-              </label>
-              <label>
-                <span data-i18n="menuSettings.openIn">Open in</span>
-                <select id="menu-setting-tab-mode">
-                  <option value="replace" data-i18n="menuSettings.replaceTab">Replace current tab</option>
-                  <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
                 </select>
               </label>
             </div>
