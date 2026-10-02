@@ -53,7 +53,7 @@ export async function openBrowserPopup(container: HTMLElement, request: PopupReq
     let rootDirection = direction;
     let rootOffsetX = 0;
     let width = envelope.width;
-    let x = Math.max(4, Math.min(anchor.left, viewport.innerWidth - width - 4));
+    let x = Math.max(4, Math.min(anchor.left, viewport.innerWidth - columnWidth - 4));
     if (horizontal) {
       if ((direction === "left" ? anchor.left : viewport.innerWidth - anchor.right) < columnWidth) rootDirection = direction === "left" ? "right" : "left";
       rootOffsetX = Math.max(0, envelope.width - columnWidth);

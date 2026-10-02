@@ -84,7 +84,19 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
   function layout(): void {
     const size = dimensions();
     Object.assign(root.style, { flex: `0 0 ${size.width}px`, width: `${size.width}px`, height: `${size.height}px` });
-    const position = placementPoint(state.placement, size.width, size.height, viewport.innerWidth, viewport.innerHeight);
+    const fullSize = barDimensions(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight });
+    const position = placementPoint(state.placement, fullSize.width, fullSize.height, viewport.innerWidth, viewport.innerHeight);
+    if (state.collapsed) {
+      let units = 0;
+      for (const entry of state.view.items) {
+        if (entry.kind === "menuFold") break;
+        units += entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1;
+      }
+      const track = Math.round(units);
+      const gap = state.view.gap ?? 4;
+      if (state.view.orientation === "row") position.x += track * (state.placement.itemWidth + gap);
+      else position.y += track * (state.placement.itemHeight + gap);
+    }
     wrapper.style.left = `${position.x}px`; wrapper.style.top = `${position.y}px`;
   }
   viewport.addEventListener("resize", () => {

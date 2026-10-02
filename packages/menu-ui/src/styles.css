@@ -50,7 +50,7 @@
   pointer-events: none;
 }
 
-:where(.browserail-menu-ui) .detached-popup::before {
+:where(.browserail-menu-ui) .popup-container.detached-popup::before {
   pointer-events: none;
 }
 
