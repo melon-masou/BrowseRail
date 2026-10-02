@@ -230,6 +230,8 @@ export const en = {
 
   // URL rules
   "section.urlRules": "URL matching",
+  "urlRules.global": "Global",
+  "urlRules.all": "All",
   "urlRules.hint": "Define URL patterns to only show menus on specific sites",
   "btn.addUrlRule": "+ Add",
   "urlRules.empty": "No URL rules defined yet. Click \"+ Add\" above to create one.",
@@ -631,6 +633,8 @@ export const zhCN: Record<MessageKey, string> = {
 
   // 网址匹配
   "section.urlRules": "网址匹配",
+  "urlRules.global": "全局",
+  "urlRules.all": "全部",
   "urlRules.hint": "定义网址匹配，使菜单仅在指定网页下显示",
   "btn.addUrlRule": "+ 添加",
   "urlRules.empty": "暂未定义网址匹配。点击上方“+ 添加”创建。",

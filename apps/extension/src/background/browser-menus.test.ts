@@ -5,6 +5,7 @@ import type { MenuRequest } from "../page-operations/messages";
 
 const mocks = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
+  syncStorage: {} as Record<string, unknown>,
   connect: vi.fn<(listener: (port: Runtime.Port) => void) => void>(),
   reload: vi.fn(),
   getTab: vi.fn(async (_id: number) => ({ id: 17, windowId: 42, url: "https://example.com/page" })),
@@ -17,6 +18,9 @@ vi.mock("webextension-polyfill", () => ({ default: {
   storage: { local: {
     get: async (key: string) => ({ [key]: mocks.storage[key] }),
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.storage, values); },
+  }, sync: {
+    get: async (key: string) => ({ [key]: mocks.syncStorage[key] }),
+    set: async (values: Record<string, unknown>) => { Object.assign(mocks.syncStorage, values); },
   } },
   tabs: { get: mocks.getTab, query: mocks.queryTabs, reload: mocks.reload },
   bookmarks: { getTree: async () => [] },
@@ -27,10 +31,12 @@ import {
   loadConfig, saveConfig, loadDisplayMode, saveDisplayMode, loadBrowserPlacements, saveBrowserPlacement,
   loadMenuPlacements, saveMenuPlacement, removeBrowserPlacement, loadTemporaryValues, loadTemporaryNotes,
   saveBrowserEditing,
+  saveSyncEnabled,
 } from "../config";
 
 beforeEach(() => {
   mocks.storage = {};
+  mocks.syncStorage = {};
   mocks.connect.mockClear(); mocks.reload.mockClear();
   mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://example.com/page" });
   mocks.queryTabs.mockClear();
@@ -99,6 +105,51 @@ it("shows free menus in a matching webpage without a desktop connection and remo
   mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://example.com/page" });
   await service.publish(config, [view], {}, {}, false);
   expect(page.posted.at(-1)).toEqual({ type: "state", menus: [] });
+});
+
+it("follows saved global matching while separately configured menus use their own matching", async () => {
+  const config = await fixture();
+  config.panel.menus.push({ ...config.panel.menus[0]!, uid: "custom", urlRuleUids: ["work"] });
+  config.urlRules = [
+    { uid: "personal", name: "Personal", patterns: ["example.com"] },
+    { uid: "work", name: "Work", patterns: ["other.com"] },
+  ];
+  config.globalUrlRuleUid = "personal";
+  await saveConfig(config);
+  const service = createBrowserMenus(() => {});
+  const views = [view, { ...view, uid: "custom" }];
+  await service.publish(await loadConfig(), views, {}, {}, true);
+  expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["source"]);
+
+  mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://other.com/" });
+  expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["custom"]);
+
+  config.urlRules[0]!.patterns = [];
+  await saveConfig(config);
+  await service.publish(await loadConfig(), views, {}, {}, true);
+  expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["custom"]);
+
+  delete config.globalUrlRuleUid;
+  await saveConfig(config);
+  await service.publish(await loadConfig(), views, {}, {}, true);
+  expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["source", "custom"]);
+  mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://third.com/" });
+  expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["source"]);
+});
+
+it("restores the selected global matching and its definitions from Chrome sync", async () => {
+  const config = await fixture();
+  config.urlRules = [{ uid: "personal", name: "Personal", patterns: ["example.com"] }];
+  config.globalUrlRuleUid = "personal";
+  await saveSyncEnabled(true);
+  await saveConfig(config);
+  mocks.storage.config = { ...config, urlRules: [], globalUrlRuleUid: undefined };
+
+  const service = createBrowserMenus(() => {});
+  await service.publish(await loadConfig(), [view], {}, {}, true);
+  expect(await service.forTab(17)).toHaveLength(1);
+  mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://other.com/" });
+  expect(await service.forTab(17)).toEqual([]);
 });
 
 it("executes a webpage's browser action on its own window and rejects it after switching to native", async () => {

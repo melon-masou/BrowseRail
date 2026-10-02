@@ -22,6 +22,7 @@ import {
   DEFAULT_FONT_SIZE,
   loadBookmarkRootPrefix,
   loadConfig,
+  menuUrlPatterns,
   loadDisplayMode,
   loadBrowserEditing,
   loadBrowserPlacements,
@@ -679,9 +680,7 @@ async function syncOnce(): Promise<void> {
   await browserMenus.publish(config, menuStates.map(menu => menu.view), browserPlacements, browserCollapsed, enabled && mode === "browser", browserEditing);
   await browserInjection.reconcile(enabled && mode === "browser", menuStates.filter(menu => menu.view.items.length > 0).map(menu => ({
     uid: menu.uid,
-    patterns: (config.panel.menus.find(stored => stored.uid === menu.uid)?.urlRuleUids ?? []).map(uid =>
-      config.urlRules.find(rule => rule.uid === uid)?.patterns ?? [],
-    ),
+    patterns: menuUrlPatterns(config.panel.menus.find(stored => stored.uid === menu.uid)!, config),
   })));
   if (socket?.readyState !== WebSocket.OPEN) return;
 

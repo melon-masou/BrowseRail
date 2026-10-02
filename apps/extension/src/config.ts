@@ -26,6 +26,26 @@ import { collectTemporaryUidsFromBookmarkTree } from "./bookmarks";
 
 const STORAGE_KEY = "config";
 
+export function normalizeUrlRules(value: unknown): UrlRule[] {
+  return (Array.isArray(value) ? value : []).flatMap((rule): UrlRule[] => {
+    if (!isRecord(rule) || typeof rule.uid !== "string" || !rule.uid) return [];
+    return [{
+      uid: rule.uid,
+      name: typeof rule.name === "string" && rule.name.trim() ? rule.name.trim() : "URL rule",
+      patterns: Array.isArray(rule.patterns)
+        ? rule.patterns.filter((p): p is string => typeof p === "string" && p.trim().length > 0).map(p => p.trim())
+        : [],
+    }];
+  });
+}
+
+export function menuUrlPatterns(menu: StoredMenu, config: Pick<ExtensionConfig, "urlRules" | "globalUrlRuleUid">): string[][] {
+  const uids = menu.urlRuleUids?.length
+    ? menu.urlRuleUids
+    : config.globalUrlRuleUid ? [config.globalUrlRuleUid] : [];
+  return uids.map(uid => config.urlRules.find(rule => rule.uid === uid)?.patterns ?? []);
+}
+
 export type {
   MenuItemType,
   StoredMenuItemType,
@@ -57,6 +77,7 @@ export interface ExtensionConfig {
     menus: StoredMenu[];
   };
   urlRules: UrlRule[];
+  globalUrlRuleUid?: string;
   dynamicBookmarks: DynamicBookmark[];
   shortcuts: StoredShortcut[];
   nativeShortcuts: StoredNativeShortcut[];
@@ -222,7 +243,7 @@ export async function loadConfig(): Promise<ExtensionConfig> {
         );
       } else if (isRecord(syncData)) {
         config = normalizeConfig(
-          { ...config, panel: { ...config.panel, ...syncData } },
+          { ...config, panel: { ...config.panel, ...syncData }, urlRules: syncData.urlRules, globalUrlRuleUid: syncData.globalUrlRuleUid },
           instanceLabelFromUid(instanceUid),
         );
       }
@@ -248,6 +269,7 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
         [SYNC_CONFIG_KEY]: {
           menus: normalized.panel.menus,
           urlRules: normalized.urlRules,
+          ...(normalized.globalUrlRuleUid ? { globalUrlRuleUid: normalized.globalUrlRuleUid } : {}),
           dynamicBookmarks: normalized.dynamicBookmarks,
         },
       });
@@ -284,18 +306,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     };
   });
 
-  const rawUrlRules = Array.isArray(value.urlRules) ? value.urlRules : [];
-  const urlRules: UrlRule[] = rawUrlRules.flatMap((ws) => {
-    if (!isRecord(ws)) return [];
-    if (typeof ws.uid !== "string" || !ws.uid) return [];
-    const name = typeof ws.name === "string" && ws.name.trim() ? ws.name.trim() : "URL rule";
-    const patterns = Array.isArray(ws.patterns)
-      ? ws.patterns
-          .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
-          .map((p) => p.trim())
-      : [];
-    return [{ uid: ws.uid, name, patterns }];
-  });
+  const urlRules = normalizeUrlRules(value.urlRules);
 
   const rawDynamic = Array.isArray(value.dynamicBookmarks) ? value.dynamicBookmarks : [];
   const dynamicBookmarks: DynamicBookmark[] = rawDynamic.flatMap((db) => {
@@ -379,6 +390,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
       menus: menus.length > 0 ? menus : [createMenu()],
     },
     urlRules,
+    ...(typeof value.globalUrlRuleUid === "string" && urlRules.some(rule => rule.uid === value.globalUrlRuleUid) ? { globalUrlRuleUid: value.globalUrlRuleUid } : {}),
     dynamicBookmarks,
     shortcuts,
     nativeShortcuts,

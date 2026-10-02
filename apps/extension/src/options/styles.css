@@ -2321,6 +2321,18 @@ output {
   color: #64748b;
 }
 
+.url-rules-global {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.url-rules-global select {
+  width: auto;
+  min-width: 160px;
+}
+
 .url-rules-list {
   display: flex;
   flex-direction: column;

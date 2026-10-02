@@ -31,6 +31,7 @@ import {
   loadWidgetEnabled,
   normalizeFontSize,
   normalizeConfig,
+  normalizeUrlRules,
   normalizeMenu,
   normalizeStoredMenuItem,
   pruneTemporaryValues,
@@ -271,6 +272,7 @@ const dynamicSettingsClose = element<HTMLButtonElement>("dynamic-settings-close"
 const dynamicSettingUrlRulesList = element<HTMLDivElement>("dynamic-setting-url-rules-list");
 const addUrlRuleBtn = element<HTMLButtonElement>("add-url-rule-btn");
 const urlRulesList = element<HTMLDivElement>("url-rules-list");
+const globalUrlRuleSelect = element<HTMLSelectElement>("global-url-rule");
 const menuSettingUrlRulesList = element<HTMLDivElement>("menu-setting-url-rules-list");
 const syncEnabledToggle = document.getElementById("sync-enabled-toggle") as HTMLInputElement | null;
 const bookmarkRootInput = document.getElementById("bookmark-root-input") as HTMLInputElement | null;
@@ -283,6 +285,7 @@ let isMenusDirty = false;
 let bookmarkRootPrefix: string[] = [];
 let menus: StoredMenu[] = [];
 let urlRules: UrlRule[] = [];
+let globalUrlRuleUid: string | undefined;
 let dynamicBookmarks: DynamicBookmark[] = [];
 let shortcuts: StoredShortcut[] = [];
 let nativeShortcuts: StoredNativeShortcut[] = [];
@@ -1355,6 +1358,7 @@ async function initialize(): Promise<void> {
   }
   menus = structuredClone(config.panel.menus);
   urlRules = structuredClone(config.urlRules);
+  globalUrlRuleUid = config.globalUrlRuleUid;
   dynamicBookmarks = structuredClone(config.dynamicBookmarks ?? []);
   shortcuts = structuredClone(config.shortcuts ?? []);
   nativeShortcuts = structuredClone(config.nativeShortcuts ?? []);
@@ -1443,6 +1447,8 @@ async function persistMenus(): Promise<void> {
   }
 
   const currentConfig = await loadConfig();
+  if (globalUrlRuleUid) currentConfig.globalUrlRuleUid = globalUrlRuleUid;
+  else delete currentConfig.globalUrlRuleUid;
   const savedRules = structuredClone(urlRules);
   await saveConfig({
     ...currentConfig,
@@ -2015,7 +2021,7 @@ function renderMenuUrlRulesContent(menu: StoredMenu): void {
   allRadio.checked = !hasSpecificSets;
 
   const allSpan = document.createElement("span");
-  allSpan.textContent = t("menuBehavior.allUrls");
+  allSpan.textContent = t("urlRules.global");
   allRow.append(allRadio, allSpan);
   menuSettingUrlRulesList.appendChild(allRow);
 
@@ -4374,7 +4380,26 @@ function renderMenus(): void {
   );
 }
 
+function renderGlobalUrlRuleSelect(): void {
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = t("urlRules.all");
+  globalUrlRuleSelect.replaceChildren(all, ...urlRules.map(rule => {
+    const option = document.createElement("option");
+    option.value = rule.uid;
+    option.textContent = rule.name || t("urlRules.defaultName");
+    return option;
+  }));
+  globalUrlRuleSelect.value = globalUrlRuleUid ?? "";
+}
+
+globalUrlRuleSelect.addEventListener("change", () => {
+  globalUrlRuleUid = globalUrlRuleSelect.value || undefined;
+  markDirty();
+});
+
 function renderUrlRules(): void {
+  renderGlobalUrlRuleSelect();
   urlRulesList.replaceChildren();
 
   if (urlRules.length === 0) {
@@ -4402,6 +4427,7 @@ function renderUrlRules(): void {
     nameInput.value = ws.name;
     nameInput.addEventListener("input", () => {
       ws.name = nameInput.value;
+      renderGlobalUrlRuleSelect();
       renderMenus();
       markDirty();
     });
@@ -4425,6 +4451,7 @@ function renderUrlRules(): void {
     deleteBtn.addEventListener("click", () => {
       const removedUid = ws.uid;
       urlRules.splice(setIndex, 1);
+      if (globalUrlRuleUid === removedUid) globalUrlRuleUid = undefined;
       // Clean up references in menus
       menus.forEach((menu) => {
         if (menu.urlRuleUids) {
@@ -4557,6 +4584,7 @@ function exportSettings(): void {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
+    ...(globalUrlRuleUid ? { globalUrlRuleUid } : {}),
     ...(dynamicBookmarks.length > 0 ? { dynamicBookmarks: structuredClone(dynamicBookmarks) } : {}),
     ...(shortcuts.length > 0 ? { shortcuts: structuredClone(shortcuts) } : {}),
     ...(nativeShortcuts.length > 0 ? { nativeShortcuts: structuredClone(nativeShortcuts) } : {}),
@@ -4764,23 +4792,11 @@ async function importSettings(file: File): Promise<void> {
     // mode, always-on-top, and language keep their current values.
     menus = importedMenus;
     if (Array.isArray(parsed.urlRules)) {
-      urlRules = parsed.urlRules
-        .filter(
-          (ws): ws is UrlRule =>
-            typeof ws === "object" &&
-            ws !== null &&
-            typeof (ws as UrlRule).uid === "string" &&
-            typeof (ws as UrlRule).name === "string",
-        )
-        .map((ws) => ({
-          uid: ws.uid,
-          name: ws.name,
-          patterns: Array.isArray(ws.patterns)
-            ? ws.patterns.filter((p): p is string => typeof p === "string")
-            : [],
-        }));
+      urlRules = normalizeUrlRules(parsed.urlRules);
       renderUrlRules();
     }
+    globalUrlRuleUid = typeof parsed.globalUrlRuleUid === "string" && urlRules.some(rule => rule.uid === parsed.globalUrlRuleUid) ? parsed.globalUrlRuleUid : undefined;
+    renderGlobalUrlRuleSelect();
     if (Array.isArray(parsed.dynamicBookmarks)) {
       dynamicBookmarks = parsed.dynamicBookmarks.flatMap((db): DynamicBookmark[] => {
         if (typeof db !== "object" || db === null) return [];

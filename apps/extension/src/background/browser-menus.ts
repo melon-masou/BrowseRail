@@ -1,7 +1,7 @@
 import browser, { type Runtime } from "webextension-polyfill";
 import { isUrlMatchingSet, parseTemporaryAction, invertBookmarkActionUid, invertTemporaryActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
-  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, saveBrowserPlacement, toggleBrowserCollapsed,
+  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, saveBrowserPlacement, toggleBrowserCollapsed, menuUrlPatterns,
   type BrowserMenuPlacement, type ExtensionConfig,
 } from "../config";
 import type { BrowserMenu, BrowserMenuState, MenuRequest } from "../page-operations/messages";
@@ -12,11 +12,8 @@ import { hasWebsitePermission } from "../site-permissions";
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
   if (!menu || menu.enabled === false) return false;
-  const rules = menu.urlRuleUids ?? [];
-  return !rules.length || Boolean(url && rules.some(uid => {
-    const rule = config.urlRules.find(rule => rule.uid === uid);
-    return rule && isUrlMatchingSet(url, rule.patterns);
-  }));
+  const patterns = menuUrlPatterns(menu, config);
+  return !patterns.length || Boolean(url && patterns.some(patterns => isUrlMatchingSet(url, patterns)));
 }
 
 function leaves(entries: LayoutEntry[]): LayoutEntry[] {
