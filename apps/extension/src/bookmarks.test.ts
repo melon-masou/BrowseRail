@@ -187,7 +187,7 @@ describe("resolveMenuItems", () => {
             children: [
               {
                 id: "space-full",
-                title: "BrowseRailSpace:units=5:transparent=false:color=#cd123f",
+                title: "BrowseRailSpace:units=5:color=#cd123f80",
                 url: "https://example.com/space",
               },
               {
@@ -198,7 +198,7 @@ describe("resolveMenuItems", () => {
               {
                 id: "space-url",
                 title: "Space",
-                url: "https://browserail.local/#Space:units%3D2%3Atransparent%3Dfalse%3Acolor%3D%23234567",
+                url: "https://browserail.local/#Space:units%3D2%3Acolor%3D%2323456700",
               },
             ],
           },
@@ -213,24 +213,21 @@ describe("resolveMenuItems", () => {
     expect(entries[0]).toMatchObject({
       kind: "space",
       units: 5,
-      color: "#cd123f",
-      transparent: false,
+      color: "#cd123f80",
     });
     expect(entries[1]).toMatchObject({
       kind: "space",
       units: 1,
-      transparent: true,
     });
     expect(entries[2]).toMatchObject({
       kind: "space",
       units: 2,
-      color: "#234567",
-      transparent: false,
+      color: "#23456700",
     });
   });
 
   it("creates Space bookmarks that flatten back into the configured space", async () => {
-    const url = buildSpaceDirectiveUrl({ units: 5, transparent: false, color: "#cd123f" });
+    const url = buildSpaceDirectiveUrl({ units: 5, color: "#cd123f80" });
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
         id: "0",
@@ -252,14 +249,13 @@ describe("resolveMenuItems", () => {
       {
         kind: "space",
         units: 5,
-        color: "#cd123f",
-        transparent: false,
+        color: "#cd123f80",
       },
     ]);
   });
 
   it("creates Temporary bookmarks that flatten back into the configured temporary bookmark entry", async () => {
-    const url = buildTemporaryDirectiveUrl({ id: "slot-temp", color: "#123456", tabMode: "newTab" });
+    const url = buildTemporaryDirectiveUrl({ id: "slot-temp", color: "#12345680", tabMode: "newTab" });
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
         id: "0",
@@ -291,7 +287,7 @@ describe("resolveMenuItems", () => {
       kind: "bookmark",
       uid: "temporary:slot-temp?tab=newTab",
       label: "Note for slot 1",
-      color: "#123456",
+      color: "#12345680",
     });
     expect(entries[1]).toMatchObject({
       kind: "bookmark",
@@ -376,15 +372,15 @@ describe("resolveMenuItems", () => {
         path: ["CycleTest"],
         type: "flattenFolder",
         color: "#000000", // Old color field should be completely ignored
-        cycleColors: ["#ff0000", "#00ff00"],
+        cycleColors: ["#ff000080", "#00ff0000"],
       },
     ]);
 
     expect(result).toHaveLength(4);
-    expect((result[0] as BookmarkEntry).color).toBe("#ff0000");
-    expect((result[1] as BookmarkEntry).color).toBe("#00ff00");
-    expect((result[2] as BookmarkEntry).color).toBe("#ff0000");
-    expect((result[3] as BookmarkEntry).color).toBe("#00ff00");
+    expect((result[0] as BookmarkEntry).color).toBe("#ff000080");
+    expect((result[1] as BookmarkEntry).color).toBe("#00ff0000");
+    expect((result[2] as BookmarkEntry).color).toBe("#ff000080");
+    expect((result[3] as BookmarkEntry).color).toBe("#00ff0000");
   });
 
   it("resolves a folder whose title contains a slash (path segment not re-split)", async () => {
@@ -836,20 +832,18 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.type).toBe("customPluginType");
   });
 
-  it("normalizes a space item with units and transparency", async () => {
+  it("normalizes a space item with units and color alpha", async () => {
     const { normalizeStoredMenuItem } = await import("./config");
     const item = normalizeStoredMenuItem({
       type: "space",
       units: 2.5,
-      color: "#ff0000",
-      transparent: false,
+      color: "#ff000080",
     });
 
     expect(item).toBeDefined();
     expect(item?.type).toBe("space");
     expect(item?.units).toBe(2.5);
-    expect(item?.color).toBe("#ff0000");
-    expect(item?.transparent).toBe(false);
+    expect(item?.color).toBe("#ff000080");
     expect(typeof item?.uid).toBe("string");
     expect(item?.uid.length).toBeGreaterThan(0);
   });
@@ -939,14 +933,12 @@ describe("combineRootAndItemPath and space resolution", () => {
         uid: "space-1",
         type: "space",
         units: 2,
-        color: "#ffffff",
       },
       {
         uid: "space-2",
         type: "space",
         units: 1,
-        color: "#ff0000",
-        transparent: false,
+        color: "#ff000080",
       },
     ]);
 
@@ -955,14 +947,12 @@ describe("combineRootAndItemPath and space resolution", () => {
       kind: "space",
       uid: "space-1",
       units: 2,
-      transparent: true,
     });
     expect(entries[1]).toEqual({
       kind: "space",
       uid: "space-2",
       units: 1,
-      color: "#ff0000",
-      transparent: false,
+      color: "#ff000080",
     });
   });
 

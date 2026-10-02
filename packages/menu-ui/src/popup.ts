@@ -182,17 +182,12 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
       column.style.maxHeight = `${payload.maxColumnHeight}px`;
       if (payload.color) {
         column.dataset.accent = "true";
-        // Mute via CSS color-mix (see .menu-column[data-accent]); no raw fill.
         column.style.setProperty("--button-custom-color", payload.color);
       }
 
       for (const entry of entries) {
         if (entry.kind !== "bookmark" && entry.kind !== "folder") continue;
         const button = menuButton(doc, entry, true);
-        if (payload.color) {
-          button.style.setProperty("--button-custom-color", payload.color);
-          button.dataset.hasCustomColor = "true";
-        }
         if (entry.kind === "folder") {
           button.dataset.uid = entry.uid;
           const preferredDirection =

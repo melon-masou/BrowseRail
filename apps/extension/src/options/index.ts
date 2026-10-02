@@ -1,6 +1,7 @@
 import {
   type AttachmentMode,
   AUTO_FONT_SIZE,
+  DEFAULT_DOCK_COLOR,
   type BrowserActionKind,
   EXPORT_SCHEMA_VERSION,
   type ExportedMenuItem,
@@ -73,6 +74,7 @@ import {
 
 import { positionPopover } from "./popover-position";
 import { createSiteAuthorization } from "./site-authorization";
+import { createColorPicker, DEFAULT_COLOR } from "./color-picker";
 
 import "./styles.css";
 
@@ -156,8 +158,6 @@ const pickerConfirmBtn = element<HTMLButtonElement>("picker-confirm-btn");
 const colorPopover = element<HTMLDivElement>("color-popover");
 const colorPopoverTitle = element<HTMLSpanElement>("color-popover-title");
 const colorPopoverClose = element<HTMLButtonElement>("color-popover-close");
-const popoverColorInput = element<HTMLInputElement>("popover-color-input");
-const popoverColorHex = element<HTMLInputElement>("popover-color-hex");
 const colorPopoverPresets = element<HTMLDivElement>("color-popover-presets");
 const popoverRandomBtn = element<HTMLButtonElement>("popover-random-btn");
 const popoverDefaultBtn = element<HTMLButtonElement>("popover-default-btn");
@@ -175,7 +175,6 @@ const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
 const menuSettingFontSizeAuto = element<HTMLInputElement>("menu-setting-font-size-auto");
 const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
 const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
-const menuSettingOpacity = element<HTMLInputElement>("menu-setting-opacity");
 const menuSettingDefaultColor = element<HTMLButtonElement>("menu-setting-default-color");
 const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
 
@@ -191,7 +190,6 @@ const itemSettingsFolderControls = element<HTMLDivElement>("item-settings-folder
 const itemSettingsBookmarkControls = element<HTMLDivElement>("item-settings-bookmark-controls");
 const itemSettingsSpaceControls = element<HTMLDivElement>("item-settings-space-controls");
 const itemSettingSpaceUnits = element<HTMLInputElement>("item-setting-space-units");
-const itemSettingTransparent = element<HTMLInputElement>("item-setting-transparent");
 const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
 const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
 const itemSettingTabMode = element<HTMLSelectElement>("item-setting-tab-mode");
@@ -225,8 +223,7 @@ const spaceBookmarkClose = element<HTMLButtonElement>("space-bookmark-close");
 const spaceBookmarkCloseBtn = element<HTMLButtonElement>("space-bookmark-close-btn");
 const spaceBookmarkForm = element<HTMLFormElement>("space-bookmark-form");
 const spaceBookmarkUnits = element<HTMLInputElement>("space-bookmark-units");
-const spaceBookmarkColor = element<HTMLInputElement>("space-bookmark-color");
-const spaceBookmarkTransparent = element<HTMLInputElement>("space-bookmark-transparent");
+const spaceBookmarkColor = element<HTMLButtonElement>("space-bookmark-color");
 const spaceBookmarkResult = element<HTMLOutputElement>("space-bookmark-result");
 const spaceBookmarkFolderBtn = element<HTMLButtonElement>("space-bookmark-folder-btn");
 const spaceBookmarkFolderDisplay = element<HTMLSpanElement>("space-bookmark-folder-display");
@@ -300,7 +297,10 @@ const siteAuthorization = createSiteAuthorization({
 });
 
 // Popover state
-let activeColorTarget: StoredMenu | StoredMenuItem | null = null;
+type ColorTarget = StoredMenu | StoredMenuItem | { color?: string };
+const spaceBookmarkColors: { color?: string } = {};
+let activeColorTarget: ColorTarget | null = null;
+const colorPicker = createColorPicker(colorPopover, setColor);
 // Which color field the popover writes: "color" (default item color) or
 // "dockColor" (menu-level dock strip color). Only menus use "dockColor".
 let activeColorField: "color" | "dockColor" = "color";
@@ -1489,6 +1489,16 @@ async function persistMenuEnabled(menu: StoredMenu, enabled: boolean): Promise<b
 }
 
 
+function activeDefaultColor(): string {
+  if (activeColorField === "dockColor") return DEFAULT_DOCK_COLOR;
+  if (activeColorTarget === spaceBookmarkColors || (activeColorTarget && "type" in activeColorTarget && activeColorTarget.type === "space")) return "#3b82f600";
+  return DEFAULT_COLOR;
+}
+
+function markColorDirty(): void {
+  if (activeColorTarget !== spaceBookmarkColors) markDirty();
+}
+
 function initColorPopover(): void {
   colorPopoverPresets.replaceChildren(
     ...PALETTE_COLORS.map((color) => {
@@ -1498,7 +1508,7 @@ function initColorPopover(): void {
       dot.style.backgroundColor = color;
       dot.title = color;
       dot.addEventListener("click", () => {
-        setColor(color);
+        colorPicker.setRgb(color);
       });
       return dot;
     }),
@@ -1511,43 +1521,27 @@ function initColorPopover(): void {
     const item = activeColorTarget as StoredMenuItem;
     if (colorPopoverCycleToggle.checked) {
       if (!Array.isArray(item.cycleColors) || item.cycleColors.length === 0) {
-        item.cycleColors = ["#1e3a8a", "#065f46"];
+        item.cycleColors = ["#1e3a8aff", "#065f46ff"];
       }
       delete item.color;
       colorPopoverCycleSection.style.display = "block";
       selectedCycleIndex = 0;
       renderPopoverCycleList();
-      const firstColor = item.cycleColors[0] ?? "#3b82f6";
-      popoverColorInput.value = firstColor;
-      popoverColorHex.value = firstColor.toUpperCase();
+      const firstColor = item.cycleColors[0] ?? DEFAULT_COLOR;
+      colorPicker.setValue(firstColor);
     } else {
       delete item.cycleColors;
       delete item.color;
       colorPopoverCycleSection.style.display = "none";
       selectedCycleIndex = -1;
-      popoverColorInput.value = "#3b82f6";
-      popoverColorHex.value = "";
+      colorPicker.setValue(undefined, activeDefaultColor());
     }
     updateActiveTargetSwatch();
-    markDirty();
-  });
-
-  popoverColorInput.addEventListener("input", () => {
-    setColor(popoverColorInput.value);
-  });
-
-  popoverColorHex.addEventListener("input", () => {
-    let val = popoverColorHex.value.trim();
-    if (!val.startsWith("#")) {
-      val = "#" + val;
-    }
-    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
-      setColor(val);
-    }
+    markColorDirty();
   });
 
   popoverRandomBtn.addEventListener("click", () => {
-    setColor(getRandomPaletteColor());
+    colorPicker.setRgb(getRandomPaletteColor());
   });
 
   popoverDefaultBtn.addEventListener("click", () => {
@@ -1559,28 +1553,25 @@ function initColorPopover(): void {
           item.cycleColors.splice(selectedCycleIndex, 1);
           selectedCycleIndex = Math.max(0, selectedCycleIndex - 1);
           renderPopoverCycleList();
-          const curColor = item.cycleColors[selectedCycleIndex] ?? "#3b82f6";
-          popoverColorInput.value = curColor;
-          popoverColorHex.value = curColor.toUpperCase();
+          const curColor = item.cycleColors[selectedCycleIndex] ?? DEFAULT_COLOR;
+          colorPicker.setValue(curColor);
         } else {
           delete item.cycleColors;
           delete item.color;
           colorPopoverCycleToggle.checked = false;
           colorPopoverCycleSection.style.display = "none";
           selectedCycleIndex = -1;
-          popoverColorInput.value = "#3b82f6";
-          popoverColorHex.value = "";
+          colorPicker.setValue(undefined, activeDefaultColor());
         }
         updateActiveTargetSwatch();
-        markDirty();
+        markColorDirty();
         return;
       }
     }
     delete (activeColorTarget as { color?: string; dockColor?: string })[activeColorField];
-    popoverColorInput.value = "#3b82f6";
-    popoverColorHex.value = "";
+    colorPicker.setValue(undefined, activeDefaultColor());
     updateActiveTargetSwatch();
-    markDirty();
+    markColorDirty();
   });
 
   document.addEventListener("pointerdown", (e) => {
@@ -1626,8 +1617,7 @@ function renderPopoverCycleList(): void {
       e.stopPropagation();
       selectedCycleIndex = idx;
       renderPopoverCycleList();
-      popoverColorInput.value = color;
-      popoverColorHex.value = color.toUpperCase();
+      colorPicker.setValue(color);
     });
 
     const delBtn = document.createElement("span");
@@ -1646,16 +1636,14 @@ function renderPopoverCycleList(): void {
         colorPopoverCycleToggle.checked = false;
         colorPopoverCycleSection.style.display = "none";
         selectedCycleIndex = -1;
-        popoverColorInput.value = "#3b82f6";
-        popoverColorHex.value = "";
+        colorPicker.setValue(undefined, activeDefaultColor());
       } else {
         renderPopoverCycleList();
-        const curColor = item.cycleColors![selectedCycleIndex] ?? "#3b82f6";
-        popoverColorInput.value = curColor;
-        popoverColorHex.value = curColor.toUpperCase();
+        const curColor = item.cycleColors![selectedCycleIndex] ?? DEFAULT_COLOR;
+        colorPicker.setValue(curColor);
       }
       updateActiveTargetSwatch();
-      markDirty();
+      markColorDirty();
     });
 
     dot.appendChild(delBtn);
@@ -1669,14 +1657,13 @@ function renderPopoverCycleList(): void {
   addBtn.title = t("itemSettings.addColor");
   addBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const nextPreset = PALETTE_COLORS[item.cycleColors!.length % PALETTE_COLORS.length] || "#3b82f6";
+    const nextPreset = `${PALETTE_COLORS[item.cycleColors!.length % PALETTE_COLORS.length]}ff`;
     item.cycleColors!.push(nextPreset);
     selectedCycleIndex = item.cycleColors!.length - 1;
     renderPopoverCycleList();
-    popoverColorInput.value = nextPreset;
-    popoverColorHex.value = nextPreset.toUpperCase();
+    colorPicker.setValue(nextPreset);
     updateActiveTargetSwatch();
-    markDirty();
+    markColorDirty();
   });
   colorPopoverCycleList.appendChild(addBtn);
 }
@@ -1743,10 +1730,8 @@ function setColor(color: string): void {
   } else {
     (activeColorTarget as { color?: string; dockColor?: string })[activeColorField] = color;
   }
-  popoverColorInput.value = color;
-  popoverColorHex.value = color.toUpperCase();
   updateActiveTargetSwatch();
-  markDirty();
+  markColorDirty();
 }
 
 function updateSwatchAppearance(swatch: HTMLElement, color?: string): void {
@@ -1780,7 +1765,7 @@ function updateMenuSettingColorControls(menu: StoredMenu): void {
 }
 
 function openColorPopover(
-  target: StoredMenu | StoredMenuItem,
+  target: ColorTarget,
   swatchElement: HTMLElement,
   field: "color" | "dockColor" = "color",
 ): void {
@@ -1789,13 +1774,14 @@ function openColorPopover(
     return;
   }
   activeColorField = field;
-  const openedFromMenuSettings = menuSettingsDialog.open && menuSettingsDialog.contains(swatchElement);
+  const sourceDialog = swatchElement.closest("dialog");
+  const openedFromMenuSettings = sourceDialog === menuSettingsDialog;
   const rect = swatchElement.getBoundingClientRect();
   closeAddItemDropdown();
   if (menuSettingsDialog.open && !openedFromMenuSettings) {
     closeMenuSettingsDialog();
   }
-  const popoverParent = openedFromMenuSettings ? menuSettingsDialog : colorPopoverHome;
+  const popoverParent = sourceDialog || colorPopoverHome;
   if (colorPopover.parentElement !== popoverParent) {
     popoverParent.append(colorPopover);
   }
@@ -1812,14 +1798,12 @@ function openColorPopover(
       colorPopoverCycleSection.style.display = "block";
       selectedCycleIndex = 0;
       renderPopoverCycleList();
-      const firstColor = target.cycleColors![0] ?? "#3b82f6";
-      popoverColorInput.value = firstColor;
-      popoverColorHex.value = firstColor.toUpperCase();
+      const firstColor = target.cycleColors![0] ?? DEFAULT_COLOR;
+      colorPicker.setValue(firstColor);
     } else {
       colorPopoverCycleSection.style.display = "none";
       selectedCycleIndex = -1;
-      popoverColorInput.value = "#3b82f6";
-      popoverColorHex.value = "";
+      colorPicker.setValue(undefined, activeDefaultColor());
     }
   } else {
     colorPopoverCycleRow.style.display = "none";
@@ -1832,9 +1816,7 @@ function openColorPopover(
     colorPopoverCycleSection.style.display = "none";
     selectedCycleIndex = -1;
     const current = (target as { color?: string; dockColor?: string })[activeColorField];
-    const currentColor = current || "#3b82f6";
-    popoverColorInput.value = currentColor;
-    popoverColorHex.value = current ? current.toUpperCase() : "";
+    colorPicker.setValue(current, activeDefaultColor());
   }
 
   positionPopover(colorPopover, rect, 220);
@@ -1946,15 +1928,6 @@ function initMenuSettingsDialog(): void {
     }
   });
 
-  menuSettingOpacity.addEventListener("input", () => {
-    const menu = menus[activeMenuSettingsIndex];
-    const val = parseInt(menuSettingOpacity.value, 10);
-    if (menu && !isNaN(val)) {
-      menu.opacity = Math.max(0, Math.min(100, val));
-      markDirty();
-    }
-  });
-
   menuSettingAttachmentMode.addEventListener("change", () => {
     const menu = menus[activeMenuSettingsIndex];
     if (menu) {
@@ -2003,7 +1976,6 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
     ? normalizeFontSize(menu.popupFontSize)
     : DEFAULT_FONT_SIZE;
   const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
-  const opacityVal = menu.opacity !== undefined ? menu.opacity : 88;
   menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
   menuSettingOrientation.value = menu.orientation;
   menuSettingExpandDirection.value = menu.expandDirection ?? "";
@@ -2012,7 +1984,6 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
   menuSettingFontSize.disabled = barFontAuto;
   menuSettingPopupFontSize.value = String(popupFs);
   menuSettingGap.value = String(gapVal);
-  menuSettingOpacity.value = String(opacityVal);
   updateMenuSettingColorControls(menu);
   menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
   const isFree = menuSettingAttachmentMode.value === "free";
@@ -2224,17 +2195,6 @@ function initItemSettingsPopover(): void {
     markDirty();
   });
 
-  itemSettingTransparent.addEventListener("change", () => {
-    if (!activeItemSettings) return;
-    const menu = menus[activeItemSettings.menuIndex];
-    const item = menu?.items[activeItemSettings.itemIndex];
-    if (!item || item.type !== "space") return;
-
-    item.transparent = itemSettingTransparent.checked;
-    renderMenus();
-    markDirty();
-  });
-
   itemSettingDynamicShowPageTitle.addEventListener("change", () => {
     if (!activeItemSettings) return;
     const menu = menus[activeItemSettings.menuIndex];
@@ -2307,7 +2267,6 @@ function openItemSettingsPopover(menuIndex: number, itemIndex: number, anchorEl:
     itemSettingsBookmarkControls.style.display = "none";
     itemSettingsDynamicControls.style.display = "none";
     itemSettingSpaceUnits.value = String(item.units ?? 1);
-    itemSettingTransparent.checked = item.transparent !== false;
   } else {
     itemSettingsSpaceControls.style.display = "none";
     itemSettingsBookmarkControls.style.display = "block";
@@ -2451,10 +2410,18 @@ function initSpaceBookmarkDialog(): void {
     updateGapBookmarkFolderDisplay();
     spaceBookmarkDialog.showModal();
   });
-  spaceBookmarkClose.addEventListener("click", () => spaceBookmarkDialog.close());
-  spaceBookmarkCloseBtn.addEventListener("click", () => spaceBookmarkDialog.close());
-  spaceBookmarkTransparent.addEventListener("change", updateSpaceBookmarkColorState);
-  updateSpaceBookmarkColorState();
+  function closeSpaceBookmarkDialog(): void {
+    if (activeColorTarget === spaceBookmarkColors) closeColorPopover();
+    spaceBookmarkDialog.close();
+  }
+  spaceBookmarkClose.addEventListener("click", closeSpaceBookmarkDialog);
+  spaceBookmarkCloseBtn.addEventListener("click", closeSpaceBookmarkDialog);
+  spaceBookmarkDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeSpaceBookmarkDialog();
+  });
+  spaceBookmarkColor.addEventListener("click", () => openColorPopover(spaceBookmarkColors, spaceBookmarkColor));
+  updateSwatchAppearance(spaceBookmarkColor, spaceBookmarkColors.color);
   spaceBookmarkFolderBtn.addEventListener("click", () => {
     void openBookmarkPicker("pickFolder");
   });
@@ -2474,15 +2441,10 @@ function updateGapBookmarkFolderDisplay(): void {
   spaceBookmarkFolderDisplay.textContent = label;
 }
 
-function updateSpaceBookmarkColorState(): void {
-  spaceBookmarkColor.disabled = spaceBookmarkTransparent.checked;
-}
-
 async function addSpaceBookmark(): Promise<void> {
   const url = buildSpaceDirectiveUrl({
     units: Number(spaceBookmarkUnits.value),
-    transparent: spaceBookmarkTransparent.checked,
-    color: spaceBookmarkColor.value,
+    ...(spaceBookmarkColors.color ? { color: spaceBookmarkColors.color } : {}),
   });
   try {
     await browser.bookmarks.create({
@@ -3545,7 +3507,6 @@ function initAddItemPopover(): void {
           uid: crypto.randomUUID(),
           type: "space",
           units: 1,
-          transparent: true,
         };
         menu.items.push(newSpace);
         renderMenus();
@@ -4616,7 +4577,6 @@ function exportSettings(): void {
       ...(menu.buttonFontSize !== undefined ? { buttonFontSize: menu.buttonFontSize } : {}),
       ...(menu.popupFontSize !== undefined ? { popupFontSize: menu.popupFontSize } : {}),
       ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
-      ...(menu.opacity !== undefined ? { opacity: menu.opacity } : {}),
       ...(menu.color ? { color: menu.color } : {}),
       ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
       ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
@@ -4667,7 +4627,6 @@ function exportSettings(): void {
           ...(path !== undefined ? { path } : {}),
           ...(item.url ? { url: item.url } : {}),
           ...(typeof item.units === "number" ? { units: item.units } : {}),
-          ...(item.transparent !== undefined ? { transparent: item.transparent } : {}),
           ...(item.rename ? { rename: item.rename } : {}),
           ...(itemType === "flattenFolder"
             ? (item.cycleColors && item.cycleColors.length > 0 ? { cycleColors: item.cycleColors } : {})
@@ -4781,7 +4740,6 @@ async function importSettings(file: File): Promise<void> {
             ? { url: itemRecord.url }
             : {}),
           ...(typeof itemRecord.units === "number" ? { units: itemRecord.units } : {}),
-          ...(typeof itemRecord.transparent === "boolean" ? { transparent: itemRecord.transparent } : {}),
           ...(rename ? { rename } : {}),
           ...(type === "flattenFolder"
             ? (cycleColors && cycleColors.length > 0 ? { cycleColors } : {})

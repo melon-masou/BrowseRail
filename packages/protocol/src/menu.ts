@@ -36,6 +36,10 @@
 // lets the webview render without knowing anything about native targeting.
 // =============================================================================
 
+/** Configured colors include alpha as #rrggbbaa, shared by items and menu surfaces. */
+export type MenuColor = string;
+export const DEFAULT_DOCK_COLOR = "#161b24e0";
+
 export type MenuOrientation = "row" | "column";
 
 /**
@@ -56,7 +60,7 @@ export interface BookmarkEntry {
   kind: "bookmark";
   uid: string;
   label: string;
-  color?: string;
+  color?: MenuColor;
   rename?: string;
 }
 
@@ -64,28 +68,28 @@ export interface MenuFoldEntry {
   kind: "menuFold";
   uid: string;
   label: string;
-  color?: string;
+  color?: MenuColor;
 }
 
 export interface MenusToggleEntry {
   kind: "menusToggle";
   uid: string;
   label: string;
-  color?: string;
+  color?: MenuColor;
 }
 
 export interface BrowserActionEntry {
   kind: "browserAction";
   uid: string;
   label: string;
-  color?: string;
+  color?: MenuColor;
 }
 
 export interface FolderEntry {
   kind: "folder";
   uid: string;
   label: string;
-  color?: string;
+  color?: MenuColor;
   children: LayoutEntry[];
   expandOnHover?: boolean;
   expandDirection?: ExpandDirection;
@@ -96,8 +100,7 @@ export interface SpaceEntry {
   kind: "space";
   uid: string;
   units?: number;
-  color?: string;
-  transparent?: boolean;
+  color?: MenuColor;
 }
 
 export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry | SpaceEntry;
@@ -120,13 +123,12 @@ export interface MenuView {
   uid: string;
   items: LayoutEntry[];
   orientation: MenuOrientation;
-  color?: string;
+  color?: MenuColor;
   expandDirection?: ExpandDirection;
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
   gap?: number;
-  opacity?: number;
   // Dock strip (bar background) color, independent of `color` (the default item
-  // color). When unset the desktop uses its neutral dock surface.
-  dockColor?: string;
+  // color). When unset all hosts use the default dock surface.
+  dockColor?: MenuColor;
 }

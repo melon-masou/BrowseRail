@@ -1,5 +1,5 @@
 import { t } from "@browserail/i18n";
-import type { MenuAnchor } from "@browserail/protocol";
+import { DEFAULT_DOCK_COLOR, type MenuAnchor } from "@browserail/protocol";
 import { applyBarTheme, menuButton } from "./appearance";
 import type { BarState } from "./types";
 
@@ -7,7 +7,6 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
   const doc = root.ownerDocument;
   const menu = state.menu;
   const theme = applyBarTheme(root, state);
-  const DEFAULT_DOCK_COLOR = "#161b24";
   const gap = menu.gap ?? 4;
   const railContainer = doc.createElement("div");
   railContainer.className = "customize-rail";
@@ -16,9 +15,7 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
   railContainer.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
   railContainer.style.setProperty("--menu-gap", `${gap}px`);
   railContainer.style.setProperty("--button-font-size", `${theme.buttonFontSize}px`);
-  const opacity = typeof menu.opacity === "number" ? Math.max(0, Math.min(100, menu.opacity)) : 88;
-  const baseColor = menu.dockColor || DEFAULT_DOCK_COLOR;
-  railContainer.style.setProperty("--menu-bar-bg", `color-mix(in srgb, ${baseColor} ${opacity}%, transparent)`);
+  railContainer.style.setProperty("--menu-bar-bg", menu.dockColor || DEFAULT_DOCK_COLOR);
 
   if (menu.items.length === 0) {
     const empty = doc.createElement("div");
@@ -31,10 +28,7 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
       const space = doc.createElement("div");
       space.className = "menu-space";
       space.style.setProperty("--space-units", String(Math.max(0.1, entry.units ?? 1)));
-      space.dataset.transparent = String(entry.transparent !== false);
-      if (entry.transparent !== false) space.style.backgroundColor = "transparent";
-      else if (entry.color) space.style.backgroundColor = entry.color;
-      else space.classList.add("menu-space-solid");
+      space.style.backgroundColor = entry.color || "transparent";
       return space;
     }));
   }

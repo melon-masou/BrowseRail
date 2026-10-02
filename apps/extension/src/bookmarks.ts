@@ -361,7 +361,6 @@ const FLATTEN_SPACE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/)?browserail\.local
 
 export interface SpaceDirectiveOptions {
   units: number;
-  transparent: boolean;
   color?: string;
 }
 
@@ -369,10 +368,10 @@ export interface SpaceDirectiveOptions {
  * Builds the bookmark URL that `parseFlattenSpaceDirective` understands for Space entries.
  * Uses an explicit https:// scheme because bookmarks.create rejects schemeless URLs.
  */
-export function buildSpaceDirectiveUrl({ units, transparent, color }: SpaceDirectiveOptions): string {
+export function buildSpaceDirectiveUrl({ units, color }: SpaceDirectiveOptions): string {
   const normalizedUnits = Math.max(0.1, Math.min(20, Number.isFinite(units) ? units : 1));
-  const fields = [`units=${normalizedUnits}`, `transparent=${transparent}`];
-  if (!transparent && color && /^#[0-9a-f]{6}$/i.test(color)) {
+  const fields = [`units=${normalizedUnits}`];
+  if (color && /^#[0-9a-f]{8}$/i.test(color)) {
     fields.push(`color=${color}`);
   }
   return `https://browserail.local/#Space:${fields.join(":")}`;
@@ -397,21 +396,18 @@ function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
   }
 
   const unitsValue = fields.get("units");
-  const transparentValue = fields.get("transparent");
   const color = fields.get("color");
 
   const units = unitsValue === undefined || !Number.isFinite(Number(unitsValue))
     ? 1
     : Math.max(0.1, Math.min(20, Number(unitsValue)));
-  const transparent = transparentValue === undefined || transparentValue.toLowerCase() !== "false";
-  const isColor = color !== undefined && /^#[0-9a-f]{6}$/i.test(color);
+  const isColor = color !== undefined && /^#[0-9a-f]{8}$/i.test(color);
 
   return {
     kind: "space",
     uid: crypto.randomUUID(),
     units,
-    ...(isColor && !transparent ? { color } : {}),
-    transparent,
+    ...(isColor ? { color } : {}),
   };
 }
 
@@ -427,7 +423,7 @@ export interface TemporaryDirectiveOptions {
 export function buildTemporaryDirectiveUrl(options?: TemporaryDirectiveOptions): string {
   const id = options?.id || crypto.randomUUID();
   const fields = [`id=${id}`];
-  if (options?.color && /^#[0-9a-f]{6}$/i.test(options.color)) {
+  if (options?.color && /^#[0-9a-f]{8}$/i.test(options.color)) {
     fields.push(`color=${options.color}`);
   }
   if (options?.tabMode && options.tabMode === "newTab") {
@@ -474,7 +470,7 @@ export function parseFlattenTemporaryDirective(child: BookmarkNode): FlattenTemp
 
   const id = fields.get("id") || fields.get("uid") || implicitId || (child.id ? `bm-${child.id}` : crypto.randomUUID());
   const color = fields.get("color");
-  const isColor = color !== undefined && /^#[0-9a-f]{6}$/i.test(color);
+  const isColor = color !== undefined && /^#[0-9a-f]{8}$/i.test(color);
   const rawTabMode = fields.get("tabmode");
   const tabMode: TabMode | undefined = rawTabMode === "newTab" || rawTabMode === "replace" ? rawTabMode : undefined;
   const name = fields.get("name") || fields.get("rename") || fields.get("label");
@@ -573,7 +569,7 @@ export async function resolveMenuItems(
   const registerTarget = context.registerTarget ?? (() => crypto.randomUUID());
   const dynamicResolve = context.dynamicResolve ?? (() => undefined);
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, transparent, showPageTitle, browserAction }): Promise<LayoutEntry[]> => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, expandOnHover, includeFolders, tabMode, units, showPageTitle, browserAction }): Promise<LayoutEntry[]> => {
       if (type === "menuFold") {
         const entry: LayoutEntry = {
           kind: "menuFold",
@@ -585,13 +581,11 @@ export async function resolveMenuItems(
       }
 
       if (type === "space") {
-        const isTransparent = transparent !== false;
         const spaceEntry: LayoutEntry = {
           kind: "space",
           uid,
           units: units !== undefined ? units : 1,
-          ...(!isTransparent && (color || menuColor) ? { color: (color || menuColor) as string } : {}),
-          transparent: isTransparent,
+          ...(color ? { color } : {}),
         };
         return [spaceEntry];
       }

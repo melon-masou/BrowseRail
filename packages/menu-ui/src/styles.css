@@ -15,7 +15,6 @@
   --hairline: rgb(255 255 255 / 7%);
   --button-radius: 5px;
   --label-color: rgb(255 255 255 / 90%);
-  --color-intensity: 90%;
   --accent-blue: #7aa2ff;
 }
 
@@ -410,17 +409,11 @@
 
 :where(.browserail-menu-ui) .menu-space {
   box-sizing: border-box;
-  background: transparent !important;
+  background: transparent;
   border: none !important;
   width: 100%;
   height: 100%;
   pointer-events: auto;
-}
-
-:where(.browserail-menu-ui) .menu-space[data-transparent="true"],
-:where(.browserail-menu-ui) .menu-space-solid {
-  background: transparent !important;
-  border: none !important;
 }
 
 :where(.browserail-menu-ui) .menu-bar[data-orientation="row"] .menu-space,
@@ -465,15 +458,9 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* Accent popups (menu default color): softer shadow, matching scrollbar, and no
-   dark drop-shadow halo on the same-color buttons. */
+/* Paint the configured alpha once on the column; its buttons remain transparent. */
 :where(.browserail-menu-ui) .menu-column[data-accent="true"] {
-  /* Accented column: same muted material as the buttons, faint hairline edge. */
-  background-color: color-mix(
-    in oklab,
-    var(--button-custom-color) var(--color-intensity),
-    rgba(27, 33, 45, 0.94)
-  );
+  background-color: var(--button-custom-color);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
   scrollbar-color: rgb(255 255 255 / 35%) transparent;
@@ -492,20 +479,8 @@
   border-radius: 3px;
 }
 
-:where(.browserail-menu-ui) .menu-column[data-accent="true"] .menu-button[data-has-custom-color="true"]:hover,
-:where(.browserail-menu-ui) .menu-column[data-accent="true"] .menu-button[data-has-custom-color="true"]:focus-visible,
-:where(.browserail-menu-ui) .menu-column[data-accent="true"] .menu-button[data-has-custom-color="true"][data-expanded] {
-  box-shadow: none;
-}
-
 :where(.browserail-menu-ui) .menu-button[data-has-custom-color="true"] {
-  /* Blend the user's hue toward the shared neutral base so any color lands in
-     one muted material instead of a saturated debug chip. Hue is preserved. */
-  background-color: color-mix(
-    in oklab,
-    var(--button-custom-color) var(--color-intensity),
-    var(--surface-base)
-  ) !important;
+  background-color: var(--button-custom-color) !important;
   border: none !important;
 }
 

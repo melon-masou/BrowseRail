@@ -229,8 +229,6 @@ pub struct MenuView {
     #[serde(default)]
     pub gap: Option<f64>,
     #[serde(default)]
-    pub opacity: Option<f64>,
-    #[serde(default)]
     pub dock_color: Option<String>,
 }
 
@@ -489,8 +487,6 @@ pub enum LayoutEntry {
         units: Option<f64>,
         #[serde(default)]
         color: Option<String>,
-        #[serde(default)]
-        transparent: Option<bool>,
     },
     #[serde(other)]
     Unknown,
@@ -927,19 +923,22 @@ mod tests {
     }
 
     #[test]
-    fn deserializes_dock_color_and_toggle_color() {
+    fn preserves_color_alpha_when_forwarding_menu_views() {
         let json = r##"{
             "uid": "menu-custom",
-            "dockColor": "#ff0000",
+            "dockColor": "#ff000080",
             "items": [
-                { "kind": "menuFold", "uid": "toggle-1", "label": "Toggle", "color": "#00ff00" }
+                { "kind": "menuFold", "uid": "toggle-1", "label": "Toggle", "color": "#00ff0000" }
             ]
         }"##;
         let view: MenuView = serde_json::from_str(json).unwrap();
-        assert_eq!(view.dock_color.as_deref(), Some("#ff0000"));
+        assert_eq!(view.dock_color.as_deref(), Some("#ff000080"));
+        let forwarded = serde_json::to_value(&view).unwrap();
+        assert_eq!(forwarded["dockColor"], "#ff000080");
+        assert_eq!(forwarded["items"][0]["color"], "#00ff0000");
         match &view.items[0] {
             LayoutEntry::MenuFold { color, .. } => {
-                assert_eq!(color.as_deref(), Some("#00ff00"));
+                assert_eq!(color.as_deref(), Some("#00ff0000"));
             }
             _ => panic!("Expected MenuFold"),
         }

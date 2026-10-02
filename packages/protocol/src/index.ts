@@ -1,4 +1,4 @@
-import type { ExpandDirection, MenuFontSize, MenuOrientation } from "./menu";
+import type { MenuColor, ExpandDirection, MenuFontSize, MenuOrientation } from "./menu";
 import type { AttachmentMode, OnTopMode } from "./native";
 
 export * from "./menu";
@@ -32,8 +32,8 @@ export interface StoredMenuItem {
   uid: string;
   path?: string[];
   url?: string;
-  color?: string;
-  cycleColors?: string[];
+  color?: MenuColor;
+  cycleColors?: MenuColor[];
   rename?: string;
   type?: MenuItemType;
   // For `dynamic` items: the dynamic bookmark definition this item renders (see
@@ -45,7 +45,6 @@ export interface StoredMenuItem {
   includeFolders?: boolean;
   tabMode?: TabMode;
   units?: number;
-  transparent?: boolean;
   showPageTitle?: boolean;
   browserAction?: BrowserActionKind;
   targetMenuUids?: string[];
@@ -85,7 +84,7 @@ export interface UrlRule {
 
 export interface StoredMenu {
   attachmentMode?: AttachmentMode;
-  color?: string;
+  color?: MenuColor;
   enabled?: boolean;
   expandDirection?: ExpandDirection;
   buttonFontSize?: MenuFontSize;
@@ -97,8 +96,7 @@ export interface StoredMenu {
   tabMode?: TabMode;
   uid: string;
   urlRuleUids?: string[];
-  opacity?: number;
-  dockColor?: string;
+  dockColor?: MenuColor;
 }
 
 // Special Root Placeholders
@@ -218,10 +216,9 @@ export interface ExportedMenuItem {
   path?: string[];
   url?: string;
   units?: number;
-  transparent?: boolean;
   rename?: string;
-  color?: string;
-  cycleColors?: string[];
+  color?: MenuColor;
+  cycleColors?: MenuColor[];
   expandDirection?: ExpandDirection;
   expandOnHover?: boolean;
   includeFolders?: boolean;
@@ -248,15 +245,14 @@ export interface ExportedMenu {
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
   gap?: number;
-  color?: string;
+  color?: MenuColor;
   expandDirection?: ExpandDirection;
   attachmentMode?: AttachmentMode;
   onTopMode?: OnTopMode;
   tabMode?: TabMode;
   items: ExportedMenuItem[];
   urlRuleUids?: string[];
-  opacity?: number;
-  dockColor?: string;
+  dockColor?: MenuColor;
 }
 
 export interface ExportedSettingsData {

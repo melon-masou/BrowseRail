@@ -1,4 +1,4 @@
-import { invertBookmarkActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
+import { DEFAULT_DOCK_COLOR, invertBookmarkActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 import { applyBarTheme, barDimensions, menuButton } from "./appearance";
 import { createLifetime, showMenuError } from "./lifetime";
@@ -121,10 +121,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
       const space = doc.createElement("div");
       space.className = "menu-space";
       space.style.setProperty("--space-units", String(Math.max(0.1, entry.units ?? 1)));
-      space.dataset.transparent = String(entry.transparent !== false);
-      if (entry.transparent !== false) space.style.backgroundColor = "transparent";
-      else if (entry.color) space.style.backgroundColor = entry.color;
-      else space.classList.add("menu-space-solid");
+      space.style.backgroundColor = entry.color || "transparent";
       space.addEventListener("pointerenter", requestClose, options);
       return space;
     }
@@ -194,8 +191,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     bar.style.setProperty("--item-count", String(state.collapsed ? 1 : Math.max(1, Math.round(units))));
     bar.style.setProperty("--button-font-size", `${theme.buttonFontSize}px`);
     bar.style.setProperty("--menu-gap", `${state.menu.gap ?? 4}px`);
-    const opacity = Math.max(0, Math.min(100, state.menu.opacity ?? 88));
-    bar.style.setProperty("--menu-bar-bg", `color-mix(in srgb, ${state.menu.dockColor || "#161b24"} ${opacity}%, transparent)`);
+    bar.style.setProperty("--menu-bar-bg", state.menu.dockColor || DEFAULT_DOCK_COLOR);
     const size = state.collapsed ? state.itemSize : barDimensions(state.menu, state.itemSize);
     bar.style.width = `${size.width}px`;
     bar.style.height = `${size.height}px`;

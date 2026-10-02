@@ -1413,6 +1413,60 @@ output {
   border-color: #3b82f6;
 }
 
+.color-popover-transparency {
+  margin-top: 10px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 8px;
+}
+
+.color-popover-transparency .label-row {
+  justify-content: space-between;
+}
+
+.color-popover-transparency output {
+  color: inherit;
+}
+
+#popover-color-transparency {
+  appearance: none;
+  min-height: 12px;
+  height: 12px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background-image: linear-gradient(to right, var(--picker-color), transparent),
+    repeating-conic-gradient(#e2e8f0 0% 25%, #fff 0% 50%);
+  background-size: 100% 100%, 8px 8px;
+  cursor: pointer;
+}
+
+#popover-color-transparency::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #475569;
+  box-shadow: 0 0 0 1px #94a3b8;
+}
+
+#popover-color-transparency::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #475569;
+  box-shadow: 0 0 0 1px #94a3b8;
+}
+
+#popover-color-transparency:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 3px;
+}
+
 /* Menu Settings Dialog */
 .menu-settings-dialog {
   border: none;
@@ -2116,27 +2170,6 @@ output {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-}
-
-.space-bookmark-check-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.space-bookmark-check-label input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  min-height: 15px;
-  margin: 0;
-  accent-color: #2563eb;
-}
-
-#space-bookmark-color:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .space-bookmark-folder-row {
