@@ -5,6 +5,7 @@
   "packageManager": "pnpm@11.3.0",
   "scripts": {
     "build": "pnpm clean:build && pnpm --filter @browserail/protocol build && pnpm --filter @browserail/extension build && pnpm build:windows",
+    "build:extension": "pnpm --filter @browserail/extension... -r build",
     "build:release": "node scripts/build-release.mjs",
     "build:windows": "pnpm --filter @browserail/desktop build && node scripts/build-desktop-windows.mjs",
     "check": "pnpm -r check",
