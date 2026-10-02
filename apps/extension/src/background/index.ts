@@ -241,10 +241,12 @@ browser.bookmarks.onRemoved.addListener(requestSync);
 browser.tabs?.onActivated?.addListener(() => {
   requestSync();
 });
-browser.tabs?.onUpdated?.addListener(() => {
+browser.tabs?.onUpdated?.addListener((tabId, change) => {
+  if (change.url !== undefined || change.status === "complete") browserInjection.tabChanged(tabId);
   requestSync();
 });
-browser.tabs?.onReplaced?.addListener(() => {
+browser.tabs?.onReplaced?.addListener((addedTabId) => {
+  browserInjection.tabChanged(addedTabId);
   requestSync();
 });
 browser.tabs?.onAttached?.addListener(() => {
@@ -676,7 +678,12 @@ async function syncOnce(): Promise<void> {
   const menuVisibleForUrl = (uid: string, url: string | undefined): boolean => isMenuVisibleForUrl(config, uid, url);
 
   await browserMenus.publish(config, menuStates.map(menu => menu.view), browserPlacements, browserCollapsed, enabled && mode === "browser", browserEditing);
-  await browserInjection.reconcile(enabled && mode === "browser");
+  await browserInjection.reconcile(enabled && mode === "browser", menuStates.filter(menu => menu.view.items.length > 0).map(menu => ({
+    uid: menu.uid,
+    patterns: (config.panel.menus.find(stored => stored.uid === menu.uid)?.urlRuleUids ?? []).map(uid =>
+      config.urlRules.find(rule => rule.uid === uid)?.patterns ?? [],
+    ),
+  })));
   if (socket?.readyState !== WebSocket.OPEN) return;
 
   // Bound menus are emitted once for each browser window because URL visibility, focus state,
