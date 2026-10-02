@@ -140,7 +140,7 @@
             data-i18n="section.menus">Menus</button>
           <button type="button" id="url-rules-tab" class="menus-card-tab" role="tab"
             data-tab-target="url-rules-panel" aria-selected="false" aria-controls="url-rules-panel"
-            data-i18n="section.urlRules">URL rules</button>
+            data-i18n="section.urlRules">URL matching</button>
           <button type="button" id="dynamic-tab" class="menus-card-tab" role="tab"
             data-tab-target="dynamic-panel" aria-selected="false" aria-controls="dynamic-panel"
             data-i18n="section.dynamic">Dynamic bookmarks</button>
@@ -186,7 +186,6 @@
             <button type="button" id="shortcuts-subtab-browser" class="shortcuts-subtab-btn is-active" data-subtab-target="shortcuts-browser-panel" data-i18n="shortcuts.tabBrowser">🌐 Browser Shortcuts</button>
             <button type="button" id="shortcuts-subtab-native" class="shortcuts-subtab-btn" data-subtab-target="shortcuts-native-panel">
               <span data-i18n="shortcuts.tabNative">🖥️ Native Shortcuts</span>
-              <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
             </button>
           </div>
 
@@ -202,7 +201,7 @@
           <!-- Native Shortcuts Sub-panel -->
           <div id="shortcuts-native-panel" class="shortcuts-subpanel" hidden>
             <div class="shortcuts-toolbar">
-              <span class="url-rules-hint" data-i18n="shortcuts.nativeHint">Requires desktop client. Captures single-key or custom shortcuts when the browser window is active.</span>
+              <span class="url-rules-hint" data-i18n="shortcuts.nativeHint">Only applies in Native mode; requires the desktop client. Supports more key combinations (including single letter keys).</span>
               <button id="add-native-shortcut-btn" class="menu-action-btn" type="button" data-i18n="shortcuts.addNative">+ Add</button>
             </div>
             <div id="native-shortcuts-list" class="shortcuts-list"></div>
@@ -556,14 +555,6 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <span class="add-popover-icon">🔖</span>
           <span class="add-popover-text" data-i18n="menu.addBookmark">Bookmark / Folder</span>
         </button>
-        <button type="button" id="add-popover-space-btn" class="add-popover-item">
-          <span class="add-popover-icon">␣</span>
-          <span class="add-popover-text" data-i18n="menu.addSpace">Space</span>
-        </button>
-        <button type="button" id="add-popover-action-btn" class="add-popover-item">
-          <span class="add-popover-icon">⇕</span>
-          <span class="add-popover-text" data-i18n="menu.action">Action</span>
-        </button>
         <button type="button" id="add-popover-dynamic-btn" class="add-popover-item">
           <span class="add-popover-icon">🜂</span>
           <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
@@ -571,6 +562,14 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
         <button type="button" id="add-popover-temporary-btn" class="add-popover-item">
           <span class="add-popover-icon">📌</span>
           <span class="add-popover-text" data-i18n="menu.addTemporary">Temporary bookmark</span>
+        </button>
+        <button type="button" id="add-popover-space-btn" class="add-popover-item">
+          <span class="add-popover-icon">␣</span>
+          <span class="add-popover-text" data-i18n="menu.addSpace">Space</span>
+        </button>
+        <button type="button" id="add-popover-action-btn" class="add-popover-item">
+          <span class="add-popover-icon">⇕</span>
+          <span class="add-popover-text" data-i18n="menu.action">Action</span>
         </button>
       </div>
 

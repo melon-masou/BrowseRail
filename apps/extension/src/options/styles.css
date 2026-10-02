@@ -1552,6 +1552,10 @@ output {
   text-overflow: ellipsis;
 }
 
+.menu-settings-body .native-mode-hint {
+  font-size: 10px;
+}
+
 .menu-settings-body select,
 .menu-settings-body input {
   min-height: 28px;
