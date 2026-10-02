@@ -390,6 +390,17 @@ impl SessionRegistry {
         ))
     }
 
+    pub fn detach(&self, connection_uid: Uuid) -> Option<String> {
+        let mut sessions = self.sessions.write().ok()?;
+        let instance_uid = sessions
+            .iter()
+            .find(|(_, session)| session.connection_uid == Some(connection_uid))?
+            .0
+            .clone();
+        sessions.remove(&instance_uid);
+        Some(instance_uid)
+    }
+
     pub fn disconnect_all(&self) -> Vec<(String, Vec<String>)> {
         self.sessions
             .write()
@@ -559,6 +570,38 @@ mod tests {
     }
 
     #[test]
+    fn detaching_removes_only_that_instances_menus_and_does_not_restore_them_on_reconnect() {
+        let registry = SessionRegistry::default();
+        let connection_a = Uuid::new_v4();
+        let connection_b = Uuid::new_v4();
+        let (sender_a, _) = unbounded_channel();
+        let (sender_b, _) = unbounded_channel();
+        registry.register(connection_a, instance("instance-a"), sender_a);
+        registry.register(connection_b, instance("instance-b"), sender_b);
+        registry
+            .sync(connection_a, 1, vec![menu("window-a")], Vec::new(), Vec::new())
+            .unwrap();
+        registry
+            .sync(connection_b, 1, vec![menu("window-b")], Vec::new(), Vec::new())
+            .unwrap();
+
+        assert_eq!(registry.detach(connection_a).as_deref(), Some("instance-a"));
+        assert!(!registry.has_window("instance-a", "window-a"));
+        assert!(registry.has_window("instance-b", "window-b"));
+        assert!(registry.disconnect(connection_a).is_none());
+
+        let new_connection = Uuid::new_v4();
+        let (new_sender, _) = unbounded_channel();
+        registry.register(new_connection, instance("instance-a"), new_sender);
+        assert!(!registry.has_window("instance-a", "window-a"));
+        registry
+            .sync(new_connection, 1, vec![menu("window-new")], Vec::new(), Vec::new())
+            .unwrap();
+        assert!(registry.has_window("instance-a", "window-new"));
+        assert!(registry.has_window("instance-b", "window-b"));
+    }
+
+    #[test]
     fn replacing_a_connection_keeps_its_menus_for_the_first_new_sync() {
         let registry = SessionRegistry::default();
         let old_connection = Uuid::new_v4();
@@ -573,6 +616,7 @@ mod tests {
 
         registry.register(new_connection, instance("instance-a"), new_sender);
 
+        assert!(registry.detach(old_connection).is_none());
         assert!(registry.disconnect(old_connection).is_none());
         let outcome = registry
             .sync(new_connection, 1, vec![menu("window-b")], Vec::new(), Vec::new())

@@ -794,13 +794,9 @@ pub fn open_popup(
     // ensure_popup_window), so open_popup never builds it. If it is missing the
     // menu is not ready or not expandable, and there is nothing to open; the next
     // sync re-pairs it. open_popup only writes payload, positions, and shows.
-    let Some(window) = app.get_webview_window(&label) else {
-        crate::debug::log(
-            "Native:Popup",
-            format!("open_popup: popup window {label} does not exist; skipped"),
-        );
-        return Ok(());
-    };
+    let window = app
+        .get_webview_window(&label)
+        .ok_or("Popup window is unavailable")?;
 
     set_window_visible_without_activation(&window, false)?;
     place_popup(&parent, &window, &popup.anchor, popup.width, popup.height)?;
@@ -878,17 +874,17 @@ pub fn show_popup(
     window_uid: &str,
     menu_uid: &str,
     request_uid: &str,
-) -> bool {
+) -> Result<(), String> {
     if !popups.can_show(instance_uid, window_uid, menu_uid, request_uid) {
-        return false;
+        return Err("Popup request is no longer active".into());
     }
     let label = popup_label(instance_uid, window_uid, menu_uid);
-    if let Some(window) = app.get_webview_window(&label) {
-        let _ = set_window_visible_without_activation(&window, true);
-        surfaces.mark_visible(&label);
-        return true;
-    }
-    false
+    let window = app
+        .get_webview_window(&label)
+        .ok_or("Popup window is unavailable")?;
+    set_window_visible_without_activation(&window, true)?;
+    surfaces.mark_visible(&label);
+    Ok(())
 }
 
 pub fn close_popup(

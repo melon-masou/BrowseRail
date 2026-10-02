@@ -48,6 +48,8 @@ pub enum ExtensionMessage {
     },
     #[serde(rename = "heartbeat")]
     Heartbeat,
+    #[serde(rename = "detach")]
+    Detach,
     #[serde(other)]
     Unknown,
 }
@@ -546,52 +548,22 @@ pub fn menu_total_size_for_state(
     }
 }
 
-/// Geometry for a detached menu surface in its current state. The full state
-/// includes the drag handle; the collapsed state places the MenuFold at its
-/// absolute full-state position.
+/// Geometry for a detached menu surface. Collapsing keeps the MenuFold at
+/// its absolute expanded position.
 pub fn free_menu_geometry_for_state(
     view: &MenuView,
     placement: &MenuPlacement,
     free_position: Option<FreePosition>,
     collapsed: bool,
 ) -> ComputedMenuGeometry {
-    const FREE_DRAG_HANDLE_SIZE: f64 = 10.0;
-    let (mut width, mut height) = menu_total_size_for_state(view, placement, collapsed);
-    let Some(position) = free_position else {
-        return ComputedMenuGeometry {
-            x: 0.0,
-            y: 0.0,
-            width,
-            height,
-        };
-    };
-    let (x, y) = (position.x, position.y);
-
-    if collapsed {
+    let (width, height) = menu_total_size_for_state(view, placement, collapsed);
+    let (mut x, mut y) = free_position
+        .map(|position| (position.x, position.y))
+        .unwrap_or((0.0, 0.0));
+    if collapsed && free_position.is_some() {
         let (toggle_x, toggle_y) = menu_toggle_position(view, placement);
-        let handle_offset_x = if matches!(view.orientation, MenuOrientation::Row) {
-            FREE_DRAG_HANDLE_SIZE
-        } else {
-            0.0
-        };
-        let handle_offset_y = if matches!(view.orientation, MenuOrientation::Column) {
-            FREE_DRAG_HANDLE_SIZE
-        } else {
-            0.0
-        };
-        let x = x + handle_offset_x + toggle_x;
-        let y = y + handle_offset_y + toggle_y;
-        return ComputedMenuGeometry {
-            x,
-            y,
-            width,
-            height,
-        };
-    }
-
-    match view.orientation {
-        MenuOrientation::Row => width += FREE_DRAG_HANDLE_SIZE,
-        MenuOrientation::Column => height += FREE_DRAG_HANDLE_SIZE,
+        x += toggle_x;
+        y += toggle_y;
     }
     ComputedMenuGeometry {
         x,
@@ -949,7 +921,8 @@ mod tests {
         let collapsed =
             free_menu_geometry_for_state(&synced.view, &synced.placement, synced.free_position(), true);
 
-        assert_eq!((expanded.x + 65.0, expanded.y), (collapsed.x, collapsed.y));
+        assert_eq!((expanded.width, expanded.height), (105.0, 20.0));
+        assert_eq!((expanded.x + 55.0, expanded.y), (collapsed.x, collapsed.y));
         assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));
     }
 

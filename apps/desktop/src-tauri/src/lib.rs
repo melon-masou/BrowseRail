@@ -339,20 +339,6 @@ fn invoke_free_action(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn update_free_placement(
-    state: tauri::State<'_, AppState>,
-    instance_uid: String,
-    menu_uid: String,
-    x: f64,
-    y: f64,
-) -> Result<(), String> {
-    state
-        .registry
-        .update_free_placement(&instance_uid, menu_uid, x, y)
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
 fn free_surface_state(
     state: tauri::State<'_, AppState>,
     instance_uid: String,
@@ -502,10 +488,10 @@ fn open_popup(
     state: tauri::State<'_, AppState>,
     request: panel::PopupRequest,
 ) -> Result<(), String> {
-    let _ = state
+    state
         .native_sender
-        .send(native::NativeCommand::OpenPopup { request });
-    Ok(())
+        .send(native::NativeCommand::OpenPopup { request })
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -517,13 +503,15 @@ fn show_popup(
     menu_uid: String,
     request_uid: String,
 ) -> Result<(), String> {
-    let _ = state.native_sender.send(native::NativeCommand::ShowPopup {
-        instance_uid,
-        window_uid,
-        menu_uid,
-        request_uid,
-    });
-    Ok(())
+    state
+        .native_sender
+        .send(native::NativeCommand::ShowPopup {
+            instance_uid,
+            window_uid,
+            menu_uid,
+            request_uid,
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -623,12 +611,14 @@ fn close_popup(
     window_uid: String,
     menu_uid: String,
 ) -> Result<(), String> {
-    let _ = state.native_sender.send(native::NativeCommand::ClosePopup {
-        instance_uid,
-        window_uid,
-        menu_uid,
-    });
-    Ok(())
+    state
+        .native_sender
+        .send(native::NativeCommand::ClosePopup {
+            instance_uid,
+            window_uid,
+            menu_uid,
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -809,17 +799,6 @@ fn start_menu_drag(window: tauri::Window) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn move_free_surface(window: tauri::Window, x: f64, y: f64) -> Result<(), String> {
-    if !window.label().starts_with("free-") {
-        return Err("Only free surfaces can be moved directly".into());
-    }
-    window
-        .set_position(tauri::LogicalPosition::new(x, y))
-        .map_err(|error| error.to_string())
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
 fn save_menu_placement(
     state: tauri::State<'_, AppState>,
     window: tauri::Window,
@@ -928,9 +907,11 @@ fn save_menu_placement(
             offset_x,
             offset_y,
         },
-        // Preserve the free position; a resize/drag never recomputes it here
-        // (free drags go through update_free_placement).
-        free_position: orig_menu.placement.free_position,
+        free_position: if is_free {
+            Some(protocol::FreePosition { x, y })
+        } else {
+            orig_menu.placement.free_position
+        },
         item_width,
         item_height,
     };
@@ -1133,12 +1114,22 @@ fn open_listener_settings(app: &tauri::AppHandle) {
 #[tauri::command]
 async fn open_temporary_confirmation(
     app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
     instance_uid: String,
     menu_uid: String,
     window_uid: Option<String>,
     uid: String,
     label: String,
 ) -> Result<(), String> {
+    let target_window_uid = window_uid.as_deref().unwrap_or("");
+    let menu = if target_window_uid.is_empty() {
+        state.registry.free_menu(&instance_uid, &menu_uid)
+    } else {
+        state.registry.menu(&instance_uid, target_window_uid, &menu_uid)
+    };
+    if menu.is_none() {
+        return Err("Temporary bookmark menu is unavailable".into());
+    }
     let url = format!(
         "index.html?view=temporaryConfirm&instanceUid={}&menuUid={}&windowUid={}&uid={}",
         urlencoding::encode(&instance_uid),
@@ -1146,7 +1137,11 @@ async fn open_temporary_confirmation(
         urlencoding::encode(window_uid.as_deref().unwrap_or("")),
         urlencoding::encode(&uid),
     );
-    let window_label = format!("temporary-confirm-{}", uuid::Uuid::new_v4());
+    let window_label = format!(
+        "{}{}",
+        panel::instance_surface_prefix("temporary-confirm", &instance_uid),
+        uuid::Uuid::new_v4()
+    );
     WebviewWindowBuilder::new(&app, &window_label, WebviewUrl::App(url.into()))
         .title(label)
         .background_color(FORM_WINDOW_BACKGROUND)
@@ -1287,7 +1282,6 @@ pub fn run() {
             surface_horizontal_space,
             invoke_action,
             invoke_free_action,
-            update_free_placement,
             free_surface_state,
             is_editing_locked,
             listener_state,
@@ -1306,7 +1300,6 @@ pub fn run() {
             begin_menu_customization,
             customization_toolbar_flip,
             start_menu_drag,
-            move_free_surface,
             save_menu_placement,
             cancel_menu_customization,
             set_ui_language,

@@ -355,6 +355,14 @@ async fn handle_connection(
                                     outgoing.send(NativeMessage::Heartbeat)
                                         .map_err(|_| "Connection closed")?;
                                 }
+                                ExtensionMessage::Detach => {
+                                    if registered_instance.is_some() {
+                                        native_sender.send(NativeCommand::ClientDetached { connection_uid })
+                                            .map_err(|_| "Native reactor is unavailable")?;
+                                        writer.send(Message::Close(None)).await.map_err(|error| error.to_string())?;
+                                        break;
+                                    }
+                                }
                             }
                         }
                         _ => {}

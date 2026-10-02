@@ -12,12 +12,14 @@
   },
   "dependencies": {
     "@browserail/i18n": "workspace:*",
+    "@browserail/menu-ui": "workspace:*",
     "@browserail/protocol": "workspace:*",
     "@tauri-apps/api": "^2.11.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^24.0.0",
+    "happy-dom": "^20.14.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.0"

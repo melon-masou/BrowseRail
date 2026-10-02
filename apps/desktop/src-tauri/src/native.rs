@@ -44,6 +44,30 @@ use crate::socket::SocketServer;
 const POPUP_CLOSE_DELAY_MS: u64 = 50;
 const POPUP_HIDE_DELAY_MS: u64 = 500;
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PopupReady<'a> {
+    request_uid: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn emit_popup_ready(
+    app: &AppHandle,
+    parent_label: &str,
+    request_uid: &str,
+    result: Result<(), String>,
+) {
+    let _ = app.emit_to(
+        parent_label,
+        "popup-ready",
+        PopupReady {
+            request_uid,
+            error: result.err(),
+        },
+    );
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrayStateSnapshot {
     pub server_text: String,
@@ -62,6 +86,9 @@ pub enum NativeCommand {
         outgoing: UnboundedSender<NativeMessage>,
     },
     ClientDisconnected {
+        connection_uid: Uuid,
+    },
+    ClientDetached {
         connection_uid: Uuid,
     },
     SyncMenus {
@@ -753,6 +780,25 @@ impl NativeReactor {
                         self.check_update_tray();
                     }
                 }
+                NativeCommand::ClientDetached { connection_uid } => {
+                    self.pending_window_pairings
+                        .retain(|_, pairing| pairing.connection_uid != connection_uid);
+                    if let Some(instance_uid) = self.registry.detach(connection_uid) {
+                        if self.enable_shortcuts.load(Ordering::Relaxed) {
+                            sync_keyboard_hook(&self.app, self.registry.all_active_shortcut_keys());
+                        } else {
+                            sync_keyboard_hook(&self.app, HashSet::new());
+                        }
+                        if let Ok(mut handles) = self.browser_window_handles.lock() {
+                            handles.retain(|(stored_instance_uid, _), _| {
+                                stored_instance_uid != &instance_uid
+                            });
+                        }
+                        self.sync_active_paired_hwnds();
+                        self.destroy_instance_surfaces(instance_uid);
+                        self.check_update_tray();
+                    }
+                }
                 NativeCommand::SyncMenus {
                     connection_uid,
                     revision,
@@ -854,9 +900,37 @@ impl NativeReactor {
                 NativeCommand::OpenPopup { request } => {
                     let app = self.app.clone();
                     let popups = self.popups.clone();
-                    let _ = self.app.run_on_main_thread(move || {
-                        let _ = crate::panel::open_popup(&app, &popups, request);
-                    });
+                    let registry = self.registry.clone();
+                    let parent_label = request.parent_label.clone();
+                    let request_uid = request.request_uid.clone();
+                    let failure_parent = parent_label.clone();
+                    let failure_request = request_uid.clone();
+                    if let Err(error) = self.app.run_on_main_thread(move || {
+                        let parent = if request.window_uid.is_empty() {
+                            registry.free_menu(&request.instance_uid, &request.menu_uid)
+                        } else {
+                            registry.menu(
+                                &request.instance_uid,
+                                &request.window_uid,
+                                &request.menu_uid,
+                            )
+                        };
+                        let result = if parent.is_some() {
+                            crate::panel::open_popup(&app, &popups, request)
+                        } else {
+                            Err("Popup parent menu is unavailable".into())
+                        };
+                        if result.is_err() {
+                            emit_popup_ready(&app, &parent_label, &request_uid, result);
+                        }
+                    }) {
+                        emit_popup_ready(
+                            &self.app,
+                            &failure_parent,
+                            &failure_request,
+                            Err(error.to_string()),
+                        );
+                    }
                 }
                 NativeCommand::ShowPopup {
                     instance_uid,
@@ -867,8 +941,15 @@ impl NativeReactor {
                     let app = self.app.clone();
                     let surfaces = self.surfaces.clone();
                     let popups = self.popups.clone();
-                    let _ = self.app.run_on_main_thread(move || {
-                        let _ = crate::panel::show_popup(
+                    let parent_label = if window_uid.is_empty() {
+                        free_label(&instance_uid, &menu_uid)
+                    } else {
+                        menu_label(&instance_uid, &window_uid, &menu_uid)
+                    };
+                    let failure_parent = parent_label.clone();
+                    let failure_request = request_uid.clone();
+                    if let Err(error) = self.app.run_on_main_thread(move || {
+                        let result = crate::panel::show_popup(
                             &app,
                             &surfaces,
                             &popups,
@@ -877,7 +958,15 @@ impl NativeReactor {
                             &menu_uid,
                             &request_uid,
                         );
-                    });
+                        emit_popup_ready(&app, &parent_label, &request_uid, result);
+                    }) {
+                        emit_popup_ready(
+                            &self.app,
+                            &failure_parent,
+                            &failure_request,
+                            Err(error.to_string()),
+                        );
+                    }
                 }
                 NativeCommand::SchedulePopupClose {
                     instance_uid,
@@ -1012,11 +1101,18 @@ impl NativeReactor {
                 }
                 NativeCommand::SaveMenuPlacement {
                     instance_uid,
-                    window_uid: _,
+                    window_uid,
                     menu_uid,
                     anchor: _,
                     placement,
                 } => {
+                    if window_uid.is_empty() {
+                        if let Some(position) = placement.free_position {
+                            let _ = self.registry.update_free_placement(
+                                &instance_uid, menu_uid.clone(), position.x, position.y,
+                            );
+                        }
+                    }
                     let _ = self
                         .registry
                         .update_menu_placement(&instance_uid, menu_uid, placement);
@@ -1314,6 +1410,44 @@ impl NativeReactor {
             window_uid,
             ok,
         });
+    }
+
+    fn destroy_instance_surfaces(&self, instance_uid: String) {
+        self.popups.remove_instance(&instance_uid);
+        let prefixes = ["menu", "free", "popup", "temporary-confirm"]
+            .map(|kind| instance_surface_prefix(kind, &instance_uid));
+        let app = self.app.clone();
+        let surfaces = self.surfaces.clone();
+        let window_levels = self.window_levels.clone();
+        let window_owners = self.window_owners.clone();
+        if let Err(error) = self.app.run_on_main_thread(move || {
+            // Enumerate on the UI thread so earlier queued window creation is
+            // included even when the instance no longer has any synced menus.
+            let mut labels = app
+                .webview_windows()
+                .into_keys()
+                .filter(|label| prefixes.iter().any(|prefix| label.starts_with(prefix)))
+                .collect::<Vec<_>>();
+            labels.sort_by_key(|label| {
+                !label.starts_with(&prefixes[2]) && !label.starts_with(&prefixes[3])
+            });
+            surfaces.remove_labels(&labels);
+            if let Ok(mut levels) = window_levels.lock() {
+                levels.retain(|label, _| !labels.contains(label));
+            }
+            if let Ok(mut owners) = window_owners.lock() {
+                owners.retain(|label, _| !labels.contains(label));
+            }
+            for label in labels {
+                if let Some(window) = app.get_webview_window(&label) {
+                    if let Err(error) = crate::panel::safely_destroy_window(&window) {
+                        crate::debug::log("Detach", format!("Failed to destroy {label}: {error}"));
+                    }
+                }
+            }
+        }) {
+            crate::debug::log("Detach", format!("Failed to schedule window cleanup: {error}"));
+        }
     }
 
     fn hide_instance_windows(&self, instance_uid: &str, window_uids: &[String]) {

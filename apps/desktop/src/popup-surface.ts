@@ -1,14 +1,8 @@
-import {
-  invertBookmarkActionUid,
-  type ExpandDirection,
-  type LayoutEntry,
-} from "@browserail/protocol";
+import type { LayoutEntry, ExpandDirection } from "@browserail/protocol";
+import { mountFolderPopup, type Controller, type PopupState, type PopupHost } from "@browserail/menu-ui";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-
-import { measureTextWidth } from "./text-measure";
-import { attachTemporaryBookmarkButton } from "./temporary-bookmark";
 
 interface PopupPayload {
   color?: string;
@@ -20,6 +14,7 @@ interface PopupPayload {
   maxColumnHeight: number;
   popupFontSize: number;
   requestUid: string;
+  parentLabel: string;
   rootDirection: ExpandDirection;
   rootOffsetX: number;
   workLeft: number;
@@ -31,20 +26,6 @@ interface PopupSurfaceState {
   payload?: PopupPayload;
 }
 
-interface PointerSample {
-  time: number;
-  x: number;
-  y: number;
-}
-
-const HOVER_OPEN_DELAY_MS = 60;
-const SUBMENU_SWITCH_DELAY_MS = 180;
-const SUBMENU_AIM_DELAY_MS = 320;
-const POINTER_TRAIL_MAX_AGE_MS = 180;
-const MIN_COLUMN_HEIGHT = 48;
-const BASE_MAX_COLUMN_WIDTH = 420;
-const BASE_POPUP_FONT_SIZE = 13;
-
 export async function initializePopupSurface(): Promise<void> {
   const query = new URLSearchParams(location.search);
   const instanceUid = requiredQuery(query, "instanceUid");
@@ -52,492 +33,86 @@ export async function initializePopupSurface(): Promise<void> {
   const windowUid = requiredQuery(query, "windowUid", true);
   const surfaceLabel = getCurrentWindow().label;
   const root = requiredElement("app");
-
   document.body.dataset.surface = "popup";
-
   let currentPayload: PopupPayload | undefined;
-  let editingLocked = false;
-  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
-  let hoverTarget: HTMLElement | undefined;
-  // True once a live popup-state event has rendered, so the one-shot initial
-  // read below never overwrites newer content with its (possibly older) payload.
+  let currentState: PopupState | undefined;
+  let renderer: Controller<PopupState> | undefined;
   let receivedStateEvent = false;
-
-  const setContentVisible = (visible: boolean): void => {
-    root.toggleAttribute("data-popup-content-hidden", !visible);
+  let fontFamily = "";
+  let destroyed = false;
+  const disposers: Array<() => void> = [];
+  const report = (action: Promise<void>): void => {
+    void action.catch(error => { if (!destroyed) { root.title = String(error); root.dataset.error = ""; } });
   };
-  const setPopupPointerInside = (inside: boolean): void => {
-    void invoke("set_popup_pointer_inside", {
-      inside,
-      instanceUid,
-      menuUid,
-      source: "popup",
-      windowUid,
-    }).catch(() => {});
+  const host: PopupHost = {
+    invokeAction: actionUid => currentPayload?.isFree
+      ? invoke("invoke_free_action", { actionUid, instanceUid, menuUid })
+      : invoke("invoke_action", { actionUid, instanceUid, windowUid, menuUid }),
+    requestToggleFold: () => invoke("toggle_menu_collapsed", { instanceUid, menuUid }),
+    requestTemporarySave: input => invoke("open_temporary_confirmation", {
+      instanceUid, menuUid, windowUid: currentPayload?.isFree ? null : windowUid, ...input,
+    }),
+    close: () => invoke("close_popup", { instanceUid, menuUid, windowUid }),
+    setPointerInside: inside => report(invoke("set_popup_pointer_inside", {
+      inside, instanceUid, menuUid, source: "popup", windowUid,
+    })),
+    commitLayout: layout => invoke("set_popup_hit_regions", { rects: layout.columns }),
   };
-
-  await listen<PopupPayload>("popup-state", ({ payload }) => {
-    receivedStateEvent = true;
-    render(payload);
-  }, { target: surfaceLabel });
-  await listen<boolean>("popup-content-visibility", ({ payload }) => {
-    setContentVisible(payload);
-  }, { target: surfaceLabel });
-  await listen<boolean>("editing-lock-changed", ({ payload }) => {
-    editingLocked = payload;
-  });
-  await listen<string>("font-family-changed", ({ payload }) => {
-    document.documentElement.style.setProperty("--desktop-font-family", payload);
-  });
-
-  // Read the current state once, after the listeners are registered. Because a
-  // popup window is created (paired with its menu bar) before it is ever opened,
-  // its first load runs while the registry entry is still empty — the read then
-  // returns just the font. Registering listeners first means an open that races
-  // this read still delivers its `popup-state`; the read itself picks up state
-  // already set. Either order renders correctly, with no ready handshake.
-  const state = await invoke<PopupSurfaceState>("surface_state", {
-    instanceUid,
-    menuUid,
-    surface: "popup",
-    windowUid,
-  }).catch(() => undefined);
-  if (state) {
-    document.documentElement.style.setProperty("--desktop-font-family", state.fontFamily);
-    // Skip if a live event already rendered, so we never overwrite newer content.
-    if (state.payload && !receivedStateEvent) render(state.payload);
-  }
-
-  function render(payload: PopupPayload): void {
+  async function render(payload: PopupPayload): Promise<void> {
     currentPayload = payload;
-    editingLocked = payload.editingLocked;
-    setContentVisible(true);
-    clearTimeout(hoverTimer);
-    hoverTimer = undefined;
-    hoverTarget = undefined;
-    root.className = "popup-surface";
-    root.style.setProperty("--menu-font-size", `${payload.popupFontSize}px`);
-    root.style.setProperty("--menu-item-height", `${payload.itemHeight}px`);
-
-    const popup = document.createElement("div");
-    popup.className = "popup-container detached-popup";
-    popup.dataset.direction = payload.rootDirection;
-    popup.ariaLabel = "BrowseRail bookmark menu";
-    const horizontal = payload.direction === "left" || payload.direction === "right";
-    if (horizontal) {
-      popup.dataset.horizontal = "true";
-      popup.style.display = "block";
-      popup.style.height = "100%";
-    } else {
-      popup.style.flexDirection = "row";
-      popup.style.alignItems = payload.direction === "up" ? "flex-end" : "flex-start";
-    }
-    let levels: LayoutEntry[][] = [payload.entries];
-    let expandedUids: string[] = [];
-    let expandedDirections: ExpandDirection[] = [];
-    const columns: HTMLElement[] = [];
-    const renderedLevels: LayoutEntry[][] = [];
-    const pointerTrail: PointerSample[] = [];
-    let hitRegionRevision = 0;
-
-    popup.addEventListener("pointermove", (event) => {
-      const sample = { time: event.timeStamp, x: event.clientX, y: event.clientY };
-      pointerTrail.push(sample);
-      const cutoff = sample.time - POINTER_TRAIL_MAX_AGE_MS;
-      while (pointerTrail.length > 2 && pointerTrail[0]!.time < cutoff) {
-        pointerTrail.shift();
-      }
-    }, { capture: true });
-
-    const applyHitRegions = async (revision: number): Promise<boolean> => {
-      if (revision !== hitRegionRevision || currentPayload?.requestUid !== payload.requestUid) {
-        return false;
-      }
-      const rects = columns
-        .filter((column) => column.isConnected)
-        .map((column) => {
-          const rect = column.getBoundingClientRect();
-          return {
-            bottom: rect.bottom,
-            left: rect.left,
-            right: rect.right,
-            top: rect.top,
-          };
-        });
-      try {
-        await invoke("set_popup_hit_regions", { rects });
-        return revision === hitRegionRevision;
-      } catch {
-        return false;
-      }
+    currentState = {
+      entries: payload.entries,
+      theme: {
+        ...(payload.color ? { color: payload.color } : {}),
+        fontFamily, fontSize: payload.popupFontSize, itemHeight: payload.itemHeight,
+      },
+      direction: payload.direction, rootDirection: payload.rootDirection,
+      rootOffsetX: payload.rootOffsetX, maxColumnHeight: payload.maxColumnHeight,
+      bounds: { left: payload.workLeft, right: payload.workRight, top: 0, bottom: payload.maxColumnHeight },
+      editingLocked: payload.editingLocked,
     };
-
-    const scheduleHitRegionUpdate = (): void => {
-      const revision = ++hitRegionRevision;
-      requestAnimationFrame(() => {
-        void applyHitRegions(revision);
-      });
-    };
-
-    const submenuSwitchDelay = (level: number): number => {
-      const child = columns[level + 1];
-      return child && isPointerHeadingToward(pointerTrail, child)
-        ? SUBMENU_AIM_DELAY_MS
-        : SUBMENU_SWITCH_DELAY_MS;
-    };
-
-    const dispatchAction = (actionUid: string): void => {
-      void invoke("close_popup", { instanceUid, menuUid, windowUid });
-      if (actionUid.startsWith("noop")) return;
-      const action = payload.isFree
-        ? invoke("invoke_free_action", { actionUid, instanceUid, menuUid })
-        : invoke("invoke_action", { actionUid, instanceUid, windowUid, menuUid });
-      void action.catch(() => {});
-    };
-
-    const scheduleHover = (
-      target: HTMLElement,
-      open: () => void,
-      delay: () => number = () => HOVER_OPEN_DELAY_MS,
-    ): void => {
-      const cancel = (): void => {
-        if (hoverTarget !== target) return;
-        clearTimeout(hoverTimer);
-        hoverTimer = undefined;
-        hoverTarget = undefined;
-      };
-      const schedule = (): void => {
-        clearTimeout(hoverTimer);
-        hoverTarget = target;
-        hoverTimer = setTimeout(() => {
-          if (hoverTarget !== target) return;
-          hoverTimer = undefined;
-          hoverTarget = undefined;
-          if (target.isConnected && currentPayload?.requestUid === payload.requestUid) open();
-        }, delay());
-      };
-      target.addEventListener("pointerenter", schedule);
-      target.addEventListener("pointermove", () => {
-        if (hoverTarget === target && hoverTimer) schedule();
-      });
-      target.addEventListener("pointerleave", cancel);
-      target.addEventListener("pointercancel", cancel);
-      target.addEventListener("pointerdown", cancel, { capture: true });
-    };
-
-    const buildColumn = (entries: LayoutEntry[], level: number): HTMLElement => {
-      const column = document.createElement("div");
-      column.className = "menu-column";
-      column.addEventListener("pointerenter", () => setPopupPointerInside(true));
-      column.addEventListener("pointerleave", (event) => {
-        const related = event.relatedTarget as Element | null;
-        if (related?.closest(".menu-column")) return;
-        setPopupPointerInside(false);
-      });
-      column.style.maxHeight = `${payload.maxColumnHeight}px`;
-      column.style.width = `${calculateColumnWidth(
-        entries,
-        payload.popupFontSize,
-        payload.maxColumnHeight,
-        payload.itemHeight,
-      )}px`;
-      column.dataset.columnWidth = column.style.width;
-      if (payload.color) {
-        column.dataset.accent = "true";
-        // Mute via CSS color-mix (see .menu-column[data-accent]); no raw fill.
-        column.style.setProperty("--button-custom-color", payload.color);
+    try {
+      if (renderer) await renderer.update(currentState);
+      else { renderer = mountFolderPopup(root, currentState, host); await renderer.ready; }
+      if (destroyed || currentPayload !== payload) return;
+      await invoke("show_popup", { instanceUid, menuUid, requestUid: payload.requestUid, windowUid });
+    } catch (error) {
+      if (!destroyed && currentPayload === payload) {
+        await emitTo(payload.parentLabel, "popup-ready", { requestUid: payload.requestUid, error: String(error) });
       }
-
-      for (const entry of entries) {
-        if (entry.kind !== "bookmark" && entry.kind !== "folder") continue;
-        const button = menuButton(entry);
-        if (payload.color) {
-          button.style.setProperty("--button-custom-color", payload.color);
-          button.dataset.hasCustomColor = "true";
-        }
-        if (entry.kind === "folder") {
-          button.dataset.uid = entry.uid;
-          const preferredDirection =
-            entry.expandDirection === "left" || entry.expandDirection === "right"
-              ? entry.expandDirection
-              : payload.direction;
-          button.dataset.expandDirection = preferredDirection;
-          button.toggleAttribute("data-expanded", expandedUids[level] === entry.uid);
-          const openChild = (): void => {
-            setPopupPointerInside(true);
-            if (expandedUids[level] === entry.uid && levels.length > level + 1) return;
-            levels = [...levels.slice(0, level + 1), entry.children];
-            expandedUids = [...expandedUids.slice(0, level), entry.uid];
-            expandedDirections = [
-              ...expandedDirections.slice(0, level),
-              preferredDirection,
-            ];
-            renderLevels();
-          };
-          if (entry.expandOnHover !== false) {
-            scheduleHover(
-              button,
-              openChild,
-              () => levels.length > level + 1
-                ? submenuSwitchDelay(level)
-                : HOVER_OPEN_DELAY_MS,
-            );
-          } else {
-            button.addEventListener("pointerdown", (event) => {
-              if (event.button !== 0) return;
-              event.preventDefault();
-              if (expandedUids[level] === entry.uid) {
-                levels = levels.slice(0, level + 1);
-                expandedUids = expandedUids.slice(0, level);
-                expandedDirections = expandedDirections.slice(0, level);
-                renderLevels();
-              } else {
-                openChild();
-              }
-            });
-          }
-        } else {
-          button.addEventListener("pointerenter", () => {
-            setPopupPointerInside(true);
-          });
-          scheduleHover(button, () => {
-            if (levels.length <= level + 1) return;
-            levels = levels.slice(0, level + 1);
-            expandedUids = expandedUids.slice(0, level);
-            expandedDirections = expandedDirections.slice(0, level);
-            renderLevels();
-          }, () => submenuSwitchDelay(level));
-          if (entry.uid.startsWith("temporary:")) {
-            attachTemporaryBookmarkButton(
-              button,
-              entry,
-              dispatchAction,
-              { instanceUid, menuUid, windowUid: payload.isFree ? null : windowUid },
-              undefined,
-              () => editingLocked,
-            );
-          } else {
-            button.addEventListener("pointerdown", (event) => {
-              if (event.button === 0) {
-                event.preventDefault();
-                dispatchAction(entry.uid);
-              } else if (event.button === 2 && editingLocked) {
-                event.preventDefault();
-                event.stopPropagation();
-                dispatchAction(invertBookmarkActionUid(entry.uid));
-              }
-            });
-          }
-        }
-        column.appendChild(button);
-      }
-      return column;
-    };
-
-    const renderLevels = (): void => {
-      let diffFrom = 0;
-      while (
-        diffFrom < renderedLevels.length &&
-        diffFrom < levels.length &&
-        renderedLevels[diffFrom] === levels[diffFrom]
-      ) {
-        diffFrom++;
-      }
-      for (let index = columns.length - 1; index >= diffFrom; index--) {
-        columns[index]?.remove();
-      }
-      columns.length = diffFrom;
-      renderedLevels.length = diffFrom;
-
-      for (let level = diffFrom; level < levels.length; level++) {
-        const column = buildColumn(levels[level]!, level);
-        column.style.zIndex = String(level + 1);
-        if (horizontal) {
-          column.style.position = "absolute";
-          if (level === 0) {
-            column.style.left = `${payload.rootOffsetX}px`;
-            column.style.top = "0px";
-          } else {
-            const parent = columns[level - 1]?.querySelector<HTMLElement>(
-              `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
-            );
-            if (parent) {
-              const popupRect = popup.getBoundingClientRect();
-              const parentRect = parent.getBoundingClientRect();
-              const parentLeft = parentRect.left - popupRect.left;
-              const parentRight = parentRect.right - popupRect.left;
-              const columnWidth = Number.parseFloat(column.dataset.columnWidth ?? "0");
-              const preferred = expandedDirections[level - 1] === "left" ? "left" : "right";
-              const fitsPreferred = preferred === "left"
-                ? parentLeft - columnWidth >= payload.workLeft
-                : parentRight + columnWidth <= payload.workRight;
-              const direction = fitsPreferred
-                ? preferred
-                : preferred === "left"
-                  ? "right"
-                  : "left";
-              parent.dataset.expandDirection = direction;
-              const left = direction === "left"
-                ? parentLeft - columnWidth
-                : parentRight;
-              const top = parentRect.top - popupRect.top;
-              column.style.left = `${left}px`;
-              column.style.top = `${Math.max(0, top)}px`;
-              column.style.maxHeight = `${Math.max(
-                MIN_COLUMN_HEIGHT,
-                payload.maxColumnHeight - Math.max(0, top),
-              )}px`;
-            }
-          }
-        } else if (level > 0) {
-          const parent = columns[level - 1]?.querySelector<HTMLElement>(
-            `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
-          );
-          if (parent) {
-            const popupRect = popup.getBoundingClientRect();
-            const parentRect = parent.getBoundingClientRect();
-            if (payload.direction === "up") {
-              const marginBottom = Math.min(
-                Math.max(0, popupRect.bottom - parentRect.bottom),
-                Math.max(0, popupRect.height - MIN_COLUMN_HEIGHT),
-              );
-              column.style.marginBottom = `${marginBottom}px`;
-              column.style.maxHeight = `${Math.max(
-                MIN_COLUMN_HEIGHT,
-                popupRect.height - marginBottom,
-              )}px`;
-            } else {
-              const marginTop = Math.min(
-                Math.max(0, parentRect.top - popupRect.top),
-                Math.max(0, popupRect.height - MIN_COLUMN_HEIGHT),
-              );
-              column.style.marginTop = `${marginTop}px`;
-              column.style.maxHeight = `${Math.max(
-                MIN_COLUMN_HEIGHT,
-                popupRect.height - marginTop,
-              )}px`;
-            }
-          }
-        }
-        popup.appendChild(column);
-        columns[level] = column;
-        renderedLevels[level] = levels[level]!;
-      }
-
-      for (let level = 0; level < diffFrom; level++) {
-        const expandedUid = expandedUids[level];
-        for (const button of columns[level]!.querySelectorAll<HTMLElement>(".menu-button[data-uid]")) {
-          button.toggleAttribute("data-expanded", button.dataset.uid === expandedUid);
-        }
-      }
-      scheduleHitRegionUpdate();
-    };
-
-    root.replaceChildren(popup);
-    renderLevels();
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (currentPayload?.requestUid !== payload.requestUid) return;
-        const revision = ++hitRegionRevision;
-        void applyHitRegions(revision).then((applied) => {
-          if (!applied || currentPayload?.requestUid !== payload.requestUid) return;
-          void invoke("show_popup", {
-            instanceUid,
-            menuUid,
-            requestUid: payload.requestUid,
-            windowUid,
-          });
-        });
-      });
-    });
-  }
-}
-
-function menuButton(
-  entry: Extract<LayoutEntry, { kind: "bookmark" } | { kind: "folder" }>,
-): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "menu-button";
-  button.dataset.popup = "";
-  button.title = entry.label;
-  const label = document.createElement("span");
-  label.className = "menu-button-label";
-  label.textContent = entry.rename
-    ? entry.rename === entry.label || entry.label.startsWith(entry.rename)
-      ? entry.label
-      : `${entry.rename} (${entry.label})`
-    : entry.label;
-  button.append(label);
-  if (entry.kind === "folder") {
-    button.dataset.folder = "";
-    button.setAttribute("aria-haspopup", "menu");
-  }
-  return button;
-}
-
-function isPointerHeadingToward(
-  pointerTrail: PointerSample[],
-  child: HTMLElement,
-): boolean {
-  const current = pointerTrail.at(-1);
-  if (!current) return false;
-
-  let previous: PointerSample | undefined;
-  for (const sample of pointerTrail) {
-    if (sample === current) break;
-    if (Math.hypot(current.x - sample.x, current.y - sample.y) >= 4) {
-      previous = sample;
-      break;
+      throw error;
     }
   }
-  if (!previous) return false;
-
-  const childRect = child.getBoundingClientRect();
-  const childIsRight = childRect.left >= current.x;
-  const childIsLeft = childRect.right <= current.x;
-  if (!childIsRight && !childIsLeft) return false;
-
-  const direction = childIsRight ? 1 : -1;
-  const movementX = (current.x - previous.x) * direction;
-  if (movementX <= 0) return false;
-
-  const nearEdgeX = childIsRight ? childRect.left : childRect.right;
-  const remainingX = (nearEdgeX - current.x) * direction;
-  const projectedY = current.y +
-    ((current.y - previous.y) / movementX) * Math.max(0, remainingX);
-  const tolerance = 8;
-  return projectedY >= childRect.top - tolerance &&
-    projectedY <= childRect.bottom + tolerance;
-}
-
-function calculateColumnWidth(
-  entries: LayoutEntry[],
-  fontSize: number,
-  maxColumnHeight: number,
-  itemHeight: number,
-): number {
-  const padding = 2 * Math.min(10, Math.max(4, fontSize * 0.75));
-  const folderBlock = Math.min(8, Math.max(6, fontSize * 0.5));
-  let width = 0;
-  for (const entry of entries) {
-    if (entry.kind !== "bookmark" && entry.kind !== "folder") continue;
-    const text = entry.rename && entry.rename !== entry.label && !entry.label.startsWith(entry.rename)
-      ? `${entry.rename} (${entry.label})`
-      : entry.label;
-    width = Math.max(
-      width,
-      measureTextWidth(text, fontSize) +
-        padding +
-        (entry.kind === "folder" ? folderBlock : 0),
-    );
+  disposers.push(await listen<PopupPayload>("popup-state", ({ payload }) => {
+    receivedStateEvent = true;
+    report(render(payload));
+  }, { target: surfaceLabel }));
+  disposers.push(await listen<boolean>("popup-content-visibility", ({ payload }) => {
+    root.toggleAttribute("data-popup-content-hidden", !payload);
+  }, { target: surfaceLabel }));
+  disposers.push(await listen<boolean>("editing-lock-changed", ({ payload }) => {
+    if (!currentState || !renderer) return;
+    currentState = { ...currentState, editingLocked: payload };
+    report(renderer.update(currentState));
+  }));
+  disposers.push(await listen<string>("font-family-changed", ({ payload }) => {
+    fontFamily = payload;
+    if (!currentState || !renderer) return;
+    currentState = { ...currentState, theme: { ...currentState.theme, fontFamily } };
+    report(renderer.update(currentState));
+  }));
+  const state = await invoke<PopupSurfaceState>("surface_state", { instanceUid, menuUid, surface: "popup", windowUid });
+  fontFamily = state.fontFamily;
+  if (state.payload && !receivedStateEvent) await render(state.payload);
+  else if (currentState && renderer) {
+    currentState = { ...currentState, theme: { ...currentState.theme, fontFamily } };
+    await renderer.update(currentState);
   }
-  const contentHeight = 14 + entries.length * (itemHeight + 2);
-  const scrollbarBuffer = contentHeight > maxColumnHeight ? 18 : 0;
-  const maxWidth = Math.round(
-    BASE_MAX_COLUMN_WIDTH * Math.max(1, fontSize / BASE_POPUP_FONT_SIZE),
-  );
-  return Math.min(maxWidth, Math.max(72, Math.ceil(width + 20) + scrollbarBuffer));
+  window.addEventListener("pagehide", () => {
+    destroyed = true;
+    renderer?.destroy();
+    for (const dispose of disposers) dispose();
+  }, { once: true });
 }
 
 function requiredQuery(query: URLSearchParams, name: string, allowEmpty = false): string {

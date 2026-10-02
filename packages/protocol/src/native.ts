@@ -176,6 +176,7 @@ export type ExtensionMessage =
       details?: unknown;
     }
   | { type: "resync"; requestUid: string }
+  | { type: "detach" }
   | { type: "heartbeat" };
 
 export type NativeMessage =
