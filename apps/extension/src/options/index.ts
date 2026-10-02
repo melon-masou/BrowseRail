@@ -1998,7 +1998,12 @@ function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
 
   const tabButton = menuSettingsTabs[tab];
   if (tabButton) tabButton.click();
+  menuSettingsDialog.style.marginTop = "";
+  menuSettingsDialog.style.maxHeight = "";
   menuSettingsDialog.showModal();
+  const top = menuSettingsDialog.getBoundingClientRect().top;
+  menuSettingsDialog.style.marginTop = `${top}px`;
+  menuSettingsDialog.style.maxHeight = `min(620px, 85vh, calc(100dvh - ${top}px - 16px))`;
 }
 
 function closeMenuSettingsDialog(): void {
