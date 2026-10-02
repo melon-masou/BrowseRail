@@ -23,10 +23,6 @@ use windows::core::BOOL;
 use crate::protocol::{BrowserWindowSnapshot, MenuAnchor, MenuPlacement};
 use crate::state_machine::{SurfaceState, log_surface_transition};
 
-const POPUP_MIN_WIDTH: f64 = 72.0;
-const POPUP_MAX_WIDTH: f64 = 16_384.0;
-const POPUP_MIN_HEIGHT: f64 = 48.0;
-const POPUP_MAX_HEIGHT: f64 = 900.0;
 const NO_ACTIVATE_SUBCLASS_ID: usize = 1;
 static NO_ACTIVATE_HOOK_THREADS: LazyLock<Mutex<HashSet<u32>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
@@ -285,7 +281,7 @@ pub struct PopupAnchor {
     pub y: f64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PopupHitRect {
     pub bottom: f64,
@@ -393,6 +389,7 @@ impl PopupRegistry {
     }
 
     fn set(&self, request: PopupRequest) -> Result<StoredPopup, String> {
+        validate_popup_size(request.width, request.height)?;
         let label = popup_label(
             &request.instance_uid,
             &request.window_uid,
@@ -409,7 +406,7 @@ impl PopupRegistry {
             close_generation,
             close_pending: None,
             content_closed: false,
-            height: request.height.clamp(POPUP_MIN_HEIGHT, POPUP_MAX_HEIGHT),
+            height: request.height,
             popup_pointer_inside: false,
             surface: PopupSurface {
                 instance_uid: request.instance_uid,
@@ -419,7 +416,7 @@ impl PopupRegistry {
                 request_uid: request.request_uid,
                 window_uid: request.window_uid,
             },
-            width: request.width.clamp(POPUP_MIN_WIDTH, POPUP_MAX_WIDTH),
+            width: request.width,
         };
         entries.insert(label, popup.clone());
         Ok(popup)
@@ -433,12 +430,13 @@ impl PopupRegistry {
         width: f64,
         height: f64,
     ) -> Result<(PopupAnchor, f64, f64), String> {
+        validate_popup_size(width, height)?;
         let mut entries = self.entries.lock().map_err(|_| "Popup lock failed")?;
         let popup = entries
             .get_mut(&popup_label(instance_uid, window_uid, menu_uid))
             .ok_or("Popup is unavailable")?;
-        popup.width = width.clamp(POPUP_MIN_WIDTH, POPUP_MAX_WIDTH);
-        popup.height = height.clamp(POPUP_MIN_HEIGHT, POPUP_MAX_HEIGHT);
+        popup.width = width;
+        popup.height = height;
         Ok((popup.anchor.clone(), popup.width, popup.height))
     }
 
@@ -1008,4 +1006,53 @@ fn safe_label_part(value: &str) -> String {
             }
         })
         .collect()
+}
+
+fn validate_popup_size(width: f64, height: f64) -> Result<(), String> {
+    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+        return Err("Invalid popup geometry".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn popup_request(width: f64, height: f64) -> PopupRequest {
+        PopupRequest {
+            anchor: PopupAnchor { x: 0.0, y: 0.0 },
+            bar_pointer_inside: true,
+            height,
+            instance_uid: "instance".into(),
+            menu_uid: "menu".into(),
+            parent_label: "parent".into(),
+            payload: Value::Null,
+            request_uid: "request".into(),
+            width,
+            window_uid: "window".into(),
+        }
+    }
+
+    #[test]
+    fn popup_preserves_ui_dimensions_for_tall_and_small_surfaces() {
+        let registry = PopupRegistry::default();
+        for (width, height) in [(240.0, 1072.0), (58.0, 24.0)] {
+            let popup = registry.set(popup_request(width, height)).unwrap();
+            assert_eq!((popup.width, popup.height), (width, height));
+        }
+    }
+
+    #[test]
+    fn popup_rejects_invalid_dimensions() {
+        let registry = PopupRegistry::default();
+        for (width, height) in [
+            (0.0, 200.0),
+            (200.0, -1.0),
+            (f64::NAN, 200.0),
+            (200.0, f64::INFINITY),
+        ] {
+            assert!(registry.set(popup_request(width, height)).is_err());
+        }
+    }
 }

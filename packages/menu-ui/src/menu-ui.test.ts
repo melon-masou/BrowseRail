@@ -161,7 +161,7 @@ function popupState(): PopupState {
   return {
     entries: [{ kind: "bookmark", uid: "bookmark:child", label: "Child" }],
     theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 },
-    direction: "right", rootDirection: "right", rootOffsetX: 0,
+    direction: "right", rootDirection: "right", rootOffsetX: 0, rootOffsetY: 0,
     bounds: { left: 0, top: 0, right: 600, bottom: 600 }, maxColumnHeight: 600, editingLocked: true,
   };
 }

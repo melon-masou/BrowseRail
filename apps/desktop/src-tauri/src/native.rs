@@ -8,6 +8,7 @@ use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowB
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use uuid::Uuid;
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{CreateRectRgn, DeleteObject, GetWindowRgn, HGDIOBJ, PtInRegion};
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
@@ -599,9 +600,14 @@ fn cursor_pos() -> Option<(i32, i32)> {
     Some((pt.x, pt.y))
 }
 
-/// Whether the point (physical screen coords) is inside `label`'s window rect.
+/// Whether the point is inside the window, using its shaped region for popups.
 /// A missing window counts as "not containing" it.
-fn window_contains(app: &AppHandle, label: &str, point: (i32, i32)) -> bool {
+fn window_contains(
+    app: &AppHandle,
+    label: &str,
+    point: (i32, i32),
+    use_window_region: bool,
+) -> bool {
     let Some(window) = app.get_webview_window(label) else {
         return false;
     };
@@ -613,7 +619,19 @@ fn window_contains(app: &AppHandle, label: &str, point: (i32, i32)) -> bool {
         return false;
     }
     let (x, y) = point;
-    x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
+    if x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom {
+        return false;
+    }
+    if !use_window_region {
+        return true;
+    }
+    unsafe {
+        let region = CreateRectRgn(0, 0, 0, 0);
+        let contains = GetWindowRgn(hwnd, region).0 != 0
+            && PtInRegion(region, x - rect.left, y - rect.top).as_bool();
+        let _ = DeleteObject(HGDIOBJ(region.0));
+        contains
+    }
 }
 
 fn is_menu_collapsed(
@@ -700,7 +718,7 @@ impl NativeReactor {
         // popup's pointer-inside state stuck true so its normal close never fires
         // and it hangs open under a still-visible bar (nothing else hides it).
         // While any popup is open, every 2s verify the real cursor position
-        // against the popup + bar rects and force-close any the cursor has left.
+        // against the popup's actual region + bar rect and close any it has left.
         {
             let app = reactor.app.clone();
             let popups = reactor.popups.clone();
@@ -722,8 +740,8 @@ impl NativeReactor {
                         if !surfaces.is_visible(&label) {
                             continue;
                         }
-                        if !window_contains(&app, &label, cursor)
-                            && !window_contains(&app, &parent_label, cursor)
+                        if !window_contains(&app, &label, cursor, true)
+                            && !window_contains(&app, &parent_label, cursor, false)
                         {
                             let _ = guard_sender.send(NativeCommand::ClosePopup {
                                 instance_uid,

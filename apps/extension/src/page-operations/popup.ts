@@ -1,14 +1,13 @@
 import {
-  mountFolderPopup, createLifetime, createTextMeasure, popupEnvelope, calculateColumnWidth,
+  mountFolderPopup, createLifetime, createTextMeasure, planFolderPopup,
   type MenuActions, type PopupRequest, type PopupSession,
 } from "@browserail/menu-ui";
 
 export async function openBrowserPopup(container: HTMLElement, request: PopupRequest, actions: MenuActions, signal: AbortSignal): Promise<PopupSession> {
   if (signal.aborted) throw new Error("Menu was removed");
   const doc = container.ownerDocument;
-  const viewport = doc.defaultView!;
   const root = doc.createElement("div");
-  root.className = "browser-popup";
+  root.className = "browser-popup browserail-menu-ui";
   root.style.visibility = "hidden";
   root.style.setProperty("--menu-font-family", request.theme.fontFamily);
   container.append(root);
@@ -42,31 +41,13 @@ export async function openBrowserPopup(container: HTMLElement, request: PopupReq
   try {
     await lifetime.settle();
     if (!lifetime.alive) return session;
-    const { anchor, theme } = request;
-    let direction = request.direction;
-    if (direction === "down" && viewport.innerHeight - anchor.bottom < Math.min(120, anchor.top)) direction = "up";
-    else if (direction === "up" && anchor.top < Math.min(120, viewport.innerHeight - anchor.bottom)) direction = "down";
-    const horizontal = direction === "left" || direction === "right";
-    const maxColumnHeight = Math.max(48, (direction === "up" ? anchor.top : direction === "down" ? viewport.innerHeight - anchor.bottom : viewport.innerHeight - anchor.top) - 4);
-    const envelope = popupEnvelope(measure, request.folder.children, theme.fontSize, theme.itemHeight, maxColumnHeight, direction);
-    const columnWidth = calculateColumnWidth(measure, request.folder.children, theme.fontSize, maxColumnHeight, theme.itemHeight);
-    let rootDirection = direction;
-    let rootOffsetX = 0;
-    let width = envelope.width;
-    let x = Math.max(4, Math.min(anchor.left, viewport.innerWidth - columnWidth - 4));
-    if (horizontal) {
-      if ((direction === "left" ? anchor.left : viewport.innerWidth - anchor.right) < columnWidth) rootDirection = direction === "left" ? "right" : "left";
-      rootOffsetX = Math.max(0, envelope.width - columnWidth);
-      width = rootOffsetX * 2 + columnWidth;
-      x = (rootDirection === "left" ? anchor.left - columnWidth : anchor.right) - rootOffsetX;
-    }
-    const y = direction === "up" ? anchor.top - envelope.height : direction === "down" ? anchor.bottom : anchor.top;
-    Object.assign(root.style, { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${envelope.height}px` });
-    renderer = mountFolderPopup(root, {
-      entries: request.folder.children, theme, direction, rootDirection, rootOffsetX,
-      bounds: { left: 4, top: 4, right: viewport.innerWidth - 4, bottom: viewport.innerHeight - 4 },
-      maxColumnHeight, editingLocked: request.editingLocked,
-    }, {
+    const viewport = doc.compatMode === "CSS1Compat" ? doc.documentElement : doc.body;
+    const { surface, state } = planFolderPopup(measure, request, { left: 0, top: 0, right: viewport.clientWidth, bottom: viewport.clientHeight });
+    Object.assign(root.style, {
+      left: `${surface.left}px`, top: `${surface.top}px`,
+      width: `${surface.right - surface.left}px`, height: `${surface.bottom - surface.top}px`,
+    });
+    renderer = mountFolderPopup(root, state, {
       ...actions, close, waitForFonts,
       setPointerInside(inside) { popupInside = inside; schedule(); },
       async commitLayout() {},

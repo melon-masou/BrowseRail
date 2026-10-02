@@ -1,24 +1,13 @@
-import type { LayoutEntry, ExpandDirection } from "@browserail/protocol";
 import { mountFolderPopup, type Controller, type PopupState, type PopupHost } from "@browserail/menu-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface PopupPayload {
-  color?: string;
-  direction: ExpandDirection;
-  editingLocked: boolean;
-  entries: LayoutEntry[];
+  state: PopupState;
   isFree: boolean;
-  itemHeight: number;
-  maxColumnHeight: number;
-  popupFontSize: number;
   requestUid: string;
   parentLabel: string;
-  rootDirection: ExpandDirection;
-  rootOffsetX: number;
-  workLeft: number;
-  workRight: number;
 }
 
 interface PopupSurfaceState {
@@ -60,17 +49,7 @@ export async function initializePopupSurface(): Promise<void> {
   };
   async function render(payload: PopupPayload): Promise<void> {
     currentPayload = payload;
-    currentState = {
-      entries: payload.entries,
-      theme: {
-        ...(payload.color ? { color: payload.color } : {}),
-        fontFamily, fontSize: payload.popupFontSize, itemHeight: payload.itemHeight,
-      },
-      direction: payload.direction, rootDirection: payload.rootDirection,
-      rootOffsetX: payload.rootOffsetX, maxColumnHeight: payload.maxColumnHeight,
-      bounds: { left: payload.workLeft, right: payload.workRight, top: 0, bottom: payload.maxColumnHeight },
-      editingLocked: payload.editingLocked,
-    };
+    currentState = { ...payload.state, theme: { ...payload.state.theme, fontFamily } };
     try {
       if (renderer) await renderer.update(currentState);
       else { renderer = mountFolderPopup(root, currentState, host); await renderer.ready; }

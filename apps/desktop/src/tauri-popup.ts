@@ -1,15 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
-  calculateColumnWidth, createLifetime, createTextMeasure,
-  popupEnvelope as measureEnvelope, MIN_COLUMN_HEIGHT, POPUP_SCREEN_MARGIN,
-  type PopupRequest, type PopupSession,
+  createLifetime, createTextMeasure, planFolderPopup,
+  type PopupRequest, type PopupSession, type Rect,
 } from "@browserail/menu-ui";
 
 interface Context { instanceUid: string; menuUid: string; windowUid: string; isFree: boolean; parentLabel: string }
-interface HorizontalSpace {
-  left: number; right: number; windowLeft: number; workLeft: number; workRight: number;
-}
 interface PopupReady { requestUid: string; error?: string }
 
 export async function createTauriPopupLink(root: HTMLElement, context: Context) {
@@ -31,11 +27,6 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
     if (payload.error) active.fail(new Error(payload.error));
     else active.ready();
   }, { target: parentLabel });
-  async function getAvailableHeight(above: boolean): Promise<number> {
-    const height = await invoke<number>("surface_available_height", { above });
-    if (!Number.isFinite(height) || height <= 0) throw new Error("Surface available height is unavailable");
-    return height;
-  }
   const command = (name: string, args = {}): Promise<void> => invoke(name, { instanceUid, menuUid, windowUid, ...args });
   const report = (action: Promise<void>): void => {
     void action.catch(error => { if (lifetime.alive) { root.dataset.error = ""; root.title = String(error); } });
@@ -67,57 +58,10 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
       assertAlive();
       await whileAlive(closeActive());
       assertAlive();
-      const entry = request.folder;
-      const anchor = request.anchor;
-      const theme = request.theme;
-      const direction = request.direction;
-      const popupGap = 0;
-      const availableHeight = await whileAlive(getAvailableHeight(direction === "up"));
+      const bounds = await whileAlive(invoke<Rect>("surface_work_area"));
       await whileAlive(lifetime.settle());
       assertAlive();
-
-      const popupTop = direction === "down" ? anchor.bottom + popupGap : anchor.top;
-      const maxColumnHeight = Math.max(
-        MIN_COLUMN_HEIGHT,
-        direction === "up"
-          ? availableHeight + anchor.top - popupGap - POPUP_SCREEN_MARGIN
-          : availableHeight - popupTop - POPUP_SCREEN_MARGIN,
-      );
-
-      const envelope = measureEnvelope(measure, entry.children, theme.fontSize, theme.itemHeight, maxColumnHeight, direction);
-      const rootColumnWidth = calculateColumnWidth(measure, entry.children, theme.fontSize, maxColumnHeight, theme.itemHeight);
-      let rootDirection = direction;
-      let popupWidth = envelope.width;
-      let popupX = anchor.left;
-      let rootOffsetX = 0;
-      let workLeft = 0;
-      let workRight = popupWidth;
-      if (direction === "left" || direction === "right") {
-          const space = await whileAlive(invoke<HorizontalSpace>("surface_horizontal_space", { anchorLeft: anchor.left, anchorRight: anchor.right }));
-          assertAlive();
-          const preferredSpace = direction === "left" ? space.left : space.right;
-          if (rootColumnWidth + popupGap > preferredSpace) {
-            rootDirection = direction === "left" ? "right" : "left";
-          }
-          const sideReserve = Math.max(0, envelope.width - rootColumnWidth);
-          popupWidth = sideReserve * 2 + rootColumnWidth;
-          rootOffsetX = sideReserve;
-          const rootX =
-            rootDirection === "left"
-              ? anchor.left - popupGap - rootColumnWidth
-              : anchor.right + popupGap;
-          popupX = rootX - rootOffsetX;
-          const popupScreenX = space.windowLeft + popupX;
-          workLeft = space.workLeft - popupScreenX;
-          workRight = space.workRight - popupScreenX;
-      }
-      const x = direction === "left" || direction === "right" ? popupX : anchor.left;
-      const y =
-        direction === "up"
-          ? anchor.top - popupGap - envelope.height
-          : direction === "down"
-            ? anchor.bottom + popupGap
-            : anchor.top;
+      const { surface, state } = planFolderPopup(measure, request, bounds);
       const requestUid = crypto.randomUUID();
       let resolveReady!: () => void;
       let rejectReady!: (error: unknown) => void;
@@ -129,16 +73,11 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
       // Attach rejection handling before the native command can emit a close event.
       const nativeOpen = invoke("open_popup", {
         request: {
-          anchor: { x, y },
+          anchor: { x: surface.left, y: surface.top },
           barPointerInside: root.querySelector(".menu-bar")?.matches(":hover") === true,
-          height: envelope.height, instanceUid, menuUid, parentLabel,
-          payload: {
-            color: theme.color, direction, editingLocked: request.editingLocked,
-            entries: entry.children, isFree, itemHeight: theme.itemHeight,
-            maxColumnHeight, popupFontSize: theme.fontSize, requestUid,
-            rootDirection, rootOffsetX, workLeft, workRight, parentLabel,
-          },
-          requestUid, width: popupWidth, windowUid,
+          height: surface.bottom - surface.top, instanceUid, menuUid, parentLabel,
+          payload: { state, isFree, requestUid, parentLabel },
+          requestUid, width: surface.right - surface.left, windowUid,
         },
       });
       try { await Promise.all([nativeOpen, ready]); }

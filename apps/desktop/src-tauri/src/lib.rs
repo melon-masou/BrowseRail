@@ -365,44 +365,7 @@ fn free_surface_state(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn surface_available_height(window: tauri::Window, above: bool) -> Result<f64, String> {
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let position = window.outer_position().map_err(|error| error.to_string())?;
-    let top = f64::from(position.y) / scale;
-    let monitor = window
-        .current_monitor()
-        .map_err(|error| error.to_string())?
-        .ok_or("Current monitor is unavailable")?;
-    let work_area = monitor.work_area();
-    let work_top = f64::from(work_area.position.y) / scale;
-    let work_bottom = (f64::from(work_area.position.y) + f64::from(work_area.size.height)) / scale;
-    Ok(if above {
-        (top - work_top).max(0.0)
-    } else {
-        (work_bottom - top).max(0.0)
-    })
-}
-
-#[cfg(target_os = "windows")]
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HorizontalSpace {
-    anchor_left: f64,
-    anchor_right: f64,
-    left: f64,
-    right: f64,
-    window_left: f64,
-    work_left: f64,
-    work_right: f64,
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
-fn surface_horizontal_space(
-    window: tauri::Window,
-    anchor_left: f64,
-    anchor_right: f64,
-) -> Result<HorizontalSpace, String> {
+fn surface_work_area(window: tauri::Window) -> Result<panel::PopupHitRect, String> {
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
     let monitor = window
@@ -410,19 +373,15 @@ fn surface_horizontal_space(
         .map_err(|error| error.to_string())?
         .ok_or("Current monitor is unavailable")?;
     let work_area = monitor.work_area();
-    let window_left = f64::from(position.x) / scale;
-    let work_left = f64::from(work_area.position.x) / scale;
-    let work_right = (f64::from(work_area.position.x) + f64::from(work_area.size.width)) / scale;
-    let anchor_left_screen = window_left + anchor_left;
-    let anchor_right_screen = window_left + anchor_right;
-    Ok(HorizontalSpace {
-        anchor_left: anchor_left_screen,
-        anchor_right: anchor_right_screen,
-        left: (anchor_left_screen - work_left).max(0.0),
-        right: (work_right - anchor_right_screen).max(0.0),
-        window_left,
-        work_left,
-        work_right,
+    Ok(panel::PopupHitRect {
+        left: (f64::from(work_area.position.x) - f64::from(position.x)) / scale,
+        top: (f64::from(work_area.position.y) - f64::from(position.y)) / scale,
+        right: (f64::from(work_area.position.x) + f64::from(work_area.size.width)
+            - f64::from(position.x))
+            / scale,
+        bottom: (f64::from(work_area.position.y) + f64::from(work_area.size.height)
+            - f64::from(position.y))
+            / scale,
     })
 }
 
@@ -1278,8 +1237,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             surface_state,
             toggle_menu_collapsed,
-            surface_available_height,
-            surface_horizontal_space,
+            surface_work_area,
             invoke_action,
             invoke_free_action,
             free_surface_state,

@@ -15,7 +15,7 @@ const links: Array<{ destroy(): void }> = [];
 beforeEach(() => {
   Object.defineProperty(document, "fonts", { configurable: true, value: { ready: Promise.resolve() } });
   vi.mocked(invoke).mockImplementation(async command => {
-    if (command === "surface_available_height") return 600;
+    if (command === "surface_work_area") return { left: 0, top: 0, right: 1200, bottom: 600 };
     return undefined;
   });
 });
@@ -29,7 +29,7 @@ it("waits for the current popup's render acknowledgement before returning its se
   let openingSent!: () => void;
   const sent = new Promise<void>(resolve => { openingSent = resolve; });
   vi.mocked(invoke).mockImplementation(async (command, args) => {
-    if (command === "surface_available_height") return 600;
+    if (command === "surface_work_area") return { left: 0, top: 0, right: 1200, bottom: 600 };
     if (command === "open_popup") {
       requestUid = (args as { request: { requestUid: string } }).request.requestUid;
       openingSent();
@@ -70,17 +70,16 @@ async function popupLink() {
   links.push(link); return link;
 }
 
-it.each(["surface_available_height", "surface_horizontal_space"])("cancels opening when destroyed during %s", async query => {
+it.each(["down", "right"] as const)("cancels opening when destroyed during the work-area query (%s)", async direction => {
   const link = await popupLink();
   let queried!: () => void; const started = new Promise<void>(resolve => { queried = resolve; });
   let finishQuery!: () => void;
-  const pendingQuery = new Promise<unknown>(resolve => { finishQuery = () => resolve(query === "surface_available_height" ? 600 : { left: 600, right: 600, windowLeft: 0, workLeft: 0, workRight: 1200 }); });
+  const pendingQuery = new Promise<unknown>(resolve => { finishQuery = () => resolve({ left: 0, top: 0, right: 1200, bottom: 600 }); });
   vi.mocked(invoke).mockImplementation(async command => {
-    if (command === query) { queried(); return pendingQuery; }
-    if (command === "surface_available_height") return 600;
+    if (command === "surface_work_area") { queried(); return pendingQuery; }
     return undefined;
   });
-  const opened = link.open(popupRequest(query === "surface_horizontal_space" ? "right" : "down"));
+  const opened = link.open(popupRequest(direction));
   const rejected = expect(opened).rejects.toThrow("destroyed");
   await started; link.destroy(); await rejected;
   finishQuery(); await Promise.resolve(); await Promise.resolve();
@@ -93,7 +92,7 @@ it("rejects a native opening failure and waits for its popup to close", async ()
   const sent = new Promise<void>(resolve => { openingSent = resolve; });
   let closingSent!: () => void; const closing = new Promise<void>(resolve => { closingSent = resolve; });
   vi.mocked(invoke).mockImplementation(async (command, args) => {
-    if (command === "surface_available_height") return 600;
+    if (command === "surface_work_area") return { left: 0, top: 0, right: 1200, bottom: 600 };
     if (command === "open_popup") {
       requestUid = (args as { request: { requestUid: string } }).request.requestUid; openingSent();
     }
@@ -114,7 +113,7 @@ it("does not finish session.close before the native close notification", async (
   let requestUid = ""; let openingSent!: () => void;
   const sent = new Promise<void>(resolve => { openingSent = resolve; });
   vi.mocked(invoke).mockImplementation(async (command, args) => {
-    if (command === "surface_available_height") return 600;
+    if (command === "surface_work_area") return { left: 0, top: 0, right: 1200, bottom: 600 };
     if (command === "open_popup") {
       requestUid = (args as { request: { requestUid: string } }).request.requestUid; openingSent();
     }

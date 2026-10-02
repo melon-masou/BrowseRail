@@ -1,6 +1,6 @@
 import { invertBookmarkActionUid, type ExpandDirection, type LayoutEntry } from "@browserail/protocol";
 import { menuButton } from "./appearance";
-import { calculateColumnWidth as columnWidth, createTextMeasure, MIN_COLUMN_HEIGHT } from "./layout";
+import { calculateColumnWidth as columnWidth, createTextMeasure, submenuHeightLimit } from "./layout";
 import { createLifetime, showMenuError, type Lifetime } from "./lifetime";
 import { attachTemporaryBookmarkButton } from "./temporary-bookmark";
 import type { Controller, PopupHost, PopupState } from "./types";
@@ -34,6 +34,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
       if (!lifetime.alive) return;
       const sameLayout = next.entries === state.entries && next.direction === state.direction
         && next.rootDirection === state.rootDirection && next.rootOffsetX === state.rootOffsetX
+        && next.rootOffsetY === state.rootOffsetY
         && next.maxColumnHeight === state.maxColumnHeight && next.bounds === state.bounds
         && next.theme.fontSize === state.theme.fontSize && next.theme.itemHeight === state.theme.itemHeight
         && next.theme.color === state.theme.color;
@@ -75,15 +76,8 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
     popup.className = "popup-container detached-popup";
     popup.dataset.direction = payload.rootDirection;
     popup.ariaLabel = "BrowseRail bookmark menu";
-    const horizontal = payload.direction === "left" || payload.direction === "right";
-    if (horizontal) {
-      popup.dataset.horizontal = "true";
-      popup.style.display = "block";
-      popup.style.height = "100%";
-    } else {
-      popup.style.flexDirection = "row";
-      popup.style.alignItems = payload.direction === "up" ? "flex-end" : "flex-start";
-    }
+    popup.style.display = "block";
+    popup.style.height = "100%";
     let levels: LayoutEntry[][] = [payload.entries];
     let expandedUids: string[] = [];
     let expandedDirections: ExpandDirection[] = [];
@@ -270,79 +264,53 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
     };
 
     const layoutColumns = (): void => {
+      const popupRect = popup.getBoundingClientRect();
+      const availableWidth = Math.max(1, payload.bounds.right - payload.bounds.left);
       for (let level = 0; level < columns.length; level++) {
         const column = columns[level]!;
-        column.style.width = `${calculateColumnWidth(
-          levels[level]!, payload.popupFontSize, payload.maxColumnHeight, payload.itemHeight,
-        )}px`;
-        column.dataset.columnWidth = column.style.width;
-        if (horizontal) {
-          column.style.position = "absolute";
-          if (level === 0) {
-            column.style.left = `${payload.rootOffsetX}px`;
-            column.style.top = "0px";
-          } else {
-            const parent = columns[level - 1]?.querySelector<HTMLElement>(
-              `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
-            );
-            if (parent) {
-              const popupRect = popup.getBoundingClientRect();
-              const parentRect = parent.getBoundingClientRect();
-              const parentLeft = parentRect.left - popupRect.left;
-              const parentRight = parentRect.right - popupRect.left;
-              const columnWidth = Number.parseFloat(column.dataset.columnWidth ?? "0");
-              const preferred = expandedDirections[level - 1] === "left" ? "left" : "right";
-              const fitsPreferred = preferred === "left"
-                ? parentLeft - columnWidth >= payload.workLeft - popupRect.left
-                : parentRight + columnWidth <= payload.workRight - popupRect.left;
-              const direction = fitsPreferred
-                ? preferred
-                : preferred === "left"
-                  ? "right"
-                  : "left";
-              parent.dataset.expandDirection = direction;
-              const left = direction === "left"
-                ? parentLeft - columnWidth
-                : parentRight;
-              const top = parentRect.top - popupRect.top;
-              column.style.left = `${left}px`;
-              column.style.top = `${Math.max(0, top)}px`;
-              column.style.maxHeight = `${Math.max(
-                MIN_COLUMN_HEIGHT,
-                payload.maxColumnHeight - Math.max(0, top),
-              )}px`;
-            }
-          }
-        } else if (level > 0) {
-          const parent = columns[level - 1]?.querySelector<HTMLElement>(
-            `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
-          );
-          if (parent) {
-            const popupRect = popup.getBoundingClientRect();
-            const parentRect = parent.getBoundingClientRect();
-            if (payload.direction === "up") {
-              const marginBottom = Math.min(
-                Math.max(0, popupRect.bottom - parentRect.bottom),
-                Math.max(0, popupRect.height - MIN_COLUMN_HEIGHT),
-              );
-              column.style.marginBottom = `${marginBottom}px`;
-              column.style.maxHeight = `${Math.max(
-                MIN_COLUMN_HEIGHT,
-                popupRect.height - marginBottom,
-              )}px`;
-            } else {
-              const marginTop = Math.min(
-                Math.max(0, parentRect.top - popupRect.top),
-                Math.max(0, popupRect.height - MIN_COLUMN_HEIGHT),
-              );
-              column.style.marginTop = `${marginTop}px`;
-              column.style.maxHeight = `${Math.max(
-                MIN_COLUMN_HEIGHT,
-                popupRect.height - marginTop,
-              )}px`;
-            }
-          }
+        const setWidth = (maxHeight: number): void => {
+          column.style.width = `${Math.min(calculateColumnWidth(
+            levels[level]!, payload.popupFontSize, maxHeight, payload.itemHeight,
+          ), availableWidth)}px`;
+        };
+        setWidth(payload.maxColumnHeight);
+        column.style.minWidth = "0px";
+        column.style.maxWidth = `${availableWidth}px`;
+        column.style.position = "absolute";
+        if (level === 0) {
+          const width = Number.parseFloat(column.style.width);
+          column.style.left = `${Math.max(payload.bounds.left, Math.min(payload.rootOffsetX, payload.bounds.right - width))}px`;
+          if (payload.direction === "up") column.style.bottom = `${popupRect.height - payload.rootOffsetY}px`;
+          else column.style.top = `${payload.rootOffsetY}px`;
+          continue;
         }
+        const parent = columns[level - 1]?.querySelector<HTMLElement>(
+          `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
+        );
+        if (!parent) continue;
+        const parentRect = parent.getBoundingClientRect();
+        const parentTop = parentRect.top - popupRect.top;
+        const parentBottom = parentRect.bottom - popupRect.top;
+        const parentLeft = parentRect.left - popupRect.left;
+        const parentRight = parentRect.right - popupRect.left;
+        const available = payload.direction === "up" ? parentBottom - payload.bounds.top : payload.bounds.bottom - parentTop;
+        const contentHeight = column.scrollHeight + column.offsetHeight - column.clientHeight;
+        const maxHeight = Math.min(payload.bounds.bottom - payload.bounds.top,
+          contentHeight <= available ? available : submenuHeightLimit(payload.itemHeight));
+        column.style.maxHeight = `${maxHeight}px`;
+        setWidth(maxHeight);
+        const columnWidth = Number.parseFloat(column.style.width);
+        const preferred = expandedDirections[level - 1] === "left" ? "left" : "right";
+        const fitsPreferred = preferred === "left"
+          ? parentLeft - columnWidth >= payload.bounds.left
+          : parentRight + columnWidth <= payload.bounds.right;
+        const direction = fitsPreferred ? preferred : preferred === "left" ? "right" : "left";
+        parent.dataset.expandDirection = direction;
+        const left = direction === "left" ? parentLeft - columnWidth : parentRight;
+        column.style.left = `${Math.max(payload.bounds.left, Math.min(left, payload.bounds.right - columnWidth))}px`;
+        const height = column.getBoundingClientRect().height;
+        const preferredTop = payload.direction === "up" ? parentBottom - height : parentTop;
+        column.style.top = `${Math.max(payload.bounds.top, Math.min(preferredTop, payload.bounds.bottom - height))}px`;
       }
     };
 

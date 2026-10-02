@@ -21,6 +21,8 @@ export interface PopupState {
   direction: ExpandDirection;
   rootDirection: ExpandDirection;
   rootOffsetX: number;
+  /** First column's top edge, or bottom edge when expanding upwards. */
+  rootOffsetY: number;
   bounds: Rect;
   maxColumnHeight: number;
   editingLocked: boolean;
