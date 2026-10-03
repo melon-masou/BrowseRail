@@ -7,7 +7,7 @@ import {
 import type { BrowserMenu, BrowserMenuState, MenuRequest, TemporaryConfirmationResult } from "../page-operations/messages";
 import { executeMenuAction } from "./execute-menu-action";
 import { captureTemporaryUrl } from "./temporary";
-import { hasWebsitePermission } from "../site-permissions";
+import { hasWebsitePermission } from "../browser/site-permissions";
 import { openTemporaryConfirmation, temporaryConfirmationContext } from "./temporary-confirmation";
 import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 

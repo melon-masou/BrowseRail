@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearBookmarkTargets, createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmark-registry";
-import { navigateBookmark, type TabActionBrowser } from "./navigate";
+import { clearBookmarkTargets, createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmarks/registry";
+import { navigateBookmark, type TabActionBrowser } from "./navigation";
 
 function createBrowser(): TabActionBrowser {
   return {

@@ -14,9 +14,9 @@ vi.mock("webextension-polyfill", () => ({
   },
 }));
 
-import { buildTemporaryDirectiveUrl, resolveMenuItems } from "./bookmarks";
-import { loadConfig, loadTemporaryNotes, loadTemporaryValues, pruneTemporaryValues, saveConfig, saveTemporaryValue, clearTemporaryValue, normalizeMenu } from "./config";
-import { captureTemporaryUrl } from "./background/temporary";
+import { buildTemporaryDirectiveUrl, resolveMenuItems } from "./index";
+import { loadConfig, loadTemporaryNotes, loadTemporaryValues, pruneTemporaryValues, saveConfig, saveTemporaryValue, clearTemporaryValue, normalizeMenu } from "../config";
+import { captureTemporaryUrl } from "../background/temporary";
 
 beforeEach(() => { storage = {}; });
 

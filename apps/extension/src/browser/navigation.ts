@@ -4,7 +4,7 @@ import {
   type TabMode,
 } from "@browserail/protocol";
 
-import { resolveBookmarkTarget } from "../bookmark-registry";
+import { resolveBookmarkTarget } from "../bookmarks/registry";
 
 export { parseBookmarkAction, type ParsedBookmarkAction, type TabMode };
 

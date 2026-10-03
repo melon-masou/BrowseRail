@@ -9,7 +9,7 @@ import {
   revokeWebsitePermissions,
   ruleSites,
   type RuleSites,
-} from "../../site-permissions";
+} from "../../browser/site-permissions";
 
 export function createSiteAuthorization(options: {
   root: HTMLElement;

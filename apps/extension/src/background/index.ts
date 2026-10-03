@@ -18,8 +18,8 @@ import {
   findBookmarkNodeByPath,
   resolveMenuItems,
 } from "../bookmarks";
-import { createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmark-registry";
-import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser-adapter";
+import { createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmarks/registry";
+import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser/windows";
 import {
   DEFAULT_FONT_SIZE,
   loadBookmarkRootPrefix,
@@ -41,9 +41,9 @@ import {
   saveMenuPlacement,
   saveWidgetEnabled,
 } from "../config";
-import { loadInstanceUid } from "../instance-identity";
-import { ExtensionStateMachine, type ExtensionConnectionState } from "../state-machine";
-import { navigateToUrl } from "../tab-actions/navigate";
+import { loadInstanceUid } from "../config/instance-identity";
+import { ExtensionStateMachine, type ExtensionConnectionState } from "../native/state-machine";
+import { navigateToUrl } from "../browser/navigation";
 import { initDynamicBookmarks } from "./dynamic";
 import { executeMenuAction } from "./execute-menu-action";
 

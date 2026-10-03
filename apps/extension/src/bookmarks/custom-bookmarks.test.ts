@@ -1,9 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { customBookmarkReference, customBookmarkUid, formatActionUid, invertNavigationActionUid } from "@browserail/protocol";
-import { loadConfig, saveConfig, saveSyncEnabled, saveTemporaryValue, SYNC_CONFIG_KEY } from "./config";
-import { resolveMenuItems } from "./bookmarks";
-import { executeMenuAction } from "./background/execute-menu-action";
+import { loadConfig, saveConfig, saveSyncEnabled, saveTemporaryValue, SYNC_CONFIG_KEY } from "../config";
+import { resolveMenuItems } from "./index";
+import { executeMenuAction } from "../background/execute-menu-action";
 
 let local: Record<string, unknown> = {};
 let sync: Record<string, unknown> = {};

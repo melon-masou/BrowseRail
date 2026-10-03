@@ -23,7 +23,7 @@ import {
   findBookmarkNodeByPath,
   resolveBookmarkNodeByPath,
   resolveMenuItems,
-} from "./bookmarks";
+} from "./index";
 
 describe("resolveMenuItems", () => {
   it("uses the sync bookmark snapshot and registers the browser id without re-reading the tree", async () => {
@@ -592,30 +592,6 @@ describe("rename and emoji support", () => {
     expect((entries[0] as BookmarkEntry).label).toBe("Very Long GitHub Bookmark Title");
   });
 
-  it("uses custom rename with emoji on StoredMenuItem", async () => {
-    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
-      {
-        id: "0",
-        title: "",
-        children: [
-          {
-            id: "bm-custom-emoji-rename",
-            title: "GitHub",
-            url: "https://github.com",
-          },
-        ],
-      },
-    ] as any);
-
-    const entries = await resolveMenuItems([
-      { uid: "item-rename-emoji", path: ["GitHub"], url: "https://github.com", rename: "🐙" },
-    ]);
-
-    expect(entries).toHaveLength(1);
-    expect((entries[0] as BookmarkEntry).rename).toBe("🐙");
-    expect((entries[0] as BookmarkEntry).label).toBe("GitHub");
-  });
-
   it("does not automatically extract leading emoji when no custom rename is configured", async () => {
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
@@ -807,7 +783,7 @@ describe("tabMode configuration", () => {
 
 describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
   it("normalizes a portable item from its path, type, and settings", async () => {
-    const { normalizeStoredMenuItem } = await import("./config");
+    const { normalizeStoredMenuItem } = await import("../config");
     const item = normalizeStoredMenuItem({
       type: "flattenFolder",
       path: ["Bookmarks Toolbar", "Dev"],
@@ -824,19 +800,8 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.tabMode).toBe("newTab");
   });
 
-  it("preserves future custom types", async () => {
-    const { normalizeStoredMenuItem } = await import("./config");
-    const item = normalizeStoredMenuItem({
-      type: "customPluginType",
-      path: ["Tools"],
-    });
-
-    expect(item).toBeDefined();
-    expect(item?.type).toBe("customPluginType");
-  });
-
   it("normalizes a space item with units and color alpha", async () => {
-    const { normalizeStoredMenuItem } = await import("./config");
+    const { normalizeStoredMenuItem } = await import("../config");
     const item = normalizeStoredMenuItem({
       type: "space",
       units: 2.5,
@@ -852,7 +817,7 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
   });
 
   it("keeps only the first menu toggle when normalizing a menu", async () => {
-    const { normalizeMenu } = await import("./config");
+    const { normalizeMenu } = await import("../config");
     const menu = normalizeMenu({
       uid: "menu-toggle-menu",
       items: [
@@ -866,7 +831,7 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
   });
 
   it("loads the new action configuration and discards the removed fold type", async () => {
-    const { normalizeMenu } = await import("./config");
+    const { normalizeMenu } = await import("../config");
     const menu = normalizeMenu({
       uid: "source",
       items: [
@@ -883,7 +848,7 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
   });
 
   it("preserves up and left expansion directions", async () => {
-    const { normalizeMenu } = await import("./config");
+    const { normalizeMenu } = await import("../config");
     const upMenu = normalizeMenu({
       uid: "menu-up",
       orientation: "row",
@@ -902,7 +867,7 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
   });
 
   it("preserves a menu toggle rename while normalizing settings", async () => {
-    const { normalizeStoredMenuItem } = await import("./config");
+    const { normalizeStoredMenuItem } = await import("../config");
     const item = normalizeStoredMenuItem({
       uid: "toggle-1",
       type: "menuFold",
@@ -919,7 +884,7 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
 
 describe("combineRootAndItemPath and space resolution", () => {
   it("combines root prefix with item path strictly without deduplication", async () => {
-    const { combineRootAndItemPath } = await import("./bookmarks");
+    const { combineRootAndItemPath } = await import("./index");
 
     // Root prefix combined with relative item path
     expect(combineRootAndItemPath(["书签栏"], ["gbfsync"])).toEqual(["书签栏", "gbfsync"]);
@@ -960,7 +925,7 @@ describe("combineRootAndItemPath and space resolution", () => {
   });
 
   it("calculates item relative path correctly based on root prefix", async () => {
-    const { getFolderPath, getItemRelativePath, findBookmarkNodeByPath, combineRootAndItemPath } = await import("./bookmarks");
+    const { getFolderPath, getItemRelativePath, findBookmarkNodeByPath, combineRootAndItemPath } = await import("./index");
 
     const tree = [
       {
@@ -1044,7 +1009,7 @@ describe("combineRootAndItemPath and space resolution", () => {
       },
     ] as any);
 
-    const { normalizeStoredMenuItem } = await import("./config");
+    const { normalizeStoredMenuItem } = await import("../config");
     const normalized = normalizeStoredMenuItem({
       path: [],
       type: "folder",
@@ -1069,8 +1034,8 @@ describe("combineRootAndItemPath and space resolution", () => {
       getItemRelativePath,
       findBookmarkNodeByPath,
       formatSpecialRootForDisplay,
-    } = await import("./bookmarks");
-    const { DEFAULT_BOOKMARK_ROOT_PREFIX, loadBookmarkRootPrefix } = await import("./config");
+    } = await import("./index");
+    const { DEFAULT_BOOKMARK_ROOT_PREFIX, loadBookmarkRootPrefix } = await import("../config");
 
     expect(DEFAULT_BOOKMARK_ROOT_PREFIX).toEqual([]);
 

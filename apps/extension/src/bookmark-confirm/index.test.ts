@@ -10,7 +10,7 @@ it("prefills the static confirmation, cancels without saving, and submits edited
   vi.stubGlobal("location", { search: `?${new URLSearchParams({ kind: "static", name: "Current page", url: "https://example.com/current" })}` });
   document.body.innerHTML = '<div id="app"></div>';
   const close = vi.spyOn(window, "close").mockImplementation(() => {});
-  await import("./temporary-confirm");
+  await import("./index");
   const name = document.querySelector<HTMLInputElement>('input[name="name"]')!;
   const url = document.querySelector<HTMLInputElement>('input[name="url"]')!;
   expect(name.value).toBe("Current page");

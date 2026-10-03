@@ -1,7 +1,7 @@
 import browser from "webextension-polyfill";
 import { type DisplayMode } from "../../config";
-import { isLocalDesktopUrl } from "../../desktop-connection";
-import { createRandomInstanceLabel } from "../../instance-label";
+import { isLocalDesktopUrl } from "../../native/connection";
+import { createRandomInstanceLabel } from "../../config/instance-label";
 import { t } from "@browserail/i18n";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";

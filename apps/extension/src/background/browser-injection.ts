@@ -1,5 +1,5 @@
 import browser from "webextension-polyfill";
-import { loadWebsiteOrigins } from "../site-permissions";
+import { loadWebsiteOrigins } from "../browser/site-permissions";
 
 const SCRIPT_ID = "browserail-menus";
 

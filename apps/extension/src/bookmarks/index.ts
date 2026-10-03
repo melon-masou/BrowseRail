@@ -11,7 +11,7 @@ import {
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
-import type { StoredMenuItem, TabMode } from "./config";
+import type { StoredMenuItem, TabMode } from "../config";
 
 export { actionUid, SPECIAL_ROOT_PLACEHOLDERS, type SpecialRootType };
 

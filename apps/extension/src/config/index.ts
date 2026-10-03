@@ -21,7 +21,7 @@ import type {
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
-import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "./desktop-connection";
+import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "../native/connection";
 import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
 

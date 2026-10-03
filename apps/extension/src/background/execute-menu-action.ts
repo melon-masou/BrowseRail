@@ -1,7 +1,7 @@
 import browser from "webextension-polyfill";
 import { isDynamicAction, parseDynamicAction, parseTemporaryAction, parseStaticAction } from "@browserail/protocol";
 import { loadConfig, saveConfig, loadDynamicValues, loadTemporaryValues } from "../config";
-import { navigateBookmark, navigateToUrl } from "../tab-actions/navigate";
+import { navigateBookmark, navigateToUrl } from "../browser/navigation";
 import { captureTemporaryUrl } from "./temporary";
 import { runTabAction, toggleTargetMenus } from "./menu-actions";
 

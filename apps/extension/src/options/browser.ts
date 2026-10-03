@@ -1,7 +1,7 @@
 import browser from "webextension-polyfill";
-import { probeDesktopConnection } from "../desktop-connection";
+import { probeDesktopConnection } from "../native/connection";
 import { saveWidgetEnabled } from "../config";
-import { browserKind } from "../browser-adapter";
+import { browserKind } from "../browser/windows";
 
 export const browserActions = {
   async setWidgetEnabled(enabled: boolean): Promise<void> {

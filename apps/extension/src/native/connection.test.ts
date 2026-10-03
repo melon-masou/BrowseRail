@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isLocalDesktopUrl, probeDesktopConnection } from "./desktop-connection";
+import { isLocalDesktopUrl, probeDesktopConnection } from "./connection";
 
 describe("isLocalDesktopUrl", () => {
   it.each(["ws://127.0.0.1:17654", "ws://localhost:9000/panels"])(
