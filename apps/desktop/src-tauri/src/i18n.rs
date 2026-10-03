@@ -10,7 +10,9 @@
 //! Unused until the tray/window code is switched over, hence the module-wide allow.
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::OnceLock;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Lang {
@@ -104,81 +106,102 @@ pub enum Msg<'a> {
     WindowSettingsTitle,
 }
 
+/// Translatable text lives in the shared i18n package (`packages/i18n/src/native.json`),
+/// embedded at compile time so Rust and the DOM apps draw from one source. This file
+/// only maps each `Msg` variant to its key and the values it interpolates.
+type Catalog = HashMap<String, HashMap<String, String>>;
+
+fn catalog() -> &'static Catalog {
+    static CATALOG: OnceLock<Catalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../packages/i18n/src/native.json"
+        )))
+        .expect("native.json is a valid { locale: { key: text } } catalog")
+    })
+}
+
+/// Look up a key in the given language, falling back to English, then to the key itself.
+fn tr(lang: Lang, key: &str) -> String {
+    let cat = catalog();
+    cat.get(lang.code())
+        .and_then(|table| table.get(key))
+        .or_else(|| cat.get("en").and_then(|table| table.get(key)))
+        .cloned()
+        .unwrap_or_else(|| key.to_string())
+}
+
+fn interpolate(mut text: String, params: &[(&str, String)]) -> String {
+    for (name, value) in params {
+        text = text.replace(&format!("{{{name}}}"), value);
+    }
+    text
+}
+
 impl Msg<'_> {
+    /// The key and interpolation values for this message. Keeping this map here (rather
+    /// than the strings) preserves type-safe call sites while the text stays in JSON.
+    fn parts(&self) -> (&'static str, Vec<(&'static str, String)>) {
+        match self {
+            Msg::ListenerStarting => ("tray.listenerStarting", vec![]),
+            Msg::ListenerError => ("tray.listenerError", vec![]),
+            Msg::ListenerListening { port } => {
+                ("tray.listenerListening", vec![("port", port.to_string())])
+            }
+            Msg::ListenerStopped => ("tray.listenerStopped", vec![]),
+            Msg::ExtensionDisconnected => ("tray.extensionDisconnected", vec![]),
+            Msg::ExtensionConnected { browser, label } => (
+                "tray.extensionConnected",
+                vec![("browser", browser.to_string()), ("label", label.to_string())],
+            ),
+            Msg::MenusVisibleCustomizing {
+                visible,
+                customizing,
+            } => (
+                "tray.menusVisibleCustomizing",
+                vec![
+                    ("visible", visible.to_string()),
+                    ("customizing", customizing.to_string()),
+                ],
+            ),
+            Msg::MenusVisible { visible } => {
+                ("tray.menusVisible", vec![("visible", visible.to_string())])
+            }
+            Msg::MenusHidden { hidden } => {
+                ("tray.menusHidden", vec![("hidden", hidden.to_string())])
+            }
+            Msg::MenusNone => ("tray.menusNone", vec![]),
+            Msg::DisplayMenus => ("tray.displayMenus", vec![]),
+            Msg::EnableShortcuts => ("tray.enableShortcuts", vec![]),
+            Msg::EditMenus => ("tray.editMenus", vec![]),
+            Msg::Settings => ("tray.settings", vec![]),
+            Msg::Quit => ("tray.quit", vec![]),
+            Msg::TooltipServerError => ("tray.tooltipServerError", vec![]),
+            Msg::TooltipServerStopped => ("tray.tooltipServerStopped", vec![]),
+            Msg::TooltipExtDisconnected => ("tray.tooltipExtDisconnected", vec![]),
+            Msg::TooltipExtConnected { count } => {
+                ("tray.tooltipExtConnected", vec![("count", count.to_string())])
+            }
+            Msg::TooltipPanelsCustomizing { visible } => (
+                "tray.tooltipPanelsCustomizing",
+                vec![("visible", visible.to_string())],
+            ),
+            Msg::TooltipPanels { visible } => {
+                ("tray.tooltipPanels", vec![("visible", visible.to_string())])
+            }
+            Msg::WindowSettingsTitle => ("window.settingsTitle", vec![]),
+        }
+    }
+
     /// Render in the given language.
     pub fn text(&self, lang: Lang) -> String {
-        match lang {
-            Lang::En => self.en(),
-            Lang::ZhCn => self.zh(),
-        }
+        let (key, params) = self.parts();
+        interpolate(tr(lang, key), &params)
     }
 
     /// Render in the current process-global language.
     pub fn localized(&self) -> String {
         self.text(current())
-    }
-
-    fn en(&self) -> String {
-        match self {
-            Msg::ListenerStarting => "○ Listener: Starting…".into(),
-            Msg::ListenerError => "! Listener: Error".into(),
-            Msg::ListenerListening { port } => format!("● Listener: 127.0.0.1:{port}"),
-            Msg::ListenerStopped => "○ Listener: Stopped".into(),
-            Msg::ExtensionDisconnected => "○ Extension: Disconnected".into(),
-            Msg::ExtensionConnected { browser, label } => {
-                format!("● Extension: {browser} ({label})")
-            }
-            Msg::MenusVisibleCustomizing {
-                visible,
-                customizing,
-            } => format!("● Menus: {visible} visible, {customizing} customizing"),
-            Msg::MenusVisible { visible } => format!("● Menus: {visible} visible"),
-            Msg::MenusHidden { hidden } => format!("○ Menus: {hidden} hidden (ready)"),
-            Msg::MenusNone => "○ Menus: None".into(),
-            Msg::DisplayMenus => "Display menus".into(),
-            Msg::EnableShortcuts => "Enable shortcuts".into(),
-            Msg::EditMenus => "Edit menus".into(),
-            Msg::Settings => "Settings…".into(),
-            Msg::Quit => "Quit".into(),
-            Msg::TooltipServerError => "Error".into(),
-            Msg::TooltipServerStopped => "Stopped".into(),
-            Msg::TooltipExtDisconnected => "Ext: Disconnected".into(),
-            Msg::TooltipExtConnected { count } => format!("Ext: {count} connected"),
-            Msg::TooltipPanelsCustomizing { visible } => {
-                format!(" ({visible} menus, customizing)")
-            }
-            Msg::TooltipPanels { visible } => format!(" ({visible} menus)"),
-            Msg::WindowSettingsTitle => "BrowseRail Settings".into(),
-        }
-    }
-
-    fn zh(&self) -> String {
-        match self {
-            Msg::ListenerStarting => "○ 监听：启动中…".into(),
-            Msg::ListenerError => "! 监听：错误".into(),
-            Msg::ListenerListening { port } => format!("● 监听：127.0.0.1:{port}"),
-            Msg::ListenerStopped => "○ 监听：已停止".into(),
-            Msg::ExtensionDisconnected => "○ 扩展：未连接".into(),
-            Msg::ExtensionConnected { browser, label } => format!("● 扩展：{browser}（{label}）"),
-            Msg::MenusVisibleCustomizing {
-                visible,
-                customizing,
-            } => format!("● 菜单：{visible} 显示，{customizing} 自定义中"),
-            Msg::MenusVisible { visible } => format!("● 菜单：{visible} 显示"),
-            Msg::MenusHidden { hidden } => format!("○ 菜单：{hidden} 隐藏（就绪）"),
-            Msg::MenusNone => "○ 菜单：无".into(),
-            Msg::DisplayMenus => "显示菜单".into(),
-            Msg::EnableShortcuts => "启用快捷键".into(),
-            Msg::EditMenus => "编辑菜单".into(),
-            Msg::Settings => "设置…".into(),
-            Msg::Quit => "退出".into(),
-            Msg::TooltipServerError => "错误".into(),
-            Msg::TooltipServerStopped => "已停止".into(),
-            Msg::TooltipExtDisconnected => "扩展：未连接".into(),
-            Msg::TooltipExtConnected { count } => format!("扩展：已连接 {count}"),
-            Msg::TooltipPanelsCustomizing { visible } => format!("（{visible} 菜单，自定义中）"),
-            Msg::TooltipPanels { visible } => format!("（{visible} 菜单）"),
-            Msg::WindowSettingsTitle => "BrowseRail 设置".into(),
-        }
     }
 }
