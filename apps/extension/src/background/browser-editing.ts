@@ -5,6 +5,7 @@ import {
   loadConfig, saveConfig, saveBrowserEditing, type DisplayMode,
 } from "../config";
 import { openStaticConfirmation, staticConfirmationContext } from "./temporary-confirmation";
+import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
@@ -52,6 +53,7 @@ export function createBrowserEditingMenu() {
       const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
       if (mode === "browser" && enabled) await saveBrowserEditing(info.checked === true);
       await refresh();
+      if (tab?.id !== undefined) await requestBrowserMenuRefresh(tab.id);
     })().catch(error => console.error("BrowseRail editing:", error));
   });
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {

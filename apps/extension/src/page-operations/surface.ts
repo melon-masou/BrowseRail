@@ -5,8 +5,7 @@ import { openBrowserPopup } from "./popup";
 import { mountBrowserCustomization } from "./customization";
 import { placementPoint } from "./placement";
 
-type WithoutId<T> = T extends unknown ? Omit<T, "id"> : never;
-export type MenuCommand = WithoutId<MenuRequest>;
+export type MenuCommand = MenuRequest;
 const FONT = 'Segoe UI, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
 
 export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, send: (command: MenuCommand) => Promise<TemporaryConfirmationResult | undefined>) {

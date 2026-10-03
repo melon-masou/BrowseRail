@@ -1,12 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Runtime } from "webextension-polyfill";
 import type { MenuView } from "@browserail/protocol";
-import type { MenuRequest } from "../page-operations/messages";
+import type { MenuRequest, MenuReply } from "../page-operations/messages";
 
 const mocks = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
   syncStorage: {} as Record<string, unknown>,
-  connect: vi.fn<(listener: (port: Runtime.Port) => void) => void>(),
   message: vi.fn<(listener: (message: unknown, sender: Runtime.MessageSender) => unknown) => void>(),
   popupSupported: true,
   popupUrls: {} as Record<number, string>,
@@ -16,11 +15,12 @@ const mocks = vi.hoisted(() => ({
   getTab: vi.fn(async (_id: number) => ({ id: 17, windowId: 42, url: "https://example.com/page" })),
   queryTabs: vi.fn(async (_query: { windowId: number }) => [{ id: 17, url: "https://example.com/page" }]),
   permission: vi.fn(async () => true),
+  sendToTab: vi.fn(async () => ({ updated: true })),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
   runtime: {
     id: "browserail", getURL: (path: string) => `chrome-extension://browserail/${path}`,
-    onConnect: { addListener: mocks.connect }, onMessage: { addListener: mocks.message },
+    onMessage: { addListener: mocks.message },
   },
   get action() { return { setPopup: mocks.setPopup, openPopup: mocks.popupSupported ? mocks.openPopup : undefined }; },
   permissions: { contains: mocks.permission },
@@ -31,7 +31,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
     get: async (key: string) => ({ [key]: mocks.syncStorage[key] }),
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.syncStorage, values); },
   } },
-  tabs: { get: mocks.getTab, query: mocks.queryTabs, reload: mocks.reload },
+  tabs: { get: mocks.getTab, query: mocks.queryTabs, reload: mocks.reload, sendMessage: mocks.sendToTab },
   bookmarks: { getTree: async () => [] },
 } }));
 
@@ -46,7 +46,7 @@ import {
 beforeEach(() => {
   mocks.storage = {};
   mocks.syncStorage = {};
-  mocks.connect.mockClear(); mocks.reload.mockClear();
+  mocks.reload.mockClear(); mocks.sendToTab.mockClear();
   mocks.message.mockClear(); mocks.popupSupported = true; mocks.popupUrls = {};
   mocks.setPopup.mockClear(); mocks.openPopup.mockReset(); mocks.openPopup.mockResolvedValue();
   mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://example.com/page" });
@@ -55,19 +55,19 @@ beforeEach(() => {
 });
 
 function client() {
-  let listener!: (message: unknown, port: Runtime.Port) => void;
   const posted: unknown[] = [];
-  const port: Runtime.Port = {
-    name: "browserail-menus", sender: { frameId: 0, tab: { id: 17, windowId: 42, active: true, highlighted: true, incognito: false, index: 0, pinned: false } },
-    postMessage: message => { posted.push(message); }, disconnect: () => {},
-    onMessage: { addListener: callback => { listener = callback; }, removeListener: () => {}, hasListener: () => true },
-    onDisconnect: { addListener: () => {}, removeListener: () => {}, hasListener: () => true },
+  const sender: Runtime.MessageSender = {
+    id: "browserail", frameId: 0, tab: { id: 17, windowId: 42, active: true, highlighted: true, incognito: false, index: 0, pinned: false },
   };
-  mocks.connect.mock.calls.at(-1)![0](port);
-  return { posted, async request(message: MenuRequest) {
-    listener(message, port);
-    await vi.waitFor(() => expect(posted).toContainEqual(expect.objectContaining({ type: "reply", id: message.id })));
-  } };
+  const listener = mocks.message.mock.calls.at(-1)![0];
+  return {
+    posted,
+    async snapshot() { const result = await listener({ type: "browserMenusSnapshot" }, sender); posted.push(result); return result; },
+    async request(command: MenuRequest) {
+      const result = await listener({ type: "browserMenuCommand", command }, sender) as MenuReply;
+      posted.push(result); return result;
+    },
+  };
 }
 
 const view: MenuView = { uid: "source", orientation: "row", items: [
@@ -85,6 +85,17 @@ async function fixture() {
   await saveConfig(config);
   return config;
 }
+
+it("publishes menu snapshots without sending unsolicited updates to webpages", async () => {
+  const config = await fixture();
+  const changed = vi.fn();
+  const service = createBrowserMenus(changed); const page = client();
+  await service.publish(config, [view], {}, {}, true);
+  expect(changed).not.toHaveBeenCalled();
+  expect(page.posted).toEqual([]);
+  expect(mocks.sendToTab).not.toHaveBeenCalled();
+  expect(await page.snapshot()).toMatchObject({ type: "state", menus: [{ view: { uid: "source" } }] });
+});
 
 it("keeps display mode and browser placements local when menu configuration is replaced", async () => {
   expect(await loadDisplayMode()).toBe("native");
@@ -110,12 +121,15 @@ it("shows free menus in a matching webpage without a desktop connection and remo
   config.urlRules = [{ uid: "web", name: "Web", patterns: ["https://example.com/*"] }];
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
+  await page.snapshot();
   expect(page.posted.at(-1)).toMatchObject({ type: "state", menus: [{ view: { uid: "source" } }] });
   mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://other.com/" });
   await service.publish(config, [view], {}, {}, true);
+  await page.snapshot();
   expect(page.posted.at(-1)).toEqual({ type: "state", menus: [] });
   mocks.getTab.mockResolvedValue({ id: 17, windowId: 42, url: "https://example.com/page" });
   await service.publish(config, [view], {}, {}, false);
+  await page.snapshot();
   expect(page.posted.at(-1)).toEqual({ type: "state", menus: [] });
 });
 
@@ -180,31 +194,31 @@ it("executes a webpage's browser action on its own window and rejects it after s
   const config = await fixture();
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
-  await page.request({ id: 1, type: "invoke", menuUid: "source", actionUid: "browserAction:reload" });
+  await page.request({ type: "invoke", menuUid: "source", actionUid: "browserAction:reload" });
   expect(mocks.queryTabs).toHaveBeenCalledWith({ active: true, windowId: 42 });
   expect(mocks.reload).toHaveBeenCalledWith(17);
   await saveDisplayMode("native");
-  await page.request({ id: 2, type: "invoke", menuUid: "source", actionUid: "browserAction:reload" });
+  await page.request({ type: "invoke", menuUid: "source", actionUid: "browserAction:reload" });
   expect(mocks.reload).toHaveBeenCalledTimes(1);
-  expect(page.posted.at(-1)).toMatchObject({ id: 2, error: expect.any(String) });
+  expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
 });
 
 it("saves a confirmed temporary URL with its note and rejects unlisted actions", async () => {
   const config = await fixture();
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
-  await page.request({ id: 1, type: "temporarySave", menuUid: "source", uid: "slot", note: "Read later" });
+  await page.request({ type: "temporarySave", menuUid: "source", uid: "slot", note: "Read later" });
   expect((await loadTemporaryValues()).slot).toBe("https://example.com/page");
   expect((await loadTemporaryNotes()).slot).toBe("Read later");
-  await page.request({ id: 2, type: "invoke", menuUid: "source", actionUid: "temporarySave:slot?confirmed=1" });
-  expect(page.posted.at(-1)).toMatchObject({ id: 2, error: expect.any(String) });
+  await page.request({ type: "invoke", menuUid: "source", actionUid: "temporarySave:slot?confirmed=1" });
+  expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
 });
 
 it("opens confirmation in the original window, restores icon clicks, and saves after a background restart", async () => {
   const config = await fixture();
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
-  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
   expect(page.posted.at(-1)).toMatchObject({ result: "opened" });
   expect(await loadTemporaryValues()).toEqual({});
   const url = mocks.setPopup.mock.calls.find(([options]) => options.popup)![0].popup;
@@ -227,11 +241,11 @@ it("only requests prompt fallback for popup opening failure, never for an unavai
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   mocks.openPopup.mockRejectedValue(new Error("Toolbar popups are unsupported"));
-  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
   expect(page.posted.at(-1)).toMatchObject({ result: "prompt" });
   expect(await loadTemporaryValues()).toEqual({});
   expect(mocks.popupUrls[17]).toBe("");
-  await page.request({ id: 2, type: "temporaryConfirm", menuUid: "source", uid: "missing" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "missing" });
   expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
   expect(page.posted.at(-1)).not.toHaveProperty("result");
 });
@@ -241,7 +255,7 @@ it("uses prompt when the toolbar popup API is absent without installing a confir
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   mocks.popupSupported = false;
-  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
   expect(page.posted.at(-1)).toMatchObject({ result: "prompt" });
   expect(mocks.popupUrls[17]).toBeUndefined();
   expect(await loadTemporaryValues()).toEqual({});
@@ -251,7 +265,7 @@ it("rejects confirmation messages from webpages and rechecks permissions before 
   const config = await fixture();
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
-  await page.request({ id: 1, type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
   const url = mocks.setPopup.mock.calls.find(([options]) => options.popup)![0].popup;
   const message = mocks.message.mock.calls.at(-1)![0];
   expect(await message({ type: "temporarySaveConfirmed", note: "" }, {
@@ -269,16 +283,16 @@ it("only saves webpage placement while browser editing is enabled", async () => 
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   const placement = { anchor: "bottomRight" as const, offsetX: 30, offsetY: 40, itemWidth: 120, itemHeight: 50 };
-  await page.request({ id: 1, type: "placement", menuUid: "source", placement });
-  expect(page.posted.at(-1)).toMatchObject({ id: 1, error: expect.any(String) });
+  await page.request({ type: "placement", menuUid: "source", placement });
+  expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
   expect((await loadBrowserPlacements()).source).toBeUndefined();
   await saveBrowserEditing(true);
   await service.publish(config, [view], {}, {}, true, true);
-  expect(page.posted.at(-1)).toMatchObject({ menus: [{ editingLocked: false }] });
-  await page.request({ id: 2, type: "placement", menuUid: "source", placement });
+  expect(await page.snapshot()).toMatchObject({ menus: [{ editingLocked: false }] });
+  await page.request({ type: "placement", menuUid: "source", placement });
   expect((await loadBrowserPlacements()).source).toEqual(placement);
   await saveDisplayMode("native");
-  await page.request({ id: 3, type: "placement", menuUid: "source", placement: { ...placement, offsetX: 99 } });
+  await page.request({ type: "placement", menuUid: "source", placement: { ...placement, offsetX: 99 } });
   expect((await loadBrowserPlacements()).source).toEqual(placement);
 });
 

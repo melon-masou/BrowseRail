@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   setPopup: vi.fn(async (_options: { tabId: number; popup: string }) => {}),
   openPopup: vi.fn(async (_options: { windowId: number }) => {}),
   getTab: vi.fn(async (_id: number) => ({ id: 7, windowId: 1 })),
+  sendToTab: vi.fn(async () => ({ updated: true })),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
   runtime: {
@@ -17,7 +18,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
     onMessage: { addListener: (listener: (message: unknown, sender: Runtime.MessageSender) => unknown) => { mocks.message = listener; } },
   },
   action: { setPopup: mocks.setPopup, openPopup: mocks.openPopup },
-  tabs: { get: mocks.getTab },
+  tabs: { get: mocks.getTab, sendMessage: mocks.sendToTab },
   contextMenus: {
     removeAll: async () => {},
     create: (menu: Menus.CreateCreatePropertiesType, done: () => void) => {
@@ -42,7 +43,7 @@ import { loadBrowserEditing, loadConfig, saveConfig, saveDisplayMode } from "../
 
 beforeEach(() => {
   mocks.storage = {}; mocks.menu = {}; mocks.menus.clear();
-  mocks.setPopup.mockClear(); mocks.openPopup.mockReset().mockResolvedValue();
+  mocks.setPopup.mockClear(); mocks.openPopup.mockReset().mockResolvedValue(); mocks.sendToTab.mockClear();
   mocks.getTab.mockResolvedValue({ id: 7, windowId: 1 });
 });
 
@@ -50,9 +51,12 @@ it("provides a checked editing switch on the extension icon in browser mode", as
   await saveDisplayMode("browser");
   const menu = createBrowserEditingMenu(); await menu.update("browser", true);
   expect(mocks.menu).toMatchObject({ contexts: ["action"], type: "checkbox", enabled: true, checked: false });
-  mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] });
+  mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] }, {
+    id: 7, windowId: 1, index: 0, active: true, pinned: false, highlighted: false, incognito: false,
+  });
   await vi.waitFor(async () => expect(await loadBrowserEditing()).toBe(true));
   await vi.waitFor(() => expect(mocks.menu.checked).toBe(true));
+  await vi.waitFor(() => expect(mocks.sendToTab).toHaveBeenCalledWith(7, { type: "browserMenusRefresh" }, { frameId: 0 }));
 });
 
 it("disables the editing switch in native mode and when the widget is disabled", async () => {

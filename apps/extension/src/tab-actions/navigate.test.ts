@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearBookmarkTargets, createBookmarkTargetDraft } from "../bookmark-registry";
+import { clearBookmarkTargets, createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmark-registry";
 import { navigateBookmark, type TabActionBrowser } from "./navigate";
 
 function createBrowser(): TabActionBrowser {
@@ -101,5 +101,25 @@ describe("navigateBookmark", () => {
     const api = createBrowser();
     await navigateBookmark(api, "42", `bookmark:${firstUid}`);
     expect(api.bookmarks.get).toHaveBeenCalledWith("bookmark-1");
+  });
+
+  it("opens a page's original bookmark after the background worker has restarted", async () => {
+    const values: Record<string, unknown> = {};
+    const storage = {
+      get: async (key: string) => ({ [key]: values[key] }),
+      set: vi.fn(async (updated: Record<string, unknown>) => { Object.assign(values, updated); }),
+    };
+    await loadBookmarkTargets(storage);
+    const originalUid = registerTarget("bookmark-1");
+    await persistBookmarkTargets(storage);
+    clearBookmarkTargets();
+    await loadBookmarkTargets(storage);
+    registerTarget("bookmark-1");
+    const api = createBrowser();
+    await navigateBookmark(api, "42", `bookmark:${originalUid}`);
+    expect(api.bookmarks.get).toHaveBeenCalledWith("bookmark-1");
+    expect(api.tabs.update).toHaveBeenCalledWith(17, { url: "https://example.com" });
+    await persistBookmarkTargets(storage);
+    expect(storage.set).toHaveBeenCalledOnce();
   });
 });

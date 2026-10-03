@@ -1,7 +1,7 @@
 import browser, { type Runtime } from "webextension-polyfill";
 import { isUrlMatchingSet, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
-  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, saveBrowserPlacement, toggleBrowserCollapsed, menuUrlPatterns,
+  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBrowserPlacement, toggleBrowserCollapsed, menuUrlPatterns,
   type BrowserMenuPlacement, type ExtensionConfig,
 } from "../config";
 import type { BrowserMenu, BrowserMenuState, MenuRequest, TemporaryConfirmationResult } from "../page-operations/messages";
@@ -9,6 +9,7 @@ import { executeMenuAction } from "./execute-menu-action";
 import { captureTemporaryUrl } from "./temporary";
 import { hasWebsitePermission } from "../site-permissions";
 import { openTemporaryConfirmation, temporaryConfirmationContext } from "./temporary-confirmation";
+import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
@@ -25,46 +26,44 @@ function requireTemporaryBookmark(menu: BrowserMenu, uid: unknown): asserts uid 
   if (typeof uid !== "string" || !leaves(menu.view.items).some(entry => entry.kind === "bookmark" && entry.uid.startsWith("temporary:") && parseTemporaryAction(entry.uid).uid === uid)) throw new Error("Temporary bookmark is unavailable");
 }
 
-export function createBrowserMenus(changed: () => void) {
-  const clients = new Map<Runtime.Port, BrowserMenu[]>();
+export function createBrowserMenus(changed: () => void | Promise<void>) {
   let snapshot: { config: ExtensionConfig; menus: BrowserMenu[]; active: boolean };
   let ready!: () => void;
   const firstSnapshot = new Promise<void>(resolve => { ready = resolve; });
   async function forTab(tabId: number): Promise<BrowserMenu[]> {
     await firstSnapshot;
-    const [tab, mode, enabled] = await Promise.all([browser.tabs.get(tabId), loadDisplayMode(), loadWidgetEnabled()]);
+    const [tab, mode, enabled, placements, collapsed, editing] = await Promise.all([
+      browser.tabs.get(tabId), loadDisplayMode(), loadWidgetEnabled(), loadBrowserPlacements(), loadBrowserCollapsed(), loadBrowserEditing(),
+    ]);
     if (!snapshot.active || mode !== "browser" || !enabled || !await hasWebsitePermission(tab.url)) return [];
-    return snapshot.menus.filter(menu => menuVisibleForUrl(snapshot.config, menu.view.uid, tab.url));
+    return snapshot.menus.filter(menu => menuVisibleForUrl(snapshot.config, menu.view.uid, tab.url)).map(menu => ({
+      ...menu, placement: placements[menu.view.uid] ?? menu.placement,
+      collapsed: collapsed[menu.view.uid] === true && menu.view.items.some(entry => entry.kind === "menuFold"),
+      editingLocked: !editing,
+    }));
   }
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
     if ((message as { type?: string } | null)?.type === "temporarySaveConfirmed") {
       return saveConfirmed(message, sender).then(() => ({ saved: true }), error => ({ error: String(error) }));
     }
-    if ((message as { type?: string } | null)?.type !== "browserMenusSnapshot") return undefined;
-    if (sender.frameId !== 0 || sender.tab?.id === undefined) return Promise.resolve({ type: "state", menus: [] });
-    changed();
-    return forTab(sender.tab.id).then(menus => ({ type: "state", menus } satisfies BrowserMenuState));
+    const type = (message as { type?: string } | null)?.type;
+    if (type !== "browserMenusSnapshot" && type !== "browserMenuCommand") return undefined;
+    if (sender.frameId !== 0 || sender.tab?.id === undefined) {
+      return Promise.resolve(type === "browserMenusSnapshot" ? { type: "state", menus: [] } : { error: "Invalid menu source" });
+    }
+    const tabId = sender.tab.id;
+    return (async () => {
+      await changed();
+      if (type === "browserMenusSnapshot") return { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState;
+      const result = await handle(tabId, (message as { command: MenuRequest }).command);
+      await changed();
+      return { ...(result ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState };
+    })().catch(error => ({ error: String(error) }));
   });
-  browser.runtime.onConnect.addListener(port => {
-    if (port.name !== "browserail-menus" || port.sender?.frameId !== 0 || port.sender.tab?.id === undefined) return;
-    clients.set(port, []);
-    port.onDisconnect.addListener(() => { clients.delete(port); });
-    port.onMessage.addListener((message: unknown) => {
-      const request = message as MenuRequest;
-      void handle(port, request).then(
-        result => reply(port, request?.id, undefined, result),
-        error => reply(port, request?.id, String(error)),
-      );
-    });
-    changed();
-  });
-  function reply(port: Runtime.Port, id: number, error?: string, result?: TemporaryConfirmationResult): void {
-    if (clients.has(port)) port.postMessage({ type: "reply", id, ...(error ? { error } : {}), ...(result ? { result } : {}) });
-  }
   async function saveTemporary(config: ExtensionConfig, uid: string, windowId: number, note: string): Promise<void> {
     const result = await captureTemporaryUrl(browser.tabs, config.temporaryBookmarks, uid, String(windowId), true, note);
     if (result !== "saved") throw new Error("Temporary bookmark was not saved");
-    changed();
+    await changed();
   }
   async function saveConfirmed(message: unknown, sender: Runtime.MessageSender): Promise<void> {
     const context = temporaryConfirmationContext(sender);
@@ -72,18 +71,18 @@ export function createBrowserMenus(changed: () => void) {
     if (typeof note !== "string") throw new Error("Invalid temporary bookmark note");
     // The confirmation page carries the original window, so worker restarts
     // and focusing the popup cannot redirect capture to the extension page.
-    changed();
+    await changed();
     const [menus, config, tab] = await Promise.all([forTab(context.sourceTabId), loadConfig(), browser.tabs.get(context.sourceTabId)]);
     const menu = menus.find(menu => menu.view.uid === context.menuUid);
     if (!menu || tab.windowId !== context.sourceWindowId || !menuVisibleForUrl(config, context.menuUid, tab.url)) throw new Error("Menu is unavailable");
     requireTemporaryBookmark(menu, context.uid);
     await saveTemporary(config, context.uid, context.sourceWindowId, note);
+    await requestBrowserMenuRefresh(context.sourceTabId);
   }
-  async function handle(port: Runtime.Port, request: MenuRequest): Promise<TemporaryConfirmationResult | undefined> {
-    if (!request || !Number.isSafeInteger(request.id) || typeof request.menuUid !== "string") throw new Error("Invalid menu request");
-    const tabId = port.sender!.tab!.id!;
-    const [mode, enabled, config, tab] = await Promise.all([loadDisplayMode(), loadWidgetEnabled(), loadConfig(), browser.tabs.get(tabId)]);
-    const menu = clients.get(port)?.find(menu => menu.view.uid === request.menuUid);
+  async function handle(tabId: number, request: MenuRequest): Promise<TemporaryConfirmationResult | undefined> {
+    if (!request || typeof request.menuUid !== "string") throw new Error("Invalid menu request");
+    const [mode, enabled, config, tab, menus] = await Promise.all([loadDisplayMode(), loadWidgetEnabled(), loadConfig(), browser.tabs.get(tabId), forTab(tabId)]);
+    const menu = menus.find(menu => menu.view.uid === request.menuUid);
     if (!menu || mode !== "browser" || !enabled || !menuVisibleForUrl(config, request.menuUid, tab.url) || !await hasWebsitePermission(tab.url)) throw new Error("Menu is unavailable");
     if (tab.windowId === undefined) throw new Error("Source window is unavailable");
     const entries = leaves(menu.view.items);
@@ -116,7 +115,6 @@ export function createBrowserMenus(changed: () => void) {
   }
   return {
     forTab,
-    connectedTabs: () => new Set(Array.from(clients.keys(), port => port.sender!.tab!.id!)),
     async publish(config: ExtensionConfig, views: MenuView[], placements: Record<string, BrowserMenuPlacement>, collapsed: Record<string, boolean>, active: boolean, editing = false): Promise<void> {
       const menus = views.filter(view => view.items.length > 0).map((view, index) => {
         const initial = defaultMenuPlacement(index, view.orientation, 0, view.buttonFontSize);
@@ -128,17 +126,6 @@ export function createBrowserMenus(changed: () => void) {
         };
       });
       snapshot = { config, menus, active }; ready();
-      await Promise.all(Array.from(clients.keys(), async port => {
-        try {
-          const menus = await forTab(port.sender!.tab!.id!);
-          if (!clients.has(port)) return;
-          clients.set(port, menus);
-          port.postMessage({ type: "state", menus } satisfies BrowserMenuState);
-        } catch {
-          clients.delete(port);
-          port.disconnect();
-        }
-      }));
     },
   };
 }

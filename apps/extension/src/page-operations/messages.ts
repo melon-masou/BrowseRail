@@ -8,7 +8,7 @@ export interface BrowserMenu {
   editingLocked: boolean;
 }
 export interface BrowserMenuState { type: "state"; menus: BrowserMenu[] }
-export type MenuRequest = { id: number; menuUid: string } & (
+export type MenuRequest = { menuUid: string } & (
   | { type: "invoke"; actionUid: string }
   | { type: "fold" }
   | { type: "temporaryConfirm"; uid: string }
@@ -16,4 +16,4 @@ export type MenuRequest = { id: number; menuUid: string } & (
   | { type: "placement"; placement: BrowserMenuPlacement }
 );
 export type TemporaryConfirmationResult = "opened" | "prompt";
-export interface MenuReply { type: "reply"; id: number; error?: string; result?: TemporaryConfirmationResult }
+export interface MenuReply { error?: string; result?: TemporaryConfirmationResult; state?: BrowserMenuState }

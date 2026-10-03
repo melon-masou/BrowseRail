@@ -18,13 +18,12 @@ import {
   findBookmarkNodeByPath,
   resolveMenuItems,
 } from "../bookmarks";
-import { createBookmarkTargetDraft } from "../bookmark-registry";
+import { createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmark-registry";
 import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser-adapter";
 import {
   DEFAULT_FONT_SIZE,
   loadBookmarkRootPrefix,
   loadConfig,
-  menuUrlPatterns,
   loadDisplayMode,
   loadBrowserEditing,
   loadBrowserPlacements,
@@ -51,12 +50,10 @@ import { executeMenuAction } from "./execute-menu-action";
 import { createBrowserMenus, menuVisibleForUrl as isMenuVisibleForUrl } from "./browser-menus";
 import { createBrowserEditingMenu } from "./browser-editing";
 import { createBrowserInjection } from "./browser-injection";
+import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 
 const browserMenus = createBrowserMenus(requestSync);
-const browserInjection = createBrowserInjection({
-  hasMenus: async tabId => (await browserMenus.forTab(tabId)).length > 0,
-  connectedTabs: browserMenus.connectedTabs,
-});
+const browserInjection = createBrowserInjection();
 const editingMenu = createBrowserEditingMenu();
 let widgetActive = true;
 
@@ -244,12 +241,10 @@ browser.bookmarks.onRemoved.addListener(requestSync);
 browser.tabs?.onActivated?.addListener(() => {
   requestSync();
 });
-browser.tabs?.onUpdated?.addListener((tabId, change) => {
-  if (change.url !== undefined || change.status === "complete") browserInjection.tabChanged(tabId);
+browser.tabs?.onUpdated?.addListener(() => {
   requestSync();
 });
-browser.tabs?.onReplaced?.addListener((addedTabId) => {
-  browserInjection.tabChanged(addedTabId);
+browser.tabs?.onReplaced?.addListener(() => {
   requestSync();
 });
 browser.tabs?.onAttached?.addListener(() => {
@@ -349,9 +344,9 @@ browser.runtime.onMessage.addListener((message: unknown) => {
 });
 // Clicking the toolbar icon toggles the widget on/off. Secondary clicks are
 // ignored so the browser can show its built-in extension menu.
-browser.action.onClicked.addListener((_tab, info) => {
+browser.action.onClicked.addListener((tab, info) => {
   if (info?.button !== undefined && info.button !== 0) return;
-  void toggleWidgetEnabled();
+  void toggleWidgetEnabled(tab?.id);
 });
 
 async function applyWidgetEnabled(enabled: boolean): Promise<void> {
@@ -359,9 +354,10 @@ async function applyWidgetEnabled(enabled: boolean): Promise<void> {
   await reconcileConnection();
 }
 
-async function toggleWidgetEnabled(): Promise<void> {
+async function toggleWidgetEnabled(tabId?: number): Promise<void> {
   const enabled = await loadWidgetEnabled();
   await applyWidgetEnabled(!enabled);
+  if (tabId !== undefined) await requestBrowserMenuRefresh(tabId);
 }
 
 async function reconcileConnection(forceReconnect = false): Promise<void> {
@@ -579,11 +575,13 @@ async function handleMessage(raw: unknown): Promise<void> {
   }
 }
 
-function requestSync(): void {
+let syncTask: Promise<void> | undefined;
+function requestSync(): Promise<void> {
   syncRequested = true;
   if (!syncRunning) {
-    void drainSync();
+    syncTask = drainSync();
   }
+  return syncTask!;
 }
 
 async function drainSync(): Promise<void> {
@@ -626,6 +624,7 @@ async function syncOnce(): Promise<void> {
     };
   };
   const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
+  await loadBookmarkTargets(browser.storage.local);
   const bookmarkTargets = createBookmarkTargetDraft();
   const menuStates = await Promise.all(
     activeMenus.map(async (menu, index) => {
@@ -678,15 +677,13 @@ async function syncOnce(): Promise<void> {
     }),
   );
   bookmarkTargets.commit();
+  await persistBookmarkTargets(browser.storage.local);
   updateLastFocusedWindow(windows);
 
   const menuVisibleForUrl = (uid: string, url: string | undefined): boolean => isMenuVisibleForUrl(config, uid, url);
 
   await browserMenus.publish(config, menuStates.map(menu => menu.view), browserPlacements, browserCollapsed, enabled && mode === "browser", browserEditing);
-  await browserInjection.reconcile(enabled && mode === "browser", menuStates.filter(menu => menu.view.items.length > 0).map(menu => ({
-    uid: menu.uid,
-    patterns: menuUrlPatterns(config.panel.menus.find(stored => stored.uid === menu.uid)!, config),
-  })));
+  await browserInjection.reconcile(enabled && mode === "browser");
   if (socket?.readyState !== WebSocket.OPEN) return;
 
   // Bound menus are emitted once for each browser window because URL visibility, focus state,

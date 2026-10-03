@@ -4,108 +4,65 @@ import type { Scripting } from "webextension-polyfill";
 const state = vi.hoisted(() => ({
   origins: [] as string[],
   scripts: [] as Scripting.RegisteredContentScript[],
-  shown: new Set<number>(),
-  tabs: [] as { id: number; url: string }[],
-  queryTabs: vi.fn<() => Promise<{ id: number; url: string }[]>>(),
-  getTab: vi.fn<(id: number) => Promise<{ id: number; url: string }>>(),
+  register: vi.fn(), update: vi.fn(), unregister: vi.fn(),
+  inject: vi.fn(), query: vi.fn(),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
   permissions: { getAll: async () => ({ origins: state.origins }) },
   scripting: {
     getRegisteredContentScripts: async () => state.scripts,
-    registerContentScripts: async (scripts: Scripting.RegisteredContentScript[]) => { state.scripts = scripts; },
-    updateContentScripts: async (scripts: Scripting.RegisteredContentScript[]) => { state.scripts = scripts; },
-    unregisterContentScripts: async () => { state.scripts = []; },
-    executeScript: async ({ target }: { target: { tabId: number } }) => { state.shown.add(target.tabId); },
+    registerContentScripts: async (scripts: Scripting.RegisteredContentScript[]) => { state.register(scripts); state.scripts = scripts; },
+    updateContentScripts: async (scripts: Scripting.RegisteredContentScript[]) => { state.update(scripts); state.scripts = scripts; },
+    unregisterContentScripts: async () => { state.unregister(); state.scripts = []; },
+    executeScript: state.inject,
   },
-  tabs: { query: state.queryTabs, get: state.getTab },
+  tabs: { query: state.query },
 } }));
 import { createBrowserInjection } from "./browser-injection";
 
 beforeEach(() => {
-  state.origins = []; state.scripts = []; state.shown.clear();
-  state.tabs = [
-    { id: 1, url: "https://example.com/" }, { id: 2, url: "https://other.com/" },
-    { id: 3, url: "https://chromewebstore.google.com/detail/test" },
-  ];
-  state.queryTabs.mockReset(); state.queryTabs.mockImplementation(async () => state.tabs);
-  state.getTab.mockReset(); state.getTab.mockImplementation(async id => {
-    const tab = state.tabs.find(tab => tab.id === id);
-    if (!tab) throw new Error("Tab is closed");
-    return tab;
-  });
+  state.origins = []; state.scripts = [];
+  state.register.mockClear(); state.update.mockClear(); state.unregister.mockClear();
+  state.inject.mockClear(); state.query.mockClear();
 });
-const eligibility = [{ uid: "menu", patterns: [] }];
 
-it("keeps native and ungranted instances out of webpages and activates eligible existing pages after authorization", async () => {
-  const menus = { hasMenus: vi.fn(async (id: number) => id === 1), connectedTabs: () => new Set<number>() };
-  const service = createBrowserInjection(menus);
-  await service.reconcile(true, eligibility);
-  expect(state.scripts).toEqual([]); expect(state.shown.size).toBe(0);
+it("registers only authorized browser-mode pages and unregisters for native mode or revoked permissions", async () => {
+  const service = createBrowserInjection();
+  await service.reconcile(true);
+  expect(state.scripts).toEqual([]);
   state.origins = ["https://example.com/*"];
-  await service.reconcile(false, eligibility);
-  expect(state.scripts).toEqual([]); expect(state.shown.size).toBe(0);
-  await service.reconcile(true, eligibility);
-  expect(state.shown).toEqual(new Set([1]));
-  expect(state.scripts[0]?.matches).toEqual(["https://example.com/*"]);
-  await service.reconcile(false, eligibility);
+  await service.reconcile(false);
   expect(state.scripts).toEqual([]);
-  state.shown.clear();
-  await service.reconcile(true, eligibility);
-  expect(state.shown).toEqual(new Set([1]));
+  await service.reconcile(true);
+  expect(state.scripts[0]).toMatchObject({ matches: ["https://example.com/*"], runAt: "document_start", allFrames: false });
+  await service.reconcile(false);
+  expect(state.scripts).toEqual([]);
+  await service.reconcile(true);
   state.origins = [];
-  await service.reconcile(true, eligibility);
+  await service.reconcile(true);
   expect(state.scripts).toEqual([]);
 });
 
-it("does not reinject into a page already displaying menus", async () => {
-  state.origins = ["https://*/*"];
-  const service = createBrowserInjection({ hasMenus: async id => id === 1, connectedTabs: () => new Set([1]) });
-  await service.reconcile(true, eligibility);
-  expect(state.shown.size).toBe(0);
+it("updates future-page registration when authorization changes without touching already open tabs", async () => {
+  state.origins = ["https://example.com/*"];
+  const service = createBrowserInjection();
+  await service.reconcile(true);
+  state.origins = ["https://other.com/*"];
+  await service.reconcile(true);
+  expect(state.scripts[0]?.matches).toEqual(["https://other.com/*"]);
+  expect(state.update).toHaveBeenCalledOnce();
+  expect(state.query).not.toHaveBeenCalled();
+  expect(state.inject).not.toHaveBeenCalled();
 });
 
-it("avoids repeating tab queries and menu checks during unchanged syncs", async () => {
-  state.origins = ["https://*/*"];
-  const menus = { hasMenus: vi.fn(async () => false), connectedTabs: () => new Set<number>() };
-  const service = createBrowserInjection(menus);
-  await service.reconcile(true, eligibility);
-  await service.reconcile(true, eligibility);
-  await service.reconcile(true, eligibility);
-  expect(state.queryTabs).toHaveBeenCalledTimes(1);
-  expect(menus.hasMenus).toHaveBeenCalledTimes(2);
-});
-
-it("activates a formerly skipped page after its URL changes without rescanning unrelated tabs", async () => {
-  state.origins = ["https://*/*"];
-  const menus = { hasMenus: vi.fn(async (id: number) => state.tabs.find(tab => tab.id === id)?.url.endsWith("/visible") === true), connectedTabs: () => new Set<number>() };
-  const service = createBrowserInjection(menus);
-  await service.reconcile(true, eligibility);
-  expect(state.shown.size).toBe(0);
-  menus.hasMenus.mockClear();
-  state.tabs[1]!.url = "https://other.com/visible";
-  service.tabChanged(2);
-  await service.reconcile(true, eligibility);
-  expect(state.shown).toEqual(new Set([2]));
-  expect(state.queryTabs).toHaveBeenCalledTimes(1);
-  expect(menus.hasMenus.mock.calls.map(([id]) => id)).toEqual([2]);
-});
-
-it("activates pages when URL rules change even with unchanged permissions and connections", async () => {
-  state.origins = ["https://*/*"];
-  let matching = false;
-  const service = createBrowserInjection({ hasMenus: async id => id === 1 && matching, connectedTabs: () => new Set<number>() });
-  await service.reconcile(true, [{ uid: "menu", patterns: [["other.com"]] }]);
-  matching = true;
-  await service.reconcile(true, [{ uid: "menu", patterns: [["example.com"]] }]);
-  expect(state.shown).toEqual(new Set([1]));
-});
-
-it("skips all page checks for empty menus and activates pages when a renderable menu appears", async () => {
-  state.origins = ["https://*/*"];
-  const service = createBrowserInjection({ hasMenus: async id => id === 1, connectedTabs: () => new Set<number>() });
-  await service.reconcile(true, []);
-  expect(state.queryTabs).not.toHaveBeenCalled();
-  await service.reconcile(true, eligibility);
-  expect(state.shown).toEqual(new Set([1]));
+it("does not reregister unchanged permissions during repeated background syncs", async () => {
+  state.origins = ["https://example.com/*"];
+  const service = createBrowserInjection();
+  await service.reconcile(true);
+  await service.reconcile(true);
+  await service.reconcile(true);
+  expect(state.register).toHaveBeenCalledOnce();
+  expect(state.update).not.toHaveBeenCalled();
+  expect(state.query).not.toHaveBeenCalled();
+  expect(state.inject).not.toHaveBeenCalled();
 });
