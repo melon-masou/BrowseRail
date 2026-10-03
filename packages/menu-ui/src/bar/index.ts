@@ -121,8 +121,8 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     if (entry.kind === "space") {
       const space = doc.createElement("div");
       space.className = "menu-space";
-      space.style.setProperty("--space-units", String(Math.max(0.1, entry.units ?? 1)));
-      space.style.backgroundColor = entry.color || "transparent";
+      space.style.setProperty("--config-space-units", String(Math.max(0.1, entry.units ?? 1)));
+      space.style.setProperty("--config-space-background", entry.color || "transparent");
       space.addEventListener("pointerenter", requestClose, options);
       return space;
     }
@@ -189,13 +189,13 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     bar.ariaLabel = t("aria.menu");
     bar.dataset.orientation = state.menu.orientation;
     const units = state.menu.items.reduce((sum, entry) => sum + (entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1), 0);
-    bar.style.setProperty("--item-count", String(state.collapsed ? 1 : Math.max(1, Math.round(units))));
-    bar.style.setProperty("--button-font-size", `${theme.buttonFontSize}px`);
-    bar.style.setProperty("--menu-gap", `${state.menu.gap ?? 4}px`);
-    bar.style.setProperty("--menu-bar-bg", state.menu.dockColor || DEFAULT_DOCK_COLOR);
+    bar.style.setProperty("--config-bar-item-count", String(state.collapsed ? 1 : Math.max(1, Math.round(units))));
+    bar.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
+    bar.style.setProperty("--config-bar-gap", `${state.menu.gap ?? 4}px`);
+    bar.style.setProperty("--config-bar-background", state.menu.dockColor || DEFAULT_DOCK_COLOR);
     const size = state.collapsed ? state.itemSize : barDimensions(state.menu, state.itemSize);
-    bar.style.width = `${size.width}px`;
-    bar.style.height = `${size.height}px`;
+    bar.style.setProperty("--config-bar-width", `${size.width}px`);
+    bar.style.setProperty("--config-bar-height", `${size.height}px`);
     const options = { signal: renderLifetime.signal };
     bar.addEventListener("pointerenter", () => { pointerInside = true; session?.setBarPointerInside(true); }, options);
     bar.addEventListener("pointerleave", () => { pointerInside = false; session?.setBarPointerInside(false); }, options);

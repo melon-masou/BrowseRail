@@ -1,0 +1,68 @@
+/* Bar appearance; sizing and hit areas live in ../layout.css.
+   Configured values use --config-*. Public overrides are inherited from the bar's root:
+   --bar-background, --bar-font-family, --bar-radius, --bar-backdrop-filter, --bar-shadow
+   --bar-button-background/text-color/radius and --bar-button-hover/active/expanded-background/filter
+   --space-background
+   Button overrides are scoped to the bar and editing rail, leaving popup buttons unchanged. */
+
+:where(.browserail-menu-ui) {
+  :is(.menu-bar, .customize-rail) {
+    font-family: var(--bar-font-family, var(--menu-font-family));
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button {
+    color: var(--bar-button-text-color, var(--label-color));
+    background: var(--bar-button-background, var(--surface-base));
+    border-radius: var(--bar-button-radius, var(--button-radius));
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button:hover,
+  :is(.menu-bar, .customize-rail) .menu-button:focus-visible,
+  :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"]:hover,
+  :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"]:focus-visible {
+    background: var(--bar-button-hover-background, #2a3344);
+    filter: var(--bar-button-hover-filter, brightness(1.12));
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button:active,
+  :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"]:active {
+    background: var(--bar-button-active-background, rgba(255, 255, 255, 0.04));
+    filter: var(--bar-button-active-filter, brightness(0.92));
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button[data-expanded] {
+    background: var(--bar-button-expanded-background, #333e54);
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"] {
+    background-color: var(--bar-button-background, var(--button-custom-color)) !important;
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"][data-expanded] {
+    filter: var(--bar-button-expanded-filter, brightness(1.2));
+  }
+
+  .menu-bar {
+    background: transparent;
+  }
+
+  .menu-bar::before {
+    background-color: var(--bar-background, var(--config-bar-background, var(--dock-surface)));
+    backdrop-filter: var(--bar-backdrop-filter, blur(8px));
+    -webkit-backdrop-filter: var(--bar-backdrop-filter, blur(8px));
+    border-radius: var(--bar-radius, var(--dock-radius, 7px));
+    box-shadow: var(--bar-shadow, none);
+  }
+
+  .empty-menu {
+    border: 1px dashed rgb(122 162 255 / 72%);
+    border-radius: 8px;
+    color: #dbe5ff;
+    background: rgb(31 37 49 / 90%);
+  }
+
+  .menu-space {
+    background: var(--space-background, var(--config-space-background, transparent));
+    border: none !important;
+  }
+}

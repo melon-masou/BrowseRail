@@ -307,8 +307,8 @@ export async function initializeSurface(
     function applyTargetSize(): void {
       const toolbarWidth = Math.ceil(toolbar.scrollWidth);
       content.style.width = `${Math.max(targetWidth, toolbarWidth)}px`;
-      railContainer.style.width = `${targetWidth}px`;
-      railContainer.style.height = `${targetHeight}px`;
+      railContainer.style.setProperty("--config-bar-width", `${targetWidth}px`);
+      railContainer.style.setProperty("--config-bar-height", `${targetHeight}px`);
     }
 
     let resizeFrame: number | undefined;

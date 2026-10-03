@@ -1,0 +1,190 @@
+/* Editing controls, drag affordances and resize handles.
+   The rail previews the bar appearance and shares its configuration variables. */
+
+.browserail-menu-ui {
+  .customize-content {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: fit-content;
+    height: fit-content;
+  }
+
+  .customize-rail {
+    display: grid;
+    flex: 0 0 auto;
+    width: var(--bar-width, var(--config-bar-width, 100%));
+    min-height: 0;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 0;
+    gap: var(--bar-gap, var(--config-bar-gap, 3px));
+    position: relative;
+    overflow: visible;
+    --button-font-size: var(--bar-font-size, var(--config-bar-font-size));
+    height: var(--bar-height, var(--config-bar-height, auto));
+  }
+
+  .customize-rail::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .customize-rail > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .customize-rail[data-orientation="row"] {
+    grid-template-columns: repeat(var(--bar-item-count, var(--config-bar-item-count, 1)), minmax(0, 1fr));
+  }
+
+  .customize-rail[data-orientation="column"] {
+    grid-template-rows: repeat(var(--bar-item-count, var(--config-bar-item-count, 1)), minmax(0, 1fr));
+  }
+
+  .customize-rail .menu-button {
+    min-width: 0;
+    pointer-events: none;
+  }
+
+  .customize-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 26px;
+    box-sizing: border-box;
+    padding: 1px;
+    user-select: none;
+    width: fit-content;
+    max-width: none;
+    align-self: center;
+  }
+
+  .customize-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    box-sizing: border-box;
+    padding: 0;
+  }
+
+  .customize-control svg {
+    display: block;
+    pointer-events: none;
+    width: 14px;
+    height: 14px;
+  }
+
+  .resize-handle {
+    position: absolute;
+    z-index: 2;
+  }
+
+  .resize-north {
+    top: 0;
+    right: 8px;
+    left: 8px;
+    height: 6px;
+  }
+
+  .resize-east {
+    top: 8px;
+    right: 0;
+    bottom: 8px;
+    width: 6px;
+  }
+
+  .resize-west {
+    top: 8px;
+    bottom: 8px;
+    left: 0;
+    width: 6px;
+  }
+
+  .resize-south {
+    right: 8px;
+    bottom: 0;
+    left: 8px;
+    height: 6px;
+  }
+
+  .resize-southEast {
+    right: 0;
+    bottom: 0;
+    width: 12px;
+    height: 12px;
+  }
+
+  .customize-rail {
+    background: transparent;
+    outline: 2px dashed var(--accent-blue);
+    outline-offset: -1px;
+    border-radius: var(--bar-radius, var(--dock-radius, 7px));
+    cursor: move;
+  }
+
+  .customize-rail::before {
+    background-color: var(--bar-background, var(--config-bar-background, var(--dock-surface)));
+    backdrop-filter: var(--bar-backdrop-filter, blur(8px));
+    -webkit-backdrop-filter: var(--bar-backdrop-filter, blur(8px));
+    border-radius: var(--bar-radius, var(--dock-radius, 7px));
+    box-shadow: var(--bar-shadow, none);
+  }
+
+  .customize-toolbar {
+    border-radius: 6px;
+    background: rgb(24 29 39 / 96%);
+    border: 1px solid rgb(255 255 255 / 16%);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
+  }
+
+  .customize-control {
+    border: 1px solid rgb(255 255 255 / 12%);
+    border-radius: 4px;
+    color: #f5f7fb;
+    background: rgb(48 59 80 / 80%);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .customize-control:hover {
+    background: #445574;
+    border-color: rgb(255 255 255 / 24%);
+  }
+
+  .move-handle {
+    cursor: move;
+  }
+
+  .resize-north {
+    cursor: ns-resize;
+  }
+
+  .resize-east {
+    cursor: ew-resize;
+  }
+
+  .resize-west {
+    cursor: ew-resize;
+  }
+
+  .resize-south {
+    cursor: ns-resize;
+  }
+
+  .resize-southEast {
+    border: solid #7aa2ff;
+    border-width: 0 2px 2px 0;
+    cursor: nwse-resize;
+  }
+}

@@ -36,7 +36,8 @@ export function mountBrowserCustomization(
   function layout(): void {
     point.x = Math.max(0, Math.min(viewport.innerWidth - size.width, point.x));
     point.y = Math.max(0, Math.min(viewport.innerHeight - size.height, point.y));
-    rail.style.width = `${size.width}px`; rail.style.height = `${size.height}px`;
+    rail.style.setProperty("--config-bar-width", `${size.width}px`);
+    rail.style.setProperty("--config-bar-height", `${size.height}px`);
     // Keep the rail fixed when the toolbar changes sides near the viewport edge.
     const toolbarSpace = toolbar.getBoundingClientRect().height + 4;
     const above = point.y + size.height + toolbarSpace > viewport.innerHeight && point.y >= toolbarSpace;

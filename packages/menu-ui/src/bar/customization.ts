@@ -12,10 +12,10 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
   railContainer.className = "customize-rail";
   railContainer.dataset.orientation = menu.orientation;
   const totalUnits = menu.items.reduce((sum, entry) => sum + (entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1), 0);
-  railContainer.style.setProperty("--item-count", String(Math.max(1, Math.round(totalUnits))));
-  railContainer.style.setProperty("--menu-gap", `${gap}px`);
-  railContainer.style.setProperty("--button-font-size", `${theme.buttonFontSize}px`);
-  railContainer.style.setProperty("--menu-bar-bg", menu.dockColor || DEFAULT_DOCK_COLOR);
+  railContainer.style.setProperty("--config-bar-item-count", String(Math.max(1, Math.round(totalUnits))));
+  railContainer.style.setProperty("--config-bar-gap", `${gap}px`);
+  railContainer.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
+  railContainer.style.setProperty("--config-bar-background", menu.dockColor || DEFAULT_DOCK_COLOR);
 
   if (menu.items.length === 0) {
     const empty = doc.createElement("div");
@@ -27,8 +27,8 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
       if (entry.kind !== "space") return menuButton(doc, entry, false);
       const space = doc.createElement("div");
       space.className = "menu-space";
-      space.style.setProperty("--space-units", String(Math.max(0.1, entry.units ?? 1)));
-      space.style.backgroundColor = entry.color || "transparent";
+      space.style.setProperty("--config-space-units", String(Math.max(0.1, entry.units ?? 1)));
+      space.style.setProperty("--config-space-background", entry.color || "transparent");
       return space;
     }));
   }
