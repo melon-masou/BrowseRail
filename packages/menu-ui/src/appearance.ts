@@ -68,7 +68,7 @@ function normalizeChip(color: string): { fill: string; ink: string; accent: stri
   if (!rgb) return undefined;
   const { h, s } = rgbToHsl(rgb.r, rgb.g, rgb.b);
   const hue = Math.round(h);
-  const fill = `hsl(${hue} ${Math.round(Math.min(s, 0.26) * 100)}% 34% / ${rgb.alpha})`;
+  const fill = `hsl(${hue} ${Math.round(Math.min(s, 0.35) * 100)}% 34% / ${rgb.alpha})`;
   return {
     fill,
     ink: "#ffffff",
