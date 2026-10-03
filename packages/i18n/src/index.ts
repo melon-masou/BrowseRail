@@ -10,6 +10,7 @@
 import { en, zhCN, type MessageKey } from "./messages";
 
 export { en, zhCN, type MessageKey } from "./messages";
+export { helpDoc } from "./help";
 
 export type Lang = "en" | "zh-CN";
 

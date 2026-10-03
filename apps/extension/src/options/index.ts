@@ -77,6 +77,7 @@ import { createRandomInstanceLabel } from "../instance-label";
 import {
   applyStaticI18n,
   getLanguage,
+  helpDoc,
   type Lang,
   LANGUAGES,
   onLanguageChange,
@@ -127,6 +128,7 @@ const REMOVE_ICON_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="n
 const connectionForm = element<HTMLFormElement>("connection-form");
 const menusForm = element<HTMLFormElement>("menus-form");
 const settingsContent = element<HTMLDivElement>("settings-content");
+const startPanel = element<HTMLElement>("start-panel");
 const displayMode = element<HTMLSelectElement>("display-mode");
 const instanceLabel = element<HTMLInputElement>("instance-label");
 const randomInstanceLabel = element<HTMLButtonElement>("random-instance-label");
@@ -140,6 +142,7 @@ const desktopTestStatus = element<HTMLOutputElement>("desktop-test-status");
 const menusContainer = element<HTMLDivElement>("menus");
 const addMenu = element<HTMLButtonElement>("add-menu");
 const saveBtn = element<HTMLButtonElement>("save-btn");
+const settingsSaveBar = element<HTMLElement>("settings-save-bar");
 const settingsTransferActions = element<HTMLDivElement>("settings-transfer-actions");
 const exportBtn = element<HTMLButtonElement>("export-btn");
 const importBtn = element<HTMLButtonElement>("import-btn");
@@ -251,12 +254,11 @@ const dynamicMarkerForm = element<HTMLFormElement>("dynamic-marker-form");
 const dynamicMarkerFolderBtn = element<HTMLButtonElement>("dynamic-marker-folder-btn");
 const dynamicMarkerFolderDisplay = element<HTMLSpanElement>("dynamic-marker-folder-display");
 const dynamicMarkerResult = element<HTMLOutputElement>("dynamic-marker-result");
-const addTemporaryBookmarkBtn = element<HTMLButtonElement>("add-temporary-bookmark-btn");
 const temporaryBookmarkDialog = element<HTMLDialogElement>("temporary-bookmark-dialog");
 const temporaryBookmarkClose = element<HTMLButtonElement>("temporary-bookmark-close");
 const temporaryBookmarkCloseBtn = element<HTMLButtonElement>("temporary-bookmark-close-btn");
 const temporaryBookmarkForm = element<HTMLFormElement>("temporary-bookmark-form");
-const temporaryBookmarkDefinition = element<HTMLSelectElement>("temporary-bookmark-definition");
+const temporaryBookmarkDefinition = element<HTMLSpanElement>("temporary-bookmark-definition");
 const temporaryBookmarkFolderBtn = element<HTMLButtonElement>("temporary-bookmark-folder-btn");
 const temporaryBookmarkFolderDisplay = element<HTMLSpanElement>("temporary-bookmark-folder-display");
 const temporaryBookmarkResult = element<HTMLOutputElement>("temporary-bookmark-result");
@@ -301,7 +303,7 @@ let widgetEnabled = true;
 let savedDisplayMode: DisplayMode = "native";
 let isConnectionDirty = false;
 let isMenusDirty = false;
-let activeSettingsPanel = "connection-form";
+let activeSettingsPanel = "start-panel";
 let isSaving = false;
 interface InstanceSettings {
   label: string;
@@ -318,6 +320,7 @@ let defaultUrlRuleUid: string | undefined;
 let dynamicBookmarks: DynamicBookmark[] = [];
 let staticBookmarks: StaticBookmark[] = [];
 let temporaryBookmarks: TemporaryBookmark[] = [];
+let temporaryMarkerUid: string | undefined;
 let temporaryValuesCache: Record<string, string> = {};
 let temporaryNotesCache: Record<string, string> = {};
 let shortcuts: StoredShortcut[] = [];
@@ -356,6 +359,7 @@ let activeAddMenuIndex = -1;
 let activeAddBtn: HTMLElement | null = null;
 
 // Picker state
+// Shared browsing directory for this options page; reopening any picker keeps it.
 let pickerCurrentFolderId = "0";
 let pickerSelectedId: string | null = null;
 let pickerMode: "addItem" | "editItem" | "selectRoot" | "pickFolder" | "pickShortcut" | "pickNativeShortcut" = "addItem";
@@ -386,36 +390,10 @@ async function refreshBrowserCommands(): Promise<void> {
         }
       }
       renderShortcuts();
-      if (menus.length > 0) {
-        renderMenus();
-      }
     }
   } catch (err) {
     console.error("Failed to query browser commands:", err);
   }
-}
-
-function findItemShortcut(item: StoredMenuItem): StoredShortcut | undefined {
-  if (isCustomBookmarkType(item.type)) {
-    const uid = customBookmarkUid(item);
-    return uid ? shortcuts.find(s => s.type === item.type && customBookmarkUid(s) === uid) : undefined;
-  }
-  if (item.type === "bookmark" || (!item.type && item.url)) {
-    return shortcuts.find((s) => {
-      if (isCustomBookmarkType(s.type)) return false;
-      if (item.url && s.url && item.url === s.url) return true;
-      if (
-        item.path &&
-        s.path &&
-        item.path.length === s.path.length &&
-        item.path.every((p, idx) => p === s.path![idx])
-      ) {
-        return true;
-      }
-      return false;
-    });
-  }
-  return undefined;
 }
 
 void initialize();
@@ -454,6 +432,7 @@ function clearMenusDirty(): void {
 }
 
 function updateSaveButton(): void {
+  settingsSaveBar.hidden = activeSettingsPanel === "start-panel";
   const instance = activeSettingsPanel === "connection-form";
   const key = instance ? "btn.saveInstance" : "btn.saveSettings";
   saveBtn.dataset.i18n = key;
@@ -831,9 +810,6 @@ async function openBookmarkPicker(
   pickerTargetShortcutSlot = shortcutSlot;
   pickerTargetNativeShortcutId = nativeShortcutId;
 
-  const rootNode = mode === "selectRoot" ? undefined : getRootNode();
-  pickerCurrentFolderId = rootNode?.id ?? "0";
-
   let initialFlatten = false;
   let initialHover = true;
   let initialIncludeFolders = false;
@@ -846,23 +822,6 @@ async function openBookmarkPicker(
       initialFlatten = existing.type === "flattenFolder";
       initialHover = existing.expandOnHover !== false;
       initialIncludeFolders = existing.includeFolders === true;
-      if (node) {
-        const path = getFolderPath(node.id, rawBookmarkTree as BookmarkNode[]);
-        if (path.length > 1) {
-          const parent = path[path.length - 2];
-          if (parent) {
-            const parentId = parent.id;
-            if (rootNode) {
-              const parentPath = getFolderPath(parentId, rawBookmarkTree as BookmarkNode[]);
-              if (parentPath.some((n) => n.id === rootNode.id)) {
-                pickerCurrentFolderId = parentId;
-              }
-            } else {
-              pickerCurrentFolderId = parentId;
-            }
-          }
-        }
-      }
     } else {
       pickerSelectedId = null;
     }
@@ -872,29 +831,11 @@ async function openBookmarkPicker(
       const currentRoot = getRootNode();
       if (currentRoot) {
         pickerSelectedId = currentRoot.id;
-        const path = getFolderPath(currentRoot.id, rawBookmarkTree as BookmarkNode[]);
-        if (path.length > 1) {
-          const parent = path[path.length - 2];
-          if (parent) {
-            pickerCurrentFolderId = parent.id;
-          }
-        }
       }
     }
   } else if (mode === "pickFolder") {
     const target = gapBookmarkFolderId ? findBookmarkNode(gapBookmarkFolderId, rawBookmarkTree) : undefined;
     pickerSelectedId = target?.id ?? null;
-    if (target) {
-      const path = getFolderPath(target.id, rawBookmarkTree as BookmarkNode[]);
-      if (path.length > 1) {
-        const parent = path[path.length - 2];
-        if (parent) {
-          pickerCurrentFolderId = parent.id;
-        }
-      } else {
-        pickerCurrentFolderId = target.id;
-      }
-    }
   } else if (mode === "pickShortcut") {
     pickerSelectedId = null;
     const existing = shortcuts.find((s) => s.slot === shortcutSlot);
@@ -904,13 +845,6 @@ async function openBookmarkPicker(
       const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, existing.url);
       if (node) {
         pickerSelectedId = node.id;
-        const path = getFolderPath(node.id, rawBookmarkTree as BookmarkNode[]);
-        if (path.length > 1) {
-          const parent = path[path.length - 2];
-          if (parent) {
-            pickerCurrentFolderId = parent.id;
-          }
-        }
       }
     }
   } else if (mode === "pickNativeShortcut") {
@@ -922,13 +856,6 @@ async function openBookmarkPicker(
       const node = findBookmarkNodeByPath(rawBookmarkTree as BookmarkNode[], effectivePath, existing.url);
       if (node) {
         pickerSelectedId = node.id;
-        const path = getFolderPath(node.id, rawBookmarkTree as BookmarkNode[]);
-        if (path.length > 1) {
-          const parent = path[path.length - 2];
-          if (parent) {
-            pickerCurrentFolderId = parent.id;
-          }
-        }
       }
     }
   } else {
@@ -1034,8 +961,12 @@ function enrichMenuItems(
 
 function renderPicker(): void {
   const rootNode = pickerMode === "selectRoot" || pickerMode === "pickFolder" ? undefined : getRootNode();
+  let currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree as BookmarkNode[]);
+  if (rootNode && !currentPath.some(node => node.id === rootNode.id)) {
+    pickerCurrentFolderId = rootNode.id;
+    currentPath = getFolderPath(rootNode.id, rawBookmarkTree as BookmarkNode[]);
+  }
   const currentFolder = findBookmarkNode(pickerCurrentFolderId, rawBookmarkTree);
-  const currentPath = getFolderPath(pickerCurrentFolderId, rawBookmarkTree as BookmarkNode[]);
 
   let displayPath = currentPath;
   if (rootNode) {
@@ -1043,10 +974,6 @@ function renderPicker(): void {
     if (rootIndex !== -1) {
       displayPath = currentPath.slice(rootIndex);
       pickerUpBtn.disabled = displayPath.length <= 1;
-    } else {
-      pickerCurrentFolderId = rootNode.id;
-      displayPath = [rootNode as BookmarkNode];
-      pickerUpBtn.disabled = true;
     }
   } else {
     pickerUpBtn.disabled = currentPath.length <= 1;
@@ -1355,9 +1282,15 @@ function initLanguagePicker(): void {
 }
 
 /** Re-apply translations to everything on screen after a language change. */
+function renderStartPanel(): void {
+  // Trusted static help markup shipped in the i18n package.
+  startPanel.innerHTML = helpDoc[getLanguage()];
+}
+
 function rerenderForLanguage(): void {
   closeAddItemDropdown();
   applyStaticI18n();
+  renderStartPanel();
   for (const opt of languageSelect.options) {
     opt.textContent = opt.value === "zh-CN" ? t("language.zhCN") : t("language.en");
   }
@@ -1405,6 +1338,7 @@ function initHeaderLinks(): void {
 
 async function initialize(): Promise<void> {
   applyStaticI18n();
+  renderStartPanel();
   initLanguagePicker();
   initHeaderLinks();
   onLanguageChange(rerenderForLanguage);
@@ -1494,6 +1428,7 @@ async function initialize(): Promise<void> {
   renderNativeShortcuts();
   siteAuthorization.refresh(config.urlRules);
   clearDirty();
+  showSettingsPanel(menus.length > 0 ? "connection-form" : "start-panel");
 }
 
 async function persistConnection(): Promise<void> {
@@ -1536,6 +1471,21 @@ async function persistConnection(): Promise<void> {
   }, 1_500);
 }
 
+function showSettingsPanel(targetId: string): void {
+  activeSettingsPanel = targetId;
+  for (const tab of menusCardTabs) {
+    const panelId = tab.dataset.tabTarget;
+    if (!panelId) continue;
+    const selected = panelId === targetId;
+    tab.setAttribute("aria-selected", String(selected));
+    document.getElementById(panelId)?.toggleAttribute("hidden", !selected);
+  }
+  menusForm.hidden = targetId === "connection-form" || targetId === "start-panel";
+  settingsContent.scrollTop = 0;
+  status.value = "";
+  updateSaveButton();
+}
+
 function initMenusCardTabs(): void {
   for (const tab of menusCardTabs) {
     tab.addEventListener("click", () => {
@@ -1551,19 +1501,7 @@ function initMenusCardTabs(): void {
       closeShortcutSettingsPopover();
       closeShortcutPickPopover();
       if (menuSettingsDialog.open) closeMenuSettingsDialog();
-      activeSettingsPanel = targetId;
-      for (const other of menusCardTabs) {
-        const panelId = other.dataset.tabTarget;
-        if (!panelId) continue;
-        const panel = document.getElementById(panelId);
-        const selected = other === tab;
-        other.setAttribute("aria-selected", String(selected));
-        if (panel) panel.toggleAttribute("hidden", !selected);
-      }
-      menusForm.hidden = targetId === "connection-form";
-      settingsContent.scrollTop = 0;
-      status.value = "";
-      updateSaveButton();
+      showSettingsPanel(targetId);
     });
   }
   settingsContent.addEventListener("scroll", () => {
@@ -2659,9 +2597,7 @@ async function addSpaceBookmark(): Promise<void> {
 }
 
 function initTemporaryBookmarkDialog(): void {
-  addTemporaryBookmarkBtn.addEventListener("click", () => {
-    openTemporaryMarkerDialog();
-  });
+  temporaryBookmarkDialog.addEventListener("close", () => { temporaryMarkerUid = undefined; });
   temporaryBookmarkClose.addEventListener("click", () => temporaryBookmarkDialog.close());
   temporaryBookmarkCloseBtn.addEventListener("click", () => temporaryBookmarkDialog.close());
   temporaryBookmarkDialog.addEventListener("click", (e) => {
@@ -2683,7 +2619,7 @@ function updateTemporaryBookmarkFolderDisplay(): void {
 }
 
 async function addTemporaryBookmark(): Promise<void> {
-  const definition = temporaryBookmarks.find(entry => entry.uid === temporaryBookmarkDefinition.value);
+  const definition = temporaryBookmarks.find(entry => entry.uid === temporaryMarkerUid);
   if (!definition) return;
   const url = buildTemporaryDirectiveUrl({ id: definition.uid });
   const title = definition.name || t("temporary.defaultName");
@@ -2711,11 +2647,13 @@ const DEFAULT_DYNAMIC_CODE = `/**
  * @param {string} context.action  - Trigger event: "visit"
  * @param {string} context.url     - URL of the visited page
  * @param {string} context.title   - Title of the visited page
- * @param {Object} context.current - Current bookmark state: { url, title }
+ * @param {Object} context.current - Current bookmark state: { url, title, note }
+ * @param {string} context.current.note - Saved script context; empty string before the first save
  *
  * @returns {Object}
- *   - { newUrl: string, title?: string } - Updates bookmark URL (title is optional; page title used if omitted)
- *   - { newUrl: null }                   - Keeps current bookmark unchanged
+ *   - { newUrl: string, title?: string, note?: string } - Updates the URL; title defaults to the visited page's title
+ *   - { newUrl: null, note?: string } - Keeps the URL and title unchanged; can still update note
+ *   - note: a string saved for later calls, including after restart; omitted = keep, "" = clear
  */
 function dynamicBookmark({ action, url, title, current }) {
   // Example 1: Track the last visited GitHub repository
@@ -2727,6 +2665,10 @@ function dynamicBookmark({ action, url, title, current }) {
   // if (url.includes("/docs/")) {
   //   return { newUrl: url, title: \`Doc: \${title}\` };
   // }
+
+  // Example 3: Keep script context between visits without changing the URL
+  // const visits = Number(current.note || "0") + 1;
+  // return { newUrl: null, note: String(visits) };
 
   return { newUrl: null };
 }
@@ -2848,12 +2790,11 @@ function renderTemporaryCard(definition: TemporaryBookmark): HTMLElement {
   return card;
 }
 
-function openTemporaryMarkerDialog(uid?: string): void {
-  if (!temporaryBookmarks.length) { status.value = t("customBookmarks.noneCreated"); return; }
-  temporaryBookmarkDefinition.replaceChildren(...temporaryBookmarks.map(entry => {
-    const option = document.createElement("option"); option.value = entry.uid; option.textContent = entry.name || t("temporary.defaultName"); return option;
-  }));
-  temporaryBookmarkDefinition.value = uid || temporaryBookmarks[0]!.uid;
+function openTemporaryMarkerDialog(uid: string): void {
+  const definition = temporaryBookmarks.find(entry => entry.uid === uid);
+  if (!definition) return;
+  temporaryMarkerUid = uid;
+  temporaryBookmarkDefinition.textContent = definition.name || t("temporary.defaultName");
   temporaryBookmarkResult.textContent = ""; delete temporaryBookmarkResult.dataset.state;
   updateTemporaryBookmarkFolderDisplay(); temporaryBookmarkDialog.showModal();
 }
@@ -4263,22 +4204,6 @@ function renderMenus(): void {
             dynamicTag.textContent = t(item.type === "static" ? "menu.addStatic" : item.type === "temporary" ? "menu.addTemporary" : "section.dynamic");
             label.appendChild(dynamicTag);
 
-
-            const itemShortcut = findItemShortcut(item);
-            if (itemShortcut) {
-              const shortcutBadge = document.createElement("span");
-              shortcutBadge.className = "item-tag item-tag-shortcut";
-              const rawKey = browserCommandsMap[itemShortcut.slot];
-              const keyLabel = (rawKey && rawKey.trim().length > 0) ? rawKey : itemShortcut.slot.replace("slot_", "#");
-              shortcutBadge.textContent = t("item.shortcutBadge", { key: keyLabel });
-              shortcutBadge.title = `${t("item.shortcutBadge", { key: keyLabel })} (${t("shortcuts.slotTitle", { n: itemShortcut.slot.replace("slot_", "") })})`;
-              shortcutBadge.addEventListener("click", (e) => {
-                e.stopPropagation();
-                document.getElementById("shortcuts-tab")?.click();
-              });
-              label.appendChild(shortcutBadge);
-            }
-
             const controls = document.createElement("div");
             controls.className = "item-color-controls";
 
@@ -4460,21 +4385,6 @@ function renderMenus(): void {
               openItemSettingsPopover(menuIndex, itemIndex, badge);
             });
             label.appendChild(badge);
-          }
-
-          const itemShortcut = findItemShortcut(item);
-          if (itemShortcut) {
-            const shortcutBadge = document.createElement("span");
-            shortcutBadge.className = "item-tag item-tag-shortcut";
-            const rawKey = browserCommandsMap[itemShortcut.slot];
-            const keyLabel = (rawKey && rawKey.trim().length > 0) ? rawKey : itemShortcut.slot.replace("slot_", "#");
-            shortcutBadge.textContent = t("item.shortcutBadge", { key: keyLabel });
-            shortcutBadge.title = `${t("item.shortcutBadge", { key: keyLabel })} (${t("shortcuts.slotTitle", { n: itemShortcut.slot.replace("slot_", "") })})`;
-            shortcutBadge.addEventListener("click", (e) => {
-              e.stopPropagation();
-              document.getElementById("shortcuts-tab")?.click();
-            });
-            label.appendChild(shortcutBadge);
           }
 
           const controls = document.createElement("div");

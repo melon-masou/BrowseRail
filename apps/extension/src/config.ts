@@ -134,7 +134,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
     url: DEFAULT_DESKTOP_URL,
   },
   panel: {
-    menus: [createMenu()],
+    menus: [],
   },
   urlRules: [],
   dynamicBookmarks: [],
@@ -405,7 +405,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         ? value.instanceLabel.trim()
         : defaultInstanceLabel,
     panel: {
-      menus: menus.length > 0 ? menus : [createMenu()],
+      menus,
     },
     urlRules,
     ...(typeof value.defaultUrlRuleUid === "string" && urlRules.some(rule => rule.uid === value.defaultUrlRuleUid) ? { defaultUrlRuleUid: value.defaultUrlRuleUid } : {}),
@@ -865,8 +865,9 @@ export async function initBookmarkRootPrefix(): Promise<string[]> {
 export const DYNAMIC_VALUES_STORAGE_KEY = "dynamic_values";
 
 export interface DynamicValue {
-  url: string;
-  title: string;
+  url?: string;
+  title?: string;
+  note?: string;
   updatedAt: number;
 }
 
@@ -880,10 +881,11 @@ export async function loadDynamicValues(): Promise<DynamicValuesMap> {
   }
   const result: DynamicValuesMap = {};
   for (const [uid, value] of Object.entries(raw)) {
-    if (isRecord(value) && typeof value.url === "string" && typeof value.title === "string") {
+    if (isRecord(value) && (typeof value.url === "string" || typeof value.note === "string")) {
       result[uid] = {
-        url: value.url,
-        title: value.title,
+        ...(typeof value.url === "string" ? { url: value.url } : {}),
+        ...(typeof value.title === "string" ? { title: value.title } : {}),
+        ...(typeof value.note === "string" ? { note: value.note } : {}),
         updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
       };
     }

@@ -2,7 +2,7 @@
 //  - intercepts native navigations to browserail.local markers and redirects
 //    them (Dynamic:<id> → the live URL; anything else → the options page),
 //  - on active-tab page visits, runs each matching dynamic bookmark's function
-//    in the sandbox and persists the returned live URL/title.
+//    in the sandbox and persists the returned URL/title and script context.
 
 import { isUrlMatchingSet } from "@browserail/protocol";
 import browser from "webextension-polyfill";
@@ -135,20 +135,28 @@ async function executeOne(
     action: "visit" as const,
     url,
     title,
-    current: { url: current?.url ?? null, title: current?.title ?? null },
+    current: { url: current?.url ?? null, title: current?.title ?? null, note: current?.note ?? "" },
   };
 
   const result = await runDynamic(db.code, args, TIMEOUT_MS);
   if (!result.ok || !result.value || typeof result.value !== "object") return;
 
-  const value = result.value as { newUrl?: unknown; title?: unknown };
+  const value = result.value as { newUrl?: unknown; title?: unknown; note?: unknown };
   const newUrl = typeof value.newUrl === "string" ? value.newUrl : null;
-  // Only accept an http(s) URL; ignore anything else (javascript:, junk, null).
-  if (!newUrl || !/^https?:\/\//i.test(newUrl)) return;
-  const newTitle = typeof value.title === "string" && value.title ? value.title : title;
+  // A null URL permits a context-only update; other URLs must remain HTTP(S).
+  if (value.newUrl !== null && (!newUrl || !/^https?:\/\//i.test(newUrl))) return;
+  if (newUrl === null && typeof value.note !== "string") return;
 
-  const next: DynamicValue = { url: newUrl, title: newTitle, updatedAt: Date.now() };
-  if (current && current.url === next.url && current.title === next.title) {
+  const next: DynamicValue = {
+    ...current,
+    ...(newUrl !== null ? {
+      url: newUrl,
+      title: typeof value.title === "string" && value.title ? value.title : title,
+    } : {}),
+    ...(typeof value.note === "string" ? { note: value.note } : {}),
+    updatedAt: Date.now(),
+  };
+  if (current?.url === next.url && current?.title === next.title && current?.note === next.note) {
     return; // no change; avoid a needless sync
   }
   await saveDynamicValue(db.uid, next);

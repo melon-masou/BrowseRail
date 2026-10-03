@@ -44,8 +44,11 @@
 
       <section class="settings-shell">
         <nav class="menus-card-tabs" role="tablist">
+          <button type="button" id="start-tab" class="menus-card-tab" role="tab"
+            data-tab-target="start-panel" aria-selected="true" aria-controls="start-panel"
+            data-i18n="section.start">Start</button>
           <button type="button" id="instance-tab" class="menus-card-tab" role="tab"
-            data-tab-target="connection-form" aria-selected="true" aria-controls="connection-form"
+            data-tab-target="connection-form" aria-selected="false" aria-controls="connection-form"
             data-i18n="section.instance">Instance</button>
           <button type="button" id="menus-tab" class="menus-card-tab" role="tab"
             data-tab-target="menus-panel" aria-selected="false" aria-controls="menus-panel"
@@ -61,7 +64,8 @@
             data-i18n="section.shortcuts">Shortcuts</button>
         </nav>
         <div id="settings-content" class="settings-content">
-          <form id="connection-form" class="settings-panel connection-card" role="tabpanel" aria-labelledby="instance-tab">
+          <section id="start-panel" class="settings-panel start-panel" role="tabpanel" aria-labelledby="start-tab"></section>
+          <form id="connection-form" class="settings-panel connection-card" role="tabpanel" aria-labelledby="instance-tab" hidden>
             <div id="state-card" class="state-bar state-card" data-state="disconnected">
               <div class="state-indicator"></div>
               <div class="state-info">
@@ -169,7 +173,6 @@
                 <h2 class="toolkit-card-title" data-i18n="section.toolkit">Tools</h2>
                 <div class="toolkit-card-row">
                   <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap to bookmarks</button>
-                  <button type="button" id="add-temporary-bookmark-btn" class="action-btn" data-i18n="toolkit.addTemporaryBookmark">Add temporary bookmark to bookmarks</button>
                 </div>
               </section>
             </section>
@@ -249,7 +252,7 @@
 
           </form>
         </div>
-        <footer class="settings-save-bar">
+        <footer id="settings-save-bar" class="settings-save-bar" hidden>
           <button type="submit" id="save-btn" form="connection-form" class="save-btn" data-i18n="btn.saveInstance">Save instance</button>
           <output id="status" aria-live="polite"></output>
           <div id="settings-transfer-actions" class="settings-transfer-actions" hidden>
@@ -333,11 +336,9 @@ The bookmark is stored as a bookmark whose URL is https://browserail.local/#Dyna
           <button type="button" id="temporary-bookmark-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <form id="temporary-bookmark-form" class="space-bookmark-dialog-body">
-          <div class="space-bookmark-fields">
-            <label>
-              <span data-i18n="menu.addTemporary">Temporary bookmark</span>
-              <select id="temporary-bookmark-definition"></select>
-            </label>
+          <div class="space-bookmark-folder-row">
+            <span data-i18n="menu.addTemporary">Temporary bookmark</span>
+            <span id="temporary-bookmark-definition" class="space-bookmark-folder-name"></span>
           </div>
           <div class="space-bookmark-folder-row">
             <span data-i18n="toolkit.destination">Destination folder</span>

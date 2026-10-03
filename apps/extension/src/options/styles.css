@@ -183,6 +183,38 @@ form {
   box-shadow: none;
 }
 
+.help-doc {
+  max-width: 680px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.help-doc h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 22px 0 8px;
+  color: #1e293b;
+}
+
+.help-doc > h2:first-child {
+  margin-top: 0;
+}
+
+.help-doc ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.help-doc li {
+  display: list-item;
+  margin: 4px 0;
+}
+
+.help-doc li strong {
+  color: #1e293b;
+}
+
 .settings-content [hidden] {
   display: none !important;
 }
@@ -213,6 +245,7 @@ form {
   flex-shrink: 0;
 }
 
+.settings-save-bar[hidden],
 .settings-transfer-actions[hidden] {
   display: none;
 }
@@ -632,11 +665,11 @@ output {
 /* Settings tab switcher */
 .menus-card-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px;
   border-bottom: 1px solid #e2e8f0;
   background: #f8fafc;
-  overflow-x: auto;
 }
 
 .menus-card-tab {
@@ -1095,12 +1128,6 @@ output {
   border: 1px solid #f5d0fe;
 }
 
-
-.item-tag-shortcut {
-  background: #ede9fe;
-  color: #6d28d9;
-  border: 1px solid #ddd6fe;
-}
 
 .item-tag-space {
   background: #f1f5f9;
@@ -1879,26 +1906,6 @@ output {
   outline: none;
   border-color: #2563eb;
   background: #ffffff;
-}
-
-.item-setting-shortcut-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.item-setting-shortcut-row .item-setting-select {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.item-setting-configure-shortcuts-btn {
-  flex: 0 0 auto;
-  height: 28px;
-  min-height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .item-settings-folder-controls {

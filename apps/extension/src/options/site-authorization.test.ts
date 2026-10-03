@@ -42,18 +42,18 @@ it("replaces old website access only after confirmation and requests the new sco
     getRules: () => rules,
   });
   controller.refresh(rules);
-  click(button(root, "Website authorization"));
+  click(button(root, "Grant permission"));
   const dialog = document.querySelector("dialog")!;
   await vi.waitFor(() => expect(dialog.open).toBe(true));
   expect(dialog.textContent).toContain("https://old.example/*");
   expect(dialog.textContent).toContain("/regex/");
   click(button(dialog, "Cancel"));
   expect(permission.origins).toEqual(["https://old.example/*"]);
-  click(button(root, "Website authorization")); await vi.waitFor(() => expect(dialog.open).toBe(true));
+  click(button(root, "Grant permission")); await vi.waitFor(() => expect(dialog.open).toBe(true));
   click(button(dialog, "Confirm"));
-  await vi.waitFor(() => expect(button(dialog, "Authorize")?.disabled).toBe(false));
+  await vi.waitFor(() => expect(button(dialog, "Grant permission")?.disabled).toBe(false));
   expect(permission.origins).toEqual([]); expect(permission.request).not.toHaveBeenCalled();
-  click(button(dialog, "Authorize"));
+  click(button(dialog, "Grant permission"));
   await vi.waitFor(() => expect(dialog.open).toBe(false));
   expect(permission.origins).toEqual(["http://*.example.com/*", "https://*.example.com/*"]);
 });
@@ -75,13 +75,13 @@ it("hides authorization controls and rule warnings in native and requests first-
   mode = "native"; controller.refresh(rules);
   expect(root.hidden).toBe(true); expect(ruleWarning.hidden).toBe(true);
   mode = "browser"; controller.refresh(rules);
-  click(button(root, "Website authorization"));
+  click(button(root, "Grant permission"));
   const dialog = document.querySelector("dialog")!; await vi.waitFor(() => expect(dialog.open).toBe(true));
   click(button(dialog, "Confirm"));
   await vi.waitFor(() => expect(dialog.open).toBe(false));
   expect(permission.origins).toEqual(["http://*.example.com/*", "https://*.example.com/*"]);
   await vi.waitFor(() => expect(ruleWarning.hidden).toBe(true));
-  click(button(root, "Revoke authorization"));
+  click(button(root, "Revoke permission"));
   await vi.waitFor(() => expect(permission.origins).toEqual([]));
   await vi.waitFor(() => expect(ruleWarning.hidden).toBe(false));
 });
@@ -98,7 +98,7 @@ it.each(["chrome", "edge", undefined])("uses one confirmation after revoking old
   createSiteAuthorization({ root, warning: document.createElement("span"), getMode: () => "browser", hasUnsavedRules: () => false,
     getRules: () => rules,
   }).refresh(rules);
-  click(button(root, "Website authorization"));
+  click(button(root, "Grant permission"));
   const dialog = document.querySelector("dialog")!; await vi.waitFor(() => expect(dialog.open).toBe(true));
   click(button(dialog, "Confirm"));
   await vi.waitFor(() => expect(dialog.open).toBe(false));
