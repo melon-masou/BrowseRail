@@ -323,6 +323,7 @@
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   color: var(--label-color);
   background: rgba(27, 33, 45, 0.94);

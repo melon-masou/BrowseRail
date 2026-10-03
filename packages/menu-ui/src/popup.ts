@@ -88,6 +88,14 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
     const pointerTrail: PointerSample[] = [];
     let hitRegionRevision = 0;
 
+    popup.addEventListener("wheel", event => {
+      if (event.ctrlKey) return;
+      event.stopPropagation();
+      // Columns scroll natively; the popup's gaps must not scroll the host page.
+      const path = event.composedPath();
+      if (!columns.some(column => path.includes(column))) event.preventDefault();
+    }, { passive: false, signal: renderLifetime.signal });
+
     popup.addEventListener("pointermove", (event) => {
       const sample = { time: event.timeStamp, x: event.clientX, y: event.clientY };
       pointerTrail.push(sample);
