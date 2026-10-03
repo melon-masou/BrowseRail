@@ -269,7 +269,7 @@ pub struct NativeBarSettings {
 impl NativeBarSettings {
     pub fn is_valid(&self) -> bool {
         self.button_font_size.is_finite() && (self.button_font_size == -1.0 || self.button_font_size >= 1.0)
-            && self.popup_font_size.is_finite() && self.popup_font_size >= 1.0
+            && self.popup_font_size.is_finite() && (self.popup_font_size == -1.0 || self.popup_font_size >= 1.0)
             && (self.attachment_mode != AttachmentMode::Free || self.on_top_mode == OnTopMode::AlwaysOnTop)
     }
     pub fn apply_view(&self, view: &mut MenuView) {

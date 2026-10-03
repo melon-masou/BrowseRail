@@ -6,7 +6,13 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
   const doc = root.ownerDocument;
   const abort = new AbortController();
   let draft = structuredClone(initial);
+  let autoFontSize = automaticButtonFontSize(itemHeight);
   root.classList.add("bar-settings");
+  function notify(): void {
+    buttonFont.refresh();
+    popupFont.refresh();
+    changed(structuredClone(draft));
+  }
   function label(key: Parameters<typeof t>[0], input: HTMLElement): void {
     const row = doc.createElement(input.tagName === "DIV" ? "div" : "label");
     row.className = "bar-settings-field";
@@ -19,7 +25,7 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
       const option = doc.createElement("option"); option.value = value; option.textContent = t(key); input.append(option);
     }
     input.value = value;
-    input.addEventListener("change", () => { set(input.value); changed(structuredClone(draft)); }, { signal: abort.signal });
+    input.addEventListener("change", () => { set(input.value); notify(); }, { signal: abort.signal });
     label(key, input); return input;
   }
   select("menuSettings.direction", draft.orientation, [["column", "menuSettings.column"], ["row", "menuSettings.row"]], value => { draft.orientation = value === "row" ? "row" : "column"; });
@@ -27,24 +33,30 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
     const input = doc.createElement("input"); input.type = "number"; input.min = "1"; input.step = "1"; input.value = String(value);
     input.addEventListener("input", () => {
       if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) return;
-      set(input.valueAsNumber); changed(structuredClone(draft));
+      set(input.valueAsNumber); notify();
     }, { signal: abort.signal }); return input;
   }
-  let autoFontSize = automaticButtonFontSize(itemHeight);
-  const font = number(draft.buttonFontSize === AUTO_FONT_SIZE ? autoFontSize : draft.buttonFontSize, value => { draft.buttonFontSize = value; });
-  font.setAttribute("aria-label", t("menuSettings.buttonFontSize"));
-  const auto = doc.createElement("input"); auto.type = "checkbox"; auto.checked = draft.buttonFontSize === AUTO_FONT_SIZE;
-  font.disabled = auto.checked;
-  const fontRow = doc.createElement("div"); fontRow.className = "bar-settings-font";
-  const autoLabel = doc.createElement("label"); autoLabel.append(auto, t("menuSettings.buttonFontSizeAuto")); fontRow.append(font, autoLabel);
-  auto.addEventListener("change", () => {
+  function fontSetting(key: Parameters<typeof t>[0], field: "buttonFontSize" | "popupFontSize", automatic: () => number) {
+    const font = number(draft[field] === AUTO_FONT_SIZE ? automatic() : draft[field], value => { draft[field] = value; });
+    font.setAttribute("aria-label", t(key));
+    const auto = doc.createElement("input"); auto.type = "checkbox"; auto.checked = draft[field] === AUTO_FONT_SIZE;
     font.disabled = auto.checked;
-    if (auto.checked) font.value = String(autoFontSize);
-    draft.buttonFontSize = auto.checked ? AUTO_FONT_SIZE : (font.validity.valid && Number.isFinite(font.valueAsNumber) ? font.valueAsNumber : 13);
-    changed(structuredClone(draft));
-  }, { signal: abort.signal });
-  label("menuSettings.buttonFontSize", fontRow);
-  label("menuSettings.popupFontSize", number(draft.popupFontSize, value => { draft.popupFontSize = value; }));
+    const fontRow = doc.createElement("div"); fontRow.className = "bar-settings-font";
+    const autoLabel = doc.createElement("label"); autoLabel.append(auto, t("menuSettings.buttonFontSizeAuto")); fontRow.append(font, autoLabel);
+    auto.addEventListener("change", () => {
+      draft[field] = auto.checked ? AUTO_FONT_SIZE : (font.validity.valid && Number.isFinite(font.valueAsNumber) ? font.valueAsNumber : automatic());
+      notify();
+    }, { signal: abort.signal });
+    label(key, fontRow);
+    return {
+      refresh(): void {
+        font.disabled = draft[field] === AUTO_FONT_SIZE;
+        if (font.disabled) font.value = String(automatic());
+      },
+    };
+  }
+  const buttonFont = fontSetting("menuSettings.buttonFontSize", "buttonFontSize", () => autoFontSize);
+  const popupFont = fontSetting("menuSettings.popupFontSize", "popupFontSize", () => draft.buttonFontSize === AUTO_FONT_SIZE ? autoFontSize : Math.max(1, Math.round(draft.buttonFontSize)));
   select("menuSettings.expandDirection", draft.expandDirection ?? "", [["", "expandDirection.default"], ["down", "expandDirection.down"], ["up", "expandDirection.up"], ["right", "expandDirection.right"], ["left", "expandDirection.left"]], value => {
     if (!value) delete draft.expandDirection; else draft.expandDirection = value as NonNullable<BarSettings["expandDirection"]>;
   });
@@ -63,7 +75,8 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
   return {
     updateItemHeight(height: number): void {
       autoFontSize = automaticButtonFontSize(height);
-      if (auto.checked) font.value = String(autoFontSize);
+      buttonFont.refresh();
+      popupFont.refresh();
     },
     destroy(): void { abort.abort(); root.replaceChildren(); root.classList.remove("bar-settings"); },
   };

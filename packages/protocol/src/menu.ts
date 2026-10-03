@@ -24,9 +24,9 @@ export type MenuOrientation = "row" | "column";
 
 /**
  * A font size in px, or the sentinel `AUTO_FONT_SIZE` (-1) meaning "auto": the
- * button font follows the button's pixel height instead of a fixed value. Only
- * the button font honors auto; the webview resolves it to a concrete px at
- * render time, so native/geometry code never needs to interpret it.
+ * button font follows the button's pixel height; the popup font follows the
+ * resolved button font. The webview resolves both to concrete px at render
+ * time, so native/geometry code never needs to interpret the sentinel.
  */
 export type MenuFontSize = number;
 export const AUTO_FONT_SIZE = -1 as const;

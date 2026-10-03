@@ -68,12 +68,12 @@ function normalizeChip(color: string): { fill: string; ink: string; accent: stri
   if (!rgb) return undefined;
   const { h, s } = rgbToHsl(rgb.r, rgb.g, rgb.b);
   const hue = Math.round(h);
+  const fill = `hsl(${hue} ${Math.round(Math.min(s, 0.26) * 100)}% 34% / ${rgb.alpha})`;
   return {
-    fill: `hsl(${hue} ${Math.round(Math.min(s, 0.26) * 100)}% 34% / ${rgb.alpha})`,
+    fill,
     ink: "#ffffff",
     accent: `hsl(${hue} ${Math.round(Math.min(s, 0.48) * 100)}% 46% / ${rgb.alpha})`,
-    // Blend the opaque hue first, then restore alpha so the surface color does not make it opaque.
-    column: `color-mix(in srgb, color-mix(in srgb, rgb(${rgb.r} ${rgb.g} ${rgb.b}) 45%, var(--surface-base)) ${rgb.alpha * 100}%, transparent)`,
+    column: fill,
   };
 }
 

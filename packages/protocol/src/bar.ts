@@ -22,7 +22,7 @@ export interface BarConfigurations {
 }
 
 export function defaultBarSettings(): BarSettings {
-  return { orientation: "column", buttonFontSize: AUTO_FONT_SIZE, popupFontSize: 13, expandAlignment: "edge" };
+  return { orientation: "column", buttonFontSize: AUTO_FONT_SIZE, popupFontSize: AUTO_FONT_SIZE, expandAlignment: "edge" };
 }
 export function defaultNativeBarSettings(): NativeBarSettings {
   return { ...defaultBarSettings(), attachmentMode: "lastFocused", onTopMode: "aboveBrowser" };
@@ -31,7 +31,7 @@ export function barSettingsFromView(view: Pick<MenuView, keyof BarSettings>): Ba
   return {
     orientation: view.orientation,
     buttonFontSize: view.buttonFontSize ?? AUTO_FONT_SIZE,
-    popupFontSize: view.popupFontSize ?? 13,
+    popupFontSize: view.popupFontSize ?? AUTO_FONT_SIZE,
     expandAlignment: view.expandAlignment ?? "edge",
     ...(view.expandDirection ? { expandDirection: view.expandDirection } : {}),
   };
@@ -41,7 +41,7 @@ export function isBarSettings(value: unknown): value is BarSettings {
   const raw = value as Record<string, unknown>;
   return (raw.orientation === "row" || raw.orientation === "column")
     && typeof raw.buttonFontSize === "number" && (raw.buttonFontSize === AUTO_FONT_SIZE || Number.isFinite(raw.buttonFontSize) && raw.buttonFontSize >= 1)
-    && typeof raw.popupFontSize === "number" && Number.isFinite(raw.popupFontSize) && raw.popupFontSize >= 1
+    && typeof raw.popupFontSize === "number" && (raw.popupFontSize === AUTO_FONT_SIZE || Number.isFinite(raw.popupFontSize) && raw.popupFontSize >= 1)
     && (raw.expandDirection === undefined || ["up", "down", "left", "right"].includes(raw.expandDirection as string))
     && (raw.expandAlignment === "edge" || raw.expandAlignment === "center");
 }
