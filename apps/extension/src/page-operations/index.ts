@@ -20,8 +20,8 @@ function createPageController() {
     menus.clear(); host?.remove(); host = undefined; container = undefined;
   }
 
-  function waitForDocumentRoot(): Promise<HTMLElement | null> {
-    if (document.documentElement) return Promise.resolve(document.documentElement);
+  function waitForBody(): Promise<HTMLElement | null> {
+    if (document.body) return Promise.resolve(document.body);
     const controller = new AbortController(); rootWait = controller;
     return new Promise(resolve => {
       const finish = (root: HTMLElement | null): void => {
@@ -31,9 +31,9 @@ function createPageController() {
       };
       const cancel = (): void => finish(null);
       const observer = new MutationObserver(() => {
-        if (document.documentElement) finish(document.documentElement);
+        if (document.body) finish(document.body);
       });
-      observer.observe(document, { childList: true });
+      observer.observe(document, { childList: true, subtree: true });
       controller.signal.addEventListener("abort", cancel, { once: true });
     });
   }
@@ -76,8 +76,8 @@ function createPageController() {
         if (!keep.has(uid)) { menu.destroy(); menus.delete(uid); }
       }
       if (!container) {
-        const documentRoot = await waitForDocumentRoot();
-        if (!documentRoot || suspended || revision !== stateRevision) return;
+        const body = await waitForBody();
+        if (!body || suspended || revision !== stateRevision) return;
         host = document.createElement("browserail-menus");
         // The page's selectors must not size or position the host. All menu
         // styling stays inside the shadow tree.
@@ -85,7 +85,7 @@ function createPageController() {
         const shadow = host.attachShadow({ mode: "closed" });
         const sheet = new CSSStyleSheet(); sheet.replaceSync(menuStyles + "\n" + hostStyles); shadow.adoptedStyleSheets = [sheet];
         container = document.createElement("div"); container.className = "browser-menus"; shadow.append(container);
-        documentRoot.append(host);
+        body.append(host);
       }
       for (const menu of message.menus) {
         if (suspended || revision !== stateRevision) return;
