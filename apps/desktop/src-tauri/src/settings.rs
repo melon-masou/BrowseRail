@@ -12,13 +12,13 @@ pub const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
 /// by the desktop and flows rust→webview via Tauri commands/events, never over
 /// the socket. It is intentionally not part of `packages/protocol`.
 ///
-/// How each field reaches the surface webview (apps/desktop/src/main.ts):
+/// How each field reaches the surface webview (apps/desktop/src/pages/menu.ts):
 ///   listener_port   — native WS listener only; not sent to the webview.
 ///   display_panels  — native show/hide of all surfaces; not read by the webview.
 ///   debug_enabled   — native debug logging only.
 ///   lock_editing    — global edit-mode toggle (inverted): true = browsing
 ///                     (open / new-tab, no customize), false = edit mode where
-///                     a click enters a menu's customize (main.ts `editingLocked`).
+///                     a click enters a menu's customize (pages/menu.ts `editingLocked`).
 ///                     Pushed to the webview via the `editing-lock-changed` event.
 ///   font_family     — webview `--desktop-font-family` CSS var
 ///                     (main.ts `applyFontFamily`), delivered in SurfaceState.

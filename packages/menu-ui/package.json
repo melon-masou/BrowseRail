@@ -6,7 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./styles.css": "./src/styles.css",
-    "./temporary-confirm.css": "./src/temporary-confirm.css"
+    "./temporary-confirm.css": "./src/confirmation/styles.css"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json",

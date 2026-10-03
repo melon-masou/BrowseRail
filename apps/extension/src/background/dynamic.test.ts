@@ -22,7 +22,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
     onRemoved: { addListener: vi.fn() },
   },
 } }));
-vi.mock("../sandbox/runner", () => ({ runDynamic: mock.run }));
+vi.mock("../pages/sandbox/runner", () => ({ runDynamic: mock.run }));
 
 beforeEach(() => {
   vi.resetModules(); vi.useFakeTimers(); mock.storage = {}; mock.run.mockReset();

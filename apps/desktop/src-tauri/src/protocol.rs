@@ -317,7 +317,7 @@ impl SyncedMenu {
 /// the resolved geometry the surface lays itself out from. This is an internal
 /// desktop contract, not the extension wire protocol; the webview reads the view
 /// fields and `placement` only (never native props or target). Mirrors
-/// `SurfaceMenu` in apps/desktop/src/main.ts.
+/// `SurfaceMenu` in apps/desktop/src/pages/menu.ts.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceMenu {
@@ -502,7 +502,7 @@ pub enum LayoutEntry {
 }
 
 /// Number of grid tracks the menu bar renders, matching the frontend exactly
-/// (apps/desktop/src/main.ts `totalUnits`): space items span `units` tracks
+/// (apps/desktop/src/pages/menu.ts `totalUnits`): space items span `units` tracks
 /// (min 0.1), every other item spans 1, then the sum is rounded to whole
 /// tracks. Both the resize->item-size derivation and the item-size->total
 /// recompute must use this same count (and the same gap) so they stay exact
@@ -519,7 +519,7 @@ pub fn menu_track_count(items: &[LayoutEntry]) -> f64 {
 }
 
 /// Gap in px between menu tracks, resolved identically to the frontend
-/// (apps/desktop/src/main.ts): the menu's gap, else 4. Both the resize
+/// (apps/desktop/src/pages/menu.ts): the menu's gap, else 4. Both the resize
 /// derivation and the total recompute must use this.
 pub fn menu_gap(view: &MenuView) -> f64 {
     view.gap.unwrap_or(4.0)

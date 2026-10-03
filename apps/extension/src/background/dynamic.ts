@@ -14,7 +14,7 @@ import {
   loadDynamicValues,
   saveDynamicValue,
 } from "../config";
-import { runDynamic } from "../sandbox/runner";
+import { runDynamic } from "../pages/sandbox/runner";
 
 const MARKER_HOST = "browserail.local";
 const DYNAMIC_FRAGMENT_PREFIX = "Dynamic:";

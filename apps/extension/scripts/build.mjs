@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,12 +33,19 @@ await build({
     outDir,
     rollupOptions: {
       input: {
-        options: resolve(root, "options.html"),
-        temporaryConfirm: resolve(root, "temporary-confirm.html"),
+        options: resolve(root, "src/pages/options/index.html"),
+        temporaryConfirm: resolve(root, "src/pages/bookmark-confirm/index.html"),
       },
     },
   },
 });
+
+// Keep the extension's page URLs independent of the source directory layout.
+await rename(resolve(outDir, "src/pages/options/index.html"), resolve(outDir, "options.html"));
+await rename(resolve(outDir, "src/pages/bookmark-confirm/index.html"), resolve(outDir, "temporary-confirm.html"));
+for (const directory of ["src/pages/options", "src/pages/bookmark-confirm", "src/pages", "src"]) {
+  await rmdir(resolve(outDir, directory));
+}
 
 await build({
   configFile: false,
@@ -78,7 +85,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/sandbox/index.ts"),
+      entry: resolve(root, "src/pages/sandbox/index.ts"),
       fileName: () => "sandbox.js",
       formats: ["iife"],
       name: "BrowseRailSandbox",
@@ -93,7 +100,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/offscreen/index.ts"),
+      entry: resolve(root, "src/pages/offscreen/index.ts"),
       fileName: () => "offscreen.js",
       formats: ["iife"],
       name: "BrowseRailOffscreen",
@@ -127,5 +134,5 @@ if (target === "chrome") {
 await writeFile(resolve(outDir, "manifest.json"), JSON.stringify(manifestJson, null, 2), "utf8");
 
 await cp(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
-await cp(resolve(root, "sandbox.html"), resolve(outDir, "sandbox.html"));
-await cp(resolve(root, "offscreen.html"), resolve(outDir, "offscreen.html"));
+await cp(resolve(root, "src/pages/sandbox/index.html"), resolve(outDir, "sandbox.html"));
+await cp(resolve(root, "src/pages/offscreen/index.html"), resolve(outDir, "offscreen.html"));
