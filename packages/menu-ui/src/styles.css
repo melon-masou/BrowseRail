@@ -112,7 +112,8 @@
   .menu-button[data-folder]::after {
     background: transparent;
     border: 0 solid transparent;
-    border-top: var(--folder-marker-size, 9px) solid var(--button-accent, rgb(255 255 255 / 50%));
+    /* Fixed neutral, not the item's hue: a same-hue corner vanishes on its own fill. */
+    border-top: var(--folder-marker-size, 9px) solid var(--folder-marker-color, rgb(255 255 255 / 60%));
     border-left-width: var(--folder-marker-size, 9px);
     border-radius: 0;
   }

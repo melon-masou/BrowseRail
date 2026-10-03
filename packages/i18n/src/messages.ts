@@ -125,8 +125,8 @@ export const en = {
   "validation.localWsAddress": "Use a ws:// localhost address",
 
   // Diagnostics card
-  "section.diagnostics": "debug",
-  "diagnostics.enableLogging": "debug",
+  "section.diagnostics": "Debug",
+  "diagnostics.enableLogging": "Debug",
   "btn.copyJson": "Copy JSON",
   "diagnostics.loggingEnabled": "Diagnostics logging enabled",
   "diagnostics.loggingDisabled": "Diagnostics logging disabled",
@@ -389,7 +389,7 @@ export const en = {
   "customize.spacingHint": "Drag with the left button to adjust this gap; with the right button to adjust all gaps. Double-click to clear extra spacing.",
   "settings.listenPort": "Listen Port",
   "settings.apply": "Apply",
-  "settings.debug": "debug",
+  "settings.debug": "Debug",
   "settings.fontFamily": "Font family",
   "settings.listenerError": "Listener Error",
   "settings.listeningOn": "Listening on {address}",
@@ -535,8 +535,8 @@ export const zhCN: Record<MessageKey, string> = {
   "validation.localWsAddress": "请使用 ws:// 本地地址",
 
   // Diagnostics card
-  "section.diagnostics": "debug",
-  "diagnostics.enableLogging": "debug",
+  "section.diagnostics": "Debug",
+  "diagnostics.enableLogging": "Debug",
   "btn.copyJson": "复制 JSON",
   "diagnostics.loggingEnabled": "诊断日志已启用",
   "diagnostics.loggingDisabled": "诊断日志已关闭",
@@ -799,7 +799,7 @@ export const zhCN: Record<MessageKey, string> = {
   "customize.spacingHint": "左键拖动调整此处，右键拖动调整整体，双击清零额外间隙。",
   "settings.listenPort": "监听端口",
   "settings.apply": "应用",
-  "settings.debug": "debug",
+  "settings.debug": "Debug",
   "settings.fontFamily": "字体",
   "settings.listenerError": "监听错误",
   "settings.listeningOn": "正在监听 {address}",
