@@ -16,13 +16,8 @@ export function getPopoverPosition(
   const belowTop = anchor.bottom + gap;
   const aboveTop = anchor.top - gap - height;
   const top =
-    belowTop + height > viewportHeight - margin && aboveTop >= margin
-      ? aboveTop
-      : belowTop;
-  let left =
-    align === "right"
-      ? anchor.right - width
-      : anchor.left + anchor.width / 2 - width / 2;
+    belowTop + height > viewportHeight - margin && aboveTop >= margin ? aboveTop : belowTop;
+  let left = align === "right" ? anchor.right - width : anchor.left + anchor.width / 2 - width / 2;
 
   if (left < margin) left = margin;
   if (left + width > viewportWidth - margin) {

@@ -1,10 +1,16 @@
 export const DEFAULT_COLOR = "#3b82f6ff";
 
 export function withColorAlpha(rgb: string, alpha: number): string {
-  return `${rgb.slice(0, 7).toLowerCase()}${Math.round(Math.max(0, Math.min(255, alpha))).toString(16).padStart(2, "0")}`;
+  return `${rgb.slice(0, 7).toLowerCase()}${Math.round(Math.max(0, Math.min(255, alpha)))
+    .toString(16)
+    .padStart(2, "0")}`;
 }
 
-export function createColorPicker(root: HTMLElement, onChange: (color: string) => void) {
+export function createColorPicker(
+  root: HTMLElement,
+  onChange: (color: string) => void,
+  signal: AbortSignal,
+) {
   const rgb = root.querySelector<HTMLInputElement>("#popover-color-input")!;
   const hex = root.querySelector<HTMLInputElement>("#popover-color-hex")!;
   const transparency = root.querySelector<HTMLInputElement>("#popover-color-transparency")!;
@@ -30,15 +36,24 @@ export function createColorPicker(root: HTMLElement, onChange: (color: string) =
     commit(withColorAlpha(color, parseInt(value.slice(7), 16)));
   }
 
-  rgb.addEventListener("input", () => setRgb(rgb.value));
-  hex.addEventListener("input", () => {
-    const color = `#${hex.value.trim().replace(/^#/, "")}`;
-    if (/^#[0-9a-f]{8}$/i.test(color)) commit(color, true);
-    else if (/^#[0-9a-f]{6}$/i.test(color)) commit(withColorAlpha(color, parseInt(value.slice(7), 16)), true);
-  });
-  transparency.addEventListener("input", () => {
-    commit(withColorAlpha(value, 255 * (1 - Number(transparency.value) / 100)));
-  });
+  rgb.addEventListener("input", () => setRgb(rgb.value), { signal });
+  hex.addEventListener(
+    "input",
+    () => {
+      const color = `#${hex.value.trim().replace(/^#/, "")}`;
+      if (/^#[0-9a-f]{8}$/i.test(color)) commit(color, true);
+      else if (/^#[0-9a-f]{6}$/i.test(color))
+        commit(withColorAlpha(color, parseInt(value.slice(7), 16)), true);
+    },
+    { signal },
+  );
+  transparency.addEventListener(
+    "input",
+    () => {
+      commit(withColorAlpha(value, 255 * (1 - Number(transparency.value) / 100)));
+    },
+    { signal },
+  );
 
   return {
     setRgb,
