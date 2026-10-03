@@ -19,6 +19,7 @@
     min-width: 0;
     box-sizing: border-box;
     padding: 0;
+    margin: var(--config-bar-frame-y) var(--config-bar-frame-x);
     gap: var(--bar-gap, var(--config-bar-gap, 3px));
     position: relative;
     overflow: visible;
@@ -29,7 +30,7 @@
   .customize-rail::before {
     content: "";
     position: absolute;
-    inset: 2px;
+    inset: calc(-1 * var(--config-bar-frame-y)) calc(-1 * var(--config-bar-frame-x));
     z-index: 0;
     pointer-events: none;
   }
@@ -131,14 +132,6 @@
     outline-offset: -1px;
     border-radius: var(--bar-radius, var(--dock-radius, 7px));
     cursor: move;
-  }
-
-  .customize-rail::before {
-    background-color: var(--bar-background, var(--config-bar-background, var(--dock-surface)));
-    backdrop-filter: var(--bar-backdrop-filter, blur(8px));
-    -webkit-backdrop-filter: var(--bar-backdrop-filter, blur(8px));
-    border-radius: var(--bar-radius, var(--dock-radius, 7px));
-    box-shadow: var(--bar-shadow, none);
   }
 
   .customize-toolbar {

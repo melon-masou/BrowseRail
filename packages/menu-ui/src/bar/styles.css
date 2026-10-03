@@ -13,7 +13,15 @@
   :is(.menu-bar, .customize-rail) .menu-button {
     color: var(--bar-button-text-color, var(--label-color));
     background: var(--bar-button-background, var(--surface-base));
-    border-radius: var(--bar-button-radius, var(--button-radius));
+    border-radius: var(--bar-button-radius, 4px);
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button-label {
+    text-align: left;
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"]::before {
+    background: var(--button-accent);
   }
 
   :is(.menu-bar, .customize-rail) .menu-button:hover,
@@ -35,7 +43,8 @@
   }
 
   :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"] {
-    background-color: var(--bar-button-background, var(--button-custom-color)) !important;
+    background-color: var(--bar-button-background, var(--button-norm-fill, var(--button-custom-color))) !important;
+    color: var(--bar-button-text-color, var(--button-ink, var(--label-color)));
   }
 
   :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"][data-expanded] {
@@ -46,12 +55,13 @@
     background: transparent;
   }
 
-  .menu-bar::before {
+  :is(.menu-bar, .customize-rail)::before {
     background-color: var(--bar-background, var(--config-bar-background, var(--dock-surface)));
-    backdrop-filter: var(--bar-backdrop-filter, blur(8px));
-    -webkit-backdrop-filter: var(--bar-backdrop-filter, blur(8px));
+    backdrop-filter: var(--bar-backdrop-filter, blur(3px));
+    -webkit-backdrop-filter: var(--bar-backdrop-filter, blur(3px));
     border-radius: var(--bar-radius, var(--dock-radius, 7px));
-    box-shadow: var(--bar-shadow, none);
+    border: 1px solid rgb(255 255 255 / 10%);
+    box-shadow: var(--bar-shadow, 0 6px 18px rgb(0 0 0 / 28%));
   }
 
   .empty-menu {

@@ -525,16 +525,30 @@ pub fn menu_gap(view: &MenuView) -> f64 {
     view.gap.unwrap_or(4.0)
 }
 
-/// Derives the internal total window dimensions (width, height). Item size is
-/// desktop-owned (MenuPlacement); gap and item count come from the view.
+/// Canvas space for the shared bar frame, matching menu-ui's `barFrameInsets`.
+pub fn menu_frame_insets(view: &MenuView) -> (f64, f64) {
+    match view.orientation {
+        MenuOrientation::Row => (5.0, 1.0),
+        MenuOrientation::Column => (1.0, 5.0),
+    }
+}
+
+/// Total window dimensions include the frame; placement still stores button size.
 pub fn menu_total_size(view: &MenuView, placement: &MenuPlacement) -> (f64, f64) {
     let count = menu_track_count(&view.items);
     let item_width = placement.item_width.unwrap_or(84.0);
     let item_height = placement.item_height.unwrap_or(36.0);
     let gap = menu_gap(view);
+    let (frame_x, frame_y) = menu_frame_insets(view);
     match view.orientation {
-        MenuOrientation::Row => (count * item_width + (count - 1.0) * gap, item_height),
-        MenuOrientation::Column => (item_width, count * item_height + (count - 1.0) * gap),
+        MenuOrientation::Row => (
+            count * item_width + (count - 1.0) * gap + 2.0 * frame_x,
+            item_height + 2.0 * frame_y,
+        ),
+        MenuOrientation::Column => (
+            item_width + 2.0 * frame_x,
+            count * item_height + (count - 1.0) * gap + 2.0 * frame_y,
+        ),
     }
 }
 
@@ -544,9 +558,10 @@ pub fn menu_total_size_for_state(
     collapsed: bool,
 ) -> (f64, f64) {
     if collapsed {
+        let (frame_x, frame_y) = menu_frame_insets(view);
         (
-            placement.item_width.unwrap_or(84.0),
-            placement.item_height.unwrap_or(36.0),
+            placement.item_width.unwrap_or(84.0) + 2.0 * frame_x,
+            placement.item_height.unwrap_or(36.0) + 2.0 * frame_y,
         )
     } else {
         menu_total_size(view, placement)
@@ -912,7 +927,7 @@ mod tests {
         let collapsed = compute_menu_geometry_for_state(&window, &view, &placement, true);
 
         assert_eq!((expanded.x + 110.0, expanded.y), (collapsed.x, collapsed.y));
-        assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));
+        assert_eq!((collapsed.width, collapsed.height), (60.0, 22.0));
     }
 
     #[test]
@@ -942,9 +957,9 @@ mod tests {
         let collapsed =
             free_menu_geometry_for_state(&synced.view, &synced.placement, synced.free_position(), true);
 
-        assert_eq!((expanded.width, expanded.height), (105.0, 20.0));
+        assert_eq!((expanded.width, expanded.height), (115.0, 22.0));
         assert_eq!((expanded.x + 55.0, expanded.y), (collapsed.x, collapsed.y));
-        assert_eq!((collapsed.width, collapsed.height), (50.0, 20.0));
+        assert_eq!((collapsed.width, collapsed.height), (60.0, 22.0));
     }
 
     #[test]

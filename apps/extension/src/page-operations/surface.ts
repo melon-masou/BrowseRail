@@ -1,5 +1,5 @@
 import { t } from "@browserail/i18n";
-import { mountBar, barDimensions, type MenuActions, type PopupSession } from "@browserail/menu-ui";
+import { mountBar, barSurfaceDimensions, type MenuActions, type PopupSession } from "@browserail/menu-ui";
 import type { BrowserMenu, MenuRequest, TemporaryConfirmationResult } from "./messages";
 import { openBrowserPopup } from "./popup";
 import { mountBrowserCustomization } from "./customization";
@@ -71,12 +71,12 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
   }
   function dimensions() {
     const size = { width: state.placement.itemWidth, height: state.placement.itemHeight };
-    return state.collapsed ? size : barDimensions(state.view, size);
+    return barSurfaceDimensions(state.view, size, state.collapsed);
   }
   function layout(): void {
     const size = dimensions();
     Object.assign(root.style, { flex: `0 0 ${size.width}px`, width: `${size.width}px`, height: `${size.height}px` });
-    const fullSize = barDimensions(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight });
+    const fullSize = barSurfaceDimensions(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight });
     const position = placementPoint(state.placement, fullSize.width, fullSize.height, viewport.innerWidth, viewport.innerHeight);
     if (state.collapsed) {
       let units = 0;

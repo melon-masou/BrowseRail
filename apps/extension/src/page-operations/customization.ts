@@ -1,6 +1,6 @@
 import { t } from "@browserail/i18n";
 import {
-  barDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon,
+  barDimensions, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon,
   createCancelIcon, createSaveIcon, nextAnchor, anchorLabel, type BarState,
 } from "@browserail/menu-ui";
 import type { BrowserMenuPlacement } from "../config";
@@ -16,7 +16,9 @@ export function mountBrowserCustomization(
   const options = { signal: lifetime.signal };
   let anchor = placement.anchor;
   let size = barDimensions(state.menu, state.itemSize);
-  let point = placementPoint(placement, size.width, size.height, viewport.innerWidth, viewport.innerHeight);
+  const frame = barFrameInsets(state.menu);
+  const initialSurface = barSurfaceDimensions(state.menu, state.itemSize);
+  let point = placementPoint(placement, initialSurface.width, initialSurface.height, viewport.innerWidth, viewport.innerHeight);
   let stopGesture: (() => void) | undefined;
   let saving = false;
   root.className = "browserail-menu-ui customize-mode";
@@ -34,19 +36,21 @@ export function mountBrowserCustomization(
   root.replaceChildren(content);
 
   function layout(): void {
-    point.x = Math.max(0, Math.min(viewport.innerWidth - size.width, point.x));
-    point.y = Math.max(0, Math.min(viewport.innerHeight - size.height, point.y));
+    const surfaceWidth = size.width + 2 * frame.x;
+    const surfaceHeight = size.height + 2 * frame.y;
+    point.x = Math.max(0, Math.min(viewport.innerWidth - surfaceWidth, point.x));
+    point.y = Math.max(0, Math.min(viewport.innerHeight - surfaceHeight, point.y));
     rail.style.setProperty("--config-bar-width", `${size.width}px`);
     rail.style.setProperty("--config-bar-height", `${size.height}px`);
     // Keep the rail fixed when the toolbar changes sides near the viewport edge.
     const toolbarSpace = toolbar.getBoundingClientRect().height + 4;
-    const above = point.y + size.height + toolbarSpace > viewport.innerHeight && point.y >= toolbarSpace;
+    const above = point.y + surfaceHeight + toolbarSpace > viewport.innerHeight && point.y >= toolbarSpace;
     content.style.flexDirection = above ? "column-reverse" : "column";
-    const width = Math.max(size.width, toolbar.getBoundingClientRect().width);
+    const width = Math.max(surfaceWidth, toolbar.getBoundingClientRect().width);
     point.x = Math.max(0, Math.min(viewport.innerWidth - width, point.x));
     content.style.width = `${width}px`;
     root.style.width = `${width}px`;
-    root.style.height = `${size.height + toolbarSpace}px`;
+    root.style.height = `${surfaceHeight + toolbarSpace}px`;
     wrapper.style.left = `${point.x}px`;
     wrapper.style.top = `${point.y - (above ? toolbarSpace : 0)}px`;
     anchorButton.title = t("customize.anchor", { anchor: anchorLabel(anchor) });
@@ -115,7 +119,7 @@ export function mountBrowserCustomization(
     const draft = placementAtPoint({ ...placement, anchor,
       itemWidth: row ? (size.width - (count - 1) * gap) / count : size.width,
       itemHeight: row ? size.height : (size.height - (count - 1) * gap) / count,
-    }, point.x, point.y, size.width, size.height, viewport.innerWidth, viewport.innerHeight);
+    }, point.x, point.y, size.width + 2 * frame.x, size.height + 2 * frame.y, viewport.innerWidth, viewport.innerHeight);
     void save(draft).catch(error => {
       if (lifetime.signal.aborted) return;
       root.dataset.error = ""; root.title = String(error); saving = false;

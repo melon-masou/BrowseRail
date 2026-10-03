@@ -788,8 +788,9 @@ fn save_menu_placement(
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
-    let x = f64::from(position.x) / scale + anchor_offset_x;
-    let y = f64::from(position.y) / scale + anchor_offset_y;
+    let (frame_x, frame_y) = protocol::menu_frame_insets(&orig_menu.view);
+    let x = f64::from(position.x) / scale + anchor_offset_x - frame_x;
+    let y = f64::from(position.y) / scale + anchor_offset_y - frame_y;
     if !width.is_finite()
         || !height.is_finite()
         || !anchor_offset_x.is_finite()
@@ -827,12 +828,14 @@ fn save_menu_placement(
             .ok_or("Browser window state is unavailable")?;
         let offset_x = match anchor {
             MenuAnchor::TopLeft | MenuAnchor::BottomLeft => x - bounds.x,
-            MenuAnchor::TopRight | MenuAnchor::BottomRight => bounds.x + bounds.width - x - width,
+            MenuAnchor::TopRight | MenuAnchor::BottomRight => {
+                bounds.x + bounds.width - x - width - 2.0 * frame_x
+            }
         };
         let offset_y = match anchor {
             MenuAnchor::TopLeft | MenuAnchor::TopRight => y - bounds.y,
             MenuAnchor::BottomLeft | MenuAnchor::BottomRight => {
-                bounds.y + bounds.height - y - height
+                bounds.y + bounds.height - y - height - 2.0 * frame_y
             }
         };
         (offset_x, offset_y)

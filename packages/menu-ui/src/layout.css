@@ -5,8 +5,8 @@
 :where(.browserail-menu-ui) {
   .menu-bar {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: var(--config-bar-frame-y);
+    left: var(--config-bar-frame-x);
     display: grid;
     gap: var(--bar-gap, var(--config-bar-gap, 3px));
     box-sizing: border-box;
@@ -20,8 +20,7 @@
   .menu-bar::before {
     content: "";
     position: absolute;
-    /* Recessed dock chassis: inset 2px so buttons slightly overhang the base */
-    inset: 2px;
+    inset: calc(-1 * var(--config-bar-frame-y)) calc(-1 * var(--config-bar-frame-x));
     z-index: 0;
     pointer-events: none;
   }
@@ -88,6 +87,18 @@
   .menu-bar .menu-button,
   .customize-rail .menu-button {
     container-type: inline-size;
+    justify-content: flex-start;
+    --button-padding-left: 9px;
+  }
+
+  :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    pointer-events: none;
   }
 
   @container (max-width: 72px) {
@@ -106,7 +117,7 @@
     }
     .menu-bar .menu-button[data-folder]::after,
     .customize-rail .menu-button[data-folder]::after {
-      width: 5px;
+      --folder-marker-size: 5px;
     }
   }
 
@@ -118,7 +129,7 @@
     }
     .menu-bar .menu-button[data-folder]::after,
     .customize-rail .menu-button[data-folder]::after {
-      width: 3px;
+      --folder-marker-size: 3px;
     }
   }
 
@@ -130,13 +141,9 @@
     content: "";
     position: absolute;
     top: 0;
-    bottom: 0;
     right: 0;
-    width: clamp(
-      6px,
-      calc(var(--button-font-size, var(--menu-font-size, 13px)) * 0.5),
-      8px
-    );
+    width: 0;
+    height: 0;
     pointer-events: none;
   }
 

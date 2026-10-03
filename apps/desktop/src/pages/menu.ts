@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { mountBar, barDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller } from "@browserail/menu-ui";
+import { mountBar, barDimensions, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -65,8 +65,7 @@ export async function initializeSurface(
   }
   function computeMenuDimensions(menu: SurfaceMenu) { return barDimensions(menu, stateFor(menu).itemSize); }
   function computeSurfaceDimensions(menu: SurfaceMenu) {
-    if (menuCollapsed) return stateFor(menu).itemSize;
-    return computeMenuDimensions(menu);
+    return barSurfaceDimensions(menu, stateFor(menu).itemSize, menuCollapsed);
   }
   async function renderSurface(menu: SurfaceMenu): Promise<void> {
     const state = stateFor(menu);
@@ -179,7 +178,7 @@ export async function initializeSurface(
     customizing = true;
     const menuToCustomize = currentMenu ?? menu;
     const toolbar = renderCustomize(menuToCustomize);
-    const toolbarSpace = customizationToolbarSpace(toolbar);
+    const toolbarSpace = customizationToolbarSpace(toolbar, menuToCustomize);
     await invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
       anchorOffsetY: fromAnchor.y,
       instanceUid,
@@ -213,11 +212,11 @@ export async function initializeSurface(
       });
   }
 
-  function customizationToolbarSpace(toolbar: HTMLElement): number {
+  function customizationToolbarSpace(toolbar: HTMLElement, menu: SurfaceMenu): number {
     const container = toolbar.parentElement ?? root;
     const rowGap = Number.parseFloat(getComputedStyle(container).rowGap);
     const gap = Number.isFinite(rowGap) ? rowGap : 0;
-    return Math.ceil(toolbar.getBoundingClientRect().height + gap);
+    return Math.ceil(toolbar.getBoundingClientRect().height + gap + 2 * barFrameInsets(menu).y);
   }
 
   function renderCustomize(
@@ -306,7 +305,8 @@ export async function initializeSurface(
 
     function applyTargetSize(): void {
       const toolbarWidth = Math.ceil(toolbar.scrollWidth);
-      content.style.width = `${Math.max(targetWidth, toolbarWidth)}px`;
+      const frame = barFrameInsets(menu);
+      content.style.width = `${Math.max(targetWidth + 2 * frame.x, toolbarWidth)}px`;
       railContainer.style.setProperty("--config-bar-width", `${targetWidth}px`);
       railContainer.style.setProperty("--config-bar-height", `${targetHeight}px`);
     }
@@ -429,7 +429,7 @@ export async function initializeSurface(
           anchorOffsetY: railRect.top,
           current: toolbarSide,
           menuHeight: railRect.height,
-          toolbarSpace: customizationToolbarSpace(toolbar),
+          toolbarSpace: customizationToolbarSpace(toolbar, menu),
         });
       } catch {
         return;

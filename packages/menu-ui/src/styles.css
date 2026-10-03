@@ -110,20 +110,11 @@
   }
 
   .menu-button[data-folder]::after {
-    background-color: rgba(0, 0, 0, 0.22);
-    border: none !important;
-    transition: background-color 0.15s ease;
-  }
-
-  .menu-button[data-folder]:hover::after,
-  .menu-button[data-folder]:focus-visible::after {
-    background-color: rgba(0, 0, 0, 0.36);
-    border: none !important;
-  }
-
-  .menu-button[data-folder][data-expanded]::after {
-    background-color: rgba(0, 0, 0, 0.45);
-    border: none !important;
+    background: transparent;
+    border: 0 solid transparent;
+    border-top: var(--folder-marker-size, 9px) solid var(--button-accent, rgb(255 255 255 / 50%));
+    border-left-width: var(--folder-marker-size, 9px);
+    border-radius: 0;
   }
 
   .popup-container {
@@ -289,7 +280,7 @@
   /* Paint the configured alpha once on the column; its buttons remain transparent. */
 
   .menu-column[data-accent="true"] {
-    background-color: var(--button-custom-color);
+    background-color: var(--column-custom-color, var(--button-custom-color));
     border-color: rgba(255, 255, 255, 0.08);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
     scrollbar-color: rgb(255 255 255 / 35%) transparent;

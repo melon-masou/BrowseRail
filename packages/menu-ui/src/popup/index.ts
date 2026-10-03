@@ -1,5 +1,5 @@
 import { invertNavigationActionUid, type ExpandDirection, type LayoutEntry } from "@browserail/protocol";
-import { menuButton } from "../appearance";
+import { applyMenuColor, menuButton } from "../appearance";
 import { calculateColumnWidth as columnWidth, createTextMeasure, submenuHeightLimit } from "./layout";
 import { createLifetime, showMenuError, type Lifetime } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
@@ -185,7 +185,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
       column.style.maxHeight = `${payload.maxColumnHeight}px`;
       if (payload.color) {
         column.dataset.accent = "true";
-        column.style.setProperty("--button-custom-color", payload.color);
+        applyMenuColor(column, payload.color);
       }
 
       for (const entry of entries) {
