@@ -40,10 +40,10 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
     if (lifetime.signal.aborted || state.editingLocked || editor) return;
     renderer?.destroy(); renderer = undefined;
     editor = mountBrowserCustomization(wrapper, root, barState(), state.placement,
-      async (placement, spacing) => {
-        await send({ type: "layout", menuUid: state.view.uid, placement, spacing });
+      async (placement, spacing, settings) => {
+        await send({ type: "layout", settings, menuUid: state.view.uid, placement, spacing });
         if (lifetime.signal.aborted) return;
-        state = { ...state, placement, view: { ...state.view, ...spacing } };
+        state = { ...state, placement, view: { ...state.view, ...settings, ...spacing } };
         finishCustomization();
       }, finishCustomization,
     );

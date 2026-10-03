@@ -767,6 +767,7 @@ fn save_menu_placement(
     item_width: f64,
     item_height: f64,
     spacing: protocol::MenuSpacing,
+    settings: protocol::NativeBarSettings,
     anchor_offset_x: f64,
     anchor_offset_y: f64,
 ) -> Result<MenuPlacement, String> {
@@ -788,7 +789,9 @@ fn save_menu_placement(
 
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
-    let (frame_x, frame_y) = protocol::menu_frame_insets(&orig_menu.view);
+    let mut edited_view = orig_menu.view.clone();
+    settings.apply_view(&mut edited_view);
+    let (frame_x, frame_y) = protocol::menu_frame_insets(&edited_view);
     let x = f64::from(position.x) / scale + anchor_offset_x - frame_x;
     let y = f64::from(position.y) / scale + anchor_offset_y - frame_y;
     if !width.is_finite()
@@ -800,6 +803,7 @@ fn save_menu_placement(
         || !item_height.is_finite()
         || item_height <= 0.0
         || !spacing.is_valid()
+        || !settings.is_valid()
     {
         return Err("Invalid menu size".into());
     }
@@ -868,10 +872,10 @@ fn save_menu_placement(
         .native_sender
         .send(native::NativeCommand::SaveMenuLayout {
             instance_uid,
-            window_uid: window_uid.clone(),
             menu_uid,
             placement,
             spacing,
+            settings,
         });
     Ok(placement)
 }
@@ -1036,6 +1040,56 @@ fn open_listener_settings(app: &tauri::AppHandle) {
         builder = builder.icon(icon).expect("valid settings window icon");
     }
     let _ = builder.build();
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+async fn open_bar_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    window: tauri::WebviewWindow,
+    instance_uid: String,
+    settings: protocol::NativeBarSettings,
+    item_height: f64,
+    title: String,
+) -> Result<String, String> {
+    if !state.surfaces.is_customizing(window.label()) || !settings.is_valid() || !item_height.is_finite() || item_height <= 0.0 {
+        return Err("Bar editing is unavailable".into());
+    }
+    let label = format!("{}{}", panel::instance_surface_prefix("bar-settings", &instance_uid), window.label());
+    if let Some(existing) = app.get_webview_window(&label) {
+        existing.set_focus().map_err(|error| error.to_string())?;
+        return Ok(label);
+    }
+    let data = serde_json::to_string(&settings).map_err(|error| error.to_string())?;
+    let url = format!("index.html?view=barSettings&parent={}&settings={}&itemHeight={item_height}", urlencoding::encode(window.label()), urlencoding::encode(&data));
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let monitor = window.current_monitor().map_err(|error| error.to_string())?.ok_or("Monitor is unavailable")?;
+    let area = monitor.work_area();
+    let left = f64::from(area.position.x) / scale;
+    let top = f64::from(area.position.y) / scale;
+    let x = (f64::from(position.x) / scale).min(left + f64::from(area.size.width) / scale - 400.0).max(left);
+    let y = (f64::from(position.y) / scale).min(top + f64::from(area.size.height) / scale - 390.0).max(top);
+    let created = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title(title)
+        .owner(&window).map_err(|error| error.to_string())?
+        .background_color(FORM_WINDOW_BACKGROUND)
+        .inner_size(380.0, 340.0)
+        .position(x, y)
+        .resizable(false)
+        .visible(false)
+        .build().map_err(|error| error.to_string())?;
+    if !state.surfaces.is_customizing(window.label()) { created.destroy().map_err(|error| error.to_string())?; }
+    Ok(label)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+async fn close_bar_settings(app: tauri::AppHandle, window: tauri::WebviewWindow, instance_uid: String) -> Result<(), String> {
+    let label = format!("{}{}", panel::instance_surface_prefix("bar-settings", &instance_uid), window.label());
+    if let Some(settings) = app.get_webview_window(&label) { settings.destroy().map_err(|error| error.to_string())?; }
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -1229,6 +1283,8 @@ pub fn run() {
             save_menu_placement,
             cancel_menu_customization,
             set_ui_language,
+            open_bar_settings,
+            close_bar_settings,
             open_temporary_confirmation
         ])
         .build(tauri::generate_context!())

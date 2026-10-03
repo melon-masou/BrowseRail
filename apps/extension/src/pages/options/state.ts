@@ -3,7 +3,7 @@ import {
   customBookmarkUid,
   isCustomBookmarkType,
   type CustomBookmarkType,
-  AUTO_FONT_SIZE,
+  type BarConfigurations,
   type TabMode,
 } from "@browserail/protocol";
 import type {
@@ -34,6 +34,7 @@ export interface InstanceSettings {
   syncEnabled: boolean;
 }
 export interface SettingsDraft {
+  barConfigurations?: BarConfigurations;
   menus: StoredMenu[];
   urlRules: UrlRule[];
   defaultUrlRuleUid?: string;
@@ -54,19 +55,8 @@ export type ShortcutTarget =
   | { type: "bookmark"; path?: readonly string[]; url: string; title: string }
   | { type: CustomBookmarkType; uid: string };
 type Editable<T> = { [K in keyof T]?: T[K] | undefined };
-export type MenuAppearance = Editable<
-  Pick<
-    StoredMenu,
-    | "orientation"
-    | "expandDirection"
-    | "expandAlignment"
-    | "buttonFontSize"
-    | "popupFontSize"
-    | "color"
-    | "dockColor"
-  >
->;
-export type MenuBehavior = Editable<Pick<StoredMenu, "attachmentMode" | "onTopMode" | "tabMode">>;
+export type MenuAppearance = Editable<Pick<StoredMenu, "color" | "dockColor">>;
+export type MenuBehavior = Editable<Pick<StoredMenu, "tabMode">>;
 export type ItemBehavior = Editable<
   Pick<
     StoredMenuItem,
@@ -230,6 +220,9 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     acceptSettingsSave(saved: ReadonlyData<SettingsDraft>): void {
       savedSettings = clone<SettingsDraft>(saved);
+      if (JSON.stringify(settingsDraft.barConfigurations) === JSON.stringify(savedSettings.barConfigurations)) delete settingsDraft.barConfigurations;
+      delete savedSettings.barConfigurations;
+      settingsSnapshot = freeze(structuredClone(settingsDraft));
       settingsDirty = JSON.stringify(settingsDraft) !== JSON.stringify(savedSettings);
       publish(["dirty"], false, false);
     },
@@ -277,18 +270,12 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       publish(["menus"], false, saveMode === "withSettings");
     },
     editMenuAppearance(uid: string, values: MenuAppearance): void {
-      const copy = structuredClone(values);
-      if (typeof copy.buttonFontSize === "number" && copy.buttonFontSize !== AUTO_FONT_SIZE)
-        copy.buttonFontSize = Math.max(1, copy.buttonFontSize);
-      if (typeof copy.popupFontSize === "number")
-        copy.popupFontSize = Math.max(1, copy.popupFontSize);
-      setOptional(menu(uid), copy);
+      setOptional(menu(uid), values);
       publish(["menus"]);
     },
     editMenuBehavior(uid: string, values: MenuBehavior): void {
       const target = menu(uid);
       setOptional(target, values);
-      if (target.attachmentMode === "free") target.onTopMode = "alwaysOnTop";
       publish(["menus"]);
     },
     setMenuRules(uid: string, uids: readonly string[]): void {

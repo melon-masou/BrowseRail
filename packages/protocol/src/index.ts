@@ -1,10 +1,11 @@
-import type { MenuColor, ExpandDirection, ExpandAlignment, MenuFontSize, MenuOrientation } from "./menu";
-import type { AttachmentMode, OnTopMode } from "./native";
+import type { MenuColor } from "./menu";
 
 export * from "./menu";
 export * from "./native";
 
-export const EXPORT_SCHEMA_VERSION = 1 as const;
+export * from "./bar";
+
+export const EXPORT_SCHEMA_VERSION = 2 as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -97,25 +98,13 @@ export interface UrlRule {
 }
 
 export interface StoredMenu {
-  attachmentMode?: AttachmentMode;
   color?: MenuColor;
+  dockColor?: MenuColor;
   enabled?: boolean;
-  expandDirection?: ExpandDirection;
-  expandAlignment?: ExpandAlignment;
-  buttonFontSize?: MenuFontSize;
-  popupFontSize?: MenuFontSize;
-  // Native spacing stays in the original fields; browser spacing is independent.
-  gapRatio?: number;
-  extraGaps?: Record<string, number>;
-  browserGapRatio?: number;
-  browserExtraGaps?: Record<string, number>;
   items: StoredMenuItem[];
-  onTopMode?: OnTopMode;
-  orientation: MenuOrientation;
   tabMode?: TabMode;
   uid: string;
   urlRuleUids?: string[];
-  dockColor?: MenuColor;
 }
 
 // Special Root Placeholders
@@ -260,7 +249,6 @@ export interface ExportedMenuItem {
   rename?: string;
   color?: MenuColor;
   cycleColors?: MenuColor[];
-  expandDirection?: ExpandDirection;
   expandOnHover?: boolean;
   includeFolders?: boolean;
   tabMode?: TabMode;
@@ -293,29 +281,18 @@ export interface TemporaryBookmark {
 }
 
 export interface ExportedMenu {
-  uid?: string;
-  enabled?: boolean;
-  orientation: MenuOrientation;
-  buttonFontSize?: MenuFontSize;
-  popupFontSize?: MenuFontSize;
-  gapRatio?: number;
-  extraGaps?: Record<string, number>;
-  browserGapRatio?: number;
-  browserExtraGaps?: Record<string, number>;
+  uid: string;
   color?: MenuColor;
-  expandDirection?: ExpandDirection;
-  expandAlignment?: ExpandAlignment;
-  attachmentMode?: AttachmentMode;
-  onTopMode?: OnTopMode;
+  dockColor?: MenuColor;
   tabMode?: TabMode;
   items: ExportedMenuItem[];
   urlRuleUids?: string[];
-  dockColor?: MenuColor;
 }
 
 export interface ExportedSettingsData {
   version: typeof EXPORT_SCHEMA_VERSION;
   exportedAt: string;
+  barConfigurations?: import("./bar").BarConfigurations;
   menus: ExportedMenu[];
   urlRules?: UrlRule[];
   defaultUrlRuleUid?: string;

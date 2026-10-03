@@ -1,14 +1,10 @@
-import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize, customBookmarkReference, normalizeMenuSpacing, type MenuSpacing } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
 import type {
-  AttachmentMode,
-  ExpandAlignment,
-  ExpandDirection,
   MenuAnchor,
   MenuFontSize,
   MenuItemType,
   MenuOrientation,
   MenuPlacement,
-  OnTopMode,
   StoredMenu,
   StoredMenuItem,
   StoredMenuItemType,
@@ -107,21 +103,7 @@ export function normalizeFontSize(value: unknown): number {
 }
 
 export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
-  const spacing = normalizeMenuSpacing(undefined);
-  return {
-    attachmentMode: "lastFocused",
-    enabled: true,
-    // Button font auto-scales with button height by default; popup stays fixed.
-    buttonFontSize: AUTO_FONT_SIZE,
-    popupFontSize: DEFAULT_FONT_SIZE,
-    ...spacing,
-    browserGapRatio: spacing.gapRatio,
-    browserExtraGaps: {},
-    items: [],
-    onTopMode: "aboveBrowser",
-    orientation: "column",
-    uid,
-  };
+  return { enabled: true, items: [], uid };
 }
 
 const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
@@ -422,38 +404,12 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const uid = typeof value.uid === "string" && value.uid
     ? value.uid
     : crypto.randomUUID();
-  const buttonFontSize = value.buttonFontSize !== undefined
-    ? normalizeFontSize(value.buttonFontSize)
-    : undefined;
-  // Only the button font supports auto; a stray auto on the popup coerces to the default.
-  const rawPopupFontSize = value.popupFontSize !== undefined
-    ? normalizeFontSize(value.popupFontSize)
-    : undefined;
-  const popupFontSize = isAutoFontSize(rawPopupFontSize) ? DEFAULT_FONT_SIZE : rawPopupFontSize;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
   const dockColor = typeof value.dockColor === "string" && value.dockColor ? value.dockColor : undefined;
   const tabMode: TabMode | undefined =
     value.tabMode === "newTab" || value.tabMode === "replace"
       ? value.tabMode
       : undefined;
-  const expandDirection: ExpandDirection | undefined =
-    value.expandDirection === "down" ||
-    value.expandDirection === "up" ||
-    value.expandDirection === "right" ||
-    value.expandDirection === "left"
-      ? value.expandDirection
-      : undefined;
-  const expandAlignment: ExpandAlignment | undefined =
-    value.expandAlignment === "edge" || value.expandAlignment === "center"
-      ? value.expandAlignment
-      : undefined;
-  const attachmentMode: AttachmentMode = isAttachmentMode(value.attachmentMode)
-    ? value.attachmentMode
-    : "lastFocused";
-  const onTopMode: OnTopMode =
-    attachmentMode === "free" || value.onTopMode === "alwaysOnTop"
-      ? "alwaysOnTop"
-      : "aboveBrowser";
   const enabled = typeof value.enabled === "boolean" ? value.enabled : true;
   const urlRuleUids = Array.isArray(value.urlRuleUids)
     ? value.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
@@ -468,51 +424,13 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     hasMenuFold = true;
     return true;
   });
-  const browserSpacing = normalizeMenuSpacing({ gapRatio: value.browserGapRatio, extraGaps: value.browserExtraGaps });
-
   return {
-    attachmentMode,
     ...(color !== undefined ? { color } : {}),
     ...(dockColor !== undefined ? { dockColor } : {}),
-    enabled,
-    ...(expandDirection !== undefined ? { expandDirection } : {}),
-    ...(expandAlignment !== undefined ? { expandAlignment } : {}),
-    ...(buttonFontSize !== undefined ? { buttonFontSize } : {}),
-    ...(popupFontSize !== undefined ? { popupFontSize } : {}),
-    ...normalizeMenuSpacing(value),
-    browserGapRatio: browserSpacing.gapRatio,
-    browserExtraGaps: browserSpacing.extraGaps,
-    items,
-    onTopMode,
-    orientation: value.orientation === "row" ? "row" : "column",
+    enabled, items,
     ...(tabMode !== undefined ? { tabMode } : {}),
     uid,
     ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
-  };
-}
-
-function normalizePlacement(value: unknown): MenuPlacement | undefined {
-  if (!isRecord(value) || !isRecord(value.boundPosition)) {
-    return undefined;
-  }
-  const bound = value.boundPosition;
-  if (!isAnchor(bound.anchor)) {
-    return undefined;
-  }
-  const itemWidth = typeof value.itemWidth === "number" && Number.isFinite(value.itemWidth)
-    ? boundedNumber(value.itemWidth, 1, 400, DEFAULT_ITEM_WIDTH)
-    : undefined;
-  const itemHeight = typeof value.itemHeight === "number" && Number.isFinite(value.itemHeight)
-    ? boundedNumber(value.itemHeight, 1, 200, DEFAULT_ITEM_HEIGHT)
-    : undefined;
-  return {
-    boundPosition: {
-      anchor: bound.anchor,
-      offsetX: boundedNumber(bound.offsetX, -10_000, 10_000, 12),
-      offsetY: boundedNumber(bound.offsetY, -10_000, 10_000, 12),
-    },
-    ...(itemHeight !== undefined ? { itemHeight } : {}),
-    ...(itemWidth !== undefined ? { itemWidth } : {}),
   };
 }
 
@@ -525,10 +443,6 @@ function boundedNumber(
   return typeof value === "number" && Number.isFinite(value)
     ? Math.min(max, Math.max(min, value))
     : fallback;
-}
-
-function isAttachmentMode(value: unknown): value is AttachmentMode {
-  return value === "lastFocused" || value === "all" || value === "free";
 }
 
 function isAnchor(value: unknown): value is MenuAnchor {
@@ -630,11 +544,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export const PLACEMENTS_STORAGE_KEY = "menu_placements";
-
 export type DisplayMode = "native" | "browser";
 export const DISPLAY_MODE_STORAGE_KEY = "display_mode";
-export const BROWSER_PLACEMENTS_STORAGE_KEY = "browser_menu_placements";
 export const BROWSER_COLLAPSED_STORAGE_KEY = "browser_menu_collapsed";
 export const BROWSER_EDITING_STORAGE_KEY = "browser_menu_editing";
 
@@ -676,30 +587,6 @@ export function normalizeBrowserPlacement(value: unknown): BrowserMenuPlacement 
   };
 }
 
-export async function loadBrowserPlacements(): Promise<Record<string, BrowserMenuPlacement>> {
-  const stored = await browser.storage.local.get(BROWSER_PLACEMENTS_STORAGE_KEY);
-  const raw = stored[BROWSER_PLACEMENTS_STORAGE_KEY];
-  if (!isRecord(raw)) return {};
-  return Object.fromEntries(Object.entries(raw).flatMap(([uid, value]) => {
-    const placement = normalizeBrowserPlacement(value);
-    return placement ? [[uid, placement]] : [];
-  }));
-}
-
-export async function saveBrowserPlacement(uid: string, placement: BrowserMenuPlacement): Promise<void> {
-  const normalized = normalizeBrowserPlacement(placement);
-  if (!normalized) throw new Error("Invalid browser menu placement");
-  const current = await loadBrowserPlacements();
-  current[uid] = normalized;
-  await browser.storage.local.set({ [BROWSER_PLACEMENTS_STORAGE_KEY]: current });
-}
-
-export async function removeBrowserPlacement(uid: string): Promise<void> {
-  const current = await loadBrowserPlacements();
-  delete current[uid];
-  await browser.storage.local.set({ [BROWSER_PLACEMENTS_STORAGE_KEY]: current });
-}
-
 export async function loadBrowserCollapsed(): Promise<Record<string, boolean>> {
   const stored = await browser.storage.local.get(BROWSER_COLLAPSED_STORAGE_KEY);
   const raw = stored[BROWSER_COLLAPSED_STORAGE_KEY];
@@ -713,96 +600,7 @@ export async function toggleBrowserCollapsed(uid: string): Promise<void> {
   await browser.storage.local.set({ [BROWSER_COLLAPSED_STORAGE_KEY]: current });
 }
 
-export type MenuPlacementsMap = Record<string, MenuPlacement>;
-
-export async function loadMenuPlacements(): Promise<MenuPlacementsMap> {
-  const stored = await browser.storage.local.get(PLACEMENTS_STORAGE_KEY);
-  const raw = stored[PLACEMENTS_STORAGE_KEY];
-  if (!isRecord(raw)) {
-    return {};
-  }
-  const result: MenuPlacementsMap = {};
-  for (const [uid, placement] of Object.entries(raw)) {
-    const normalized = normalizePlacement(placement);
-    if (normalized) {
-      result[uid] = normalized;
-    }
-  }
-  return result;
-}
-
-export async function saveMenuPlacement(menuUid: string, placement: MenuPlacement): Promise<void> {
-  const current = await loadMenuPlacements();
-  current[menuUid] = placement;
-  await browser.storage.local.set({
-    [PLACEMENTS_STORAGE_KEY]: current,
-  });
-}
-
-export function menuSpacingForMode(menu: StoredMenu, mode: DisplayMode): MenuSpacing {
-  return normalizeMenuSpacing(mode === "browser"
-    ? { gapRatio: menu.browserGapRatio, extraGaps: menu.browserExtraGaps }
-    : menu);
-}
-
-export async function saveMenuSpacing(menuUid: string, spacing: MenuSpacing, mode: DisplayMode): Promise<void> {
-  const config = await loadConfig();
-  const menu = config.panel.menus.find(menu => menu.uid === menuUid);
-  if (!menu) throw new Error("Menu not found");
-  const normalized = normalizeMenuSpacing(spacing);
-  if (mode === "browser") {
-    menu.browserGapRatio = normalized.gapRatio;
-    menu.browserExtraGaps = normalized.extraGaps;
-  } else {
-    Object.assign(menu, normalized);
-  }
-  await saveConfig(config);
-}
-
-export async function removeMenuPlacements(menuUid: string): Promise<void> {
-  const [placements, freePlacements] = await Promise.all([
-    loadMenuPlacements(),
-    loadFreePlacements(),
-  ]);
-  delete placements[menuUid];
-  delete freePlacements[menuUid];
-  await browser.storage.local.set({
-    [PLACEMENTS_STORAGE_KEY]: placements,
-    [FREE_PLACEMENTS_STORAGE_KEY]: freePlacements,
-  });
-}
-
-// Free (detached) menu surface positions: absolute screen coordinates, keyed by
-// menuUid. Kept separate from menu_placements (which stores anchor + window-
-// relative offsets that have no meaning off a browser window), so switching a
-// menu between free and attached modes never overwrites the other.
-export const FREE_PLACEMENTS_STORAGE_KEY = "free_placements";
-
-export type FreePlacement = { x: number; y: number };
-export type FreePlacementsMap = Record<string, FreePlacement>;
-
-export async function loadFreePlacements(): Promise<FreePlacementsMap> {
-  const stored = await browser.storage.local.get(FREE_PLACEMENTS_STORAGE_KEY);
-  const raw = stored[FREE_PLACEMENTS_STORAGE_KEY];
-  if (!isRecord(raw)) {
-    return {};
-  }
-  const result: FreePlacementsMap = {};
-  for (const [uid, pos] of Object.entries(raw)) {
-    if (isRecord(pos) && typeof pos.x === "number" && typeof pos.y === "number") {
-      result[uid] = { x: pos.x, y: pos.y };
-    }
-  }
-  return result;
-}
-
-export async function saveFreePlacement(menuUid: string, position: FreePlacement): Promise<void> {
-  const current = await loadFreePlacements();
-  current[menuUid] = position;
-  await browser.storage.local.set({
-    [FREE_PLACEMENTS_STORAGE_KEY]: current,
-  });
-}
+export * from "./bar-configurations";
 
 export const WIDGET_ENABLED_STORAGE_KEY = "widget_enabled";
 
@@ -852,7 +650,7 @@ export async function initBookmarkRootPrefix(): Promise<string[]> {
 
 // Live values of dynamic bookmarks, keyed by dynamic bookmark uid. Local only
 // (never synced): they update on every qualifying page visit, so syncing would
-// blow the sync quota. This is the parallel of menu_placements/free_placements.
+// blow the sync quota. Bar configurations are kept local for the same reason.
 export const DYNAMIC_VALUES_STORAGE_KEY = "dynamic_values";
 
 export interface DynamicValue {

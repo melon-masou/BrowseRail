@@ -9,3 +9,5 @@ export { attachTemporaryBookmarkButton } from "./temporary-bookmark";
 export { mountBookmarkConfirmation, mountTemporaryConfirmation } from "./confirmation";
 export { createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSpacingIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel } from "./bar/customization";
 export { mountSpacingEditor } from "./bar/spacing-editor";
+
+export { mountBarSettings, createSettingsIcon } from "./bar/settings";

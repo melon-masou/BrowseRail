@@ -1571,41 +1571,24 @@ output {
   font-weight: 700;
 }
 
-.menu-settings-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 0 12px 12px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.menu-settings-tab {
-  border: none;
-  background: transparent;
-  color: #64748b;
-  border-radius: 6px;
-  min-height: 30px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.menu-settings-tab.is-active {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
 .menu-settings-dialog-body {
   padding: 16px 18px;
   overflow-y: auto;
 }
 
-.menu-settings-panel {
+.menu-setting-url-rules-section {
   display: grid;
   gap: 12px;
+  margin-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
 }
 
-.menu-settings-panel[hidden] {
-  display: none;
+.menu-setting-url-rules-section h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
 }
 
 .menu-settings-body {
@@ -1708,29 +1691,6 @@ output {
 }
 
 .menu-settings-body .menu-setting-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.menu-setting-field-colors {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  min-width: 0;
-}
-
-.menu-setting-subfield {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.menu-setting-subfield .menu-setting-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

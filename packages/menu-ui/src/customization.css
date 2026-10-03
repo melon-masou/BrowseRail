@@ -56,7 +56,7 @@
   .customize-toolbar {
     flex: 0 0 auto;
     display: flex;
-    flex-wrap: nowrap;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 2px;
@@ -67,6 +67,13 @@
     width: fit-content;
     max-width: none;
     align-self: center;
+  }
+
+  .customize-toolbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
   }
 
   .customize-control {
@@ -155,10 +162,6 @@
     border-color: rgb(255 255 255 / 24%);
   }
 
-  .move-handle {
-    cursor: move;
-  }
-
   .resize-north {
     cursor: ns-resize;
   }
@@ -207,3 +210,32 @@
     &::after { left: 20%; right: 20%; top: 5px; height: 2px; }
   }
 }
+
+.bar-settings {
+  color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font: 13px/1.5 system-ui, sans-serif;
+  color: #263347;
+  background: #f4f6fb;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 8px;
+}
+.bar-settings > .bar-settings-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.bar-settings select, .bar-settings input[type="number"] {
+  box-sizing: border-box;
+  height: 30px;
+  border: 1px solid #c8d0dc;
+  border-radius: 5px;
+  background: #fff;
+  color: #263347;
+  font: inherit;
+  padding: 3px 6px;
+}
+.bar-settings select { width: 155px; }
+.bar-settings input[type="number"] { width: 76px; }
+.bar-settings input:disabled, .bar-settings select:disabled { opacity: .55; }
+.bar-settings-font { display: flex; align-items: center; gap: 8px; }
+.bar-settings-font label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }

@@ -1,15 +1,15 @@
-import type { MenuPlacement, MenuView } from "@browserail/protocol";
+import { barSettingsFromView, isNativeBarSettings, type NativeBarSettings, type MenuPlacement, type MenuView } from "@browserail/protocol";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller } from "@browserail/menu-ui";
+import { createSettingsIcon, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
-// resolved geometry the surface lays itself out from. The webview reads view
-// fields (flattened) and `placement`; it never sees native props or target.
-type SurfaceMenu = MenuView & { placement: MenuPlacement };
+// resolved geometry and native edit settings. Runtime visibility and window targets
+// stay in Rust; the editor receives attachment and on-top preferences.
+type SurfaceMenu = MenuView & { placement: MenuPlacement; attachmentMode: NativeBarSettings["attachmentMode"]; onTopMode: NativeBarSettings["onTopMode"] };
 
 export async function initializeSurface(
   root: HTMLElement,
@@ -225,6 +225,7 @@ export async function initializeSurface(
   ): HTMLElement {
     teardownCustomize?.();
     teardownCustomize = undefined;
+    let settings: NativeBarSettings = { ...barSettingsFromView(menu), attachmentMode: menu.attachmentMode, onTopMode: menu.onTopMode };
     let anchor = menu.placement.boundPosition.anchor;
     const initialDims = computeMenuDimensions(menu);
     let targetWidth = initialDims.width;
@@ -262,16 +263,6 @@ export async function initializeSurface(
       }
     });
 
-    const moveButton = controlButton(document, createMoveIcon(document));
-    moveButton.title = t("customize.dragToMove");
-    moveButton.classList.add("move-handle");
-    moveButton.addEventListener("pointerdown", (event) => {
-      if (event.button === 0) {
-        event.preventDefault();
-        void invoke("start_menu_drag");
-      }
-    });
-
     const cancelButton = controlButton(document, createCancelIcon(document));
     cancelButton.title = t("customize.cancel");
     cancelButton.addEventListener("pointerdown", (event) => {
@@ -305,28 +296,53 @@ export async function initializeSurface(
       spacingButton.setAttribute("aria-pressed", String(spacingEditor.enabled));
     });
 
+    const settingsButton = controlButton(document, createSettingsIcon(document));
+    settingsButton.title = t("bar.settings");
+    settingsButton.disabled = true;
+    let settingsWindowLabel: string | undefined;
+    settingsButton.addEventListener("click", () => {
+      report(invoke<string>("open_bar_settings", { instanceUid, settings, itemHeight: spacingEditor.itemSize.height, title: t("bar.settings") }).then(label => {
+        if (!customizeAlive) return;
+        settingsWindowLabel = label;
+        return emitTo(label, "bar-settings-item-height", spacingEditor.itemSize.height);
+      }));
+    });
+    let unlistenSettings: (() => void) | undefined;
+    void listen<NativeBarSettings>("bar-settings-draft", ({ payload }) => {
+      if (!customizeAlive || saving || !isNativeBarSettings(payload)) return;
+      settings = payload;
+      stopActiveResize?.();
+      spacingEditor.setSettings(settings);
+    }).then(unlisten => { if (customizeAlive) { unlistenSettings = unlisten; settingsButton.disabled = false; } else unlisten(); });
+
     // A free (detached) menu has no owner window to anchor against — hide that
     // control so the toolbar only shows actions that make sense off-window.
-    if (isFree) {
-      toolbar.append(moveButton, spacingButton, cancelButton, saveButton);
-    } else {
-      toolbar.append(anchorButton, moveButton, spacingButton, cancelButton, saveButton);
-    }
+    const toolsRow = document.createElement("div");
+    toolsRow.className = "customize-toolbar-row";
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "customize-toolbar-row";
+    if (!isFree) toolsRow.append(anchorButton);
+    toolsRow.append(spacingButton, settingsButton);
+    actionsRow.append(cancelButton, saveButton);
+    toolbar.append(toolsRow, actionsRow);
 
     const clampWidth = (width: number): number => {
       const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 }).width;
-      const max = barDimensions(spacingEditor.menu, { width: menu.orientation === "row" ? 400 : 220, height: 200 }).width;
+      const max = barDimensions(spacingEditor.menu, { width: spacingEditor.menu.orientation === "row" ? 400 : 220, height: 200 }).width;
       return Math.min(max, Math.max(min, width));
     };
     const clampHeight = (height: number): number => {
       const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 }).height;
-      const max = barDimensions(spacingEditor.menu, { width: 400, height: menu.orientation === "row" ? 64 : 200 }).height;
+      const max = barDimensions(spacingEditor.menu, { width: 400, height: spacingEditor.menu.orientation === "row" ? 64 : 200 }).height;
       return Math.min(max, Math.max(min, height));
     };
 
     function applyTargetSize(): void {
+      if (settingsWindowLabel) report(emitTo(settingsWindowLabel, "bar-settings-item-height", spacingEditor.itemSize.height));
+      const theme = applyBarTheme(root, { ...stateFor(menu), menu: spacingEditor.menu, itemSize: spacingEditor.itemSize });
+      railContainer.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
       const toolbarWidth = Math.ceil(toolbar.scrollWidth);
-      const frame = barFrameInsets(menu);
+      const frame = barFrameInsets(spacingEditor.menu);
       content.style.width = `${Math.max(targetWidth + 2 * frame.x, toolbarWidth)}px`;
       railContainer.style.setProperty("--config-bar-width", `${targetWidth}px`);
       railContainer.style.setProperty("--config-bar-height", `${targetHeight}px`);
@@ -451,7 +467,7 @@ export async function initializeSurface(
           anchorOffsetY: railRect.top,
           current: toolbarSide,
           menuHeight: railRect.height,
-          toolbarSpace: customizationToolbarSpace(toolbar, menu),
+          toolbarSpace: customizationToolbarSpace(toolbar, { ...menu, ...settings }),
         });
       } catch {
         return;
@@ -480,6 +496,9 @@ export async function initializeSurface(
     let customizeAlive = true;
     teardownCustomize = () => {
       customizeAlive = false;
+      settingsWindowLabel = undefined;
+      unlistenSettings?.();
+      report(invoke("close_bar_settings", { instanceUid }));
       spacingEditor.destroy();
       stopActiveResize?.();
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
@@ -537,7 +556,7 @@ export async function initializeSurface(
       railContainer.inert = true;
       const spacing = spacingEditor.spacing;
       const itemSize = spacingEditor.itemSize;
-      const controls = [anchorButton, moveButton, spacingButton, cancelButton, saveButton];
+      const controls = [anchorButton, spacingButton, settingsButton, cancelButton, saveButton];
       for (const button of controls) button.disabled = true;
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
       resizeFrame = undefined;
@@ -557,6 +576,7 @@ export async function initializeSurface(
           itemWidth: itemSize.width,
           itemHeight: itemSize.height,
           spacing,
+          settings,
           instanceUid,
           menuUid,
           width: targetWidth,
@@ -567,7 +587,7 @@ export async function initializeSurface(
         customizing = false;
         customizationStartPosition = null;
         if (currentMenu) {
-          currentMenu = { ...currentMenu, ...spacing, placement };
+          currentMenu = { ...currentMenu, ...settings, ...spacing, placement };
           await renderSurface(currentMenu);
         }
       } catch (error) {

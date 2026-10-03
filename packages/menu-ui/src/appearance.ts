@@ -2,9 +2,13 @@ import { isAutoFontSize, type LayoutEntry } from "@browserail/protocol";
 import { barFrameInsets } from "./layout";
 import type { BarState } from "./types";
 
+export function automaticButtonFontSize(itemHeight: number): number {
+  return Math.max(6, Math.round(itemHeight / 2.7));
+}
+
 export function applyBarTheme(root: HTMLElement, state: BarState) {
   const buttonFontSize = isAutoFontSize(state.menu.buttonFontSize)
-    ? Math.max(6, Math.round(state.itemSize.height / 2.7))
+    ? automaticButtonFontSize(state.itemSize.height)
     : parseFontSize(state.menu.buttonFontSize);
   const popupFontSize = state.menu.popupFontSize === undefined || isAutoFontSize(state.menu.popupFontSize)
     ? buttonFontSize : parseFontSize(state.menu.popupFontSize);

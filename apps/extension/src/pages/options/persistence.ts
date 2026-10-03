@@ -4,9 +4,9 @@ import {
   EXPORT_SCHEMA_VERSION,
   isExportedSettingsData,
   isCustomBookmarkType,
+  normalizeBarConfigurations,
   type ExportedSettingsData,
   type ExportedMenuItem,
-  type ExpandDirection,
 } from "@browserail/protocol";
 import {
   loadBookmarkRootPrefix,
@@ -14,6 +14,8 @@ import {
   loadSyncEnabled,
   loadWidgetEnabled,
   loadConfig,
+  loadBarConfigurations,
+  importBarConfigurations,
   saveConfig,
   saveBookmarkRootPrefix,
   saveSyncEnabled,
@@ -112,6 +114,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       shortcuts,
       nativeShortcuts,
     });
+    if (saving.barConfigurations) await importBarConfigurations(saving.barConfigurations, menus.map(menu => menu.uid));
     await pruneTemporaryValues(temporaryBookmarks);
     await browser.runtime.sendMessage({ type: "configSaved" });
     state.acceptSettingsSave(submitted);
@@ -134,7 +137,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     await browser.runtime.sendMessage({ type: "configSaved" });
     return true;
   }
-  function exportSettings(): ExportedSettingsData {
+  async function exportSettings(includeBars = false): Promise<ExportedSettingsData> {
     const {
       menus,
       urlRules,
@@ -150,8 +153,15 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     }
 
     // Runtime URLs/notes stay local; only definitions and references are portable.
+    const barConfigurations = includeBars ? await loadBarConfigurations() : undefined;
+    if (barConfigurations) {
+      const uids = new Set(menus.map(menu => menu.uid));
+      barConfigurations.native = Object.fromEntries(Object.entries(barConfigurations.native).filter(([uid]) => uids.has(uid)));
+      barConfigurations.browser = Object.fromEntries(Object.entries(barConfigurations.browser).filter(([uid]) => uids.has(uid)));
+    }
     const exportData: ExportedSettingsData = {
       version: EXPORT_SCHEMA_VERSION,
+      ...(barConfigurations ? { barConfigurations } : {}),
       exportedAt: new Date().toISOString(),
       ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
       ...(defaultUrlRuleUid ? { defaultUrlRuleUid } : {}),
@@ -166,23 +176,11 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       ...(nativeShortcuts.length > 0 ? { nativeShortcuts: structuredClone(nativeShortcuts) } : {}),
       menus: menus.map((menu) => ({
         uid: menu.uid,
-        orientation: menu.orientation,
         ...(menu.urlRuleUids && menu.urlRuleUids.length > 0
           ? { urlRuleUids: menu.urlRuleUids }
           : {}),
-        ...(menu.enabled !== undefined ? { enabled: menu.enabled } : {}),
-        ...(menu.buttonFontSize !== undefined ? { buttonFontSize: menu.buttonFontSize } : {}),
-        ...(menu.popupFontSize !== undefined ? { popupFontSize: menu.popupFontSize } : {}),
-        ...(menu.gapRatio !== undefined ? { gapRatio: menu.gapRatio } : {}),
-        ...(menu.extraGaps ? { extraGaps: menu.extraGaps } : {}),
-        ...(menu.browserGapRatio !== undefined ? { browserGapRatio: menu.browserGapRatio } : {}),
-        ...(menu.browserExtraGaps ? { browserExtraGaps: menu.browserExtraGaps } : {}),
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
-        ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
-        ...(menu.expandAlignment ? { expandAlignment: menu.expandAlignment } : {}),
-        ...(menu.attachmentMode ? { attachmentMode: menu.attachmentMode } : {}),
-        ...(menu.onTopMode ? { onTopMode: menu.onTopMode } : {}),
         ...(menu.tabMode ? { tabMode: menu.tabMode } : {}),
         items: menu.items.map((item) => {
           if (
@@ -252,13 +250,16 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
 
     return exportData;
   }
-  function importSettings(text: string): void {
+  async function importSettings(text: string, includeBars = false): Promise<void> {
     const parsed = JSON.parse(text) as unknown;
     if (!isExportedSettingsData(parsed)) {
       throw new Error(t("import.invalidJson"));
     }
 
+    const runtimeMenus = (await loadConfig()).panel.menus;
     const imported = structuredClone(state.settings) as SettingsDraft;
+    delete imported.barConfigurations;
+    if (includeBars && parsed.barConfigurations) imported.barConfigurations = normalizeBarConfigurations(parsed.barConfigurations);
     const menusSource = parsed.menus;
 
     // Rebuild each item from its portable fields.
@@ -287,14 +288,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         const rename =
           typeof itemRecord.rename === "string" && itemRecord.rename
             ? itemRecord.rename
-            : undefined;
-
-        const expandDirection =
-          itemRecord.expandDirection === "down" ||
-          itemRecord.expandDirection === "up" ||
-          itemRecord.expandDirection === "right" ||
-          itemRecord.expandDirection === "left"
-            ? (itemRecord.expandDirection as ExpandDirection)
             : undefined;
 
         const cycleColors = Array.isArray(itemRecord.cycleColors)
@@ -339,7 +332,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             : typeof itemRecord.color === "string" && itemRecord.color
               ? { color: itemRecord.color }
               : {}),
-          ...(expandDirection ? { expandDirection } : {}),
           ...(typeof itemRecord.expandOnHover === "boolean"
             ? { expandOnHover: itemRecord.expandOnHover }
             : {}),
@@ -366,7 +358,10 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             : crypto.randomUUID(),
         items,
       });
-      if (normalizedMenu) importedMenus.push(normalizedMenu);
+      if (normalizedMenu) {
+        normalizedMenu.enabled = runtimeMenus.find(menu => menu.uid === normalizedMenu.uid)?.enabled ?? true;
+        importedMenus.push(normalizedMenu);
+      }
     }
 
     // Installation settings stay local when importing portable bookmark definitions.

@@ -1,11 +1,6 @@
 import {
-  type AttachmentMode,
-  AUTO_FONT_SIZE,
   DEFAULT_DOCK_COLOR,
   type BrowserActionKind,
-  isAutoFontSize,
-  type MenuOrientation,
-  type OnTopMode,
   type CustomBookmarkType,
   customBookmarkUid,
   customBookmarkReference,
@@ -13,8 +8,6 @@ import {
 } from "@browserail/protocol";
 import {
   createMenu,
-  DEFAULT_FONT_SIZE,
-  normalizeFontSize,
   type StoredMenu,
   type StoredMenuItem,
 } from "../../../config";
@@ -55,19 +48,7 @@ export function mountMenusTab(
   const menuSettingsDialog = element<HTMLDialogElement>("menu-settings-dialog");
   const menuSettingsDialogTitle = element<HTMLSpanElement>("menu-settings-dialog-title");
   const menuSettingsClose = element<HTMLButtonElement>("menu-settings-close");
-  const menuSettingsTabs = Array.from(
-    document.querySelectorAll<HTMLButtonElement>(".menu-settings-tab"),
-  );
-  const menuSettingOrientation = element<HTMLSelectElement>("menu-setting-orientation");
-  const menuSettingExpandDirection = element<HTMLSelectElement>("menu-setting-expand-direction");
-  const menuSettingExpandAlignment = element<HTMLSelectElement>("menu-setting-expand-alignment");
-  const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
-  const menuSettingFontSizeAuto = element<HTMLInputElement>("menu-setting-font-size-auto");
-  const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
-  const menuSettingDefaultColor = element<HTMLButtonElement>("menu-setting-default-color");
   const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
-  const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
-  const menuSettingOnTopMode = element<HTMLSelectElement>("menu-setting-on-top-mode");
   const menuSettingTabMode = element<HTMLSelectElement>("menu-setting-tab-mode");
   const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
   const itemSettingsTitle = element<HTMLSpanElement>("item-settings-title");
@@ -116,18 +97,13 @@ export function mountMenusTab(
     { signal: scope.signal },
   );
 
-  function updateMenuSettingColorControls(menu: ReadonlyData<StoredMenu>): void {
-    updateSwatchAppearance(menuSettingDefaultColor, menu.color);
-    menuSettingDefaultColor.title = menu.color
-      ? t("menu.colorSwatchSet", { color: menu.color })
-      : t("menu.colorSwatchEmpty");
-    menuSettingDefaultColor.setAttribute("aria-label", menuSettingDefaultColor.title);
-
-    updateSwatchAppearance(menuSettingDockColor, menu.dockColor);
-    menuSettingDockColor.title = menu.dockColor
-      ? t("menu.dockColorSwatchSet", { color: menu.dockColor })
-      : t("menu.dockColorSwatchEmpty");
-    menuSettingDockColor.setAttribute("aria-label", menuSettingDockColor.title);
+  function updateMenuColorSwatch(swatch: HTMLElement, menu: ReadonlyData<StoredMenu>, field: "color" | "dockColor"): void {
+    const color = menu[field];
+    updateSwatchAppearance(swatch, color);
+    swatch.title = field === "dockColor"
+      ? color ? t("menu.dockColorSwatchSet", { color }) : t("menu.dockColorSwatchEmpty")
+      : color ? t("menu.colorSwatchSet", { color }) : t("menu.colorSwatchEmpty");
+    swatch.setAttribute("aria-label", swatch.title);
   }
 
   function initMenuSettingsDialog(): void {
@@ -143,153 +119,11 @@ export function mountMenusTab(
       { signal: scope.signal },
     );
 
-    menuSettingsTabs.forEach((tab) => {
-      tab.addEventListener(
-        "click",
-        () => {
-          const panel = document.getElementById(tab.getAttribute("aria-controls") || "");
-          if (!panel) return;
-          menuSettingsTabs.forEach((candidate) => {
-            const candidatePanel = document.getElementById(
-              candidate.getAttribute("aria-controls") || "",
-            );
-            const selected = candidate === tab;
-            candidate.classList.toggle("is-active", selected);
-            candidate.setAttribute("aria-selected", String(selected));
-            if (candidatePanel) candidatePanel.hidden = !selected;
-          });
-        },
-        { signal: scope.signal },
-      );
-    });
-
-    menuSettingDefaultColor.addEventListener(
-      "click",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu) openMenuColor(menu, menuSettingDefaultColor, "color");
-      },
-      { signal: scope.signal },
-    );
-
     menuSettingDockColor.addEventListener(
       "click",
       () => {
         const menu = state.settings.menus[activeMenuSettingsIndex];
         if (menu) openMenuColor(menu, menuSettingDockColor, "dockColor");
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingOrientation.addEventListener(
-      "change",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu) {
-          state.editMenuAppearance(menu.uid, {
-            orientation: menuSettingOrientation.value as MenuOrientation,
-          });
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingExpandDirection.addEventListener(
-      "change",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu) {
-          const val = menuSettingExpandDirection.value;
-          if (val === "down" || val === "up" || val === "right" || val === "left") {
-            state.editMenuAppearance(menu.uid, { expandDirection: val });
-          } else {
-            state.editMenuAppearance(menu.uid, { expandDirection: undefined });
-          }
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingExpandAlignment.addEventListener(
-      "change",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu) {
-          state.editMenuAppearance(menu.uid, {
-            expandAlignment: menuSettingExpandAlignment.value === "center" ? "center" : "edge",
-          });
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingFontSize.addEventListener(
-      "input",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        const val = parseInt(menuSettingFontSize.value, 10);
-        if (menu && !menuSettingFontSizeAuto.checked && !isNaN(val)) {
-          state.editMenuAppearance(menu.uid, { buttonFontSize: val });
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingFontSizeAuto.addEventListener(
-      "change",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (!menu) return;
-        if (menuSettingFontSizeAuto.checked) {
-          state.editMenuAppearance(menu.uid, { buttonFontSize: AUTO_FONT_SIZE });
-          menuSettingFontSize.disabled = true;
-        } else {
-          const val = parseInt(menuSettingFontSize.value, 10);
-          state.editMenuAppearance(menu.uid, {
-            buttonFontSize: !isNaN(val) ? val : DEFAULT_FONT_SIZE,
-          });
-          menuSettingFontSize.disabled = false;
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingPopupFontSize.addEventListener(
-      "input",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        const val = parseInt(menuSettingPopupFontSize.value, 10);
-        if (menu && !isNaN(val)) {
-          state.editMenuAppearance(menu.uid, { popupFontSize: val });
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingAttachmentMode.addEventListener(
-      "change",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu) {
-          state.editMenuBehavior(menu.uid, {
-            attachmentMode: menuSettingAttachmentMode.value as AttachmentMode,
-          });
-          if (menuSettingAttachmentMode.value === "free") {
-            menuSettingOnTopMode.value = "alwaysOnTop";
-          }
-          menuSettingOnTopMode.disabled = menuSettingAttachmentMode.value === "free";
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingOnTopMode.addEventListener(
-      "change",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu && menu.attachmentMode !== "free") {
-          state.editMenuBehavior(menu.uid, { onTopMode: menuSettingOnTopMode.value as OnTopMode });
-        }
       },
       { signal: scope.signal },
     );
@@ -308,7 +142,7 @@ export function mountMenusTab(
     );
   }
 
-  function openMenuSettingsDialog(menuIndex: number, tab = 0): void {
+  function openMenuSettingsDialog(menuIndex: number): void {
     closeAddItemDropdown();
     colorPopoverController.close();
     closeItemSettingsPopover();
@@ -317,32 +151,11 @@ export function mountMenusTab(
     const menu = state.settings.menus[menuIndex];
     if (!menu) return;
 
-    const barFontAuto = isAutoFontSize(menu.buttonFontSize);
-    // Auto has no px value, so show the default in the (disabled) number field.
-    const barFs =
-      menu.buttonFontSize !== undefined && !barFontAuto
-        ? normalizeFontSize(menu.buttonFontSize)
-        : DEFAULT_FONT_SIZE;
-    const popupFs =
-      menu.popupFontSize !== undefined ? normalizeFontSize(menu.popupFontSize) : DEFAULT_FONT_SIZE;
     menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
-    menuSettingOrientation.value = menu.orientation;
-    menuSettingExpandDirection.value = menu.expandDirection ?? "";
-    menuSettingExpandAlignment.value = menu.expandAlignment ?? "edge";
-    menuSettingFontSize.value = String(barFs);
-    menuSettingFontSizeAuto.checked = barFontAuto;
-    menuSettingFontSize.disabled = barFontAuto;
-    menuSettingPopupFontSize.value = String(popupFs);
-    updateMenuSettingColorControls(menu);
-    menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
-    const isFree = menuSettingAttachmentMode.value === "free";
-    menuSettingOnTopMode.value = isFree ? "alwaysOnTop" : (menu.onTopMode ?? "aboveBrowser");
-    menuSettingOnTopMode.disabled = isFree;
+    updateMenuColorSwatch(menuSettingDockColor, menu, "dockColor");
     menuSettingTabMode.value = menu.tabMode ?? "replace";
     renderMenuUrlRulesContent(menu);
 
-    const tabButton = menuSettingsTabs[tab];
-    if (tabButton) tabButton.click();
     menuSettingsDialog.style.marginTop = "";
     menuSettingsDialog.style.maxHeight = "";
     menuSettingsDialog.showModal();
@@ -352,6 +165,7 @@ export function mountMenusTab(
   }
 
   function closeMenuSettingsDialog(): void {
+    if (!menuSettingsDialog.open && activeMenuSettingsIndex < 0) return;
     colorPopoverController.close();
     menuSettingsDialog.close();
     activeMenuSettingsIndex = -1;
@@ -987,6 +801,14 @@ export function mountMenusTab(
           openMenuSettingsDialog(menuIndex);
         });
 
+        const defaultColorBtn = document.createElement("button");
+        defaultColorBtn.type = "button";
+        defaultColorBtn.className = "item-color-swatch";
+        updateMenuColorSwatch(defaultColorBtn, menu, "color");
+        defaultColorBtn.addEventListener("click", () => {
+          openMenuColor(menu, defaultColorBtn, "color");
+        });
+
         const resetPositionBtn = document.createElement("button");
         resetPositionBtn.type = "button";
         resetPositionBtn.className = "action-btn menu-header-btn";
@@ -1029,7 +851,7 @@ export function mountMenusTab(
           openAddItemDropdown(menuIndex, addBtn);
         });
 
-        headerActions.append(settingsBtn, removeMenu, addBtn);
+        headerActions.append(defaultColorBtn, settingsBtn, removeMenu, addBtn);
         header.append(titleRow, headerActions);
 
         const items = document.createElement("ol");
@@ -1558,8 +1380,8 @@ export function mountMenusTab(
               ? t("menuSettings.defaultColor")
               : t("color.title"),
         onChange: () => {
-          const menu = state.settings.menus[activeMenuSettingsIndex];
-          if (menu) updateMenuSettingColorControls(menu);
+          const current = read();
+          if ("items" in current) updateMenuColorSwatch(swatch, current, field);
         },
         onClose: () => {
           colorOpen = false;

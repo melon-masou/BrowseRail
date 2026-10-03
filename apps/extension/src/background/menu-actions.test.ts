@@ -4,7 +4,7 @@ import type { StoredMenu } from "@browserail/protocol";
 import { runTabAction, toggleTargetMenus } from "./menu-actions";
 
 function menu(uid: string, enabled?: boolean): StoredMenu {
-  return { uid, orientation: "row", items: [], ...(enabled === undefined ? {} : { enabled }) };
+  return { uid, items: [], ...(enabled === undefined ? {} : { enabled }) };
 }
 
 describe("menu visibility action", () => {

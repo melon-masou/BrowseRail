@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getLanguage } from "@browserail/i18n";
+import { initializeBarSettings } from "./pages/bar-settings";
 import { initializeSurface } from "./pages/menu";
 import { initializeListenerSettings } from "./pages/settings";
 import { initializePopupSurface } from "./pages/popup";
@@ -30,6 +31,8 @@ if (query.get("view") === "host") {
   document.body.replaceChildren();
 } else if (query.get("view") === "settings") {
   void initializeListenerSettings(root, applyFontFamily);
+} else if (query.get("view") === "barSettings") {
+  initializeBarSettings(root, query);
 } else if (query.get("view") === "temporaryConfirm") {
   initializeTemporaryConfirmation(root);
 } else if (query.get("surface") === "popup") {

@@ -16,7 +16,7 @@ export function mountSpacingEditor(
   let stopGesture: (() => void) | undefined;
   const lifetime = new AbortController();
   const options = { signal: lifetime.signal };
-  const row = menu.orientation === "row";
+  let row = menu.orientation === "row";
   const handles = menu.items.slice(0, -1).map((entry, index) => {
     const handle = rail.ownerDocument.createElement("div");
     handle.className = "gap-handle";
@@ -89,6 +89,16 @@ export function mountSpacingEditor(
       enabled = next;
       rail.toggleAttribute("data-spacing", enabled);
       render();
+    },
+    setSettings(next: import("@browserail/protocol").BarSettings): void {
+      stopGesture?.();
+      delete menu.expandDirection;
+      Object.assign(menu, next);
+      row = menu.orientation === "row";
+      rail.dataset.orientation = menu.orientation;
+      for (const { handle } of handles) { handle.style.left = ""; handle.style.top = ""; }
+      render();
+      onChange(menu, itemSize);
     },
     setItemSize(next: Size): void { itemSize = { ...next }; render(); },
     stopGesture(): void { stopGesture?.(); },

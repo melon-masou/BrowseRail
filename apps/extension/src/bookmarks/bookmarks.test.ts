@@ -775,25 +775,6 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(menu?.items.find((item) => item.uid === "visibility")?.targetMenuUids).toEqual(["a", "b"]);
   });
 
-  it("preserves up and left expansion directions", async () => {
-    const { normalizeMenu } = await import("../config");
-    const upMenu = normalizeMenu({
-      uid: "menu-up",
-      orientation: "row",
-      expandDirection: "up",
-      items: [],
-    });
-    const leftMenu = normalizeMenu({
-      uid: "menu-left",
-      orientation: "column",
-      expandDirection: "left",
-      items: [],
-    });
-
-    expect(upMenu?.expandDirection).toBe("up");
-    expect(leftMenu?.expandDirection).toBe("left");
-  });
-
   it("preserves a menu toggle rename while normalizing settings", async () => {
     const { normalizeStoredMenuItem } = await import("../config");
     const item = normalizeStoredMenuItem({

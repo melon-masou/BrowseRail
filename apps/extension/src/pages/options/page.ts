@@ -7,6 +7,8 @@ import {
   t,
   type Lang,
 } from "@browserail/i18n";
+import { isExportedSettingsData } from "@browserail/protocol";
+import { chooseTransferOptions } from "./components/transfer-options";
 import { createOptionsState } from "./state";
 import { loadOptions, createPersistence } from "./persistence";
 import { createBookmarkLibrary } from "./bookmark-library";
@@ -200,12 +202,14 @@ export async function mountOptionsPage() {
   );
   element("export-btn").addEventListener(
     "click",
-    () => {
+    async () => {
       if (state.dirty.settings) {
         flash(t("export.saveFirst"), 3000);
         return;
       }
-      const data = persistence.exportSettings();
+      const includeBars = await chooseTransferOptions("export");
+      if (includeBars === undefined || scope.signal.aborted) return;
+      const data = await persistence.exportSettings(includeBars);
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
       );
@@ -238,9 +242,13 @@ export async function mountOptionsPage() {
       if (!file) return;
       void file
         .text()
-        .then((text) => {
+        .then(async (text) => {
           if (scope.signal.aborted) return;
-          persistence.importSettings(text);
+          const parsed: unknown = JSON.parse(text);
+          if (!isExportedSettingsData(parsed)) throw new Error(t("import.invalidJson"));
+          const includeBars = await chooseTransferOptions("import", parsed.barConfigurations !== undefined);
+          if (includeBars === undefined || scope.signal.aborted) return;
+          await persistence.importSettings(text, includeBars);
           flash(t("import.savedOk"), 3000);
         })
         .catch((error) => showStatus(t("import.failed", { error: String(error) })));

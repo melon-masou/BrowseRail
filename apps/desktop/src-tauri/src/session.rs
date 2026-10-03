@@ -5,7 +5,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use crate::protocol::{
-    BrowserInstance, FreePosition, MenuPlacement, MenuSpacing, NativeMessage, SyncedMenu, SyncedNativeShortcut,
+    BrowserInstance, MenuPlacement, MenuSpacing, NativeMessage, SyncedMenu, SyncedNativeShortcut,
 };
 
 #[derive(Default)]
@@ -235,32 +235,6 @@ impl SessionRegistry {
             .unwrap_or_default()
     }
 
-    /// Report a free surface's new absolute screen position back to the
-    /// extension for persistence.
-    pub fn update_free_placement(
-        &self,
-        instance_uid: &str,
-        menu_uid: String,
-        x: f64,
-        y: f64,
-    ) -> Result<(), String> {
-        let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
-        let session = sessions
-            .get_mut(instance_uid)
-            .ok_or("The browser instance is disconnected")?;
-
-        if let Some(synced) = session.menus.get_mut(&(None, menu_uid.clone())) {
-            synced.set_free_position(FreePosition { x, y });
-        }
-
-        session
-            .outgoing
-            .as_ref()
-            .ok_or("The browser instance is disconnected")?
-            .send(NativeMessage::UpdateFreePlacement { menu_uid, x, y })
-            .map_err(|_| "The browser instance is disconnected".into())
-    }
-
     pub fn menu(
         &self,
         instance_uid: &str,
@@ -347,6 +321,7 @@ impl SessionRegistry {
         menu_uid: String,
         placement: MenuPlacement,
         spacing: MenuSpacing,
+        settings: crate::protocol::NativeBarSettings,
     ) -> Result<(), String> {
         let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
@@ -355,16 +330,10 @@ impl SessionRegistry {
 
         for synced in session.menus.values_mut() {
             if synced.view.uid == menu_uid {
+                settings.apply_view(&mut synced.view);
                 synced.view.gap_ratio = Some(spacing.gap_ratio);
                 synced.view.extra_gaps = spacing.extra_gaps.clone();
-                if synced.is_free() {
-                    // A free surface has no browser-relative anchor. Preserve its offsets and
-                    // update only the dimensions shared with the bound copies.
-                    synced.placement.item_width = placement.item_width;
-                    synced.placement.item_height = placement.item_height;
-                } else {
-                    synced.placement = placement;
-                }
+                synced.placement = placement;
             }
         }
 
@@ -377,6 +346,7 @@ impl SessionRegistry {
                 menu_uid,
                 placement,
                 spacing,
+                settings,
             })
             .map_err(|_| "The browser instance is disconnected".into())
     }

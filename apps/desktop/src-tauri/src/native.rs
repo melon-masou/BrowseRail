@@ -172,10 +172,10 @@ pub enum NativeCommand {
     },
     SaveMenuLayout {
         instance_uid: String,
-        window_uid: String,
         menu_uid: String,
         placement: MenuPlacement,
         spacing: MenuSpacing,
+        settings: crate::protocol::NativeBarSettings,
     },
     CancelCustomization {
         instance_uid: String,
@@ -1121,21 +1121,14 @@ impl NativeReactor {
                 }
                 NativeCommand::SaveMenuLayout {
                     instance_uid,
-                    window_uid,
                     menu_uid,
                     placement,
                     spacing,
+                    settings,
                 } => {
-                    if window_uid.is_empty() {
-                        if let Some(position) = placement.free_position {
-                            let _ = self.registry.update_free_placement(
-                                &instance_uid, menu_uid.clone(), position.x, position.y,
-                            );
-                        }
-                    }
                     let _ = self
                         .registry
-                        .update_menu_layout(&instance_uid, menu_uid, placement, spacing);
+                        .update_menu_layout(&instance_uid, menu_uid, placement, spacing, settings);
                     self.check_update_tray();
                 }
                 NativeCommand::CancelCustomization {
@@ -1434,7 +1427,7 @@ impl NativeReactor {
 
     fn destroy_instance_surfaces(&self, instance_uid: String) {
         self.popups.remove_instance(&instance_uid);
-        let prefixes = ["menu", "free", "popup", "temporary-confirm"]
+        let prefixes = ["menu", "free", "popup", "temporary-confirm", "bar-settings"]
             .map(|kind| instance_surface_prefix(kind, &instance_uid));
         let app = self.app.clone();
         let surfaces = self.surfaces.clone();
@@ -1449,7 +1442,7 @@ impl NativeReactor {
                 .filter(|label| prefixes.iter().any(|prefix| label.starts_with(prefix)))
                 .collect::<Vec<_>>();
             labels.sort_by_key(|label| {
-                !label.starts_with(&prefixes[2]) && !label.starts_with(&prefixes[3])
+                !prefixes[2..].iter().any(|prefix| label.starts_with(prefix))
             });
             surfaces.remove_labels(&labels);
             if let Ok(mut levels) = window_levels.lock() {

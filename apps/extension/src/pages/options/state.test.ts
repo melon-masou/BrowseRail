@@ -6,7 +6,6 @@ function initialSettings(): SettingsDraft {
     menus: [
       {
         uid: "menu",
-        orientation: "column",
         items: [
           { uid: "static-item", type: "static", staticUid: "static" },
           { uid: "other-item", type: "temporary", temporaryUid: "temporary" },

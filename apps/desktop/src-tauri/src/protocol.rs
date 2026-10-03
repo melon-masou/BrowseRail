@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
@@ -83,13 +83,7 @@ pub enum NativeMessage {
         menu_uid: String,
         placement: MenuPlacement,
         spacing: MenuSpacing,
-    },
-    #[serde(rename = "updateFreePlacement")]
-    UpdateFreePlacement {
-        #[serde(rename = "menuUid")]
-        menu_uid: String,
-        x: f64,
-        y: f64,
+        settings: NativeBarSettings,
     },
     #[serde(rename = "verifyWindowPairing")]
     VerifyWindowPairing {
@@ -260,6 +254,33 @@ impl MenuSpacing {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeBarSettings {
+    pub orientation: MenuOrientation,
+    pub button_font_size: f64,
+    pub popup_font_size: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expand_direction: Option<ExpandDirection>,
+    pub expand_alignment: ExpandAlignment,
+    pub attachment_mode: AttachmentMode,
+    pub on_top_mode: OnTopMode,
+}
+impl NativeBarSettings {
+    pub fn is_valid(&self) -> bool {
+        self.button_font_size.is_finite() && (self.button_font_size == -1.0 || self.button_font_size >= 1.0)
+            && self.popup_font_size.is_finite() && self.popup_font_size >= 1.0
+            && (self.attachment_mode != AttachmentMode::Free || self.on_top_mode == OnTopMode::AlwaysOnTop)
+    }
+    pub fn apply_view(&self, view: &mut MenuView) {
+        view.orientation = self.orientation;
+        view.button_font_size = Some(self.button_font_size);
+        view.popup_font_size = Some(self.popup_font_size);
+        view.expand_direction = self.expand_direction;
+        view.expand_alignment = Some(self.expand_alignment);
+    }
+}
+
 /// NATIVE axis: window behavior the webview never reads. `visible` is the
 /// URL-driven show/hide gate; when false the surface is kept alive but hidden
 /// (no destroy/recreate flicker), for both bound and free menus.
@@ -323,10 +344,6 @@ impl SyncedMenu {
         self.placement.free_position
     }
 
-    pub fn set_free_position(&mut self, position: FreePosition) {
-        self.placement.free_position = Some(position);
-    }
-
     pub fn is_free(&self) -> bool {
         matches!(self.target, MenuTarget::Free { .. })
     }
@@ -335,11 +352,13 @@ impl SyncedMenu {
 /// Desktop→webview projection of a synced menu: render content (flattened) plus
 /// the resolved geometry the surface lays itself out from. This is an internal
 /// desktop contract, not the extension wire protocol; the webview reads the view
-/// fields and `placement` only (never native props or target). Mirrors
+/// fields, placement and native edit settings. Runtime visibility/targets remain in Rust. Mirrors
 /// `SurfaceMenu` in apps/desktop/src/pages/menu.ts.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceMenu {
+    pub attachment_mode: AttachmentMode,
+    pub on_top_mode: OnTopMode,
     #[serde(flatten)]
     pub view: MenuView,
     pub placement: MenuPlacement,
@@ -348,6 +367,8 @@ pub struct SurfaceMenu {
 impl SurfaceMenu {
     pub fn from_synced(synced: &SyncedMenu) -> Self {
         Self {
+            attachment_mode: synced.native.attachment_mode,
+            on_top_mode: synced.native.on_top_mode,
             view: synced.view.clone(),
             placement: synced.placement,
         }

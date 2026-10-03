@@ -1,5 +1,7 @@
 import {
   isNativeMessage,
+  barSettingsFromView,
+  normalizeMenuSpacing,
   actionUid,
   customBookmarkUid,
   PROTOCOL_VERSION,
@@ -21,7 +23,6 @@ import {
 import { createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmarks/registry";
 import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser/windows";
 import {
-  DEFAULT_FONT_SIZE,
   loadBookmarkRootPrefix,
   loadConfig,
   loadDisplayMode,
@@ -29,17 +30,13 @@ import {
   loadBrowserPlacements,
   loadBrowserCollapsed,
   removeBrowserPlacement,
-  loadFreePlacements,
-  loadMenuPlacements,
   loadWidgetEnabled,
   loadDynamicValues,
   loadTemporaryNotes,
-  menuSpacingForMode,
+  loadBarConfigurations,
+  resolveBarConfiguration,
+  saveBarLayout,
   removeMenuPlacements,
-  resolveMenuPlacement,
-  saveFreePlacement,
-  saveMenuPlacement,
-  saveMenuSpacing,
   saveWidgetEnabled,
 } from "../config";
 import { loadInstanceUid } from "../config/instance-identity";
@@ -579,15 +576,11 @@ async function handleMessage(raw: unknown): Promise<void> {
   }
 
   if (value.type === "updateMenuLayout") {
-    await saveMenuPlacement(value.menuUid, value.placement);
-    await saveMenuSpacing(value.menuUid, value.spacing, "native");
+    await saveBarLayout(value.menuUid, "native", value.placement, value.spacing, value.settings);
     requestSync();
   }
 
-  if (value.type === "updateFreePlacement") {
-    await saveFreePlacement(value.menuUid, { x: value.x, y: value.y });
-    requestSync();
-  }
+
 }
 
 let syncTask: Promise<void> | undefined;
@@ -612,12 +605,10 @@ async function drainSync(): Promise<void> {
 }
 
 async function syncOnce(): Promise<void> {
-  const [config, windows, placements, rootPrefix, freePlacements, bookmarkTree, dynamicValues, temporaryNotes, mode, enabled, browserPlacements, browserCollapsed, browserEditing] = await Promise.all([
+  const [config, windows, rootPrefix, bookmarkTree, dynamicValues, temporaryNotes, mode, enabled, browserPlacements, browserCollapsed, browserEditing, barConfigs] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
-    loadMenuPlacements(),
     loadBookmarkRootPrefix(),
-    loadFreePlacements(),
     browser.bookmarks.getTree().catch(() => []),
     loadDynamicValues(),
     loadTemporaryNotes(),
@@ -626,6 +617,7 @@ async function syncOnce(): Promise<void> {
     loadBrowserPlacements(),
     loadBrowserCollapsed(),
     loadBrowserEditing(),
+    loadBarConfigurations(),
   ]);
   const dynamicByUid = new Map((config.dynamicBookmarks ?? []).map((db) => [db.uid, db]));
   const dynamicResolve = (dynamicUid: string) => {
@@ -643,51 +635,23 @@ async function syncOnce(): Promise<void> {
   const bookmarkTargets = createBookmarkTargetDraft();
   const menuStates = await Promise.all(
     activeMenus.map(async (menu, index) => {
-      const items = await resolveMenuItems(
-        menu.items,
-        menu.tabMode,
-        menu.color,
-        menu.expandDirection,
-        rootPrefix,
-        {
+      async function viewForMode(mode: "native" | "browser"): Promise<MenuView> {
+        const settings = mode === "native" ? resolveBarConfiguration(barConfigs, "native", menu.uid, index) : resolveBarConfiguration(barConfigs, "browser", menu.uid, index);
+        const items = await resolveMenuItems(menu.items, menu.tabMode, menu.color, settings.expandDirection, rootPrefix, {
           tree: bookmarkTree as BookmarkNode[],
-          registerTarget: (browserBookmarkId) => bookmarkTargets.register(browserBookmarkId),
-          dynamicResolve,
-          temporaryNotes,
-          staticBookmarks: config.staticBookmarks,
-          temporaryBookmarks: config.temporaryBookmarks,
-        },
-      );
-      const placement = resolveMenuPlacement(
-        placements[menu.uid],
-        index,
-        menu.orientation,
-        0,
-        menu.buttonFontSize,
-      );
-      const attachmentMode = menu.attachmentMode ?? "lastFocused";
-      const view: MenuView = {
-        uid: menu.uid,
-        items,
-        orientation: menu.orientation,
-        ...(menu.color ? { color: menu.color } : {}),
-        ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
-        ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
-        ...(menu.expandAlignment ? { expandAlignment: menu.expandAlignment } : {}),
-        buttonFontSize: menu.buttonFontSize ?? DEFAULT_FONT_SIZE,
-        popupFontSize: menu.popupFontSize ?? DEFAULT_FONT_SIZE,
-        ...menuSpacingForMode(menu, "native"),
-      };
+          registerTarget: browserBookmarkId => bookmarkTargets.register(browserBookmarkId),
+          dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks,
+        });
+        return { uid: menu.uid, items, ...barSettingsFromView(settings), ...normalizeMenuSpacing(settings),
+          ...(menu.color ? { color: menu.color } : {}),
+          ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
+        };
+      }
+      const settings = resolveBarConfiguration(barConfigs, "native", menu.uid, index);
+      const view = await viewForMode(mode);
       return {
-        uid: menu.uid,
-        isFree: attachmentMode === "free",
-        view,
-        placement,
-        attachmentMode,
-        onTopMode:
-          attachmentMode === "free"
-            ? ("alwaysOnTop" as const)
-            : menu.onTopMode ?? "aboveBrowser",
+        uid: menu.uid, isFree: settings.attachmentMode === "free", view,
+        placement: settings.placement, attachmentMode: settings.attachmentMode, onTopMode: settings.onTopMode,
       };
     }),
   );
@@ -733,10 +697,9 @@ async function syncOnce(): Promise<void> {
     : nativeMenuStates
         .filter((menu) => menu.isFree)
         .map((menu) => {
-          const pos = freePlacements[menu.uid];
           return {
             view: menu.view,
-            placement: { ...menu.placement, ...(pos ? { freePosition: pos } : {}) },
+            placement: menu.placement,
             native: {
               attachmentMode: "free" as const,
               onTopMode: menu.onTopMode,

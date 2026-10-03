@@ -79,7 +79,6 @@ it("keeps a temporary value after removing its button and removes it only after 
   const config = await loadConfig();
   config.panel.menus = [{
     uid: "menu",
-    orientation: "column",
     items: [
       { uid: "keep-button", type: "temporary", temporaryUid: "keep" },
       { uid: "remove-button", type: "temporary", temporaryUid: "remove" },
@@ -160,7 +159,7 @@ it("clears a slot's URL and note together without changing another slot", async 
 });
 
 it("does not migrate an old inline temporary button or authorize an undefined slot", async () => {
-  const menu = normalizeMenu({ uid: "menu", orientation: "row", items: [{ uid: "old", type: "temporary" }] });
+  const menu = normalizeMenu({ uid: "menu", items: [{ uid: "old", type: "temporary" }] });
   expect(menu?.items).toEqual([]);
   const tabs = { query: vi.fn(async () => [{ url: "https://example.com" }]) };
   expect(await captureTemporaryUrl(tabs, [], "old", "1", true)).toBe("unavailable");

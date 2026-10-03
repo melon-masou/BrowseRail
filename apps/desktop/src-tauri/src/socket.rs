@@ -251,9 +251,10 @@ async fn handle_connection(
                                         crate::debug::log("Socket", format!("Duplicate hello ignored: instance={:?}", registered_instance));
                                         continue;
                                     }
-                                    if protocol_version == 0 {
-                                        crate::debug::log("Socket", "Invalid hello protocol version 0");
-                                        continue;
+                                    if protocol_version != crate::protocol::PROTOCOL_VERSION {
+                                        crate::debug::log("Socket", format!("Unsupported hello protocol version {protocol_version}"));
+                                        let _ = writer.send(Message::Close(None)).await;
+                                        break;
                                     }
                                     let instance_uid = instance.uid.clone();
                                     registered_instance = Some(instance_uid.clone());

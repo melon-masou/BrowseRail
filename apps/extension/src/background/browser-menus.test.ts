@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Runtime } from "webextension-polyfill";
-import type { MenuView } from "@browserail/protocol";
+import { defaultBarSettings, defaultNativeBarSettings, type MenuView } from "@browserail/protocol";
 import type { MenuRequest, MenuReply } from "../page-operations/messages";
 
 const mocks = vi.hoisted(() => ({
@@ -37,11 +37,11 @@ vi.mock("webextension-polyfill", () => ({ default: {
 
 import { createBrowserMenus } from "./browser-menus";
 import {
-  loadConfig, saveConfig, loadDisplayMode, saveDisplayMode, loadBrowserPlacements, saveBrowserPlacement,
-  loadMenuPlacements, saveMenuPlacement, removeBrowserPlacement, loadTemporaryValues, loadTemporaryNotes,
+  loadConfig, saveConfig, loadDisplayMode, saveDisplayMode, loadBrowserPlacements,
+  loadMenuPlacements, removeBrowserPlacement, loadTemporaryValues, loadTemporaryNotes,
   saveBrowserEditing,
   saveSyncEnabled,
-  saveMenuSpacing, menuSpacingForMode,
+  saveBarLayout, loadBarConfigurations, resolveBarConfiguration, defaultMenuPlacement,
 } from "../config";
 
 beforeEach(() => {
@@ -79,7 +79,7 @@ const view: MenuView = { uid: "source", orientation: "row", items: [
 async function fixture() {
   await saveDisplayMode("browser");
   const config = await loadConfig();
-  config.panel.menus = [{ uid: "source", orientation: "row", attachmentMode: "free", items: [
+  config.panel.menus = [{ uid: "source", items: [
     { uid: "reload", type: "browserAction", browserAction: "reload" }, { uid: "slot-button", type: "temporary", temporaryUid: "slot" },
   ] }];
   config.temporaryBookmarks = [{ uid: "slot", name: "Later" }];
@@ -103,8 +103,8 @@ it("keeps display mode and browser placements local when menu configuration is r
   await saveDisplayMode("browser");
   const native = { boundPosition: { anchor: "topLeft" as const, offsetX: 80, offsetY: 90 }, itemWidth: 100, itemHeight: 40 };
   const injected = { anchor: "bottomRight" as const, offsetX: 30, offsetY: 40, itemWidth: 120, itemHeight: 50 };
-  await saveMenuPlacement("menu", native);
-  await saveBrowserPlacement("menu", injected);
+  await saveBarLayout("menu", "native", native, { gapRatio: 0.11, extraGaps: {} }, defaultNativeBarSettings());
+  await saveBarLayout("menu", "browser", { boundPosition: { anchor: injected.anchor, offsetX: injected.offsetX, offsetY: injected.offsetY }, itemWidth: injected.itemWidth, itemHeight: injected.itemHeight }, { gapRatio: 0.11, extraGaps: {} }, defaultBarSettings());
   await saveConfig(await loadConfig());
   await saveDisplayMode("native"); await saveDisplayMode("browser");
   expect(await loadDisplayMode()).toBe("browser");
@@ -112,7 +112,7 @@ it("keeps display mode and browser placements local when menu configuration is r
   expect((await loadMenuPlacements()).menu).toEqual(native);
   expect(await loadConfig()).not.toHaveProperty("displayMode");
   await removeBrowserPlacement("menu");
-  expect((await loadBrowserPlacements()).menu).toBeUndefined();
+  expect((await loadBrowserPlacements()).menu).not.toEqual(injected);
   expect((await loadMenuPlacements()).menu).toEqual(native);
 });
 
@@ -179,16 +179,16 @@ it("restores the selected global matching and its definitions from Chrome sync",
   expect(await service.forTab(17)).toEqual([]);
 });
 
-it("keeps popup alignment after a fresh config read and restores it from Chrome sync", async () => {
+it("keeps both modes' bar settings local when shared configuration syncs", async () => {
   const config = await fixture();
-  config.panel.menus[0]!.expandAlignment = "center";
-  await saveConfig(config);
-  expect((await loadConfig()).panel.menus[0]!.expandAlignment).toBe("center");
-
+  await saveBarLayout("source", "browser", defaultMenuPlacement(), { gapRatio: 0.2, extraGaps: {} }, { ...defaultBarSettings(), expandAlignment: "center" });
+  await saveBarLayout("source", "native", defaultMenuPlacement(), { gapRatio: 0.4, extraGaps: {} }, defaultNativeBarSettings());
   await saveSyncEnabled(true);
   await saveConfig(config);
-  mocks.storage.config = { ...config, panel: { menus: [{ ...config.panel.menus[0]!, expandAlignment: "edge" }] } };
-  expect((await loadConfig()).panel.menus[0]!.expandAlignment).toBe("center");
+  const bars = await loadBarConfigurations();
+  expect(resolveBarConfiguration(bars, "browser", "source").expandAlignment).toBe("center");
+  expect(resolveBarConfiguration(bars, "native", "source").expandAlignment).toBe("edge");
+  expect(mocks.syncStorage).not.toHaveProperty("bar_configurations");
 });
 
 it("executes a webpage's browser action on its own window and rejects it after switching to native", async () => {
@@ -279,39 +279,29 @@ it("rejects confirmation messages from webpages and rechecks permissions before 
   expect(await loadTemporaryValues()).toEqual({});
 });
 
-it("only saves browser layout while editing is enabled and keeps Native spacing independent", async () => {
+it("only saves browser layout while editing is enabled and keeps Native settings independent", async () => {
   const config = await fixture();
-  const nativeSpacing = { gapRatio: 0.4, extraGaps: { "item-1": 0.7 } };
-  await saveMenuSpacing("source", nativeSpacing, "native");
+  const native = { ...defaultNativeBarSettings(), gapRatio: 0.4, extraGaps: { "item-1": 0.7 }, placement: defaultMenuPlacement() };
+  await saveBarLayout("source", "native", native.placement, native, native);
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   const placement = { anchor: "bottomRight" as const, offsetX: 30, offsetY: 40, itemWidth: 120, itemHeight: 50 };
-  await page.request({ type: "layout", spacing: { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } }, menuUid: "source", placement });
-  expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
+  const settings = { ...defaultBarSettings(), orientation: "row" as const, expandAlignment: "center" as const, buttonFontSize: 20 };
+  const spacing = { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } };
+  const command = { type: "layout" as const, menuUid: "source", placement, settings, spacing };
+  expect(await page.request(command)).toHaveProperty("error");
   expect((await loadBrowserPlacements()).source).toBeUndefined();
   await saveBrowserEditing(true);
-  await service.publish(config, [view], {}, {}, true, true);
-  expect(await page.snapshot()).toMatchObject({ menus: [{ editingLocked: false }] });
-  await page.request({ type: "layout", spacing: { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } }, menuUid: "source", placement });
+  expect(await page.request(command)).not.toHaveProperty("error");
   expect((await loadBrowserPlacements()).source).toEqual(placement);
-  const browserSpacing = { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } };
-  const saved = await loadConfig();
-  const savedMenu = saved.panel.menus.find(menu => menu.uid === "source")!;
-  expect(menuSpacingForMode(savedMenu, "browser")).toEqual(browserSpacing);
-  expect(menuSpacingForMode(savedMenu, "native")).toEqual(nativeSpacing);
-  await service.publish(saved, [{ ...view, ...nativeSpacing }], {}, {}, true, true);
-  expect(await page.snapshot()).toMatchObject({ menus: [{ view: browserSpacing }] });
+  const bars = await loadBarConfigurations();
+  expect(bars.native.source).toEqual(native);
+  expect(bars.browser.source).toMatchObject({ ...settings, ...spacing });
   await saveDisplayMode("native");
-  await page.request({ type: "layout", spacing: { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } }, menuUid: "source", placement: { ...placement, offsetX: 99 } });
+  expect(await page.request({ ...command, placement: { ...placement, offsetX: 99 } })).toHaveProperty("error");
   expect((await loadBrowserPlacements()).source).toEqual(placement);
-  const nextNativeSpacing = { gapRatio: 0.6, extraGaps: {} };
-  await saveMenuSpacing("source", nextNativeSpacing, "native");
-  await saveDisplayMode("browser");
-  const reloaded = await loadConfig();
-  expect(menuSpacingForMode(reloaded.panel.menus[0]!, "native")).toEqual(nextNativeSpacing);
-  expect(menuSpacingForMode(reloaded.panel.menus[0]!, "browser")).toEqual(browserSpacing);
-  await service.publish(reloaded, [{ ...view, ...nextNativeSpacing }], {}, {}, true, true);
-  expect(await page.snapshot()).toMatchObject({ menus: [{ view: browserSpacing }] });
+  await saveConfig(await loadConfig());
+  expect(await loadBarConfigurations()).toEqual(bars);
 });
 
 it("does not offer empty menus or menus on websites whose permission was revoked", async () => {

@@ -16,11 +16,12 @@
 // (hidden-but-kept), so switching URLs never destroys and recreates a surface.
 // =============================================================================
 
+import { isNativeBarSettings, type NativeBarSettings } from "./bar";
 import { isMenuSpacing, type MenuSpacing } from "./menu";
 import type { MenuView } from "./menu";
 import type { SyncedNativeShortcut } from "./index";
 
-export const PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 2 as const;
 export const DEFAULT_PORT = 17654 as const;
 export const DEFAULT_WS_URL = "ws://127.0.0.1:17654" as const;
 export const DEFAULT_HTTP_URL = "http://127.0.0.1:17654" as const;
@@ -193,22 +194,12 @@ export type NativeMessage =
       menuUid?: string;
     }
   | {
-      // Desktop submits spacing and geometry together after editing
-      // (bound: anchor + offsets + item size; free: item size). The free
-      // surface's absolute position is reported separately via updateFreePlacement,
-      // so a high-frequency drag stays a slim position-only message.
+      // An edit commits settings, spacing and complete placement together.
       type: "updateMenuLayout";
+      settings: NativeBarSettings;
       menuUid: string;
       placement: MenuPlacement;
       spacing: MenuSpacing;
-    }
-  | {
-      // Desktop reports a free surface's new absolute screen position after the
-      // user drags it; the extension persists it in free_placements.
-      type: "updateFreePlacement";
-      menuUid: string;
-      x: number;
-      y: number;
     }
   | { type: "verifyWindowPairing"; requestUid: string; windowUid: string }
   | { type: "pairWindowResult"; requestUid: string; windowUid: string; ok: boolean }
@@ -233,13 +224,7 @@ export function isNativeMessage(value: unknown): value is NativeMessage {
           typeof value.windowUid === "string")
       );
     case "updateMenuLayout":
-      return typeof value.menuUid === "string" && isMenuPlacement(value.placement) && isMenuSpacing(value.spacing);
-    case "updateFreePlacement":
-      return (
-        typeof value.menuUid === "string" &&
-        typeof value.x === "number" &&
-        typeof value.y === "number"
-      );
+      return typeof value.menuUid === "string" && isMenuPlacement(value.placement) && isMenuSpacing(value.spacing) && isNativeBarSettings(value.settings);
     case "verifyWindowPairing":
       return typeof value.requestUid === "string" && typeof value.windowUid === "string";
     case "pairWindowResult":
@@ -257,7 +242,7 @@ export function isNativeMessage(value: unknown): value is NativeMessage {
   }
 }
 
-function isMenuPlacement(value: unknown): value is MenuPlacement {
+export function isMenuPlacement(value: unknown): value is MenuPlacement {
   if (!isRecord(value) || !isRecord(value.boundPosition)) {
     return false;
   }

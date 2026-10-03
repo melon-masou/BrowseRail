@@ -16,6 +16,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   let pointerInside = false;
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverPending = false;
+  let waitForPointerMovement = doc.hidden;
   let pendingRender = false;
   let opening = 0;
   const waiting: Array<{ resolve(): void; reject(error: unknown): void }> = [];
@@ -58,10 +59,11 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     const schedule = (): void => {
       cancelHover();
       hoverPending = true;
+      if (doc.hidden || waitForPointerMovement) return;
       hoverTimer = renderLifetime.timeout(() => {
         hoverPending = false;
         hoverTimer = undefined;
-        if (button.isConnected) open();
+        if (!doc.hidden && !waitForPointerMovement && button.isConnected) open();
       }, 60);
     };
     const options = { signal: renderLifetime.signal };
@@ -72,7 +74,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     button.addEventListener("pointerdown", cancelHover, { ...options, capture: true });
   }
   async function openPopup(entry: FolderEntry, button: HTMLElement): Promise<void> {
-    if (!state.editingLocked || !lifetime.alive) return;
+    if (!state.editingLocked || !lifetime.alive || doc.hidden || waitForPointerMovement) return;
     cancelHover();
     cancelClose();
     clearExpanded();
@@ -157,7 +159,10 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
       }
     } else if (entry.expandOnHover !== false) {
       scheduleHover(button, () => { if (entry.children.length) run(openPopup(entry, button)); });
-      button.addEventListener("focus", () => { cancelClose(); if (entry.children.length) run(openPopup(entry, button)); }, options);
+      button.addEventListener("focus", () => {
+        if (doc.hidden || waitForPointerMovement) return;
+        cancelClose(); if (entry.children.length) run(openPopup(entry, button));
+      }, options);
     } else {
       button.addEventListener("pointerenter", () => { if (activeFolder && activeFolder !== entry.uid) requestClose(); }, options);
       button.addEventListener("pointerdown", event => {
@@ -202,6 +207,22 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   root.addEventListener("pointerout", event => {
     if (!event.relatedTarget) { pointerInside = false; session?.setBarPointerInside(false); }
   }, { signal: lifetime.signal, passive: true });
+  doc.addEventListener("visibilitychange", () => {
+    cancelHover();
+    pointerInside = false;
+    waitForPointerMovement = true;
+    if (doc.hidden) run(closePopup());
+  }, { signal: lifetime.signal });
+  // Restoring a tab can replay pointer entry and focus at the old cursor position.
+  doc.addEventListener("pointermove", event => {
+    if (!doc.hidden && Math.abs(event.movementX) + Math.abs(event.movementY) > 0) waitForPointerMovement = false;
+  }, { capture: true, passive: true, signal: lifetime.signal });
+  root.addEventListener("pointerdown", () => {
+    if (!doc.hidden) waitForPointerMovement = false;
+  }, { capture: true, signal: lifetime.signal });
+  doc.addEventListener("keydown", event => {
+    if (!doc.hidden && !event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "Tab" || event.key.startsWith("Arrow"))) waitForPointerMovement = false;
+  }, { capture: true, signal: lifetime.signal });
   render();
   return {
     ready: lifetime.settle().then(() => {}),

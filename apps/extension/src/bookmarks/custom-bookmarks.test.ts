@@ -76,7 +76,7 @@ it("syncs definitions and menu references across installations while keeping tem
   config.staticBookmarks = [{ uid: "static", name: "Docs", url: "https://example.com/docs" }];
   config.temporaryBookmarks = [{ uid: "temporary", name: "Later" }];
   config.dynamicBookmarks = [{ uid: "dynamic", name: "Script", code: "return { newUrl: null };" }];
-  config.panel.menus = [{ uid: "menu", orientation: "row", items: [
+  config.panel.menus = [{ uid: "menu", items: [
     { uid: "one", ...customBookmarkReference("static", "static") },
     { uid: "two", ...customBookmarkReference("temporary", "temporary") },
   ] }];
