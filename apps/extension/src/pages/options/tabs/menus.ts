@@ -14,7 +14,6 @@ import {
 import {
   createMenu,
   DEFAULT_FONT_SIZE,
-  DEFAULT_MENU_GAP_PERCENT,
   normalizeFontSize,
   type StoredMenu,
   type StoredMenuItem,
@@ -65,7 +64,6 @@ export function mountMenusTab(
   const menuSettingFontSize = element<HTMLInputElement>("menu-setting-font-size");
   const menuSettingFontSizeAuto = element<HTMLInputElement>("menu-setting-font-size-auto");
   const menuSettingPopupFontSize = element<HTMLInputElement>("menu-setting-popup-font-size");
-  const menuSettingGap = element<HTMLInputElement>("menu-setting-gap");
   const menuSettingDefaultColor = element<HTMLButtonElement>("menu-setting-default-color");
   const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
   const menuSettingAttachmentMode = element<HTMLSelectElement>("menu-setting-attachment-mode");
@@ -76,8 +74,6 @@ export function mountMenusTab(
   const itemSettingsClose = element<HTMLButtonElement>("item-settings-close");
   const itemSettingsFolderControls = element<HTMLDivElement>("item-settings-folder-controls");
   const itemSettingsBookmarkControls = element<HTMLDivElement>("item-settings-bookmark-controls");
-  const itemSettingsSpaceControls = element<HTMLDivElement>("item-settings-space-controls");
-  const itemSettingSpaceUnits = element<HTMLInputElement>("item-setting-space-units");
   const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
   const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
   const itemSettingTabMode = element<HTMLSelectElement>("item-setting-tab-mode");
@@ -94,7 +90,6 @@ export function mountMenusTab(
   const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
   const addItemPopover = element<HTMLDivElement>("add-item-popover");
   const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
-  const addPopoverSpaceBtn = element<HTMLButtonElement>("add-popover-space-btn");
   const addPopoverActionBtn = element<HTMLButtonElement>("add-popover-action-btn");
   const addActionDialog = element<HTMLDialogElement>("add-action-dialog");
   const addActionForm = element<HTMLFormElement>("add-action-form");
@@ -271,18 +266,6 @@ export function mountMenusTab(
       { signal: scope.signal },
     );
 
-    menuSettingGap.addEventListener(
-      "input",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        const val = parseInt(menuSettingGap.value, 10);
-        if (menu && !isNaN(val)) {
-          state.editMenuAppearance(menu.uid, { gap: val });
-        }
-      },
-      { signal: scope.signal },
-    );
-
     menuSettingAttachmentMode.addEventListener(
       "change",
       () => {
@@ -342,7 +325,6 @@ export function mountMenusTab(
         : DEFAULT_FONT_SIZE;
     const popupFs =
       menu.popupFontSize !== undefined ? normalizeFontSize(menu.popupFontSize) : DEFAULT_FONT_SIZE;
-    const gapVal = menu.gap !== undefined ? menu.gap : DEFAULT_MENU_GAP_PERCENT;
     menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
     menuSettingOrientation.value = menu.orientation;
     menuSettingExpandDirection.value = menu.expandDirection ?? "";
@@ -351,7 +333,6 @@ export function mountMenusTab(
     menuSettingFontSizeAuto.checked = barFontAuto;
     menuSettingFontSize.disabled = barFontAuto;
     menuSettingPopupFontSize.value = String(popupFs);
-    menuSettingGap.value = String(gapVal);
     updateMenuSettingColorControls(menu);
     menuSettingAttachmentMode.value = menu.attachmentMode ?? "lastFocused";
     const isFree = menuSettingAttachmentMode.value === "free";
@@ -553,25 +534,6 @@ export function mountMenusTab(
       { signal: scope.signal },
     );
 
-    itemSettingSpaceUnits.addEventListener(
-      "input",
-      () => {
-        if (!activeItemSettings) return;
-        const menu = state.settings.menus[activeItemSettings.menuIndex];
-        const item = menu?.items[activeItemSettings.itemIndex];
-        if (!item || item.type !== "space") return;
-
-        const val = parseFloat(itemSettingSpaceUnits.value);
-        if (!Number.isNaN(val) && val > 0) {
-          state.editItemBehavior(menu!.uid, item.uid, { units: val });
-        } else {
-          state.editItemBehavior(menu!.uid, item.uid, { units: 1 });
-        }
-        renderMenus();
-      },
-      { signal: scope.signal },
-    );
-
     itemSettingDynamicShowPageTitle.addEventListener(
       "change",
       () => {
@@ -656,109 +618,99 @@ export function mountMenusTab(
     activeItemSettings = { menuIndex, itemIndex };
     activeItemSettingsBtn = anchorEl;
 
-    const isSpace = item.type === "space";
-    if (isSpace) {
-      itemSettingsTitle.textContent = `␣ ${t("item.spaceBadge")}`;
-      itemSettingsSpaceControls.style.display = "block";
-      itemSettingsBookmarkControls.style.display = "none";
+    itemSettingsBookmarkControls.style.display = "block";
+
+    const isMenuFold = item.type === "menuFold";
+    const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction";
+    const isDynamic = item.type === "dynamic";
+    const tabModeField = itemSettingTabMode.parentElement;
+    const changeActions = itemSettingChangeBtn.parentElement;
+    if (tabModeField) tabModeField.style.display = isAction ? "none" : "";
+    if (changeActions)
+      changeActions.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
+    itemSettingsActionTargets.style.display = "none";
+
+    if (isMenuFold) {
+      itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
+      itemSettingRename.value = item.rename ?? "";
+      itemSettingsFolderControls.style.display = "none";
       itemSettingsDynamicControls.style.display = "none";
-      itemSettingSpaceUnits.value = String(item.units ?? 1);
-    } else {
-      itemSettingsSpaceControls.style.display = "none";
-      itemSettingsBookmarkControls.style.display = "block";
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
 
-      const isMenuFold = item.type === "menuFold";
-      const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction";
-      const isDynamic = item.type === "dynamic";
-      const tabModeField = itemSettingTabMode.parentElement;
-      const changeActions = itemSettingChangeBtn.parentElement;
-      if (tabModeField) tabModeField.style.display = isAction ? "none" : "";
-      if (changeActions)
-        changeActions.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
-      itemSettingsActionTargets.style.display = "none";
-
-      if (isMenuFold) {
-        itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
-        itemSettingRename.value = item.rename ?? "";
-        itemSettingsFolderControls.style.display = "none";
-        itemSettingsDynamicControls.style.display = "none";
-        positionPopover(itemSettingsPopover, rect, 250);
-        return;
-      }
-
-      if (item.type === "menusToggle" || item.type === "browserAction") {
-        const actionLabel =
-          item.type === "menusToggle"
-            ? t("menuAction.menusToggle")
-            : browserActionLabel(item.browserAction);
-        itemSettingsTitle.textContent = item.rename || actionLabel;
-        itemSettingRename.value = item.rename ?? "";
-        itemSettingsFolderControls.style.display = "none";
-        itemSettingsDynamicControls.style.display = "none";
-        if (item.type === "menusToggle") {
-          itemSettingsActionTargets.style.display = "flex";
-          renderActionTargetChoices(
-            itemSettingsActionTargets,
-            menuIndex,
-            new Set(item.targetMenuUids ?? []),
-            (uids) => {
-              state.editItemBehavior(menu.uid, item.uid, { targetMenuUids: uids });
-            },
-          );
-        }
-        positionPopover(itemSettingsPopover, rect, 250);
-        return;
-      }
-
-      if (isDynamic) {
-        const db = state.settings.dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
-        itemSettingsTitle.textContent = `🜂 ${db?.name || t("dynamic.defaultName")}`;
-        itemSettingRename.value = item.rename ?? "";
-        itemSettingTabMode.value = item.tabMode ?? "";
-        itemSettingsFolderControls.style.display = "none";
-        itemSettingsDynamicControls.style.display = "block";
-        itemSettingDynamicShowPageTitle.checked = item.showPageTitle === true;
-        positionPopover(itemSettingsPopover, rect, 250);
-        return;
-      }
-
-      if (item.type === "temporary" || item.type === "static") {
-        itemSettingsTitle.textContent = `${source.icon(item.type === "static" ? "static" : "temporary")} ${item.rename || source.name(item)}`;
-        itemSettingRename.value = item.rename ?? "";
-        itemSettingTabMode.value = item.tabMode ?? "";
-        itemSettingsFolderControls.style.display = "none";
-        itemSettingsDynamicControls.style.display = "none";
-        positionPopover(itemSettingsPopover, rect, 250);
-        return;
-      }
-
+    if (item.type === "menusToggle" || item.type === "browserAction") {
+      const actionLabel =
+        item.type === "menusToggle"
+          ? t("menuAction.menusToggle")
+          : browserActionLabel(item.browserAction);
+      itemSettingsTitle.textContent = item.rename || actionLabel;
+      itemSettingRename.value = item.rename ?? "";
+      itemSettingsFolderControls.style.display = "none";
       itemSettingsDynamicControls.style.display = "none";
+      if (item.type === "menusToggle") {
+        itemSettingsActionTargets.style.display = "flex";
+        renderActionTargetChoices(
+          itemSettingsActionTargets,
+          menuIndex,
+          new Set(item.targetMenuUids ?? []),
+          (uids) => {
+            state.editItemBehavior(menu.uid, item.uid, { targetMenuUids: uids });
+          },
+        );
+      }
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
 
-      const node = library.item(item);
-      const isFolderNode = node
-        ? node.children !== undefined || node.url === undefined
-        : item.type === "folder" || item.type === "flattenFolder";
-      const isFolder =
-        item.type === "folder" || (!item.type && isFolderNode) || item.type === "flattenFolder";
-      const lastSeg =
-        item.path && item.path.length > 0 ? item.path[item.path.length - 1] : undefined;
-      const rawLabel =
-        node?.title ?? (lastSeg ? formatSpecialRootForDisplay(lastSeg, library.tree) : "");
-      itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
+    if (isDynamic) {
+      const db = state.settings.dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
+      itemSettingsTitle.textContent = `🜂 ${db?.name || t("dynamic.defaultName")}`;
       itemSettingRename.value = item.rename ?? "";
       itemSettingTabMode.value = item.tabMode ?? "";
+      itemSettingsFolderControls.style.display = "none";
+      itemSettingsDynamicControls.style.display = "block";
+      itemSettingDynamicShowPageTitle.checked = item.showPageTitle === true;
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
 
-      if (isFolder) {
-        itemSettingsFolderControls.style.display = "flex";
-        const isFlatten = item.type === "flattenFolder";
-        itemSettingFlatten.checked = isFlatten;
-        itemSettingHoverExpand.disabled = false;
-        itemSettingHoverExpand.checked = item.expandOnHover !== false;
-        itemSettingIncludeFoldersLabel.style.display = isFlatten ? "inline-flex" : "none";
-        itemSettingIncludeFolders.checked = isFlatten && item.includeFolders === true;
-      } else {
-        itemSettingsFolderControls.style.display = "none";
-      }
+    if (item.type === "temporary" || item.type === "static") {
+      itemSettingsTitle.textContent = `${source.icon(item.type === "static" ? "static" : "temporary")} ${item.rename || source.name(item)}`;
+      itemSettingRename.value = item.rename ?? "";
+      itemSettingTabMode.value = item.tabMode ?? "";
+      itemSettingsFolderControls.style.display = "none";
+      itemSettingsDynamicControls.style.display = "none";
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
+
+    itemSettingsDynamicControls.style.display = "none";
+
+    const node = library.item(item);
+    const isFolderNode = node
+      ? node.children !== undefined || node.url === undefined
+      : item.type === "folder" || item.type === "flattenFolder";
+    const isFolder =
+      item.type === "folder" || (!item.type && isFolderNode) || item.type === "flattenFolder";
+    const lastSeg =
+      item.path && item.path.length > 0 ? item.path[item.path.length - 1] : undefined;
+    const rawLabel =
+      node?.title ?? (lastSeg ? formatSpecialRootForDisplay(lastSeg, library.tree) : "");
+    itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
+    itemSettingRename.value = item.rename ?? "";
+    itemSettingTabMode.value = item.tabMode ?? "";
+
+    if (isFolder) {
+      itemSettingsFolderControls.style.display = "flex";
+      const isFlatten = item.type === "flattenFolder";
+      itemSettingFlatten.checked = isFlatten;
+      itemSettingHoverExpand.disabled = false;
+      itemSettingHoverExpand.checked = item.expandOnHover !== false;
+      itemSettingIncludeFoldersLabel.style.display = isFlatten ? "inline-flex" : "none";
+      itemSettingIncludeFolders.checked = isFlatten && item.includeFolders === true;
+    } else {
+      itemSettingsFolderControls.style.display = "none";
     }
 
     positionPopover(itemSettingsPopover, rect, 250);
@@ -866,26 +818,6 @@ export function mountMenusTab(
         closeAddItemDropdown();
         if (menuIdx >= 0 && menuIdx < state.settings.menus.length) {
           void pickMenuBookmark(menuIdx);
-        }
-      },
-      { signal: scope.signal },
-    );
-
-    addPopoverSpaceBtn.addEventListener(
-      "click",
-      () => {
-        const menuIdx = activeAddMenuIndex;
-        closeAddItemDropdown();
-        if (menuIdx >= 0 && menuIdx < state.settings.menus.length) {
-          const menu = state.settings.menus[menuIdx];
-          if (menu) {
-            const newSpace: StoredMenuItem = {
-              uid: crypto.randomUUID(),
-              type: "space",
-              units: 1,
-            };
-            state.addMenuItem(menu.uid, newSpace);
-          }
         }
       },
       { signal: scope.signal },
@@ -1215,137 +1147,6 @@ export function mountMenusTab(
               removeBtn.title = t("menu.removeItem");
               removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
               removeBtn.addEventListener("click", () => {
-                state.removeMenuItem(menu.uid, item.uid);
-              });
-
-              controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
-              row.append(label, controls);
-              return row;
-            }
-
-            if (item.type === "space") {
-              const units = item.units ?? 1;
-              const label = document.createElement("span");
-              label.className = "item-label";
-
-              const titleSpan = document.createElement("span");
-              titleSpan.className = "item-title";
-              titleSpan.textContent = `␣ ${t("item.spaceBadge")} (${units}x)`;
-              titleSpan.title = `${t("item.spaceBadge")} (${units}x)`;
-              label.appendChild(titleSpan);
-
-              const controls = document.createElement("div");
-              controls.className = "item-color-controls";
-
-              const dragHandleBtn = document.createElement("button");
-              dragHandleBtn.type = "button";
-              dragHandleBtn.className = "drag-handle-btn";
-              dragHandleBtn.title = t("item.dragHandleTitle");
-              dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
-
-              dragHandleBtn.addEventListener("mousedown", () => {
-                row.draggable = true;
-              });
-              dragHandleBtn.addEventListener("mouseup", () => {
-                if (!row.classList.contains("is-dragging")) {
-                  row.draggable = false;
-                }
-              });
-              dragHandleBtn.addEventListener("mouseleave", () => {
-                if (!row.classList.contains("is-dragging")) {
-                  row.draggable = false;
-                }
-              });
-
-              row.addEventListener("dragstart", (e) => {
-                draggingItem = { menuIndex, itemIndex };
-                if (e.dataTransfer) {
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", `${menuIndex}:${itemIndex}`);
-                }
-                requestAnimationFrame(() => {
-                  row.classList.add("is-dragging");
-                });
-              });
-
-              row.addEventListener("dragover", (e) => {
-                if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-                e.preventDefault();
-                if (e.dataTransfer) {
-                  e.dataTransfer.dropEffect = "move";
-                }
-                const rect = row.getBoundingClientRect();
-                const isAfter = e.clientY > rect.top + rect.height / 2;
-                row.classList.toggle("drag-over-top", !isAfter);
-                row.classList.toggle("drag-over-bottom", isAfter);
-              });
-
-              row.addEventListener("dragleave", () => {
-                row.classList.remove("drag-over-top", "drag-over-bottom");
-              });
-
-              row.addEventListener("drop", (e) => {
-                e.preventDefault();
-                row.classList.remove("drag-over-top", "drag-over-bottom");
-                if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-                const sourceIndex = draggingItem.itemIndex;
-                const rect = row.getBoundingClientRect();
-                const isAfter = e.clientY > rect.top + rect.height / 2;
-                let targetIndex = isAfter ? itemIndex + 1 : itemIndex;
-                if (sourceIndex < targetIndex) {
-                  targetIndex--;
-                }
-                if (sourceIndex !== targetIndex) {
-                  state.moveMenuItem(menu.uid, sourceIndex, targetIndex);
-                }
-                draggingItem = null;
-              });
-
-              row.addEventListener("dragend", () => {
-                row.draggable = false;
-                row.classList.remove("is-dragging");
-                draggingItem = null;
-                items.querySelectorAll(".menu-item-row").forEach((el) => {
-                  el.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
-                });
-              });
-
-              const settingsBtn = document.createElement("button");
-              settingsBtn.type = "button";
-              settingsBtn.className = "item-settings-btn";
-              settingsBtn.title = t("itemSettings.title");
-              settingsBtn.innerHTML = SETTINGS_ICON_SVG;
-              settingsBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
-              });
-
-              const swatch = document.createElement("button");
-              swatch.type = "button";
-              swatch.className = `item-color-swatch ${!item.color ? "has-no-color" : ""}`;
-              updateSwatchAppearance(swatch, item.color);
-              if (!item.color && menu.color) {
-                swatch.title = t("item.followMenuColor", { color: menu.color });
-              }
-              swatch.addEventListener("click", (e) => {
-                e.stopPropagation();
-                openMenuColor(item, swatch);
-              });
-
-              const removeBtn = document.createElement("button");
-              removeBtn.type = "button";
-              removeBtn.className = "remove-item-btn";
-              removeBtn.title = t("menu.removeItem");
-              removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
-              removeBtn.addEventListener("click", () => {
-                colorPopoverController.close();
-                if (
-                  activeItemSettings &&
-                  activeItemSettings.menuIndex === menuIndex &&
-                  activeItemSettings.itemIndex === itemIndex
-                ) {
-                  closeItemSettingsPopover();
-                }
                 state.removeMenuItem(menu.uid, item.uid);
               });
 
@@ -1749,9 +1550,7 @@ export function mountMenusTab(
         defaultColor:
           field === "dockColor"
             ? DEFAULT_DOCK_COLOR
-            : "type" in target && target.type === "space"
-              ? "#3b82f600"
-              : DEFAULT_COLOR,
+            : DEFAULT_COLOR,
         title:
           field === "dockColor"
             ? t("menuSettings.dockColor")

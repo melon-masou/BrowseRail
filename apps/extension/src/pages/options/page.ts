@@ -74,7 +74,7 @@ export async function mountOptionsPage() {
   scope.add(bookmarkPicker.destroy);
   scope.add(customPicker.destroy);
   scope.add(color.destroy);
-  const tools = createBookmarkTools(state, library, bookmarkPicker, color);
+  const tools = createBookmarkTools(state, library, bookmarkPicker);
   scope.add(tools.destroy);
   const authorization = createSiteAuthorization({
     root: element("site-authorization-controls"),

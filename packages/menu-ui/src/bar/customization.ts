@@ -1,19 +1,16 @@
 import { t } from "@browserail/i18n";
 import { DEFAULT_DOCK_COLOR, type MenuAnchor } from "@browserail/protocol";
 import { applyBarTheme, menuButton } from "../appearance";
+import { applyBarLayout } from "../layout";
 import type { BarState } from "../types";
 
 export function createCustomizationRail(root: HTMLElement, state: BarState): HTMLElement {
   const doc = root.ownerDocument;
   const menu = state.menu;
   const theme = applyBarTheme(root, state);
-  const gap = menu.gap ?? 4;
   const railContainer = doc.createElement("div");
   railContainer.className = "customize-rail";
   railContainer.dataset.orientation = menu.orientation;
-  const totalUnits = menu.items.reduce((sum, entry) => sum + (entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1), 0);
-  railContainer.style.setProperty("--config-bar-item-count", String(Math.max(1, Math.round(totalUnits))));
-  railContainer.style.setProperty("--config-bar-gap", `${gap}px`);
   railContainer.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
   railContainer.style.setProperty("--config-bar-background", menu.dockColor || DEFAULT_DOCK_COLOR);
 
@@ -23,16 +20,10 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
     empty.textContent = t("menu.empty");
     railContainer.replaceChildren(empty);
   } else {
-    railContainer.replaceChildren(...menu.items.map(entry => {
-      if (entry.kind !== "space") return menuButton(doc, entry, false);
-      const space = doc.createElement("div");
-      space.className = "menu-space";
-      space.style.setProperty("--config-space-units", String(Math.max(0.1, entry.units ?? 1)));
-      space.style.setProperty("--config-space-background", entry.color || "transparent");
-      return space;
-    }));
+    railContainer.replaceChildren(...menu.items.map(entry => menuButton(doc, entry, false)));
   }
 
+  applyBarLayout(railContainer, menu, state.itemSize);
   return railContainer;
 }
 
@@ -166,4 +157,16 @@ export function nextAnchor(anchor: MenuAnchor): MenuAnchor {
 
 export function anchorLabel(anchor: MenuAnchor): string {
   return { topLeft: "TL", topRight: "TR", bottomLeft: "BL", bottomRight: "BR" }[anchor];
+}
+
+export function createSpacingIcon(doc: Document): SVGSVGElement {
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  const path = doc.createElementNS(svg.namespaceURI, "path");
+  path.setAttribute("d", "M3 4v16M21 4v16M6 12h12M9 9l-3 3 3 3M15 9l3 3-3 3");
+  svg.append(path);
+  return svg;
 }

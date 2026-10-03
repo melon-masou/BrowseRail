@@ -18,7 +18,6 @@ vi.mock("webextension-polyfill", () => ({
 import browser from "webextension-polyfill";
 import { parseBookmarkAction, type BookmarkEntry, type FolderEntry } from "@browserail/protocol";
 import {
-  buildSpaceDirectiveUrl,
   buildTemporaryDirectiveUrl,
   findBookmarkNodeByPath,
   resolveBookmarkNodeByPath,
@@ -26,6 +25,27 @@ import {
 } from "./index";
 
 describe("resolveMenuItems", () => {
+  it("keeps separate spacing identities for duplicate and flattened buttons when their actions or order change", async () => {
+    const tree = [{ id: "folder", title: "Folder", children: [
+      { id: "a", title: "A", url: "https://a.example" },
+      { id: "b", title: "B", url: "https://b.example" },
+    ] }];
+    const items = [
+      { uid: "copy-one", path: ["Folder", "A"] },
+      { uid: "copy-two", path: ["Folder", "A"] },
+      { uid: "flatten-one", path: ["Folder"], type: "flattenFolder" as const },
+      { uid: "flatten-two", path: ["Folder"], type: "flattenFolder" as const },
+    ];
+    const first = await resolveMenuItems(items, undefined, undefined, undefined, undefined, { tree });
+    expect(new Set(first.map(entry => entry.layoutId)).size).toBe(first.length);
+    tree[0]!.children.reverse();
+    const next = await resolveMenuItems(items.map(item => ({ ...item, tabMode: "newTab" as const })), undefined, undefined, undefined, undefined, { tree });
+    expect(next.map(entry => entry.layoutId).sort()).toEqual(first.map(entry => entry.layoutId).sort());
+    expect(next[0]!.layoutId).toBe(first[0]!.layoutId);
+    expect(next[2]!.layoutId).toBe(first[3]!.layoutId);
+    expect(next[0]!.uid).not.toBe(first[0]!.uid);
+  });
+
   it("uses the sync bookmark snapshot and registers the browser id without re-reading the tree", async () => {
     vi.mocked(browser.bookmarks.getTree).mockClear();
     const registerTarget = vi.fn(() => "runtime-bookmark");
@@ -139,7 +159,7 @@ describe("resolveMenuItems", () => {
       { uid: "menu-toggle-main", type: "menuFold" },
     ]);
 
-    expect(entries).toEqual([
+    expect(entries).toMatchObject([
       {
         kind: "menuFold",
         uid: "menu-toggle-main",
@@ -153,7 +173,7 @@ describe("resolveMenuItems", () => {
       { uid: "menu-toggle-main", type: "menuFold", rename: "收起" },
     ]);
 
-    expect(entries).toEqual([
+    expect(entries).toMatchObject([
       {
         kind: "menuFold",
         uid: "menu-toggle-main",
@@ -168,91 +188,14 @@ describe("resolveMenuItems", () => {
       { uid: "back-button", type: "browserAction", browserAction: "back", rename: "←", color: "#123456" },
       { uid: "menus-button", type: "menusToggle", targetMenuUids: ["other-menu"] },
     ], undefined, undefined, undefined, undefined, { tree: [], registerTarget });
-    expect(entries).toEqual([
+    expect(entries).toMatchObject([
       { kind: "browserAction", uid: "browserAction:back-button", label: "←", color: "#123456" },
       { kind: "menusToggle", uid: "menusToggle:menus-button", label: "Menu Toggle" },
     ]);
     expect(registerTarget).not.toHaveBeenCalled();
   });
 
-  it("turns flattened BrowseRailSpace bookmarks into configured spaces", async () => {
-    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
-      {
-        id: "0",
-        title: "",
-        children: [
-          {
-            id: "folder-spaces",
-            title: "Spaces",
-            children: [
-              {
-                id: "space-full",
-                title: "BrowseRailSpace:units=5:color=#cd123f80",
-                url: "https://example.com/space",
-              },
-              {
-                id: "space-default",
-                title: "Space",
-                url: "browserail.local#Space:",
-              },
-              {
-                id: "space-url",
-                title: "Space",
-                url: "https://browserail.local/#Space:units%3D2%3Acolor%3D%2323456700",
-              },
-            ],
-          },
-        ],
-      },
-    ] as any);
 
-    const entries = await resolveMenuItems([
-      { uid: "item-spaces", path: ["Spaces"], type: "flattenFolder" },
-    ]);
-    expect(entries).toHaveLength(3);
-    expect(entries[0]).toMatchObject({
-      kind: "space",
-      units: 5,
-      color: "#cd123f80",
-    });
-    expect(entries[1]).toMatchObject({
-      kind: "space",
-      units: 1,
-    });
-    expect(entries[2]).toMatchObject({
-      kind: "space",
-      units: 2,
-      color: "#23456700",
-    });
-  });
-
-  it("creates Space bookmarks that flatten back into the configured space", async () => {
-    const url = buildSpaceDirectiveUrl({ units: 5, color: "#cd123f80" });
-    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
-      {
-        id: "0",
-        title: "",
-        children: [
-          {
-            id: "folder-spaces",
-            title: "Spaces",
-            children: [{ id: "space-created", title: "Space", url }],
-          },
-        ],
-      },
-    ] as any);
-
-    const entries = await resolveMenuItems([
-      { uid: "item-spaces", path: ["Spaces"], type: "flattenFolder" },
-    ]);
-    expect(entries).toMatchObject([
-      {
-        kind: "space",
-        units: 5,
-        color: "#cd123f80",
-      },
-    ]);
-  });
 
   it("creates Temporary bookmarks that flatten back into the configured temporary bookmark entry", async () => {
     const url = buildTemporaryDirectiveUrl({ id: "slot-temp", color: "#12345680", tabMode: "newTab" });
@@ -800,21 +743,6 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.tabMode).toBe("newTab");
   });
 
-  it("normalizes a space item with units and color alpha", async () => {
-    const { normalizeStoredMenuItem } = await import("../config");
-    const item = normalizeStoredMenuItem({
-      type: "space",
-      units: 2.5,
-      color: "#ff000080",
-    });
-
-    expect(item).toBeDefined();
-    expect(item?.type).toBe("space");
-    expect(item?.units).toBe(2.5);
-    expect(item?.color).toBe("#ff000080");
-    expect(typeof item?.uid).toBe("string");
-    expect(item?.uid.length).toBeGreaterThan(0);
-  });
 
   it("keeps only the first menu toggle when normalizing a menu", async () => {
     const { normalizeMenu } = await import("../config");
@@ -882,7 +810,7 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
   });
 });
 
-describe("combineRootAndItemPath and space resolution", () => {
+describe("combineRootAndItemPath", () => {
   it("combines root prefix with item path strictly without deduplication", async () => {
     const { combineRootAndItemPath } = await import("./index");
 
@@ -895,34 +823,6 @@ describe("combineRootAndItemPath and space resolution", () => {
     expect(combineRootAndItemPath(["书签栏"], ["Bookmarks bar", "gbfsync"])).toEqual(["书签栏", "Bookmarks bar", "gbfsync"]);
   });
 
-  it("resolves space items into SpaceEntry without querying bookmarks", async () => {
-    const entries = await resolveMenuItems([
-      {
-        uid: "space-1",
-        type: "space",
-        units: 2,
-      },
-      {
-        uid: "space-2",
-        type: "space",
-        units: 1,
-        color: "#ff000080",
-      },
-    ]);
-
-    expect(entries).toHaveLength(2);
-    expect(entries[0]).toEqual({
-      kind: "space",
-      uid: "space-1",
-      units: 2,
-    });
-    expect(entries[1]).toEqual({
-      kind: "space",
-      uid: "space-2",
-      units: 1,
-      color: "#ff000080",
-    });
-  });
 
   it("calculates item relative path correctly based on root prefix", async () => {
     const { getFolderPath, getItemRelativePath, findBookmarkNodeByPath, combineRootAndItemPath } = await import("./index");

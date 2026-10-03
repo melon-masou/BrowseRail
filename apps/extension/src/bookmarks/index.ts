@@ -6,7 +6,6 @@ import {
   type FolderEntry,
   type LayoutEntry,
   SPECIAL_ROOT_PLACEHOLDERS,
-  type SpaceEntry,
   type SpecialRootType,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
@@ -356,61 +355,6 @@ export function getItemRelativePath(
 }
 
 
-const FLATTEN_SPACE_PREFIX = "BrowseRailSpace:";
-const FLATTEN_SPACE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/)?browserail\.local\/?#Space:(.*)$/i;
-
-export interface SpaceDirectiveOptions {
-  units: number;
-  color?: string;
-}
-
-/**
- * Builds the bookmark URL that `parseFlattenSpaceDirective` understands for Space entries.
- * Uses an explicit https:// scheme because bookmarks.create rejects schemeless URLs.
- */
-export function buildSpaceDirectiveUrl({ units, color }: SpaceDirectiveOptions): string {
-  const normalizedUnits = Math.max(0.1, Math.min(20, Number.isFinite(units) ? units : 1));
-  const fields = [`units=${normalizedUnits}`];
-  if (color && /^#[0-9a-f]{8}$/i.test(color)) {
-    fields.push(`color=${color}`);
-  }
-  return `https://browserail.local/#Space:${fields.join(":")}`;
-}
-
-function parseFlattenSpaceDirective(child: BookmarkNode): SpaceEntry | null {
-  if (child.url === undefined) return null;
-
-  const titleDirective = child.title.startsWith(FLATTEN_SPACE_PREFIX)
-    ? child.title.slice(FLATTEN_SPACE_PREFIX.length)
-    : undefined;
-  const urlMatch = FLATTEN_SPACE_URL_PATTERN.exec(child.url);
-  const urlDirective = urlMatch && urlMatch[1] !== undefined ? decodeURIComponent(urlMatch[1]) : undefined;
-  const directive = titleDirective ?? urlDirective;
-  if (directive === undefined) return null;
-
-  const fields = new Map<string, string>();
-  for (const part of directive.split(":")) {
-    const [key, ...rawValue] = part.split("=");
-    if (!key) continue;
-    fields.set(key.toLowerCase(), rawValue.join("="));
-  }
-
-  const unitsValue = fields.get("units");
-  const color = fields.get("color");
-
-  const units = unitsValue === undefined || !Number.isFinite(Number(unitsValue))
-    ? 1
-    : Math.max(0.1, Math.min(20, Number(unitsValue)));
-  const isColor = color !== undefined && /^#[0-9a-f]{8}$/i.test(color);
-
-  return {
-    kind: "space",
-    uid: crypto.randomUUID(),
-    units,
-    ...(isColor ? { color } : {}),
-  };
-}
-
 const FLATTEN_TEMPORARY_PREFIX = "BrowseRailTemporary:";
 const FLATTEN_TEMPORARY_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/)?browserail\.local\/?#Temporary:(.*)$/i;
 
@@ -573,7 +517,7 @@ export async function resolveMenuItems(
   const staticByUid = new Map(context.staticBookmarks?.map(entry => [entry.uid, entry]));
   const temporaryByUid = new Map(context.temporaryBookmarks?.map(entry => [entry.uid, entry]));
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, temporaryUid, expandOnHover, includeFolders, tabMode, units, showPageTitle, browserAction }): Promise<LayoutEntry[]> => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, temporaryUid, expandOnHover, includeFolders, tabMode, showPageTitle, browserAction }): Promise<LayoutEntry[]> => {
       if (type === "menuFold") {
         const entry: LayoutEntry = {
           kind: "menuFold",
@@ -582,16 +526,6 @@ export async function resolveMenuItems(
           ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
         };
         return [entry];
-      }
-
-      if (type === "space") {
-        const spaceEntry: LayoutEntry = {
-          kind: "space",
-          uid,
-          units: units !== undefined ? units : 1,
-          ...(color ? { color } : {}),
-        };
-        return [spaceEntry];
       }
 
       if (type === "browserAction" || type === "menusToggle") {
@@ -688,8 +622,7 @@ export async function resolveMenuItems(
         const colors = Array.isArray(cycleColors) && cycleColors.length > 0 ? cycleColors : [];
         let flattenedIdx = 0;
         return (node.children ?? []).flatMap((child): LayoutEntry[] => {
-          const directive = parseFlattenSpaceDirective(child);
-          if (directive) return [directive];
+          const layoutId = `${uid}/${encodeURIComponent(child.id)}`;
           const tempDirective = parseFlattenTemporaryDirective(child);
           if (tempDirective) {
             const definition = temporaryByUid.get(tempDirective.uid);
@@ -702,6 +635,7 @@ export async function resolveMenuItems(
             const bookmarkTitle = !isTitleDirective && child.title.trim() ? child.title.trim() : undefined;
             const label = note || bookmarkTitle || tempDirective.name || definition.name || t("temporary.defaultName");
             return [{
+              layoutId,
               kind: "bookmark",
               uid: actionUid("temporary", tempDirective.uid, effectiveMode),
               label,
@@ -716,7 +650,7 @@ export async function resolveMenuItems(
             const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
             flattenedIdx++;
             return [
-              dynamicBookmarkEntry(
+              { ...dynamicBookmarkEntry(
                 dynamicId,
                 info,
                 effectiveTabMode,
@@ -724,7 +658,7 @@ export async function resolveMenuItems(
                 undefined,
                 undefined,
                 child.title,
-              ),
+              ), layoutId },
             ];
           }
           if (child.url === undefined) {
@@ -746,13 +680,14 @@ export async function resolveMenuItems(
             if (itemColor) {
               folderEntry.color = itemColor;
             }
-            return [folderEntry];
+            return [{ ...folderEntry, layoutId }];
           }
           const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
           flattenedIdx++;
           const rawTitle = child.title || child.url || "Untitled";
           const childUid = registerTarget(child.id);
           const entry: LayoutEntry = {
+            layoutId,
             kind: "bookmark",
             uid: actionUid("bookmark", childUid, effectiveTabMode),
             label: rawTitle,
@@ -780,7 +715,7 @@ export async function resolveMenuItems(
     }),
   );
 
-  return entryGroups.flat();
+  return entryGroups.flatMap((entries, index) => entries.map(entry => ({ ...entry, layoutId: entry.layoutId ?? items[index]!.uid })));
 }
 
 function toLayoutEntry(

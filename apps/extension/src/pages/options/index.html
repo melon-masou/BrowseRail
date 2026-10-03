@@ -169,12 +169,7 @@
                 <button id="add-menu" class="menu-action-btn add-menu-btn add-toolbar-action" type="button" data-i18n="btn.addMenu">+ Add menu</button>
               </div>
               <div id="menus"></div>
-              <section class="menus-tools">
-                <h2 class="toolkit-card-title" data-i18n="section.toolkit">Tools</h2>
-                <div class="toolkit-card-row">
-                  <button type="button" id="add-space-bookmark-btn" class="action-btn" data-i18n="toolkit.addGapBookmark">Add gap to bookmarks</button>
-                </div>
-              </section>
+
             </section>
 
             <!-- URL Rules Panel -->
@@ -272,39 +267,6 @@
         <div class="menu-settings-dialog-body" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
           <div id="pick-dynamic-list" class="pick-menu-list"></div>
         </div>
-      </dialog>
-
-      <!-- Add Space Bookmark Dialog -->
-      <dialog id="space-bookmark-dialog" class="space-bookmark-dialog">
-        <div class="space-bookmark-dialog-header">
-          <span data-i18n="toolkit.dialogTitle">Add gap to bookmarks</span>
-          <button type="button" id="space-bookmark-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
-        </div>
-        <form id="space-bookmark-form" class="space-bookmark-dialog-body">
-          <div class="space-bookmark-fields">
-            <label>
-              <span data-i18n="toolkit.units">Gap size units</span>
-              <input id="space-bookmark-units" type="number" min="0.1" max="20" step="0.1" value="1" />
-            </label>
-            <label>
-              <span data-i18n="toolkit.color">Color</span>
-              <button id="space-bookmark-color" type="button" class="item-color-swatch"></button>
-            </label>
-          </div>
-          <div class="space-bookmark-folder-row">
-            <span data-i18n="toolkit.destination">Destination folder</span>
-            <button type="button" id="space-bookmark-folder-btn" class="action-btn" data-i18n="toolkit.chooseFolder">Choose…</button>
-            <span id="space-bookmark-folder-display" class="space-bookmark-folder-name"></span>
-          </div>
-          <p class="space-bookmark-help" data-i18n="toolkit.gapHelp">For flattened folders: inserts a gap between the folder’s bookmarks on the rail.
-The gap is stored as a bookmark whose URL is https://browserail.local/#Space:units=5:color=#cd123fff.
-Fields: units (0.1–20), color (#rrggbbaa, including opacity).</p>
-          <div class="space-bookmark-dialog-actions">
-            <output id="space-bookmark-result" class="toolkit-status" aria-live="polite"></output>
-            <button type="button" id="space-bookmark-close-btn" class="action-btn" data-i18n="toolkit.close">Close</button>
-            <button type="submit" id="space-bookmark-add" class="save-btn" data-i18n="toolkit.add">Add</button>
-          </div>
-        </form>
       </dialog>
 
       <!-- Add Dynamic Marker Dialog -->
@@ -423,10 +385,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
                 <span data-i18n="menuSettings.popupFontSize">Menu font size (px)</span>
                 <input id="menu-setting-popup-font-size" type="number" min="1" step="1" />
               </label>
-              <label>
-                <span data-i18n="menuSettings.gap">Button gap (%)</span>
-                <input id="menu-setting-gap" type="number" min="0" max="60" step="1" />
-              </label>
+
               <div class="menu-setting-field-colors">
                 <div class="menu-setting-subfield">
                   <span class="menu-setting-label" data-i18n="menuSettings.defaultColor">Default color</span>
@@ -510,14 +469,6 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <button type="button" id="item-settings-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
         <div class="item-settings-body">
-          <!-- Space specific controls -->
-          <div id="item-settings-space-controls" class="item-settings-space-controls" style="display: none;">
-            <div class="item-setting-field">
-              <span class="item-setting-field-title" data-i18n="itemSettings.spaceWidth">Button width units</span>
-              <input type="number" id="item-setting-space-units" class="item-setting-number-input" min="0.1" max="20" step="0.5" value="1" />
-            </div>
-          </div>
-
           <div id="item-settings-bookmark-controls">
             <div class="item-setting-field">
               <span class="item-setting-field-title" data-i18n="itemSettings.rename">Rename</span>
@@ -599,7 +550,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
         </button>
       </div>
 
-      <!-- Add Item Popover (Bookmark or Space) -->
+      <!-- Add Item Popover -->
       <div id="add-item-popover" class="add-item-popover" style="display: none;">
         <button type="button" id="add-popover-bookmark-btn" class="add-popover-item">
           <span class="add-popover-icon">🔖</span>
@@ -617,10 +568,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <span class="add-popover-icon">🜂</span>
           <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
         </button>
-        <button type="button" id="add-popover-space-btn" class="add-popover-item">
-          <span class="add-popover-icon">␣</span>
-          <span class="add-popover-text" data-i18n="menu.addSpace">Space</span>
-        </button>
+
         <button type="button" id="add-popover-action-btn" class="add-popover-item">
           <span class="add-popover-icon">⇕</span>
           <span class="add-popover-text" data-i18n="menu.action">Action</span>

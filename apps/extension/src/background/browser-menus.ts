@@ -1,7 +1,7 @@
 import browser, { type Runtime } from "webextension-polyfill";
-import { isUrlMatchingSet, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
+import { isMenuSpacing, isUrlMatchingSet, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
-  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBrowserPlacement, toggleBrowserCollapsed, menuUrlPatterns,
+  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBrowserPlacement, saveMenuSpacing, toggleBrowserCollapsed, menuUrlPatterns, menuSpacingForMode,
   type BrowserMenuPlacement, type ExtensionConfig,
 } from "../config";
 import type { BrowserMenu, BrowserMenuState, MenuRequest, TemporaryConfirmationResult } from "../page-operations/messages";
@@ -96,9 +96,11 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
         await toggleBrowserCollapsed(request.menuUid);
         changed();
         break;
-      case "placement":
+      case "layout":
         if (!await loadBrowserEditing()) throw new Error("Menu editing is disabled");
+        if (!isMenuSpacing(request.spacing)) throw new Error("Invalid menu spacing");
         await saveBrowserPlacement(request.menuUid, request.placement);
+        await saveMenuSpacing(request.menuUid, request.spacing, "browser");
         changed();
         break;
       case "temporaryConfirm":
@@ -118,8 +120,9 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     async publish(config: ExtensionConfig, views: MenuView[], placements: Record<string, BrowserMenuPlacement>, collapsed: Record<string, boolean>, active: boolean, editing = false): Promise<void> {
       const menus = views.filter(view => view.items.length > 0).map((view, index) => {
         const initial = defaultMenuPlacement(index, view.orientation, 0, view.buttonFontSize);
+        const menu = config.panel.menus.find(menu => menu.uid === view.uid)!;
         return {
-          view,
+          view: { ...view, ...menuSpacingForMode(menu, "browser") },
           placement: placements[view.uid] ?? { ...initial.boundPosition, itemWidth: initial.itemWidth, itemHeight: initial.itemHeight },
           collapsed: collapsed[view.uid] === true && view.items.some(entry => entry.kind === "menuFold"),
           editingLocked: !editing,

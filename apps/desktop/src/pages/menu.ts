@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { mountBar, barDimensions, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller } from "@browserail/menu-ui";
+import { mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -240,7 +240,7 @@ export async function initializeSurface(
     const railContainer = createCustomizationRail(root, stateFor(menu));
 
     railContainer.addEventListener("pointerdown", (event) => {
-      if (event.button === 0) {
+      if (event.button === 0 && !spacingEditor.enabled) {
         event.preventDefault();
         void invoke("start_menu_drag");
       }
@@ -288,20 +288,41 @@ export async function initializeSurface(
       }
     });
 
+    const spacingButton = controlButton(document, createSpacingIcon(document));
+    spacingButton.title = t("customize.adjustSpacing");
+    spacingButton.setAttribute("aria-pressed", "false");
+    const spacingEditor = mountSpacingEditor(railContainer, menu, stateFor(menu).itemSize, (draft, itemSize) => {
+      const fromAnchor = elementOrigin(railContainer);
+      const dimensions = barDimensions(draft, itemSize);
+      targetWidth = dimensions.width;
+      targetHeight = dimensions.height;
+      applyTargetSize();
+      resizeNativeCanvas(fromAnchor, elementOrigin(railContainer));
+    });
+    spacingButton.addEventListener("click", () => {
+      stopActiveResize?.();
+      spacingEditor.setEnabled(!spacingEditor.enabled);
+      spacingButton.setAttribute("aria-pressed", String(spacingEditor.enabled));
+    });
+
     // A free (detached) menu has no owner window to anchor against — hide that
     // control so the toolbar only shows actions that make sense off-window.
     if (isFree) {
-      toolbar.append(moveButton, cancelButton, saveButton);
+      toolbar.append(moveButton, spacingButton, cancelButton, saveButton);
     } else {
-      toolbar.append(anchorButton, moveButton, cancelButton, saveButton);
+      toolbar.append(anchorButton, moveButton, spacingButton, cancelButton, saveButton);
     }
 
-    const clampWidth = (width: number): number => menu.orientation === "column"
-      ? Math.min(220, Math.max(26, width))
-      : Math.min(2_000, Math.max(26, width));
-    const clampHeight = (height: number): number => menu.orientation === "row"
-      ? Math.min(64, Math.max(26, height))
-      : Math.min(1_600, Math.max(26, height));
+    const clampWidth = (width: number): number => {
+      const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 }).width;
+      const max = barDimensions(spacingEditor.menu, { width: menu.orientation === "row" ? 400 : 220, height: 200 }).width;
+      return Math.min(max, Math.max(min, width));
+    };
+    const clampHeight = (height: number): number => {
+      const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 }).height;
+      const max = barDimensions(spacingEditor.menu, { width: 400, height: menu.orientation === "row" ? 64 : 200 }).height;
+      return Math.min(max, Math.max(min, height));
+    };
 
     function applyTargetSize(): void {
       const toolbarWidth = Math.ceil(toolbar.scrollWidth);
@@ -341,7 +362,7 @@ export async function initializeSurface(
         return { x: rect.left, y: rect.top };
       };
       handle.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) {
+        if (event.button !== 0 || spacingEditor.enabled) {
           return;
         }
         event.preventDefault();
@@ -367,6 +388,7 @@ export async function initializeSurface(
           if (direction === "north") {
             targetHeight = clampHeight(startHeight - (moveEvent.screenY - startY));
           }
+          spacingEditor.setItemSize(barItemSize(spacingEditor.menu, { width: targetWidth, height: targetHeight }));
           applyTargetSize();
           const toResizeAnchor = currentResizeAnchor();
           resizeNativeCanvas(fromResizeAnchor, toResizeAnchor);
@@ -421,7 +443,7 @@ export async function initializeSurface(
     let flipCheckTimer: ReturnType<typeof setTimeout> | undefined;
     let flipInFlight = false;
     async function maybeFlipToolbarSide(): Promise<void> {
-      if (flipInFlight || !root.isConnected) return;
+      if (saving || !customizeAlive || flipInFlight || !root.isConnected) return;
       const railRect = railContainer.getBoundingClientRect();
       let side: "top" | "bottom";
       try {
@@ -434,7 +456,7 @@ export async function initializeSurface(
       } catch {
         return;
       }
-      if (side === toolbarSide || !root.isConnected) return;
+      if (saving || !customizeAlive || side === toolbarSide || !root.isConnected) return;
 
       flipInFlight = true;
       try {
@@ -458,6 +480,7 @@ export async function initializeSurface(
     let customizeAlive = true;
     teardownCustomize = () => {
       customizeAlive = false;
+      spacingEditor.destroy();
       stopActiveResize?.();
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
       clearTimeout(flipCheckTimer);
@@ -504,30 +527,54 @@ export async function initializeSurface(
       customizationStartPosition = null;
     }
 
+    let saving = false;
     async function saveCustomization(): Promise<void> {
-      cancelActiveCustomization = null;
-      teardownCustomize?.();
-      const fromAnchor = elementOrigin(railContainer);
-      const placement = await invoke<MenuPlacement>("save_menu_placement", {
-        anchor,
-        anchorOffsetX: fromAnchor.x,
-        anchorOffsetY: fromAnchor.y,
-        height: targetHeight,
-        instanceUid,
-        menuUid,
-        width: targetWidth,
-        windowUid,
-      });
-      customizing = false;
-      customizationStartPosition = null;
-      if (currentMenu) {
-        currentMenu = { ...currentMenu, placement };
-        await renderSurface(currentMenu);
-        const menuBar = root.querySelector<HTMLElement>(".menu-bar");
-        if (menuBar) {
-          const { width, height } = computeSurfaceDimensions(currentMenu);
-          await resizeAndPosition(fromAnchor, elementOrigin(menuBar), width, height);
+      if (saving) return;
+      saving = true;
+      clearTimeout(flipCheckTimer);
+      stopActiveResize?.();
+      spacingEditor.stopGesture();
+      railContainer.inert = true;
+      const spacing = spacingEditor.spacing;
+      const itemSize = spacingEditor.itemSize;
+      const controls = [anchorButton, moveButton, spacingButton, cancelButton, saveButton];
+      for (const button of controls) button.disabled = true;
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+      resizeFrame = undefined;
+      const pendingFrom = pendingFromAnchor, pendingTo = pendingToAnchor;
+      pendingFromAnchor = pendingToAnchor = undefined;
+      try {
+        if (pendingFrom && pendingTo) {
+          const rect = content.getBoundingClientRect();
+          await resizeAndPosition(pendingFrom, pendingTo, rect.width, rect.height);
         }
+        const fromAnchor = elementOrigin(railContainer);
+        const placement = await invoke<MenuPlacement>("save_menu_placement", {
+          anchor,
+          anchorOffsetX: fromAnchor.x,
+          anchorOffsetY: fromAnchor.y,
+          height: targetHeight,
+          itemWidth: itemSize.width,
+          itemHeight: itemSize.height,
+          spacing,
+          instanceUid,
+          menuUid,
+          width: targetWidth,
+          windowUid,
+        });
+        cancelActiveCustomization = null;
+        teardownCustomize?.();
+        customizing = false;
+        customizationStartPosition = null;
+        if (currentMenu) {
+          currentMenu = { ...currentMenu, ...spacing, placement };
+          await renderSurface(currentMenu);
+        }
+      } catch (error) {
+        saving = false;
+        railContainer.inert = false;
+        for (const button of controls) button.disabled = false;
+        showSurfaceError(error);
       }
     }
 

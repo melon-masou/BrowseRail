@@ -1,6 +1,5 @@
 import { type DynamicBookmark } from "../../../config";
 import {
-  buildSpaceDirectiveUrl,
   buildTemporaryDirectiveUrl,
   type BookmarkNode,
   findBookmarkNodeByPath,
@@ -8,7 +7,6 @@ import {
 } from "../../../bookmarks";
 import { t } from "@browserail/i18n";
 import { type ReadonlyData, type OptionsState } from "../state";
-import { updateSwatchAppearance, type ColorPopover } from "../components/color-popover";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
 import { type BookmarkLibrary } from "../bookmark-library";
@@ -18,19 +16,8 @@ export function createBookmarkTools(
   state: OptionsState,
   library: BookmarkLibrary,
   bookmarkPicker: BookmarkPicker,
-  colorPopoverController: ColorPopover,
 ) {
   const scope = createScope();
-  const addSpaceBookmarkBtn = element<HTMLButtonElement>("add-space-bookmark-btn");
-  const spaceBookmarkDialog = element<HTMLDialogElement>("space-bookmark-dialog");
-  const spaceBookmarkClose = element<HTMLButtonElement>("space-bookmark-close");
-  const spaceBookmarkCloseBtn = element<HTMLButtonElement>("space-bookmark-close-btn");
-  const spaceBookmarkForm = element<HTMLFormElement>("space-bookmark-form");
-  const spaceBookmarkUnits = element<HTMLInputElement>("space-bookmark-units");
-  const spaceBookmarkColor = element<HTMLButtonElement>("space-bookmark-color");
-  const spaceBookmarkResult = element<HTMLOutputElement>("space-bookmark-result");
-  const spaceBookmarkFolderBtn = element<HTMLButtonElement>("space-bookmark-folder-btn");
-  const spaceBookmarkFolderDisplay = element<HTMLSpanElement>("space-bookmark-folder-display");
   const dynamicMarkerDialog = element<HTMLDialogElement>("dynamic-marker-dialog");
   const dynamicMarkerClose = element<HTMLButtonElement>("dynamic-marker-close");
   const dynamicMarkerCloseBtn = element<HTMLButtonElement>("dynamic-marker-close-btn");
@@ -49,114 +36,14 @@ export function createBookmarkTools(
   );
   const temporaryBookmarkResult = element<HTMLOutputElement>("temporary-bookmark-result");
   let temporaryMarkerUid: string | undefined;
-  const spaceBookmarkColors: { color?: string } = {};
-  let gapBookmarkFolderId: string | undefined;
+  let toolFolderId: string | undefined;
   let activeDynamicMarkerDb: ReadonlyData<DynamicBookmark> | null = null;
 
-  function initSpaceBookmarkDialog(): void {
-    addSpaceBookmarkBtn.addEventListener(
-      "click",
-      () => {
-        spaceBookmarkResult.textContent = "";
-        delete spaceBookmarkResult.dataset.state;
-        updateGapBookmarkFolderDisplay();
-        spaceBookmarkDialog.showModal();
-      },
-      { signal: scope.signal },
-    );
-    function closeSpaceBookmarkDialog(): void {
-      colorPopoverController.close();
-      spaceBookmarkDialog.close();
-    }
-    spaceBookmarkClose.addEventListener("click", closeSpaceBookmarkDialog, {
-      signal: scope.signal,
-    });
-    spaceBookmarkCloseBtn.addEventListener("click", closeSpaceBookmarkDialog, {
-      signal: scope.signal,
-    });
-    spaceBookmarkDialog.addEventListener(
-      "cancel",
-      (event) => {
-        event.preventDefault();
-        closeSpaceBookmarkDialog();
-      },
-      { signal: scope.signal },
-    );
-    spaceBookmarkColor.addEventListener(
-      "click",
-      () =>
-        colorPopoverController.open(
-          {
-            read: () => spaceBookmarkColors,
-            field: "color",
-            defaultColor: "#3b82f600",
-            title: t("color.title"),
-            setColor: (color) => {
-              if (color === undefined) delete spaceBookmarkColors.color;
-              else spaceBookmarkColors.color = color;
-            },
-            setCycleColors: () => {
-              throw new Error("Not a folder color");
-            },
-            onChange: () => {},
-            onClose: () => {},
-          },
-          spaceBookmarkColor,
-        ),
-      { signal: scope.signal },
-    );
-    updateSwatchAppearance(spaceBookmarkColor, spaceBookmarkColors.color);
-    spaceBookmarkFolderBtn.addEventListener(
-      "click",
-      () => {
-        void pickToolFolder();
-      },
-      { signal: scope.signal },
-    );
-
-    spaceBookmarkForm.addEventListener(
-      "submit",
-      (event) => {
-        event.preventDefault();
-        void addSpaceBookmark();
-      },
-      { signal: scope.signal },
-    );
-  }
-
-  function updateGapBookmarkFolderDisplay(): void {
-    const node = gapBookmarkFolderId ? library.find(gapBookmarkFolderId) : undefined;
-    spaceBookmarkFolderDisplay.textContent = node?.title || t("toolkit.noDestination");
-  }
-
   function bookmarkDestination(): string {
-    const node = gapBookmarkFolderId ? library.find(gapBookmarkFolderId) : undefined;
+    const node = toolFolderId ? library.find(toolFolderId) : undefined;
     if (!node || node.url !== undefined || node.id === "0")
       throw new Error(t("toolkit.noDestination"));
     return node.id;
-  }
-
-  async function addSpaceBookmark(): Promise<void> {
-    const url = buildSpaceDirectiveUrl({
-      units: Number(spaceBookmarkUnits.value),
-      ...(spaceBookmarkColors.color ? { color: spaceBookmarkColors.color } : {}),
-    });
-    try {
-      await library.createBookmark({
-        title: "Space",
-        url,
-        parentId: bookmarkDestination(),
-      });
-      if (scope.signal.aborted) return;
-      spaceBookmarkResult.textContent = t("toolkit.added");
-      spaceBookmarkResult.dataset.state = "success";
-    } catch (error) {
-      if (scope.signal.aborted) return;
-      spaceBookmarkResult.textContent = t("toolkit.addFailed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      spaceBookmarkResult.dataset.state = "error";
-    }
   }
 
   function initTemporaryBookmarkDialog(): void {
@@ -199,7 +86,7 @@ export function createBookmarkTools(
   }
 
   function updateTemporaryBookmarkFolderDisplay(): void {
-    const node = gapBookmarkFolderId ? library.find(gapBookmarkFolderId) : undefined;
+    const node = toolFolderId ? library.find(toolFolderId) : undefined;
     temporaryBookmarkFolderDisplay.textContent = node?.title || t("toolkit.noDestination");
   }
 
@@ -244,7 +131,7 @@ export function createBookmarkTools(
   }
 
   function updateDynamicMarkerFolderDisplay(): void {
-    const node = gapBookmarkFolderId ? library.find(gapBookmarkFolderId) : undefined;
+    const node = toolFolderId ? library.find(toolFolderId) : undefined;
     dynamicMarkerFolderDisplay.textContent = node?.title || t("toolkit.noDestination");
   }
 
@@ -283,17 +170,16 @@ export function createBookmarkTools(
       mode: "folder",
       title: t("picker.pickFolderTitle"),
       confirmLabel: t("picker.pickFolderConfirm"),
-      ...(gapBookmarkFolderId ? { selectedId: gapBookmarkFolderId } : {}),
+      ...(toolFolderId ? { selectedId: toolFolderId } : {}),
       rootPrefix: state.instance.rootPrefix,
     });
     if (result) {
-      gapBookmarkFolderId = result.node.id;
-      updateGapBookmarkFolderDisplay();
+      toolFolderId = result.node.id;
       updateDynamicMarkerFolderDisplay();
       updateTemporaryBookmarkFolderDisplay();
     }
   }
-  gapBookmarkFolderId = findBookmarkNodeByPath(library.tree as BookmarkNode[], [
+  toolFolderId = findBookmarkNodeByPath(library.tree as BookmarkNode[], [
     SPECIAL_ROOT_PLACEHOLDERS["bookmarks-bar"],
   ])?.id;
   dynamicMarkerFolderBtn.addEventListener("click", () => void pickToolFolder(), {
@@ -320,18 +206,15 @@ export function createBookmarkTools(
     },
     { signal: scope.signal },
   );
-  initSpaceBookmarkDialog();
   initTemporaryBookmarkDialog();
   return {
     openTemporary: openTemporaryMarkerDialog,
     openDynamic: openDynamicMarkerDialog,
     render(): void {
-      if (spaceBookmarkDialog.open) updateGapBookmarkFolderDisplay();
       if (dynamicMarkerDialog.open) updateDynamicMarkerFolderDisplay();
       if (temporaryBookmarkDialog.open) updateTemporaryBookmarkFolderDisplay();
     },
     destroy(): void {
-      spaceBookmarkDialog.close();
       dynamicMarkerDialog.close();
       temporaryBookmarkDialog.close();
       scope.destroy();

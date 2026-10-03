@@ -1,4 +1,4 @@
-import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize, customBookmarkReference, normalizeMenuSpacing, type MenuSpacing } from "@browserail/protocol";
 import type {
   AttachmentMode,
   ExpandAlignment,
@@ -106,22 +106,17 @@ export function normalizeFontSize(value: unknown): number {
   return DEFAULT_FONT_SIZE;
 }
 
-export const DEFAULT_MENU_GAP_PERCENT = 11; // ~11% of button size (approx 4px for 35px button)
-export const DEFAULT_MENU_GAP = DEFAULT_MENU_GAP_PERCENT;
-
-export function calculateGapPx(buttonDim: number, gapPercent: number): number {
-  if (gapPercent <= 0) return 0;
-  return Math.max(0, Math.round((buttonDim * gapPercent) / 100));
-}
-
 export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
+  const spacing = normalizeMenuSpacing(undefined);
   return {
     attachmentMode: "lastFocused",
     enabled: true,
     // Button font auto-scales with button height by default; popup stays fixed.
     buttonFontSize: AUTO_FONT_SIZE,
     popupFontSize: DEFAULT_FONT_SIZE,
-    gap: DEFAULT_MENU_GAP_PERCENT,
+    ...spacing,
+    browserGapRatio: spacing.gapRatio,
+    browserExtraGaps: {},
     items: [],
     onTopMode: "aboveBrowser",
     orientation: "column",
@@ -146,7 +141,6 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
 
 export const DEFAULT_ITEM_WIDTH = 84;
 export const DEFAULT_ITEM_HEIGHT = 36;
-export const MENU_GAP = DEFAULT_MENU_GAP;
 
 export function getItemDimensions(fontSize: MenuFontSize = DEFAULT_FONT_SIZE): { itemWidth: number; itemHeight: number } {
   // Auto has no fixed px, so default item dimensions come from the default font
@@ -175,16 +169,6 @@ export function defaultMenuPlacement(
     itemHeight,
     itemWidth,
   };
-}
-
-// Inter-item gap in px, resolved from the menu's gap percentage. Gap is
-// config-owned render appearance (it lives on MenuView, not MenuPlacement), so
-// it is derived here rather than carried on the desktop-owned placement.
-export function resolveGapPx(
-  fontSize: MenuFontSize = DEFAULT_FONT_SIZE,
-  gapPercent = DEFAULT_MENU_GAP_PERCENT,
-): number {
-  return calculateGapPx(getItemDimensions(fontSize).itemHeight, gapPercent);
 }
 
 export function resolveMenuPlacement(
@@ -446,9 +430,6 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ? normalizeFontSize(value.popupFontSize)
     : undefined;
   const popupFontSize = isAutoFontSize(rawPopupFontSize) ? DEFAULT_FONT_SIZE : rawPopupFontSize;
-  const gap = typeof value.gap === "number" && Number.isFinite(value.gap)
-    ? boundedNumber(value.gap, 0, 40, DEFAULT_MENU_GAP)
-    : DEFAULT_MENU_GAP;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
   const dockColor = typeof value.dockColor === "string" && value.dockColor ? value.dockColor : undefined;
   const tabMode: TabMode | undefined =
@@ -487,6 +468,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     hasMenuFold = true;
     return true;
   });
+  const browserSpacing = normalizeMenuSpacing({ gapRatio: value.browserGapRatio, extraGaps: value.browserExtraGaps });
 
   return {
     attachmentMode,
@@ -497,7 +479,9 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ...(expandAlignment !== undefined ? { expandAlignment } : {}),
     ...(buttonFontSize !== undefined ? { buttonFontSize } : {}),
     ...(popupFontSize !== undefined ? { popupFontSize } : {}),
-    gap,
+    ...normalizeMenuSpacing(value),
+    browserGapRatio: browserSpacing.gapRatio,
+    browserExtraGaps: browserSpacing.extraGaps,
     items,
     onTopMode,
     orientation: value.orientation === "row" ? "row" : "column",
@@ -557,20 +541,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     ? (value.type as StoredMenuItemType)
     : undefined;
   const uid = typeof value.uid === "string" && value.uid ? value.uid : crypto.randomUUID();
-  if (rawType === "menuToggle") return undefined;
-
-  if (rawType === "space") {
-    const units = typeof value.units === "number" && Number.isFinite(value.units)
-      ? boundedNumber(value.units, 0.1, 20, 1)
-      : undefined;
-    const color = typeof value.color === "string" && value.color ? value.color : undefined;
-    return {
-      uid,
-      type: "space",
-      ...(units !== undefined ? { units } : {}),
-      ...(color ? { color } : {}),
-    };
-  }
+  if (rawType === "menuToggle" || rawType === "space") return undefined;
 
   if (rawType === "menuFold") {
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
@@ -766,6 +737,26 @@ export async function saveMenuPlacement(menuUid: string, placement: MenuPlacemen
   await browser.storage.local.set({
     [PLACEMENTS_STORAGE_KEY]: current,
   });
+}
+
+export function menuSpacingForMode(menu: StoredMenu, mode: DisplayMode): MenuSpacing {
+  return normalizeMenuSpacing(mode === "browser"
+    ? { gapRatio: menu.browserGapRatio, extraGaps: menu.browserExtraGaps }
+    : menu);
+}
+
+export async function saveMenuSpacing(menuUid: string, spacing: MenuSpacing, mode: DisplayMode): Promise<void> {
+  const config = await loadConfig();
+  const menu = config.panel.menus.find(menu => menu.uid === menuUid);
+  if (!menu) throw new Error("Menu not found");
+  const normalized = normalizeMenuSpacing(spacing);
+  if (mode === "browser") {
+    menu.browserGapRatio = normalized.gapRatio;
+    menu.browserExtraGaps = normalized.extraGaps;
+  } else {
+    Object.assign(menu, normalized);
+  }
+  await saveConfig(config);
 }
 
 export async function removeMenuPlacements(menuUid: string): Promise<void> {

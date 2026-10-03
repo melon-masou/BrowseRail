@@ -2,7 +2,6 @@
    Configured values use --config-*. Public overrides are inherited from the bar's root:
    --bar-background, --bar-font-family, --bar-radius, --bar-backdrop-filter, --bar-shadow
    --bar-button-background/text-color/radius and --bar-button-hover/active/expanded-background/filter
-   --space-background
    Button overrides are scoped to the bar and editing rail, leaving popup buttons unchanged. */
 
 :where(.browserail-menu-ui) {
@@ -71,8 +70,4 @@
     background: rgb(31 37 49 / 90%);
   }
 
-  .menu-space {
-    background: var(--space-background, var(--config-space-background, transparent));
-    border: none !important;
-  }
 }

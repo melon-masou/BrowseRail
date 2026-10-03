@@ -1,6 +1,6 @@
 /* Geometry shared by the bar and its editing rail. Window and popup placement stays with the host.
-   --config-bar-* and --config-space-* are supplied by the renderer.
-   --bar-width/height/gap/font-size/item-count and --space-units may override them. */
+   --config-bar-* values are supplied by the renderer.
+   --bar-width/height/font-size/tracks may override them. */
 
 :where(.browserail-menu-ui) {
   .menu-bar {
@@ -8,7 +8,7 @@
     top: var(--config-bar-frame-y);
     left: var(--config-bar-frame-x);
     display: grid;
-    gap: var(--bar-gap, var(--config-bar-gap, 3px));
+    gap: 0;
     box-sizing: border-box;
     padding: 0;
     pointer-events: none;
@@ -32,11 +32,11 @@
   }
 
   .menu-bar[data-orientation="row"] {
-    grid-template-columns: repeat(var(--bar-item-count, var(--config-bar-item-count, 1)), minmax(0, 1fr));
+    grid-template-columns: var(--bar-tracks, var(--config-bar-tracks));
   }
 
   .menu-bar[data-orientation="column"] {
-    grid-template-rows: repeat(var(--bar-item-count, var(--config-bar-item-count, 1)), minmax(0, 1fr));
+    grid-template-rows: var(--bar-tracks, var(--config-bar-tracks));
   }
 
   .menu-button {
@@ -159,20 +159,4 @@
     white-space: nowrap;
   }
 
-  .menu-space {
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    pointer-events: auto;
-  }
-
-  .menu-bar[data-orientation="row"] .menu-space,
-  .customize-rail[data-orientation="row"] .menu-space {
-    grid-column: span var(--space-units, var(--config-space-units, 1));
-  }
-
-  .menu-bar[data-orientation="column"] .menu-space,
-  .customize-rail[data-orientation="column"] .menu-space {
-    grid-row: span var(--space-units, var(--config-space-units, 1));
-  }
 }

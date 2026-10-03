@@ -34,11 +34,12 @@ import {
   loadWidgetEnabled,
   loadDynamicValues,
   loadTemporaryNotes,
+  menuSpacingForMode,
   removeMenuPlacements,
-  resolveGapPx,
   resolveMenuPlacement,
   saveFreePlacement,
   saveMenuPlacement,
+  saveMenuSpacing,
   saveWidgetEnabled,
 } from "../config";
 import { loadInstanceUid } from "../config/instance-identity";
@@ -564,8 +565,9 @@ async function handleMessage(raw: unknown): Promise<void> {
     return;
   }
 
-  if (value.type === "updateMenuPlacement") {
+  if (value.type === "updateMenuLayout") {
     await saveMenuPlacement(value.menuUid, value.placement);
+    await saveMenuSpacing(value.menuUid, value.spacing, "native");
     requestSync();
   }
 
@@ -661,7 +663,7 @@ async function syncOnce(): Promise<void> {
         ...(menu.expandAlignment ? { expandAlignment: menu.expandAlignment } : {}),
         buttonFontSize: menu.buttonFontSize ?? DEFAULT_FONT_SIZE,
         popupFontSize: menu.popupFontSize ?? DEFAULT_FONT_SIZE,
-        gap: resolveGapPx(menu.buttonFontSize, menu.gap),
+        ...menuSpacingForMode(menu, "native"),
       };
       return {
         uid: menu.uid,

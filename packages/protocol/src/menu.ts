@@ -1,39 +1,19 @@
 // =============================================================================
 // RENDER AXIS — what the extension/webview draws.
 //
-// This module holds ONLY the types the menu surface renders from: the item
-// tree and per-menu appearance (colors, fonts, gap, popup direction). It does
-// NOT describe where a native window sits, how big each button is, which
-// browser window a menu attaches to, or when it is shown — those live in
-// `./native` (MenuPlacement / MenuNativeProps / MenuTarget).
+// Render content and appearance belong here; native placement, targeting and
+// window behavior live in `./native`.
 //
-// How a single synced menu is partitioned (see `SyncedMenu` in ./native):
-//   view      (here)      — render content + appearance: items, orientation,
-//                           colors, fonts, gap. Config-authored; only the
-//                           extension's options page changes it, and it only
-//                           ever flows downstream to the webview.
-//   placement (./native)  — everything the DESKTOP decides and echoes back:
-//                           anchor + offsets (or a free surface's absolute
-//                           position) AND the per-item pixel size
-//                           (itemWidth/itemHeight, set by a desktop resize).
-//                           Round-trips extension⇄desktop.
+// A synced menu separates:
+//   view      (here)      — items, colors, fonts and the receiving host's spacing.
+//                           Edits round-trip into that host's config fields.
+//   placement (./native)  — per-button size and host-specific position.
 //   native    (./native)  — native-only window behavior: attach mode, on-top
 //                           mode, and URL-driven visibility. The webview never
 //                           reads these.
 //   target    (./native)  — which browser window a bound menu follows, or that
 //                           the menu is a free floating surface. Downlink only.
 //
-// The item pixel size lives in `placement` (not here) because the desktop owns
-// it — the user resizes a surface and the new dimensions are reported back.
-// The webview still reads those dimensions to lay out its grid, and native
-// reads them to size the window; but authorship is the desktop's, so the field
-// sits with the rest of the desktop-owned geometry.
-//
-// Rule of thumb for future edits: config-authored appearance the webview draws
-// → `view` (this file). Anything the desktop positions, sizes-as-a-window, or
-// gates → `./native`. Do not re-merge the axes: keeping them apart is what lets
-// the desktop echo a placement back without dragging render content along, and
-// lets the webview render without knowing anything about native targeting.
 // =============================================================================
 
 /** Configured colors include alpha as #rrggbbaa, shared by items and menu surfaces. */
@@ -97,24 +77,45 @@ export interface FolderEntry {
   rename?: string;
 }
 
-export interface SpaceEntry {
-  kind: "space";
-  uid: string;
-  units?: number;
-  color?: MenuColor;
+export interface MenuSpacing {
+  gapRatio: number;
+  extraGaps: Record<string, number>;
 }
 
-export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry | SpaceEntry;
+export const DEFAULT_MENU_GAP_RATIO = 0.11;
+
+export function normalizeMenuSpacing(value: unknown): MenuSpacing {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const gapRatio = typeof raw.gapRatio === "number" && Number.isFinite(raw.gapRatio)
+    ? Math.max(0, raw.gapRatio) : DEFAULT_MENU_GAP_RATIO;
+  const extra = raw.extraGaps && typeof raw.extraGaps === "object" && !Array.isArray(raw.extraGaps)
+    ? raw.extraGaps as Record<string, unknown> : {};
+  const extraGaps = Object.fromEntries(Object.entries(extra).filter(
+    (entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]) && entry[1] > 0,
+  ));
+  return { gapRatio, extraGaps };
+}
+
+export function isMenuSpacing(value: unknown): value is MenuSpacing {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  return typeof raw.gapRatio === "number" && Number.isFinite(raw.gapRatio) && raw.gapRatio >= 0
+    && Boolean(raw.extraGaps && typeof raw.extraGaps === "object" && !Array.isArray(raw.extraGaps))
+    && Object.values(raw.extraGaps as object).every(value => typeof value === "number" && Number.isFinite(value) && value >= 0);
+}
+
+export type LayoutEntry = (BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry) & {
+  // Stable identity of the button occurrence, separate from its navigation action.
+  layoutId?: string;
+};
 
 /**
  * Render content for one menu: the item tree plus its appearance. Everything
- * here is authored by the extension's config (options page) and only flows
- * downstream to the webview — it never round-trips from the desktop.
+ * here lives in menu configuration; spacing edits are submitted with placement
+ * and persisted separately for Native and browser modes by the extension.
  *
- * `gap` is the inter-item spacing (px), resolved by the extension from the
- * menu's gap percentage; it is config-owned appearance, so it lives here rather
- * than in the desktop-owned `MenuPlacement`. Native reads it (together with the
- * item size in `MenuPlacement`) when deriving the total window size.
+ * Spacing ratios are projected from the receiving host's configuration.
+ * Hosts resolve them against the actual button size along the bar orientation.
  *
  * Deliberately excluded (all in ./native): anchor/offsets/position and item
  * pixel size (MenuPlacement — desktop-owned geometry), attachmentMode/
@@ -129,7 +130,8 @@ export interface MenuView {
   expandAlignment?: ExpandAlignment;
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
-  gap?: number;
+  gapRatio?: number;
+  extraGaps?: Record<string, number>;
   // Dock strip (bar background) color, independent of `color` (the default item
   // color). When unset all hosts use the default dock surface.
   dockColor?: MenuColor;

@@ -73,11 +73,12 @@ pub enum NativeMessage {
         #[serde(rename = "menuUid", skip_serializing_if = "Option::is_none")]
         menu_uid: Option<String>,
     },
-    #[serde(rename = "updateMenuPlacement")]
-    UpdateMenuPlacement {
+    #[serde(rename = "updateMenuLayout")]
+    UpdateMenuLayout {
         #[serde(rename = "menuUid")]
         menu_uid: String,
         placement: MenuPlacement,
+        spacing: MenuSpacing,
     },
     #[serde(rename = "updateFreePlacement")]
     UpdateFreePlacement {
@@ -233,12 +234,26 @@ pub struct MenuView {
     pub button_font_size: Option<f64>,
     #[serde(default)]
     pub popup_font_size: Option<f64>,
-    /// Inter-item gap in px (config-owned appearance). Native reads it, together
-    /// with the item size in MenuPlacement, to derive the total window size.
     #[serde(default)]
-    pub gap: Option<f64>,
+    pub gap_ratio: Option<f64>,
+    #[serde(default)]
+    pub extra_gaps: std::collections::HashMap<String, f64>,
     #[serde(default)]
     pub dock_color: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuSpacing {
+    pub gap_ratio: f64,
+    pub extra_gaps: std::collections::HashMap<String, f64>,
+}
+
+impl MenuSpacing {
+    pub fn is_valid(&self) -> bool {
+        self.gap_ratio.is_finite() && self.gap_ratio >= 0.0
+            && self.extra_gaps.values().all(|ratio| ratio.is_finite() && *ratio >= 0.0)
+    }
 }
 
 /// NATIVE axis: window behavior the webview never reads. `visible` is the
@@ -453,6 +468,8 @@ pub struct WindowBounds {
 pub enum LayoutEntry {
     Bookmark {
         uid: String,
+        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
+        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
@@ -461,24 +478,32 @@ pub enum LayoutEntry {
     },
     MenuFold {
         uid: String,
+        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
+        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
     },
     MenusToggle {
         uid: String,
+        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
+        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
     },
     BrowserAction {
         uid: String,
+        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
+        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
     },
     Folder {
         uid: String,
+        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
+        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
@@ -490,39 +515,27 @@ pub enum LayoutEntry {
         #[serde(default)]
         rename: Option<String>,
     },
-    Space {
-        uid: String,
-        #[serde(default)]
-        units: Option<f64>,
-        #[serde(default)]
-        color: Option<String>,
-    },
     #[serde(other)]
     Unknown,
 }
 
-/// Number of grid tracks the menu bar renders, matching the frontend exactly
-/// (apps/desktop/src/pages/menu.ts `totalUnits`): space items span `units` tracks
-/// (min 0.1), every other item spans 1, then the sum is rounded to whole
-/// tracks. Both the resize->item-size derivation and the item-size->total
-/// recompute must use this same count (and the same gap) so they stay exact
-/// inverses; otherwise a plain save round-trips into a growing menu size.
-pub fn menu_track_count(items: &[LayoutEntry]) -> f64 {
-    let total_units: f64 = items
-        .iter()
-        .map(|item| match item {
-            LayoutEntry::Space { units, .. } => units.unwrap_or(1.0).max(0.1),
-            _ => 1.0,
-        })
-        .sum();
-    total_units.round().max(1.0)
+fn menu_gap_ratio_after(view: &MenuView, index: usize) -> f64 {
+    if index + 1 >= view.items.len() { return 0.0; }
+    let layout_id = match &view.items[index] {
+        LayoutEntry::Bookmark { layout_id, .. }
+        | LayoutEntry::Folder { layout_id, .. }
+        | LayoutEntry::MenuFold { layout_id, .. }
+        | LayoutEntry::MenusToggle { layout_id, .. }
+        | LayoutEntry::BrowserAction { layout_id, .. } => layout_id.as_ref(),
+        LayoutEntry::Unknown => None,
+    };
+    view.gap_ratio.unwrap_or(0.11)
+        + layout_id.and_then(|id| view.extra_gaps.get(id)).copied().unwrap_or(0.0)
 }
 
-/// Gap in px between menu tracks, resolved identically to the frontend
-/// (apps/desktop/src/pages/menu.ts): the menu's gap, else 4. Both the resize
-/// derivation and the total recompute must use this.
-pub fn menu_gap(view: &MenuView) -> f64 {
-    view.gap.unwrap_or(4.0)
+pub fn menu_length_factor(view: &MenuView) -> f64 {
+    view.items.len().max(1) as f64
+        + (0..view.items.len()).map(|index| menu_gap_ratio_after(view, index)).sum::<f64>()
 }
 
 /// Canvas space for the shared bar frame, matching menu-ui's `barFrameInsets`.
@@ -535,19 +548,18 @@ pub fn menu_frame_insets(view: &MenuView) -> (f64, f64) {
 
 /// Total window dimensions include the frame; placement still stores button size.
 pub fn menu_total_size(view: &MenuView, placement: &MenuPlacement) -> (f64, f64) {
-    let count = menu_track_count(&view.items);
+    let factor = menu_length_factor(view);
     let item_width = placement.item_width.unwrap_or(84.0);
     let item_height = placement.item_height.unwrap_or(36.0);
-    let gap = menu_gap(view);
     let (frame_x, frame_y) = menu_frame_insets(view);
     match view.orientation {
         MenuOrientation::Row => (
-            count * item_width + (count - 1.0) * gap + 2.0 * frame_x,
+            factor * item_width + 2.0 * frame_x,
             item_height + 2.0 * frame_y,
         ),
         MenuOrientation::Column => (
             item_width + 2.0 * frame_x,
-            count * item_height + (count - 1.0) * gap + 2.0 * frame_y,
+            factor * item_height + 2.0 * frame_y,
         ),
     }
 }
@@ -595,22 +607,13 @@ pub fn free_menu_geometry_for_state(
 
 /// Position of the MenuFold button inside the full menu grid.
 pub fn menu_toggle_position(view: &MenuView, placement: &MenuPlacement) -> (f64, f64) {
-    let mut units = 0.0;
-    for item in &view.items {
-        if matches!(item, LayoutEntry::MenuFold { .. }) {
-            break;
-        }
-        units += match item {
-            LayoutEntry::Space { units: value, .. } => value.unwrap_or(1.0).max(0.1),
-            _ => 1.0,
-        };
-    }
-
-    let track = units.round().max(0.0);
-    let gap = menu_gap(view);
+    let Some(index) = view.items.iter().position(|item| matches!(item, LayoutEntry::MenuFold { .. })) else {
+        return (0.0, 0.0);
+    };
+    let factor = (0..index).map(|i| 1.0 + menu_gap_ratio_after(view, i)).sum::<f64>();
     match view.orientation {
-        MenuOrientation::Row => (track * (placement.item_width.unwrap_or(84.0) + gap), 0.0),
-        MenuOrientation::Column => (0.0, track * (placement.item_height.unwrap_or(36.0) + gap)),
+        MenuOrientation::Row => (factor * placement.item_width.unwrap_or(84.0), 0.0),
+        MenuOrientation::Column => (0.0, factor * placement.item_height.unwrap_or(36.0)),
     }
 }
 
@@ -894,16 +897,18 @@ mod tests {
             r#"{
                 "uid": "menu-1",
                 "orientation": "row",
-                "gap": 5,
+                "gapRatio": 0.1,
+                "extraGaps": { "a": 0.2, "e": 3 },
                 "items": [
-                    { "kind": "bookmark", "uid": "a", "label": "A" },
+                    { "kind": "bookmark", "uid": "a", "layoutId": "a", "label": "A" },
                     { "kind": "bookmark", "uid": "b", "label": "B" },
                     { "kind": "menuFold", "uid": "toggle", "label": "D" },
-                    { "kind": "bookmark", "uid": "e", "label": "E" }
+                    { "kind": "bookmark", "uid": "e", "layoutId": "e", "label": "E" }
                 ]
             }"#,
         )
         .unwrap();
+        let view: MenuView = serde_json::from_value(serde_json::to_value(view).unwrap()).unwrap();
         let placement: MenuPlacement = serde_json::from_str(
             r#"{
                 "boundPosition": { "anchor": "topRight", "offsetX": 10 },
@@ -926,7 +931,8 @@ mod tests {
         let expanded = compute_menu_geometry_for_state(&window, &view, &placement, false);
         let collapsed = compute_menu_geometry_for_state(&window, &view, &placement, true);
 
-        assert_eq!((expanded.x + 110.0, expanded.y), (collapsed.x, collapsed.y));
+        assert_eq!((expanded.x + 120.0, expanded.y), (collapsed.x, collapsed.y));
+        assert_eq!(expanded.width, 235.0);
         assert_eq!((collapsed.width, collapsed.height), (60.0, 22.0));
     }
 
@@ -936,7 +942,7 @@ mod tests {
             "view": {
                 "uid": "menu-free",
                 "orientation": "row",
-                "gap": 5,
+                "gapRatio": 0.1,
                 "items": [
                     { "kind": "bookmark", "uid": "a", "label": "A" },
                     { "kind": "menuFold", "uid": "toggle", "label": "D" }

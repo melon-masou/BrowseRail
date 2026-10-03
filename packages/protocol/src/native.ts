@@ -16,6 +16,7 @@
 // (hidden-but-kept), so switching URLs never destroys and recreates a surface.
 // =============================================================================
 
+import { isMenuSpacing, type MenuSpacing } from "./menu";
 import type { MenuView } from "./menu";
 import type { SyncedNativeShortcut } from "./index";
 
@@ -90,7 +91,7 @@ export interface MenuBoundPosition {
  * Everything the DESKTOP decides about a surface's geometry and echoes back to
  * the extension after a drag or resize. Kept separate from `MenuTarget` (which
  * is downlink-only) precisely because this round-trips: the desktop reports a
- * bare placement with no window/target context (see the `updateMenuPlacement`
+ * bare placement with no window/target context (see the `updateMenuLayout`
  * native message).
  *
  * Both modes' data coexist here because a menu switches between them; each mode
@@ -190,13 +191,14 @@ export type NativeMessage =
       menuUid?: string;
     }
   | {
-      // Desktop echoes a surface's new geometry after the user drags/resizes it
+      // Desktop submits spacing and geometry together after editing
       // (bound: anchor + offsets + item size; free: item size). The free
       // surface's absolute position is reported separately via updateFreePlacement,
       // so a high-frequency drag stays a slim position-only message.
-      type: "updateMenuPlacement";
+      type: "updateMenuLayout";
       menuUid: string;
       placement: MenuPlacement;
+      spacing: MenuSpacing;
     }
   | {
       // Desktop reports a free surface's new absolute screen position after the
@@ -226,8 +228,8 @@ export function isNativeMessage(value: unknown): value is NativeMessage {
           value.windowUid === null ||
           typeof value.windowUid === "string")
       );
-    case "updateMenuPlacement":
-      return typeof value.menuUid === "string" && isMenuPlacement(value.placement);
+    case "updateMenuLayout":
+      return typeof value.menuUid === "string" && isMenuPlacement(value.placement) && isMenuSpacing(value.spacing);
     case "updateFreePlacement":
       return (
         typeof value.menuUid === "string" &&

@@ -11,7 +11,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuFold", "menusToggle", "browserAction", "space", "static", "dynamic", "temporary"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuFold", "menusToggle", "browserAction", "static", "dynamic", "temporary"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export const BROWSER_ACTION_KINDS = ["back", "forward", "reload"] as const;
 export type BrowserActionKind = (typeof BROWSER_ACTION_KINDS)[number];
@@ -46,7 +46,6 @@ export interface StoredMenuItem {
   // inheriting this item's folder options), not just its bookmarks. Default off.
   includeFolders?: boolean;
   tabMode?: TabMode;
-  units?: number;
   showPageTitle?: boolean;
   browserAction?: BrowserActionKind;
   targetMenuUids?: string[];
@@ -105,7 +104,11 @@ export interface StoredMenu {
   expandAlignment?: ExpandAlignment;
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
-  gap?: number;
+  // Native spacing stays in the original fields; browser spacing is independent.
+  gapRatio?: number;
+  extraGaps?: Record<string, number>;
+  browserGapRatio?: number;
+  browserExtraGaps?: Record<string, number>;
   items: StoredMenuItem[];
   onTopMode?: OnTopMode;
   orientation: MenuOrientation;
@@ -254,7 +257,6 @@ export interface ExportedMenuItem {
   uid: string;
   path?: string[];
   url?: string;
-  units?: number;
   rename?: string;
   color?: MenuColor;
   cycleColors?: MenuColor[];
@@ -296,7 +298,10 @@ export interface ExportedMenu {
   orientation: MenuOrientation;
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
-  gap?: number;
+  gapRatio?: number;
+  extraGaps?: Record<string, number>;
+  browserGapRatio?: number;
+  browserExtraGaps?: Record<string, number>;
   color?: MenuColor;
   expandDirection?: ExpandDirection;
   expandAlignment?: ExpandAlignment;

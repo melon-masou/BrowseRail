@@ -78,7 +78,6 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
         }
       }
       if (
-        item.type === "space" ||
         item.type === "menuFold" ||
         item.type === "menusToggle" ||
         item.type === "browserAction" ||

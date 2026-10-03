@@ -587,9 +587,6 @@ pub struct CustomizationStartInfo {
     pub toolbar_position: String,
 }
 
-#[cfg(target_os = "windows")]
-const CUSTOMIZE_ICON_SIZE: f64 = 26.0;
-
 // Free vertical space above and below the menu rail, in logical pixels, plus
 // the rail's absolute logical top edge. `anchor_offset_y` is the rail's top edge
 // relative to the window and `menu_height` its height. Shared by
@@ -767,6 +764,9 @@ fn save_menu_placement(
     anchor: MenuAnchor,
     width: f64,
     height: f64,
+    item_width: f64,
+    item_height: f64,
+    spacing: protocol::MenuSpacing,
     anchor_offset_x: f64,
     anchor_offset_y: f64,
 ) -> Result<MenuPlacement, String> {
@@ -795,23 +795,14 @@ fn save_menu_placement(
         || !height.is_finite()
         || !anchor_offset_x.is_finite()
         || !anchor_offset_y.is_finite()
+        || !item_width.is_finite()
+        || item_width <= 0.0
+        || !item_height.is_finite()
+        || item_height <= 0.0
+        || !spacing.is_valid()
     {
         return Err("Invalid menu size".into());
     }
-    let mut width = width;
-    let mut height = height;
-
-    match orig_menu.view.orientation {
-        protocol::MenuOrientation::Row => {
-            width = width.clamp(CUSTOMIZE_ICON_SIZE, 2000.0);
-            height = height.clamp(CUSTOMIZE_ICON_SIZE, 64.0);
-        }
-        protocol::MenuOrientation::Column => {
-            width = width.clamp(CUSTOMIZE_ICON_SIZE, 220.0);
-            height = height.clamp(CUSTOMIZE_ICON_SIZE, 1600.0);
-        }
-    }
-
     // Free mode has no owner rectangle to anchor against; reuse the saved
     // placement's offsets and anchor unchanged, store the screen position as
     // free_position instead.
@@ -841,23 +832,6 @@ fn save_menu_placement(
         (offset_x, offset_y)
     };
 
-    // Derive the per-track size with the exact same track count and gap the
-    // grid renders with (and that native::recompute_menu_total_size inverts),
-    // so a save without a drag round-trips back to the same total instead of
-    // growing every time.
-    let track_count = protocol::menu_track_count(&orig_menu.view.items);
-    let item_gap = protocol::menu_gap(&orig_menu.view);
-    let (item_width, item_height) = match orig_menu.view.orientation {
-        protocol::MenuOrientation::Row => {
-            let iw = ((width - (track_count - 1.0) * item_gap) / track_count).max(1.0);
-            (Some(iw), Some(height))
-        }
-        protocol::MenuOrientation::Column => {
-            let ih = ((height - (track_count - 1.0) * item_gap) / track_count).max(1.0);
-            (Some(width), Some(ih))
-        }
-    };
-
     let anchor = if is_free {
         orig_menu.placement.bound_position.anchor
     } else {
@@ -874,19 +848,30 @@ fn save_menu_placement(
         } else {
             orig_menu.placement.free_position
         },
-        item_width,
-        item_height,
+        item_width: Some(item_width),
+        item_height: Some(item_height),
     };
 
+    // Finish the canvas while customization still excludes native position updates.
+    // The frontend must not apply this toolbar-to-bar offset a second time.
+    panel::apply_anchored_window_geometry(
+        &window,
+        (width + 2.0 * frame_x).ceil(),
+        (height + 2.0 * frame_y).ceil(),
+        anchor_offset_x,
+        anchor_offset_y,
+        frame_x,
+        frame_y,
+    )?;
     state.surfaces.set_customizing(window.label(), false);
     let _ = state
         .native_sender
-        .send(native::NativeCommand::SaveMenuPlacement {
+        .send(native::NativeCommand::SaveMenuLayout {
             instance_uid,
             window_uid: window_uid.clone(),
             menu_uid,
-            anchor,
             placement,
+            spacing,
         });
     Ok(placement)
 }

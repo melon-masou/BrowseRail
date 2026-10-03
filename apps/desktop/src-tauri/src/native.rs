@@ -33,7 +33,7 @@ use crate::panel::{
     set_window_visible_without_activation, surface_prefix,
 };
 use crate::protocol::{
-    AttachmentMode, BrowserInstance, BrowserWindowSnapshot, MenuAnchor, MenuPlacement, MenuTarget,
+    AttachmentMode, BrowserInstance, BrowserWindowSnapshot, MenuPlacement, MenuSpacing, MenuTarget,
     NativeMessage, SyncedMenu, SyncedNativeShortcut,
 };
 use crate::session::SessionRegistry;
@@ -171,12 +171,12 @@ pub enum NativeCommand {
     BeginCustomization {
         label: String,
     },
-    SaveMenuPlacement {
+    SaveMenuLayout {
         instance_uid: String,
         window_uid: String,
         menu_uid: String,
-        anchor: MenuAnchor,
         placement: MenuPlacement,
+        spacing: MenuSpacing,
     },
     CancelCustomization {
         instance_uid: String,
@@ -1117,12 +1117,12 @@ impl NativeReactor {
                     self.surfaces.set_customizing(&label, true);
                     self.check_update_tray();
                 }
-                NativeCommand::SaveMenuPlacement {
+                NativeCommand::SaveMenuLayout {
                     instance_uid,
                     window_uid,
                     menu_uid,
-                    anchor: _,
                     placement,
+                    spacing,
                 } => {
                     if window_uid.is_empty() {
                         if let Some(position) = placement.free_position {
@@ -1133,7 +1133,7 @@ impl NativeReactor {
                     }
                     let _ = self
                         .registry
-                        .update_menu_placement(&instance_uid, menu_uid, placement);
+                        .update_menu_layout(&instance_uid, menu_uid, placement, spacing);
                     self.check_update_tray();
                 }
                 NativeCommand::CancelCustomization {

@@ -1,24 +1,6 @@
-import { isAutoFontSize, type LayoutEntry, type MenuView } from "@browserail/protocol";
-import type { BarState, Size } from "./types";
-
-export function barDimensions(menu: MenuView, size: Size): Size {
-  const units = menu.items.reduce((sum, item) => sum + (item.kind === "space" ? Math.max(0.1, item.units ?? 1) : 1), 0);
-  const count = Math.max(1, Math.round(units));
-  const gap = menu.gap ?? 4;
-  return menu.orientation === "row"
-    ? { width: count * size.width + (count - 1) * gap, height: size.height }
-    : { width: size.width, height: count * size.height + (count - 1) * gap };
-}
-
-export function barFrameInsets(menu: Pick<MenuView, "orientation">): { x: number; y: number } {
-  return menu.orientation === "row" ? { x: 5, y: 1 } : { x: 1, y: 5 };
-}
-
-export function barSurfaceDimensions(menu: MenuView, size: Size, collapsed = false): Size {
-  const content = collapsed ? size : barDimensions(menu, size);
-  const frame = barFrameInsets(menu);
-  return { width: content.width + 2 * frame.x, height: content.height + 2 * frame.y };
-}
+import { isAutoFontSize, type LayoutEntry } from "@browserail/protocol";
+import { barFrameInsets } from "./layout";
+import type { BarState } from "./types";
 
 export function applyBarTheme(root: HTMLElement, state: BarState) {
   const buttonFontSize = isAutoFontSize(state.menu.buttonFontSize)
@@ -103,7 +85,7 @@ export function applyMenuColor(element: HTMLElement, color: string): void {
 
 export function menuButton(
     doc: Document,
-    entry: Exclude<LayoutEntry, { kind: "space" }>,
+    entry: LayoutEntry,
     popup: boolean,
   ): HTMLButtonElement {
   const button = doc.createElement("button");

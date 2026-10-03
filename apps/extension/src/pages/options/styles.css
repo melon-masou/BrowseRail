@@ -1129,17 +1129,7 @@ output {
 }
 
 
-.item-tag-space {
-  background: #f1f5f9;
-  color: #475569;
-  border: 1px solid #cbd5e1;
-}
 
-.menu-add-space-btn {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #334155;
-}
 
 /* Add Item Dropdown Popover */
 .add-item-popover {
@@ -2211,27 +2201,8 @@ output {
   accent-color: #2563eb;
 }
 
-.menus-tools {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
 
-.toolkit-card-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
 
-.toolkit-card-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a2336;
-}
 
 .toolkit-status {
   font-size: 13px;
@@ -2281,11 +2252,6 @@ output {
   box-shadow: none;
 }
 
-.space-bookmark-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
 
 .space-bookmark-folder-row {
   display: flex;

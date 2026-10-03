@@ -62,7 +62,6 @@ export type MenuAppearance = Editable<
     | "expandAlignment"
     | "buttonFontSize"
     | "popupFontSize"
-    | "gap"
     | "color"
     | "dockColor"
   >
@@ -75,7 +74,6 @@ export type ItemBehavior = Editable<
     | "tabMode"
     | "expandOnHover"
     | "includeFolders"
-    | "units"
     | "showPageTitle"
     | "targetMenuUids"
   >
@@ -280,7 +278,6 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     editMenuAppearance(uid: string, values: MenuAppearance): void {
       const copy = structuredClone(values);
-      if (typeof copy.gap === "number") copy.gap = Math.max(0, Math.min(100, copy.gap));
       if (typeof copy.buttonFontSize === "number" && copy.buttonFontSize !== AUTO_FONT_SIZE)
         copy.buttonFontSize = Math.max(1, copy.buttonFontSize);
       if (typeof copy.popupFontSize === "number")
@@ -341,11 +338,6 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       const target = item(menuUid, uid);
       const copy = structuredClone(values);
       if ("rename" in copy) copy.rename = copy.rename?.trim() || undefined;
-      if ("units" in copy)
-        copy.units =
-          copy.units && Number.isFinite(copy.units) && copy.units > 0
-            ? Math.max(0.1, Math.min(20, copy.units))
-            : 1;
       if (copy.targetMenuUids) {
         for (const targetUid of copy.targetMenuUids) {
           menu(targetUid);

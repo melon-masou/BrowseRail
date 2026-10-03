@@ -173,7 +173,10 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         ...(menu.enabled !== undefined ? { enabled: menu.enabled } : {}),
         ...(menu.buttonFontSize !== undefined ? { buttonFontSize: menu.buttonFontSize } : {}),
         ...(menu.popupFontSize !== undefined ? { popupFontSize: menu.popupFontSize } : {}),
-        ...(menu.gap !== undefined ? { gap: menu.gap } : {}),
+        ...(menu.gapRatio !== undefined ? { gapRatio: menu.gapRatio } : {}),
+        ...(menu.extraGaps ? { extraGaps: menu.extraGaps } : {}),
+        ...(menu.browserGapRatio !== undefined ? { browserGapRatio: menu.browserGapRatio } : {}),
+        ...(menu.browserExtraGaps ? { browserExtraGaps: menu.browserExtraGaps } : {}),
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
         ...(menu.expandDirection ? { expandDirection: menu.expandDirection } : {}),
@@ -230,7 +233,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             type: itemType,
             ...(path !== undefined ? { path } : {}),
             ...(item.url ? { url: item.url } : {}),
-            ...(typeof item.units === "number" ? { units: item.units } : {}),
             ...(item.rename ? { rename: item.rename } : {}),
             ...(itemType === "flattenFolder"
               ? item.cycleColors && item.cycleColors.length > 0
@@ -329,7 +331,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           type,
           ...(path !== undefined ? { path } : {}),
           ...(typeof itemRecord.url === "string" && itemRecord.url ? { url: itemRecord.url } : {}),
-          ...(typeof itemRecord.units === "number" ? { units: itemRecord.units } : {}),
           ...(rename ? { rename } : {}),
           ...(type === "flattenFolder"
             ? cycleColors && cycleColors.length > 0

@@ -1,9 +1,11 @@
 export type * from "./types";
 export { mountBar } from "./bar";
 export { mountFolderPopup } from "./popup";
-export { applyBarTheme, barDimensions, barFrameInsets, barSurfaceDimensions, menuButton } from "./appearance";
+export { applyBarTheme, menuButton } from "./appearance";
+export { applyBarLayout, barDimensions, barItemSize, barFrameInsets, barSurfaceDimensions, barToggleOffset } from "./layout";
 export { calculateColumnWidth, createTextMeasure, popupEnvelope, planFolderPopup, POPUP_SCREEN_MARGIN } from "./popup/layout";
 export { createLifetime } from "./lifetime";
 export { attachTemporaryBookmarkButton } from "./temporary-bookmark";
 export { mountBookmarkConfirmation, mountTemporaryConfirmation } from "./confirmation";
-export { createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel } from "./bar/customization";
+export { createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSpacingIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel } from "./bar/customization";
+export { mountSpacingEditor } from "./bar/spacing-editor";

@@ -41,6 +41,7 @@ import {
   loadMenuPlacements, saveMenuPlacement, removeBrowserPlacement, loadTemporaryValues, loadTemporaryNotes,
   saveBrowserEditing,
   saveSyncEnabled,
+  saveMenuSpacing, menuSpacingForMode,
 } from "../config";
 
 beforeEach(() => {
@@ -278,22 +279,39 @@ it("rejects confirmation messages from webpages and rechecks permissions before 
   expect(await loadTemporaryValues()).toEqual({});
 });
 
-it("only saves webpage placement while browser editing is enabled", async () => {
+it("only saves browser layout while editing is enabled and keeps Native spacing independent", async () => {
   const config = await fixture();
+  const nativeSpacing = { gapRatio: 0.4, extraGaps: { "item-1": 0.7 } };
+  await saveMenuSpacing("source", nativeSpacing, "native");
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   const placement = { anchor: "bottomRight" as const, offsetX: 30, offsetY: 40, itemWidth: 120, itemHeight: 50 };
-  await page.request({ type: "placement", menuUid: "source", placement });
+  await page.request({ type: "layout", spacing: { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } }, menuUid: "source", placement });
   expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
   expect((await loadBrowserPlacements()).source).toBeUndefined();
   await saveBrowserEditing(true);
   await service.publish(config, [view], {}, {}, true, true);
   expect(await page.snapshot()).toMatchObject({ menus: [{ editingLocked: false }] });
-  await page.request({ type: "placement", menuUid: "source", placement });
+  await page.request({ type: "layout", spacing: { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } }, menuUid: "source", placement });
   expect((await loadBrowserPlacements()).source).toEqual(placement);
+  const browserSpacing = { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } };
+  const saved = await loadConfig();
+  const savedMenu = saved.panel.menus.find(menu => menu.uid === "source")!;
+  expect(menuSpacingForMode(savedMenu, "browser")).toEqual(browserSpacing);
+  expect(menuSpacingForMode(savedMenu, "native")).toEqual(nativeSpacing);
+  await service.publish(saved, [{ ...view, ...nativeSpacing }], {}, {}, true, true);
+  expect(await page.snapshot()).toMatchObject({ menus: [{ view: browserSpacing }] });
   await saveDisplayMode("native");
-  await page.request({ type: "placement", menuUid: "source", placement: { ...placement, offsetX: 99 } });
+  await page.request({ type: "layout", spacing: { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } }, menuUid: "source", placement: { ...placement, offsetX: 99 } });
   expect((await loadBrowserPlacements()).source).toEqual(placement);
+  const nextNativeSpacing = { gapRatio: 0.6, extraGaps: {} };
+  await saveMenuSpacing("source", nextNativeSpacing, "native");
+  await saveDisplayMode("browser");
+  const reloaded = await loadConfig();
+  expect(menuSpacingForMode(reloaded.panel.menus[0]!, "native")).toEqual(nextNativeSpacing);
+  expect(menuSpacingForMode(reloaded.panel.menus[0]!, "browser")).toEqual(browserSpacing);
+  await service.publish(reloaded, [{ ...view, ...nextNativeSpacing }], {}, {}, true, true);
+  expect(await page.snapshot()).toMatchObject({ menus: [{ view: browserSpacing }] });
 });
 
 it("does not offer empty menus or menus on websites whose permission was revoked", async () => {

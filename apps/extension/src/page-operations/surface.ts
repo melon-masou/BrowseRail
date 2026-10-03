@@ -1,5 +1,5 @@
 import { t } from "@browserail/i18n";
-import { mountBar, barSurfaceDimensions, type MenuActions, type PopupSession } from "@browserail/menu-ui";
+import { mountBar, barSurfaceDimensions, barToggleOffset, type MenuActions, type PopupSession } from "@browserail/menu-ui";
 import type { BrowserMenu, MenuRequest, TemporaryConfirmationResult } from "./messages";
 import { openBrowserPopup } from "./popup";
 import { mountBrowserCustomization } from "./customization";
@@ -40,10 +40,10 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
     if (lifetime.signal.aborted || state.editingLocked || editor) return;
     renderer?.destroy(); renderer = undefined;
     editor = mountBrowserCustomization(wrapper, root, barState(), state.placement,
-      async placement => {
-        await send({ type: "placement", menuUid: state.view.uid, placement });
+      async (placement, spacing) => {
+        await send({ type: "layout", menuUid: state.view.uid, placement, spacing });
         if (lifetime.signal.aborted) return;
-        state = { ...state, placement };
+        state = { ...state, placement, view: { ...state.view, ...spacing } };
         finishCustomization();
       }, finishCustomization,
     );
@@ -79,15 +79,9 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
     const fullSize = barSurfaceDimensions(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight });
     const position = placementPoint(state.placement, fullSize.width, fullSize.height, viewport.innerWidth, viewport.innerHeight);
     if (state.collapsed) {
-      let units = 0;
-      for (const entry of state.view.items) {
-        if (entry.kind === "menuFold") break;
-        units += entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1;
-      }
-      const track = Math.round(units);
-      const gap = state.view.gap ?? 4;
-      if (state.view.orientation === "row") position.x += track * (state.placement.itemWidth + gap);
-      else position.y += track * (state.placement.itemHeight + gap);
+      const offset = barToggleOffset(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight });
+      position.x += offset.x;
+      position.y += offset.y;
     }
     wrapper.style.left = `${position.x}px`; wrapper.style.top = `${position.y}px`;
   }

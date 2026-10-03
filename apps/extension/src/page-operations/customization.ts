@@ -1,14 +1,15 @@
 import { t } from "@browserail/i18n";
 import {
-  barDimensions, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon,
+  barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon,
   createCancelIcon, createSaveIcon, nextAnchor, anchorLabel, type BarState,
 } from "@browserail/menu-ui";
+import type { MenuSpacing } from "@browserail/protocol";
 import type { BrowserMenuPlacement } from "../config";
 import { placementAtPoint, placementPoint } from "./placement";
 
 export function mountBrowserCustomization(
   wrapper: HTMLElement, root: HTMLElement, state: BarState, placement: BrowserMenuPlacement,
-  save: (placement: BrowserMenuPlacement) => Promise<void>, cancel: () => void,
+  save: (placement: BrowserMenuPlacement, spacing: MenuSpacing) => Promise<void>, cancel: () => void,
 ) {
   const doc = root.ownerDocument;
   const viewport = doc.defaultView!;
@@ -31,10 +32,22 @@ export function mountBrowserCustomization(
   moveButton.title = t("customize.dragToMove");
   const cancelButton = controlButton(doc, createCancelIcon(doc)); cancelButton.title = t("customize.cancel");
   const saveButton = controlButton(doc, createSaveIcon(doc)); saveButton.title = t("customize.savePlacement");
-  toolbar.append(anchorButton, moveButton, cancelButton, saveButton);
+  const spacingButton = controlButton(doc, createSpacingIcon(doc));
+  spacingButton.title = t("customize.adjustSpacing");
+  spacingButton.setAttribute("aria-pressed", "false");
+  toolbar.append(anchorButton, moveButton, spacingButton, cancelButton, saveButton);
   content.append(rail, toolbar);
   root.replaceChildren(content);
 
+  const spacingEditor = mountSpacingEditor(rail, state.menu, state.itemSize, (menu, itemSize) => {
+    size = barDimensions(menu, itemSize);
+    layout();
+  });
+  spacingButton.addEventListener("click", () => {
+    stopGesture?.();
+    spacingEditor.setEnabled(!spacingEditor.enabled);
+    spacingButton.setAttribute("aria-pressed", String(spacingEditor.enabled));
+  }, options);
   function layout(): void {
     const surfaceWidth = size.width + 2 * frame.x;
     const surfaceHeight = size.height + 2 * frame.y;
@@ -75,6 +88,7 @@ export function mountBrowserCustomization(
     element.addEventListener("lostpointercapture", stop, options);
   }
   for (const element of [rail, moveButton]) element.addEventListener("pointerdown", event => {
+    if (element === rail && spacingEditor.enabled) return;
     const start = { ...point };
     const startX = event.clientX, startY = event.clientY;
     beginGesture(element, event, next => {
@@ -83,15 +97,13 @@ export function mountBrowserCustomization(
     });
   }, options);
 
-  const units = state.menu.items.reduce((sum, item) => sum + (item.kind === "space" ? Math.max(0.1, item.units ?? 1) : 1), 0);
-  const count = Math.max(1, Math.round(units));
-  const gap = state.menu.gap ?? 4;
   const row = state.menu.orientation === "row";
-  const min = barDimensions(state.menu, { width: 26, height: 26 });
-  const max = barDimensions(state.menu, { width: row ? 400 : 220, height: row ? 64 : 200 });
   for (const direction of ["north", "east", "south", "west", "southEast"] as const) {
     const handle = doc.createElement("div"); handle.className = `resize-handle resize-${direction}`;
     handle.addEventListener("pointerdown", event => {
+      if (spacingEditor.enabled) return;
+      const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 });
+      const max = barDimensions(spacingEditor.menu, { width: row ? 400 : 220, height: row ? 64 : 200 });
       const start = { point: { ...point }, size: { ...size }, x: event.clientX, y: event.clientY };
       beginGesture(handle, event, next => {
         const dx = next.clientX - start.x, dy = next.clientY - start.y;
@@ -103,6 +115,7 @@ export function mountBrowserCustomization(
         }
         if (direction === "west") point.x = start.point.x + start.size.width - size.width;
         if (direction === "north") point.y = start.point.y + start.size.height - size.height;
+        spacingEditor.setItemSize(barItemSize(spacingEditor.menu, size));
         layout();
       });
     }, options);
@@ -114,22 +127,22 @@ export function mountBrowserCustomization(
   cancelButton.addEventListener("click", cancel, options);
   saveButton.addEventListener("click", () => {
     if (saving) return;
-    saving = true; stopGesture?.();
-    for (const button of [anchorButton, moveButton, cancelButton, saveButton]) button.disabled = true;
+    saving = true; stopGesture?.(); spacingEditor.stopGesture(); rail.inert = true;
+    for (const button of [anchorButton, moveButton, spacingButton, cancelButton, saveButton]) button.disabled = true;
     const draft = placementAtPoint({ ...placement, anchor,
-      itemWidth: row ? (size.width - (count - 1) * gap) / count : size.width,
-      itemHeight: row ? size.height : (size.height - (count - 1) * gap) / count,
+      itemWidth: spacingEditor.itemSize.width,
+      itemHeight: spacingEditor.itemSize.height,
     }, point.x, point.y, size.width + 2 * frame.x, size.height + 2 * frame.y, viewport.innerWidth, viewport.innerHeight);
-    void save(draft).catch(error => {
+    void save(draft, spacingEditor.spacing).catch(error => {
       if (lifetime.signal.aborted) return;
-      root.dataset.error = ""; root.title = String(error); saving = false;
-      for (const button of [anchorButton, moveButton, cancelButton, saveButton]) button.disabled = false;
+      root.dataset.error = ""; root.title = String(error); saving = false; rail.inert = false;
+      for (const button of [anchorButton, moveButton, spacingButton, cancelButton, saveButton]) button.disabled = false;
     });
   }, options);
   rail.addEventListener("contextmenu", event => event.preventDefault(), options);
   layout();
   return {
     resize: layout,
-    destroy(): void { stopGesture?.(); lifetime.abort(); root.classList.remove("customize-mode"); },
+    destroy(): void { stopGesture?.(); spacingEditor.destroy(); lifetime.abort(); root.classList.remove("customize-mode"); },
   };
 }

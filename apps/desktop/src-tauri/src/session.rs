@@ -5,7 +5,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use crate::protocol::{
-    BrowserInstance, FreePosition, MenuPlacement, NativeMessage, SyncedMenu, SyncedNativeShortcut,
+    BrowserInstance, FreePosition, MenuPlacement, MenuSpacing, NativeMessage, SyncedMenu, SyncedNativeShortcut,
 };
 
 #[derive(Default)]
@@ -341,11 +341,12 @@ impl SessionRegistry {
             .unwrap_or_default()
     }
 
-    pub fn update_menu_placement(
+    pub fn update_menu_layout(
         &self,
         instance_uid: &str,
         menu_uid: String,
         placement: MenuPlacement,
+        spacing: MenuSpacing,
     ) -> Result<(), String> {
         let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
@@ -354,6 +355,8 @@ impl SessionRegistry {
 
         for synced in session.menus.values_mut() {
             if synced.view.uid == menu_uid {
+                synced.view.gap_ratio = Some(spacing.gap_ratio);
+                synced.view.extra_gaps = spacing.extra_gaps.clone();
                 if synced.is_free() {
                     // A free surface has no browser-relative anchor. Preserve its offsets and
                     // update only the dimensions shared with the bound copies.
@@ -370,9 +373,10 @@ impl SessionRegistry {
             .as_ref()
             .ok_or("The browser instance is disconnected")?;
         outgoing
-            .send(NativeMessage::UpdateMenuPlacement {
+            .send(NativeMessage::UpdateMenuLayout {
                 menu_uid,
                 placement,
+                spacing,
             })
             .map_err(|_| "The browser instance is disconnected".into())
     }
@@ -753,7 +757,8 @@ mod tests {
                 expand_alignment: None,
                 button_font_size: None,
                 popup_font_size: None,
-                gap: None,
+                gap_ratio: None,
+                extra_gaps: Default::default(),
                 dock_color: None,
             },
             placement: MenuPlacement {

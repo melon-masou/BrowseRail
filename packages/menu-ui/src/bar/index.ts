@@ -1,6 +1,7 @@
 import { DEFAULT_DOCK_COLOR, invertNavigationActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
-import { applyBarTheme, barDimensions, menuButton } from "../appearance";
+import { applyBarTheme, menuButton } from "../appearance";
+import { applyBarLayout } from "../layout";
 import { createLifetime, showMenuError } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
 import type { BarHost, BarState, Controller, PopupSession } from "../types";
@@ -118,14 +119,6 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   }
   function renderEntry(entry: LayoutEntry): HTMLElement {
     const options = { signal: renderLifetime.signal };
-    if (entry.kind === "space") {
-      const space = doc.createElement("div");
-      space.className = "menu-space";
-      space.style.setProperty("--config-space-units", String(Math.max(0.1, entry.units ?? 1)));
-      space.style.setProperty("--config-space-background", entry.color || "transparent");
-      space.addEventListener("pointerenter", requestClose, options);
-      return space;
-    }
     const button = menuButton(doc, entry, false);
     if (entry.kind === "menuFold") {
       button.classList.add("menu-toggle-button");
@@ -188,14 +181,8 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     bar.className = "menu-bar";
     bar.ariaLabel = t("aria.menu");
     bar.dataset.orientation = state.menu.orientation;
-    const units = state.menu.items.reduce((sum, entry) => sum + (entry.kind === "space" ? Math.max(0.1, entry.units ?? 1) : 1), 0);
-    bar.style.setProperty("--config-bar-item-count", String(state.collapsed ? 1 : Math.max(1, Math.round(units))));
     bar.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
-    bar.style.setProperty("--config-bar-gap", `${state.menu.gap ?? 4}px`);
     bar.style.setProperty("--config-bar-background", state.menu.dockColor || DEFAULT_DOCK_COLOR);
-    const size = state.collapsed ? state.itemSize : barDimensions(state.menu, state.itemSize);
-    bar.style.setProperty("--config-bar-width", `${size.width}px`);
-    bar.style.setProperty("--config-bar-height", `${size.height}px`);
     const options = { signal: renderLifetime.signal };
     bar.addEventListener("pointerenter", () => { pointerInside = true; session?.setBarPointerInside(true); }, options);
     bar.addEventListener("pointerleave", () => { pointerInside = false; session?.setBarPointerInside(false); }, options);
@@ -209,6 +196,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     else {
       const empty = doc.createElement("div"); empty.className = "empty-menu"; empty.textContent = t("menu.empty"); bar.append(empty);
     }
+    applyBarLayout(bar, { ...state.menu, items: entries }, state.itemSize);
     root.replaceChildren(bar);
   }
   root.addEventListener("pointerout", event => {
