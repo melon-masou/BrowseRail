@@ -55,12 +55,20 @@ import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 
 const browserMenus = createBrowserMenus(requestSync);
 const browserInjection = createBrowserInjection();
-const editingMenu = createBrowserEditingMenu();
+const editingMenu = createBrowserEditingMenu({
+  setNativeEditing(editing) {
+    if (socket?.readyState !== WebSocket.OPEN) throw new Error("Desktop is disconnected");
+    send({ type: "setEditing", editing });
+  },
+});
 let widgetActive = true;
 
 export const connectionStateMachine = new ExtensionStateMachine("disconnected");
 
 connectionStateMachine.subscribe((next, _prev, detail) => {
+  if (next !== "connected" && next !== "syncing") {
+    void editingMenu.updateNativeEditing(undefined).catch(error => console.error("BrowseRail editing:", error));
+  }
   updateActionBadge(next, detail);
   void browser.runtime
     .sendMessage({
@@ -466,6 +474,11 @@ async function handleMessage(raw: unknown): Promise<void> {
     connectionStateMachine.transition("connected", `Handshake completed, protocol v${value.protocolVersion}`);
     extLog("Protocol", `Handshake completed, protocol v${value.protocolVersion}`);
     requestSync();
+    return;
+  }
+
+  if (value.type === "editingState") {
+    await editingMenu.updateNativeEditing(value.editing);
     return;
   }
 

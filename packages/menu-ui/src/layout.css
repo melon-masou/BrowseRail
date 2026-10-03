@@ -115,10 +115,6 @@
       padding-left: 1px;
       padding-right: 1px;
     }
-    .menu-bar .menu-button[data-folder]::after,
-    .customize-rail .menu-button[data-folder]::after {
-      --folder-marker-size: 5px;
-    }
   }
 
   @container (max-width: 32px) {
@@ -126,10 +122,6 @@
     .customize-rail .menu-button {
       padding-left: 0;
       padding-right: 0;
-    }
-    .menu-bar .menu-button[data-folder]::after,
-    .customize-rail .menu-button[data-folder]::after {
-      --folder-marker-size: 3px;
     }
   }
 

@@ -11,7 +11,7 @@
 
   :is(.menu-bar, .customize-rail) .menu-button {
     color: var(--bar-button-text-color, var(--label-color));
-    background: var(--bar-button-background, var(--surface-base));
+    background: var(--bar-button-background, #2b3445);
     border-radius: var(--bar-button-radius, 4px);
   }
 
@@ -27,7 +27,7 @@
   :is(.menu-bar, .customize-rail) .menu-button:focus-visible,
   :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"]:hover,
   :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"]:focus-visible {
-    background: var(--bar-button-hover-background, #2a3344);
+    background: var(--bar-button-hover-background, #354159);
     filter: var(--bar-button-hover-filter, brightness(1.12));
   }
 
@@ -38,7 +38,7 @@
   }
 
   :is(.menu-bar, .customize-rail) .menu-button[data-expanded] {
-    background: var(--bar-button-expanded-background, #333e54);
+    background: var(--bar-button-expanded-background, #3d4a63);
   }
 
   :is(.menu-bar, .customize-rail) .menu-button[data-has-custom-color="true"] {

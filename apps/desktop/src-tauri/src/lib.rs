@@ -938,16 +938,6 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
         state.enable_shortcuts,
         None::<&str>,
     )?;
-    // "Edit menus" shows the positive edit-mode state; internally lock_editing is
-    // its inverse (true = browsing), so the check reflects !lock_editing.
-    let lock_editing = CheckMenuItem::with_id(
-        manager,
-        "lock_editing",
-        i18n::Msg::EditMenus.localized(),
-        true,
-        !state.lock_editing,
-        None::<&str>,
-    )?;
     let settings = MenuItem::with_id(
         manager,
         "settings",
@@ -971,7 +961,6 @@ pub fn build_tray_menu<M: Manager<tauri::Wry>>(
     menu_items.push(&surfaces_item);
     menu_items.push(&display);
     menu_items.push(&enable_shortcuts);
-    menu_items.push(&lock_editing);
     menu_items.push(&settings);
     menu_items.push(&quit);
 
@@ -983,7 +972,6 @@ fn create_tray(
     app: &tauri::App,
     initial_display: bool,
     initial_shortcuts: bool,
-    initial_lock: bool,
 ) -> tauri::Result<()> {
     let initial_state = native::TrayStateSnapshot {
         server_text: i18n::Msg::ListenerStarting.localized(),
@@ -992,7 +980,6 @@ fn create_tray(
         tooltip: "BrowseRail".into(),
         display_panels: initial_display,
         enable_shortcuts: initial_shortcuts,
-        lock_editing: initial_lock,
     };
     let menu = build_tray_menu(app, &initial_state)?;
 
@@ -1014,12 +1001,6 @@ fn create_tray(
                 let _ = state
                     .native_sender
                     .send(native::NativeCommand::ToggleEnableShortcuts);
-            }
-            "lock_editing" => {
-                let state = app.state::<AppState>();
-                let _ = state
-                    .native_sender
-                    .send(native::NativeCommand::ToggleLockEditing);
             }
             "settings" => open_listener_settings(app),
             "quit" => app.exit(0),
@@ -1173,7 +1154,6 @@ pub fn run() {
                     app,
                     settings.display_panels,
                     settings.enable_shortcuts,
-                    settings.lock_editing,
                 )?;
 
                 let native_sender = native::NativeReactor::start(

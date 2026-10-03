@@ -3,7 +3,7 @@ import { applyMenuColor, menuButton } from "../appearance";
 import { calculateColumnWidth as columnWidth, createTextMeasure, submenuHeightLimit } from "./layout";
 import { createLifetime, showMenuError, type Lifetime } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
-import type { Controller, PopupHost, PopupState } from "../types";
+import type { Controller, PopupHost, PopupState, Rect } from "../types";
 
 interface PointerSample { time: number; x: number; y: number }
 const HOVER_OPEN_DELAY_MS = 60;
@@ -107,10 +107,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
 
     const applyLayout = async (layoutRevision: number): Promise<void> => {
       if (!lifetime.alive || layoutRevision !== hitRegionRevision || token !== revision) return;
-      await host.commitLayout({ columns: columns.filter(column => column.isConnected).map(column => {
-        const rect = column.getBoundingClientRect();
-        return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
-      }) });
+      await host.commitLayout({ columns: columns.filter(column => column.isConnected).map(column => layoutRect(column)) });
     };
     commitCurrent = async () => {
       const layoutRevision = ++hitRegionRevision;
@@ -300,7 +297,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
           `.menu-button[data-uid="${CSS.escape(expandedUids[level - 1] ?? "")}"]`,
         );
         if (!parent) continue;
-        const parentRect = parent.getBoundingClientRect();
+        const parentRect = layoutRect(parent, columns[level - 1]!);
         const parentTop = parentRect.top - popupRect.top;
         const parentBottom = parentRect.bottom - popupRect.top;
         const parentLeft = parentRect.left - popupRect.left;
@@ -367,6 +364,17 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
     root.replaceChildren(popup);
     renderLevels();
   }
+}
+
+function layoutRect(element: HTMLElement, animatedColumn: HTMLElement = element): Rect {
+  const rect = element.getBoundingClientRect();
+  // Native keeps this region after the entrance animation, so use the resting
+  // position for clipping and for positioning the next column.
+  const transform = element.ownerDocument.defaultView!.getComputedStyle(animatedColumn).transform;
+  const matrix = transform && transform !== "none" ? new DOMMatrixReadOnly(transform) : undefined;
+  const x = matrix?.m41 ?? 0;
+  const y = matrix?.m42 ?? 0;
+  return { left: rect.left - x, top: rect.top - y, right: rect.right - x, bottom: rect.bottom - y };
 }
 
 function isPointerHeadingToward(

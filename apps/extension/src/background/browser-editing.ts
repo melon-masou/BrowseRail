@@ -10,7 +10,8 @@ import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
 
-export function createBrowserEditingMenu() {
+export function createBrowserEditingMenu(host: { setNativeEditing(editing: boolean): void }) {
+  let nativeEditing: boolean | undefined;
   const ready = browser.contextMenus.removeAll().then(() => new Promise<void>((resolve, reject) => {
     browser.contextMenus.create({
       id: EDIT_MENU_ID, type: "checkbox", title: t("injection.editMenus"), contexts: ["action"],
@@ -28,11 +29,11 @@ export function createBrowserEditingMenu() {
     });
   }));
   async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
-    const editing = await loadBrowserEditing();
+    const editing = mode === "browser" ? await loadBrowserEditing() : nativeEditing;
     await ready;
-    const available = mode === "browser" && enabled;
+    const available = enabled && editing !== undefined;
     await browser.contextMenus.update(EDIT_MENU_ID, {
-      title: t("injection.editMenus"), enabled: available, checked: available && editing,
+      title: t("injection.editMenus"), enabled: available, checked: available && editing === true,
     });
     await browser.contextMenus.update(ADD_STATIC_MENU_ID, { title: t("static.addCurrentPage") });
   }
@@ -51,10 +52,17 @@ export function createBrowserEditingMenu() {
     if (info.menuItemId !== EDIT_MENU_ID) return;
     void (async () => {
       const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
+      if (enabled && mode === "native" && nativeEditing !== undefined) {
+        host.setNativeEditing(info.checked === true);
+        return;
+      }
       if (mode === "browser" && enabled) await saveBrowserEditing(info.checked === true);
       await refresh();
       if (tab?.id !== undefined) await requestBrowserMenuRefresh(tab.id);
-    })().catch(error => console.error("BrowseRail editing:", error));
+    })().catch(async error => {
+      console.error("BrowseRail editing:", error);
+      await refresh();
+    });
   });
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
     if ((message as { type?: string } | null)?.type !== "staticSaveConfirmed") return undefined;
@@ -66,7 +74,13 @@ export function createBrowserEditingMenu() {
     }
   });
   onLanguageChange(() => { void refresh().catch(error => console.error("BrowseRail editing:", error)); });
-  return { update };
+  return {
+    update,
+    async updateNativeEditing(editing: boolean | undefined): Promise<void> {
+      nativeEditing = editing;
+      await refresh();
+    },
+  };
 }
 
 async function saveStaticConfirmed(message: unknown, sender: Runtime.MessageSender): Promise<void> {

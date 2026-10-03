@@ -177,11 +177,13 @@ export type ExtensionMessage =
       details?: unknown;
     }
   | { type: "resync"; requestUid: string }
+  | { type: "setEditing"; editing: boolean }
   | { type: "detach" }
   | { type: "heartbeat" };
 
 export type NativeMessage =
   | { type: "ready"; protocolVersion: typeof PROTOCOL_VERSION }
+  | { type: "editingState"; editing: boolean }
   | {
       type: "invoke";
       actionUid: string;
@@ -221,6 +223,8 @@ export function isNativeMessage(value: unknown): value is NativeMessage {
   switch (value.type) {
     case "ready":
       return value.protocolVersion === PROTOCOL_VERSION;
+    case "editingState":
+      return typeof value.editing === "boolean";
     case "invoke":
       return (
         typeof value.actionUid === "string" &&

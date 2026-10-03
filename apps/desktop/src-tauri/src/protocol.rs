@@ -48,6 +48,8 @@ pub enum ExtensionMessage {
     },
     #[serde(rename = "heartbeat")]
     Heartbeat,
+    #[serde(rename = "setEditing")]
+    SetEditing { editing: bool },
     #[serde(rename = "detach")]
     Detach,
     #[serde(other)]
@@ -57,6 +59,8 @@ pub enum ExtensionMessage {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type")]
 pub enum NativeMessage {
+    #[serde(rename = "editingState")]
+    EditingState { editing: bool },
     #[serde(rename = "ready")]
     Ready {
         #[serde(rename = "protocolVersion")]

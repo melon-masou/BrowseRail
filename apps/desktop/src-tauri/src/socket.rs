@@ -355,6 +355,12 @@ async fn handle_connection(
                                     outgoing.send(NativeMessage::Heartbeat)
                                         .map_err(|_| "Connection closed")?;
                                 }
+                                ExtensionMessage::SetEditing { editing } => {
+                                    if registered_instance.is_none() {
+                                        continue;
+                                    }
+                                    let _ = native_sender.send(NativeCommand::SetEditing { editing });
+                                }
                                 ExtensionMessage::Detach => {
                                     if registered_instance.is_some() {
                                         native_sender.send(NativeCommand::ClientDetached { connection_uid })

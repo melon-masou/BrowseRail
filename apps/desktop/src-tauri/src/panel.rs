@@ -12,11 +12,12 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, EnumChildWindows, GWL_EXSTYLE, GWLP_HWNDPARENT, GetWindowLongPtrW,
+    CallNextHookEx, EnumChildWindows, GWL_EXSTYLE, GWL_STYLE, GWLP_HWNDPARENT, GetWindowLongPtrW,
     GetWindowThreadProcessId, HCBT_ACTIVATE, HWND_NOTOPMOST, HWND_TOPMOST, MA_NOACTIVATE,
     SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
     SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPos, SetWindowsHookExW, WH_CBT, WM_MOUSEACTIVATE,
-    WM_NCDESTROY, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
+    WM_NCDESTROY, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_WINDOWEDGE, WS_THICKFRAME,
 };
 use windows::core::BOOL;
 
@@ -131,12 +132,22 @@ pub fn set_window_owner(window: &WebviewWindow, owner_hwnd: isize) -> Result<(),
 
 pub fn set_window_no_activate(window: &WebviewWindow) -> Result<(), String> {
     let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) };
     let extended_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
     unsafe {
+        // Tao hides the frame through non-client handling but retains CAPTION and
+        // WINDOWEDGE. Managers such as komorebi then track a rail independently
+        // of its browser and reconcile an uncloak back to the rail's old workspace.
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_STYLE,
+            style & !(WS_CAPTION.0 | WS_THICKFRAME.0) as isize,
+        );
         SetWindowLongPtrW(
             hwnd,
             GWL_EXSTYLE,
-            extended_style | WS_EX_NOACTIVATE.0 as isize,
+            (extended_style | (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize)
+                & !(WS_EX_APPWINDOW.0 | WS_EX_WINDOWEDGE.0) as isize,
         );
         SetWindowPos(
             hwnd,
@@ -912,8 +923,8 @@ fn place_popup(
     let parent_position = parent.outer_position().map_err(|error| error.to_string())?;
     let x = parent_position.x + (anchor.x * scale).round() as i32;
     let y = parent_position.y + (anchor.y * scale).round() as i32;
-    let physical_width = (width * scale).round().max(1.0) as i32;
-    let physical_height = (height * scale).round().max(1.0) as i32;
+    let physical_width = (width * scale).ceil().max(1.0) as i32;
+    let physical_height = (height * scale).ceil().max(1.0) as i32;
     let hwnd = popup.hwnd().map_err(|error| error.to_string())?;
 
     unsafe {

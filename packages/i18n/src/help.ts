@@ -27,7 +27,7 @@ export const helpDoc: Record<Lang, string> = {
     <li>Left-click a bookmark to open it in the current tab; right-click to open it in a new tab. These are reversed when configured to open in a new tab.</li>
     <li>Hover over a folder to expand it.</li>
     <li>Long-press a temporary bookmark to save the current page's URL.</li>
-    <li>Enable edit mode, then left-click the bar to adjust its size and position. To enable it, check “Edit menus” in the desktop app's tray icon context menu (Native mode) or the extension icon context menu (Browser mode).</li>
+    <li>Check “Edit menus” in the extension icon's context menu, then left-click the bar to adjust its size and position.</li>
   </ul>
 </div>
 `,
@@ -53,7 +53,7 @@ export const helpDoc: Record<Lang, string> = {
     <li>左键点击书签在当前标签打开，右键在新标签打开；配置为新标签打开时，两者互换。</li>
     <li>悬停文件夹展开。</li>
     <li>长按临时书签保存当前页面的网址。</li>
-    <li>启用编辑模式后，左键点击栏可调整大小和位置。Native 模式在桌面端托盘图标的右键菜单中勾选「编辑菜单」，浏览器模式在扩展图标的右键菜单中勾选。</li>
+    <li>在扩展图标的右键菜单中勾选「编辑菜单」，再左键点击栏调整大小和位置。</li>
   </ul>
 </div>
 `,

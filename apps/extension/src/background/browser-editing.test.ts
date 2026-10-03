@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   openPopup: vi.fn(async (_options: { windowId: number }) => {}),
   getTab: vi.fn(async (_id: number) => ({ id: 7, windowId: 1 })),
   sendToTab: vi.fn(async () => ({ updated: true })),
+  setNativeEditing: vi.fn((_editing: boolean) => {}),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
   runtime: {
@@ -45,11 +46,12 @@ beforeEach(() => {
   mocks.storage = {}; mocks.menu = {}; mocks.menus.clear();
   mocks.setPopup.mockClear(); mocks.openPopup.mockReset().mockResolvedValue(); mocks.sendToTab.mockClear();
   mocks.getTab.mockResolvedValue({ id: 7, windowId: 1 });
+  mocks.setNativeEditing.mockClear();
 });
 
 it("provides a checked editing switch on the extension icon in browser mode", async () => {
   await saveDisplayMode("browser");
-  const menu = createBrowserEditingMenu(); await menu.update("browser", true);
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("browser", true);
   expect(mocks.menu).toMatchObject({ contexts: ["action"], type: "checkbox", enabled: true, checked: false });
   mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] }, {
     id: 7, windowId: 1, index: 0, active: true, pinned: false, highlighted: false, incognito: false,
@@ -59,8 +61,8 @@ it("provides a checked editing switch on the extension icon in browser mode", as
   await vi.waitFor(() => expect(mocks.sendToTab).toHaveBeenCalledWith(7, { type: "browserMenusRefresh" }, { frameId: 0 }));
 });
 
-it("disables the editing switch in native mode and when the widget is disabled", async () => {
-  const menu = createBrowserEditingMenu(); await menu.update("native", true);
+it("disables the editing switch without a desktop connection and when the widget is disabled", async () => {
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("native", true);
   expect(mocks.menu).toMatchObject({ enabled: false, checked: false });
   mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] });
   await menu.update("native", true);
@@ -70,11 +72,36 @@ it("disables the editing switch in native mode and when the widget is disabled",
   expect(mocks.menu).toMatchObject({ enabled: false, checked: false });
 });
 
+it("controls Native editing from the extension and reflects desktop state without changing browser editing", async () => {
+  await saveDisplayMode("native");
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing });
+  await menu.updateNativeEditing(false);
+  expect(mocks.menu).toMatchObject({ enabled: true, checked: false });
+  mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] });
+  await vi.waitFor(() => expect(mocks.setNativeEditing).toHaveBeenCalledWith(true));
+  expect(await loadBrowserEditing()).toBe(false);
+  expect(mocks.sendToTab).not.toHaveBeenCalled();
+  await menu.updateNativeEditing(true);
+  expect(mocks.menu).toMatchObject({ enabled: true, checked: true });
+  await menu.updateNativeEditing(undefined);
+  expect(mocks.menu).toMatchObject({ enabled: false, checked: false });
+});
+
+it("uses browser editing state in browser mode even when Native editing was enabled", async () => {
+  await saveDisplayMode("browser");
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing });
+  await menu.updateNativeEditing(true);
+  expect(mocks.menu).toMatchObject({ enabled: true, checked: false });
+  mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] });
+  await vi.waitFor(async () => expect(await loadBrowserEditing()).toBe(true));
+  expect(mocks.setNativeEditing).not.toHaveBeenCalled();
+});
+
 it("confirms edited name and URL before adding a persistent static bookmark in native mode with the widget disabled", async () => {
   const config = await loadConfig();
   config.staticBookmarks = [{ uid: "existing", name: "Existing", url: "https://example.com/old" }];
   await saveConfig(config);
-  const menu = createBrowserEditingMenu(); await menu.update("native", false);
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("native", false);
   const add = [...mocks.menus.values()].find(entry => entry.type !== "checkbox")!;
   expect(add).toMatchObject({ contexts: ["action"] });
   expect(add.enabled).not.toBe(false);
@@ -89,7 +116,7 @@ it("confirms edited name and URL before adding a persistent static bookmark in n
   await vi.waitFor(() => expect(mocks.setPopup).toHaveBeenLastCalledWith({ tabId: 7, popup: "" }));
   expect((await loadConfig()).staticBookmarks).toEqual(config.staticBookmarks);
   // The extension confirmation URL carries its context across worker restarts.
-  const restarted = createBrowserEditingMenu(); await restarted.update("native", false);
+  const restarted = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await restarted.update("native", false);
   expect(await mocks.message!({ type: "staticSaveConfirmed", name: "Edited name", url: "https://example.com/edited" }, {
     id: "browserail", url,
   })).toEqual({ saved: true });
@@ -101,7 +128,7 @@ it("confirms edited name and URL before adding a persistent static bookmark in n
 });
 
 it("leaves static bookmarks unchanged when the clicked tab has no URL", async () => {
-  const menu = createBrowserEditingMenu(); await menu.update("native", true);
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("native", true);
   const add = [...mocks.menus.values()].find(entry => entry.type !== "checkbox")!;
   mocks.clicked!({ menuItemId: add.id!, editable: false, modifiers: [] });
   expect((await loadConfig()).staticBookmarks).toEqual([]);
@@ -109,7 +136,7 @@ it("leaves static bookmarks unchanged when the clicked tab has no URL", async ()
 });
 
 it("rejects webpage confirmation messages, other confirmation kinds, and blank URLs without creating a bookmark", async () => {
-  const menu = createBrowserEditingMenu(); await menu.update("browser", true);
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("browser", true);
   const message = { type: "staticSaveConfirmed", name: "Name", url: "https://example.com" };
   expect(await mocks.message!(message, { id: "browserail", url: "https://example.com" })).toMatchObject({ error: expect.any(String) });
   const page = "chrome-extension://browserail/temporary-confirm.html?sourceTabId=7&sourceWindowId=1";
@@ -121,7 +148,7 @@ it("rejects webpage confirmation messages, other confirmation kinds, and blank U
 });
 
 it("clears the popup entry and leaves bookmarks untouched when opening confirmation fails", async () => {
-  const menu = createBrowserEditingMenu(); await menu.update("native", true);
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("native", true);
   const add = [...mocks.menus.values()].find(entry => entry.type !== "checkbox")!;
   mocks.openPopup.mockRejectedValue(new Error("Opening failed"));
   const report = vi.spyOn(console, "error").mockImplementation(() => {});

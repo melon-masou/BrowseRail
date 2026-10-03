@@ -92,7 +92,6 @@ pub enum Msg<'a> {
     // Tray: actionable items
     DisplayMenus,
     EnableShortcuts,
-    EditMenus,
     Settings,
     Quit,
     // Tray tooltip fragments
@@ -174,7 +173,6 @@ impl Msg<'_> {
             Msg::MenusNone => ("tray.menusNone", vec![]),
             Msg::DisplayMenus => ("tray.displayMenus", vec![]),
             Msg::EnableShortcuts => ("tray.enableShortcuts", vec![]),
-            Msg::EditMenus => ("tray.editMenus", vec![]),
             Msg::Settings => ("tray.settings", vec![]),
             Msg::Quit => ("tray.quit", vec![]),
             Msg::TooltipServerError => ("tray.tooltipServerError", vec![]),

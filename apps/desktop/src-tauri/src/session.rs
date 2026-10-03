@@ -381,6 +381,16 @@ impl SessionRegistry {
             .map_err(|_| "The browser instance is disconnected".into())
     }
 
+    pub fn broadcast_editing_state(&self, editing: bool) {
+        if let Ok(sessions) = self.sessions.read() {
+            for session in sessions.values() {
+                if let Some(outgoing) = &session.outgoing {
+                    let _ = outgoing.send(NativeMessage::EditingState { editing });
+                }
+            }
+        }
+    }
+
     pub fn disconnect(&self, connection_uid: Uuid) -> Option<(String, Vec<String>)> {
         let mut sessions = self.sessions.write().ok()?;
         let session = sessions
