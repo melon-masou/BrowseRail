@@ -181,13 +181,17 @@ it("restores the selected global matching and its definitions from Chrome sync",
 
 it("keeps both modes' bar settings local when shared configuration syncs", async () => {
   const config = await fixture();
-  await saveBarLayout("source", "browser", defaultMenuPlacement(), { gapRatio: 0.2, extraGaps: {} }, { ...defaultBarSettings(), expandAlignment: "center" });
-  await saveBarLayout("source", "native", defaultMenuPlacement(), { gapRatio: 0.4, extraGaps: {} }, defaultNativeBarSettings());
+  await saveBarLayout("source", "browser", defaultMenuPlacement(), { gapRatio: 0.2, extraGaps: {} }, { ...defaultBarSettings(), expandAlignment: "center", autoHide: "end", autoHidePadding: 18 });
+  await saveBarLayout("source", "native", defaultMenuPlacement(), { gapRatio: 0.4, extraGaps: {} }, { ...defaultNativeBarSettings(), autoHidePadding: 0 });
   await saveSyncEnabled(true);
   await saveConfig(config);
   const bars = await loadBarConfigurations();
   expect(resolveBarConfiguration(bars, "browser", "source").expandAlignment).toBe("center");
   expect(resolveBarConfiguration(bars, "native", "source").expandAlignment).toBe("edge");
+  expect(resolveBarConfiguration(bars, "browser", "source").autoHide).toBe("end");
+  expect(resolveBarConfiguration(bars, "native", "source").autoHide).toBe("off");
+  expect(resolveBarConfiguration(bars, "browser", "source").autoHidePadding).toBe(18);
+  expect(resolveBarConfiguration(bars, "native", "source").autoHidePadding).toBe(0);
   expect(mocks.syncStorage).not.toHaveProperty("bar_configurations");
 });
 

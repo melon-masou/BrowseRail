@@ -1,8 +1,10 @@
-import { AUTO_FONT_SIZE, normalizeMenuSpacing, type MenuSpacing, type MenuOrientation, type ExpandDirection, type ExpandAlignment, type MenuView } from "./menu";
+import { AUTO_FONT_SIZE, DEFAULT_AUTO_HIDE_PADDING, normalizeMenuSpacing, type BarAutoHide, type MenuSpacing, type MenuOrientation, type ExpandDirection, type ExpandAlignment, type MenuView } from "./menu";
 import { isMenuPlacement, type MenuPlacement, type AttachmentMode, type OnTopMode } from "./native";
 
 export interface BarSettings {
   orientation: MenuOrientation;
+  autoHide?: BarAutoHide;
+  autoHidePadding?: number;
   buttonFontSize: number;
   popupFontSize: number;
   expandDirection?: ExpandDirection;
@@ -22,7 +24,7 @@ export interface BarConfigurations {
 }
 
 export function defaultBarSettings(): BarSettings {
-  return { orientation: "column", buttonFontSize: AUTO_FONT_SIZE, popupFontSize: AUTO_FONT_SIZE, expandAlignment: "edge" };
+  return { orientation: "column", autoHide: "off", autoHidePadding: DEFAULT_AUTO_HIDE_PADDING, buttonFontSize: AUTO_FONT_SIZE, popupFontSize: AUTO_FONT_SIZE, expandAlignment: "edge" };
 }
 export function defaultNativeBarSettings(): NativeBarSettings {
   return { ...defaultBarSettings(), attachmentMode: "lastFocused", onTopMode: "aboveBrowser" };
@@ -30,6 +32,8 @@ export function defaultNativeBarSettings(): NativeBarSettings {
 export function barSettingsFromView(view: Pick<MenuView, keyof BarSettings>): BarSettings {
   return {
     orientation: view.orientation,
+    autoHide: view.autoHide ?? "off",
+    autoHidePadding: view.autoHidePadding ?? DEFAULT_AUTO_HIDE_PADDING,
     buttonFontSize: view.buttonFontSize ?? AUTO_FONT_SIZE,
     popupFontSize: view.popupFontSize ?? AUTO_FONT_SIZE,
     expandAlignment: view.expandAlignment ?? "edge",
@@ -40,6 +44,8 @@ export function isBarSettings(value: unknown): value is BarSettings {
   if (!value || typeof value !== "object") return false;
   const raw = value as Record<string, unknown>;
   return (raw.orientation === "row" || raw.orientation === "column")
+    && (raw.autoHide === undefined || ["off", "start", "end"].includes(raw.autoHide as string))
+    && (raw.autoHidePadding === undefined || typeof raw.autoHidePadding === "number" && Number.isFinite(raw.autoHidePadding) && raw.autoHidePadding >= 0)
     && typeof raw.buttonFontSize === "number" && (raw.buttonFontSize === AUTO_FONT_SIZE || Number.isFinite(raw.buttonFontSize) && raw.buttonFontSize >= 1)
     && typeof raw.popupFontSize === "number" && (raw.popupFontSize === AUTO_FONT_SIZE || Number.isFinite(raw.popupFontSize) && raw.popupFontSize >= 1)
     && (raw.expandDirection === undefined || ["up", "down", "left", "right"].includes(raw.expandDirection as string))
@@ -68,6 +74,8 @@ export function normalizeBarConfigurations(value: unknown): BarConfigurations {
       if (placement.freePosition && ![placement.freePosition.x, placement.freePosition.y].every(Number.isFinite)) continue;
       const clean: BarConfiguration = {
         orientation: config.orientation, buttonFontSize: config.buttonFontSize, popupFontSize: config.popupFontSize,
+        autoHide: config.autoHide ?? "off",
+        autoHidePadding: config.autoHidePadding ?? DEFAULT_AUTO_HIDE_PADDING,
         expandAlignment: config.expandAlignment,
         ...(config.expandDirection ? { expandDirection: config.expandDirection } : {}),
         ...normalizeMenuSpacing(config), placement: {

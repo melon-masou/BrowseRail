@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { createSettingsIcon, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller } from "@browserail/menu-ui";
+import { createSettingsIcon, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller, type Rect } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -57,6 +57,12 @@ export async function initializeSurface(
   };
   const report = (action: Promise<void>): void => { void action.catch(showSurfaceError); };
   const closePopup = (): Promise<void> => popup.close();
+  let hitRegionUpdate = Promise.resolve();
+  function commitHitRegion(region: Rect | null): Promise<void> {
+    const apply = (): Promise<void> => invoke("set_bar_hit_region", { region });
+    hitRegionUpdate = hitRegionUpdate.then(apply, apply);
+    return hitRegionUpdate;
+  }
   function stateFor(menu: SurfaceMenu): BarState {
     return {
       menu, itemSize: { width: menu.placement.itemWidth ?? 84, height: menu.placement.itemHeight ?? 36 },
@@ -89,7 +95,8 @@ export async function initializeSurface(
         requestTemporarySave: input => invoke("open_temporary_confirmation", {
           instanceUid, menuUid, windowUid: isFree ? null : windowUid, ...input,
         }),
-        openPopup: request => popup.open(request),
+        openPopup: (request, pointerInside) => popup.open(request, pointerInside),
+        commitHitRegion,
         requestCustomize: enterCustomization,
       });
       await bar.ready;

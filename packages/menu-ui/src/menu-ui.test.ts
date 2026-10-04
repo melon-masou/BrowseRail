@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountBar, mountFolderPopup, createCustomizationRail } from "./index";
-import type { BarHost, BarState, Controller, PopupHost, PopupState } from "./types";
+import type { BarHost, BarState, Controller, PopupHost, PopupState, Rect } from "./types";
 
 const controllers: Array<{ destroy(): void }> = [];
 beforeEach(() => {
@@ -142,6 +142,33 @@ describe("shared menu mounting", () => {
     expect(adapter.openPopup).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])("closes a folder when hovering a plain button even while opening=%s", async pending => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu.items.unshift({ kind: "folder", uid: "folder", label: "Folder",
+      children: [{ kind: "bookmark", uid: "bookmark:child", label: "Child" }] });
+    let finishOpening!: () => void;
+    const opening = new Promise<void>(resolve => { finishOpening = resolve; });
+    let finishClosing!: () => void;
+    const closed = new Promise<void>(resolve => { finishClosing = resolve; });
+    const close = vi.fn(async () => { finishClosing(); });
+    adapter.openPopup = vi.fn(async () => {
+      if (pending) await opening;
+      return { close, closed, requestClose() {}, cancelClose() {}, setBarPointerInside() {} };
+    });
+    await mount(root, state, adapter).ready;
+    vi.useFakeTimers();
+    const [folder, bookmark] = root.querySelectorAll("button");
+    folder!.dispatchEvent(new Event("pointerenter"));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(adapter.openPopup).toHaveBeenCalledOnce();
+    folder!.dispatchEvent(new Event("pointerleave"));
+    bookmark!.dispatchEvent(new Event("pointerenter"));
+    finishOpening();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(close).toHaveBeenCalledOnce();
+    expect(adapter.invokeAction).not.toHaveBeenCalled();
+  });
+
   it("cancels a pending temporary hold when the bar is destroyed", async () => {
     const root = container(true); const adapter = host(); const state = barState();
     state.menu.items = [{ kind: "bookmark", uid: "temporary:slot", label: "Later" }];
@@ -154,6 +181,110 @@ describe("shared menu mounting", () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(adapter.requestTemporarySave).not.toHaveBeenCalled();
     expect(adapter.invokeAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("bar auto-hide", () => {
+  it.each(["column", "row"] as const)("expands the wake area by the configured amount and can restore its original size (%s)", async orientation => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu = { ...state.menu, orientation, autoHide: "start", autoHidePadding: 0 };
+    let region: Rect | null = null;
+    adapter.commitHitRegion = async next => { region = next; };
+    const size = (): number => orientation === "column" ? region!.right - region!.left : region!.bottom - region!.top;
+    const controller = mount(root, state, adapter); await controller.ready;
+    const original = size();
+    await controller.update({ ...state, menu: { ...state.menu, autoHidePadding: 18 } });
+    expect(size()).toBe(original + 18);
+    press(root.querySelector("button")!);
+    expect(adapter.invokeAction).not.toHaveBeenCalled();
+    await controller.update(state);
+    expect(size()).toBe(original);
+  });
+
+  it.each([
+    ["column", "start"], ["column", "end"], ["row", "start"], ["row", "end"],
+  ] as const)("keeps a clickable edge and reveals without changing the bar layout (%s/%s)", async (orientation, autoHide) => {
+    const root = container(true); const adapter = host(); const state = barState();
+    state.menu = { ...state.menu, orientation, autoHide };
+    const regions: Array<Rect | null> = [];
+    adapter.commitHitRegion = async region => { regions.push(region); };
+    await mount(root, state, adapter).ready;
+    const edge = regions.at(-1)!;
+    expect(edge).not.toBeNull();
+    const horizontal = orientation === "column";
+    expect(horizontal ? edge!.right - edge!.left : edge!.bottom - edge!.top).toBeGreaterThan(0);
+    expect(horizontal ? edge!.right - edge!.left : edge!.bottom - edge!.top).toBeLessThan(20);
+    if (autoHide === "start") expect(horizontal ? edge!.left : edge!.top).toBe(0);
+    else expect(horizontal ? edge!.left : edge!.top).toBeGreaterThan(0);
+    const button = root.querySelector<HTMLButtonElement>("button")!;
+    press(button);
+    expect(adapter.invokeAction).not.toHaveBeenCalled();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const viewport = root.querySelector<HTMLElement>(".bar-viewport")!;
+    viewport.dispatchEvent(new Event("pointerenter"));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(regions.at(-1)).toBeNull();
+    expect(root.querySelector("button")).toBe(button);
+    press(button);
+    expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
+    viewport.dispatchEvent(new Event("pointerleave"));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(regions.at(-1)).toEqual(edge);
+  });
+
+  it("disables hiding as soon as editing is unlocked and preserves the configured direction", async () => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu.autoHide = "end";
+    state.menu.items.push({ kind: "menuFold", uid: "fold", label: "Fold" });
+    let region: Rect | null = null;
+    adapter.commitHitRegion = async next => { region = next; };
+    const controller = mount(root, state, adapter); await controller.ready;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    root.querySelector(".bar-viewport")!.dispatchEvent(new Event("pointerenter"));
+    await controller.update({ ...state, editingLocked: false });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(region).toBeNull();
+    press(root.querySelector("button")!);
+    expect(adapter.requestCustomize).toHaveBeenCalledOnce();
+    await controller.update(state);
+    expect(region).not.toBeNull();
+    await controller.update({ ...state, collapsed: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(region).toBeNull();
+    expect(root.textContent).toBe("Fold");
+  });
+
+  it("stays revealed while the pointer is in its popup and hides after leaving both surfaces", async () => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu.autoHide = "start";
+    state.menu.items = [{ kind: "folder", uid: "folder", label: "Folder", expandOnHover: false,
+      children: [{ kind: "bookmark", uid: "child", label: "Child" }] }];
+    let pointerInside!: (inside: boolean) => void;
+    let region: Rect | null = null;
+    adapter.commitHitRegion = async next => { region = next; };
+    const close = vi.fn();
+    adapter.openPopup = async (_request, pointer) => {
+      pointerInside = pointer;
+      let closed!: () => void;
+      const done = new Promise<void>(resolve => { closed = resolve; });
+      close.mockImplementation(async () => closed());
+      return { close, closed: done, requestClose() {}, cancelClose() {}, setBarPointerInside() {} };
+    };
+    await mount(root, state, adapter).ready;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const viewport = root.querySelector(".bar-viewport")!;
+    viewport.dispatchEvent(new Event("pointerenter"));
+    await vi.advanceTimersByTimeAsync(200);
+    press(root.querySelector("button")!);
+    await vi.advanceTimersByTimeAsync(0);
+    viewport.dispatchEvent(new Event("pointerleave"));
+    pointerInside(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(region).toBeNull();
+    pointerInside(false);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(region).not.toBeNull();
+    expect(close).toHaveBeenCalledOnce();
   });
 });
 

@@ -15,6 +15,7 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
   let active: {
     requestUid: string; ready(): void; fail(error: unknown): void; closed(): void;
     finished: Promise<void>; closing: boolean;
+    pointerInside: ((inside: boolean) => void) | undefined;
   } | undefined;
   const unlistenClosed = await listen<string>("popup-closed", ({ payload }) => {
     if (payload !== menuUid) return;
@@ -26,6 +27,9 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
     if (active?.requestUid !== payload.requestUid) return;
     if (payload.error) active.fail(new Error(payload.error));
     else active.ready();
+  }, { target: parentLabel });
+  const unlistenPointer = await listen<{ requestUid: string; inside: boolean }>("popup-pointer-inside", ({ payload }) => {
+    if (active?.requestUid === payload.requestUid && !active.closing) active.pointerInside?.(payload.inside);
   }, { target: parentLabel });
   const command = (name: string, args = {}): Promise<void> => invoke(name, { instanceUid, menuUid, windowUid, ...args });
   const report = (action: Promise<void>): void => {
@@ -54,7 +58,7 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
     await closing.finished;
   }
   return {
-    async open(request: PopupRequest): Promise<PopupSession> {
+    async open(request: PopupRequest, pointerInside?: (inside: boolean) => void): Promise<PopupSession> {
       assertAlive();
       await whileAlive(closeActive());
       assertAlive();
@@ -68,7 +72,7 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
       let resolveClosed!: () => void;
       const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
       const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
-      const opened = { requestUid, ready: resolveReady, fail: rejectReady, closed: resolveClosed, finished: closed, closing: false };
+      const opened = { requestUid, ready: resolveReady, fail: rejectReady, closed: resolveClosed, finished: closed, closing: false, pointerInside };
       active = opened;
       // Attach rejection handling before the native command can emit a close event.
       const nativeOpen = invoke("open_popup", {
@@ -107,6 +111,7 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
       lifetime.destroy();
       unlistenClosed();
       unlistenReady();
+      unlistenPointer();
       active?.fail(new Error("Popup host was destroyed"));
       active?.closed();
       active = undefined;

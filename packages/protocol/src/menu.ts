@@ -21,6 +21,8 @@ export type MenuColor = string;
 export const DEFAULT_DOCK_COLOR = "#161b24e0";
 
 export type MenuOrientation = "row" | "column";
+export type BarAutoHide = "off" | "start" | "end";
+export const DEFAULT_AUTO_HIDE_PADDING = 6;
 
 /**
  * A font size in px, or the sentinel `AUTO_FONT_SIZE` (-1) meaning "auto": the
@@ -125,6 +127,8 @@ export interface MenuView {
   uid: string;
   items: LayoutEntry[];
   orientation: MenuOrientation;
+  autoHide?: BarAutoHide;
+  autoHidePadding?: number;
   color?: MenuColor;
   expandDirection?: ExpandDirection;
   expandAlignment?: ExpandAlignment;

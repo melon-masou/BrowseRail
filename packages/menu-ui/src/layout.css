@@ -3,6 +3,18 @@
    --bar-width/height/font-size/tracks may override them. */
 
 :where(.browserail-menu-ui) {
+  .bar-viewport,
+  .bar-content {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .bar-viewport[data-auto-hidden] .bar-content,
+  .bar-viewport[data-auto-hidden] .bar-content * {
+    pointer-events: none;
+  }
+
   .menu-bar {
     position: absolute;
     top: var(--config-bar-frame-y);

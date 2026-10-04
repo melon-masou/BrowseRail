@@ -484,6 +484,12 @@ fn set_popup_hit_regions(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn set_bar_hit_region(window: tauri::Window, region: Option<panel::PopupHitRect>) -> Result<(), String> {
+    panel::set_bar_hit_region(&window, region)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn resize_and_position(
     window: tauri::Window,
     width: f64,
@@ -1272,6 +1278,7 @@ pub fn run() {
             open_popup,
             show_popup,
             set_popup_hit_regions,
+            set_bar_hit_region,
             resize_and_position,
             cancel_popup_close,
             schedule_popup_close,

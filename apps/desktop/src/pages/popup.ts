@@ -42,9 +42,12 @@ export async function initializePopupSurface(): Promise<void> {
       instanceUid, menuUid, windowUid: currentPayload?.isFree ? null : windowUid, ...input,
     }),
     close: () => invoke("close_popup", { instanceUid, menuUid, windowUid }),
-    setPointerInside: inside => report(invoke("set_popup_pointer_inside", {
-      inside, instanceUid, menuUid, source: "popup", windowUid,
-    })),
+    setPointerInside: inside => {
+      report(invoke("set_popup_pointer_inside", { inside, instanceUid, menuUid, source: "popup", windowUid }));
+      if (currentPayload) report(emitTo(currentPayload.parentLabel, "popup-pointer-inside", {
+        requestUid: currentPayload.requestUid, inside,
+      }));
+    },
     commitLayout: layout => invoke("set_popup_hit_regions", { rects: layout.columns }),
   };
   async function render(payload: PopupPayload): Promise<void> {

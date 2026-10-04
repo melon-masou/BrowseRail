@@ -5,6 +5,7 @@ import { applyBarLayout } from "../layout";
 import { createLifetime, showMenuError } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
 import type { BarHost, BarState, Controller, PopupSession } from "../types";
+import { createBarAutoHide } from "./auto-hide";
 
 export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): Controller<BarState> {
   const doc = root.ownerDocument;
@@ -19,10 +20,15 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   let waitForPointerMovement = doc.hidden;
   let pendingRender = false;
   let opening = 0;
+  let popupOpening = false;
+  let popupInside = false;
   const waiting: Array<{ resolve(): void; reject(error: unknown): void }> = [];
   const run = (action: Promise<void>): void => {
     void action.catch(error => { if (lifetime.alive) showMenuError(root, error); });
   };
+  const autoHide = createBarAutoHide(root, host, () => !doc.hidden && !waitForPointerMovement,
+    () => { cancelHover(); run(closePopup()); }, run);
+  const updatePopupHold = (): void => { autoHide.setHeld(popupOpening || popupInside); };
   const clearExpanded = (): void => {
     for (const button of root.querySelectorAll(".menu-button[data-expanded]")) button.removeAttribute("data-expanded");
   };
@@ -31,14 +37,13 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     hoverTimer = undefined;
     hoverPending = false;
   };
-  const requestClose = (): void => { session?.requestClose(); };
   const cancelClose = (): void => { session?.cancelClose(); };
   async function flush(): Promise<void> {
     if (!lifetime.alive || !pendingRender) return;
     pendingRender = false;
     render();
     const awaiting = waiting.splice(0);
-    try { await lifetime.settle(); for (const item of awaiting) item.resolve(); }
+    try { await lifetime.settle(); await autoHide.ready; for (const item of awaiting) item.resolve(); }
     catch (error) { for (const item of awaiting) item.reject(error); throw error; }
   }
   async function closePopup(): Promise<void> {
@@ -46,12 +51,15 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     const closing = session;
     session = undefined;
     activeFolder = undefined;
+    popupOpening = false;
+    popupInside = false;
+    updatePopupHold();
     clearExpanded();
     await closing?.close();
     await flush();
   }
   const dispatch = (uid: string): void => {
-    if (uid.startsWith("noop")) return;
+    if (uid.startsWith("noop") || autoHide.hidden) return;
     run(closePopup());
     run(host.invokeAction(uid));
   };
@@ -74,7 +82,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     button.addEventListener("pointerdown", cancelHover, { ...options, capture: true });
   }
   async function openPopup(entry: FolderEntry, button: HTMLElement): Promise<void> {
-    if (!state.editingLocked || !lifetime.alive || doc.hidden || waitForPointerMovement) return;
+    if (!state.editingLocked || !lifetime.alive || doc.hidden || waitForPointerMovement || autoHide.hidden) return;
     cancelHover();
     cancelClose();
     clearExpanded();
@@ -83,6 +91,9 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     const previous = session;
     session = undefined;
     const token = ++opening;
+    popupOpening = true;
+    popupInside = false;
+    updatePopupHold();
     const theme = applyBarTheme(root, state);
     try {
       await previous?.close();
@@ -99,20 +110,32 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
         direction: entry.expandDirection ?? state.menu.expandDirection ?? (state.menu.orientation === "column" ? "right" : "down"),
         expandAlignment: state.menu.expandAlignment ?? "edge",
         editingLocked: state.editingLocked,
+      }, inside => {
+        if (!lifetime.alive || token !== opening) return;
+        popupInside = inside;
+        updatePopupHold();
       });
-      if (!lifetime.alive || token !== opening) { await opened.close(); return; }
+      if (!lifetime.alive || token !== opening || autoHide.hidden) { await opened.close(); return; }
       session = opened;
+      popupOpening = false;
+      updatePopupHold();
       opened.setBarPointerInside(pointerInside);
       void opened.closed.then(() => {
         if (!lifetime.alive || session !== opened) return;
+        opening++;
         session = undefined;
         activeFolder = undefined;
+        popupInside = false;
+        updatePopupHold();
         clearExpanded();
         run(flush());
       });
     } catch (error) {
       if (token === opening && lifetime.alive) {
         activeFolder = undefined;
+        popupOpening = false;
+        popupInside = false;
+        updatePopupHold();
         clearExpanded();
         await flush();
         throw error;
@@ -122,6 +145,11 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   function renderEntry(entry: LayoutEntry): HTMLElement {
     const options = { signal: renderLifetime.signal };
     const button = menuButton(doc, entry, false);
+    if (entry.kind !== "folder" || entry.expandOnHover === false || !entry.children.length) {
+      button.addEventListener("pointerenter", () => {
+        if (activeFolder && activeFolder !== entry.uid) run(closePopup());
+      }, options);
+    }
     if (entry.kind === "menuFold") {
       button.classList.add("menu-toggle-button");
       button.title = state.collapsed ? t("menu.expand") : t("menu.collapse");
@@ -131,18 +159,16 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
         run((async () => { await closePopup(); await host.requestToggleFold(); })());
       }, options);
     } else if (entry.kind === "browserAction" || entry.kind === "menusToggle") {
-      button.addEventListener("pointerenter", requestClose, options);
       button.addEventListener("pointerdown", event => {
         if (event.button !== 0 || !state.editingLocked) return;
         event.preventDefault();
         dispatch(entry.uid);
       }, options);
     } else if (entry.kind === "bookmark") {
-      button.addEventListener("pointerenter", requestClose, options);
       if (entry.uid.startsWith("temporary:")) {
         const dispose = attachTemporaryBookmarkButton(button, entry, {
           invokeAction: async uid => { dispatch(uid); },
-          requestTemporarySave: input => host.requestTemporarySave(input),
+          requestTemporarySave: input => autoHide.hidden ? Promise.resolve() : host.requestTemporarySave(input),
         }, {
           onShortPress: () => { if (state.editingLocked) dispatch(entry.uid); else run(host.requestCustomize()); },
           canAlternate: () => state.editingLocked,
@@ -164,7 +190,6 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
         cancelClose(); if (entry.children.length) run(openPopup(entry, button));
       }, options);
     } else {
-      button.addEventListener("pointerenter", () => { if (activeFolder && activeFolder !== entry.uid) requestClose(); }, options);
       button.addEventListener("pointerdown", event => {
         if (event.button !== 0 || !state.editingLocked) return;
         event.preventDefault();
@@ -180,6 +205,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     hoverTimer = undefined;
     hoverPending = false;
     pointerInside = false;
+    autoHide.setPointerInside(false);
     const theme = applyBarTheme(root, state);
     root.classList.add("browserail-menu-ui", "menu-surface");
     const bar = doc.createElement("div");
@@ -189,8 +215,6 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     bar.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
     bar.style.setProperty("--config-bar-background", state.menu.dockColor || DEFAULT_DOCK_COLOR);
     const options = { signal: renderLifetime.signal };
-    bar.addEventListener("pointerenter", () => { pointerInside = true; session?.setBarPointerInside(true); }, options);
-    bar.addEventListener("pointerleave", () => { pointerInside = false; session?.setBarPointerInside(false); }, options);
     bar.addEventListener("pointerdown", event => {
       if (state.editingLocked || state.collapsed) return;
       event.preventDefault(); event.stopPropagation(); run(host.requestCustomize());
@@ -202,33 +226,49 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
       const empty = doc.createElement("div"); empty.className = "empty-menu"; empty.textContent = t("menu.empty"); bar.append(empty);
     }
     applyBarLayout(bar, { ...state.menu, items: entries }, state.itemSize);
-    root.replaceChildren(bar);
+    const viewport = doc.createElement("div"); viewport.className = "bar-viewport";
+    const content = doc.createElement("div"); content.className = "bar-content";
+    content.append(bar); viewport.append(content); root.replaceChildren(viewport);
+    viewport.addEventListener("pointerenter", () => {
+      pointerInside = true; session?.setBarPointerInside(true); autoHide.setPointerInside(true);
+    }, options);
+    viewport.addEventListener("pointerleave", () => {
+      pointerInside = false; session?.setBarPointerInside(false); autoHide.setPointerInside(false);
+    }, options);
+    viewport.addEventListener("pointermove", () => autoHide.pointerMoved(), options);
+    autoHide.update(state, viewport, content);
   }
   root.addEventListener("pointerout", event => {
-    if (!event.relatedTarget) { pointerInside = false; session?.setBarPointerInside(false); }
+    if (!event.relatedTarget) { pointerInside = false; session?.setBarPointerInside(false); autoHide.setPointerInside(false); }
   }, { signal: lifetime.signal, passive: true });
   doc.addEventListener("visibilitychange", () => {
     cancelHover();
     pointerInside = false;
     waitForPointerMovement = true;
-    if (doc.hidden) run(closePopup());
+    if (doc.hidden) { autoHide.suspend(); run(closePopup()); }
   }, { signal: lifetime.signal });
   // Restoring a tab can replay pointer entry and focus at the old cursor position.
   doc.addEventListener("pointermove", event => {
     if (!doc.hidden && Math.abs(event.movementX) + Math.abs(event.movementY) > 0) waitForPointerMovement = false;
   }, { capture: true, passive: true, signal: lifetime.signal });
-  root.addEventListener("pointerdown", () => {
+  root.addEventListener("pointerdown", event => {
     if (!doc.hidden) waitForPointerMovement = false;
+    if (autoHide.hidden) { event.preventDefault(); event.stopImmediatePropagation(); autoHide.pointerMoved(); }
   }, { capture: true, signal: lifetime.signal });
   doc.addEventListener("keydown", event => {
     if (!doc.hidden && !event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "Tab" || event.key.startsWith("Arrow"))) waitForPointerMovement = false;
   }, { capture: true, signal: lifetime.signal });
   render();
   return {
-    ready: lifetime.settle().then(() => {}),
+    ready: lifetime.settle().then(() => autoHide.ready),
     async update(next): Promise<void> {
       if (!lifetime.alive) return;
+      const resetInteraction = state.editingLocked !== next.editingLocked || state.collapsed !== next.collapsed
+        || state.menu.autoHide !== next.menu.autoHide || state.menu.orientation !== next.menu.orientation;
       state = next;
+      autoHide.update(state);
+      if (resetInteraction) await closePopup();
+      if (!lifetime.alive) return;
       applyBarTheme(root, state);
       if (activeFolder) {
         pendingRender = true;
@@ -236,9 +276,11 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
       }
       render();
       await lifetime.settle();
+      await autoHide.ready;
     },
     destroy(): void {
       opening++;
+      autoHide.destroy();
       lifetime.destroy();
       renderLifetime.destroy();
       for (const item of waiting.splice(0)) item.resolve();

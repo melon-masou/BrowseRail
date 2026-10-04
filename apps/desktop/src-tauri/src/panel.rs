@@ -330,6 +330,27 @@ pub fn set_popup_hit_regions(window: &Window, rects: &[PopupHitRect]) -> Result<
     apply_popup_hit_region(hwnd, scale, rects)
 }
 
+pub fn set_bar_hit_region(window: &Window, region: Option<PopupHitRect>) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    match region {
+        Some(rect) => {
+            if ![rect.left, rect.top, rect.right, rect.bottom].iter().all(|value| value.is_finite())
+                || rect.right <= rect.left || rect.bottom <= rect.top {
+                return Err("Invalid bar hit region".into());
+            }
+            let scale = window.scale_factor().map_err(|error| error.to_string())?;
+            apply_popup_hit_region(hwnd, scale, &[rect])
+        }
+        None => {
+            // Removing the region restores the full window, including edit controls.
+            if unsafe { SetWindowRgn(hwnd, None, true) } == 0 {
+                return Err("Failed to restore bar hit region".into());
+            }
+            Ok(())
+        }
+    }
+}
+
 pub fn clear_popup_hit_region(window: &WebviewWindow) -> Result<(), String> {
     let hwnd = window.hwnd().map_err(|error| error.to_string())?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;

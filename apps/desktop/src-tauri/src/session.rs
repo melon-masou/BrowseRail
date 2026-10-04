@@ -732,6 +732,8 @@ mod tests {
                 uid: format!("menu-{window_uid}"),
                 items: vec![],
                 orientation: MenuOrientation::Row,
+                auto_hide: Default::default(),
+                auto_hide_padding: 6.0,
                 color: None,
                 expand_direction: None,
                 expand_alignment: None,

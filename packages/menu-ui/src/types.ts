@@ -48,8 +48,9 @@ export interface PopupRequest {
 }
 export interface BarHost extends MenuActions {
   waitForFonts?(): Promise<unknown>;
-  openPopup(request: PopupRequest): Promise<PopupSession>;
+  openPopup(request: PopupRequest, pointerInside: (inside: boolean) => void): Promise<PopupSession>;
   requestCustomize(): Promise<void>;
+  commitHitRegion?(region: Rect | null): Promise<void>;
 }
 export interface PopupSession {
   close(): Promise<void>;

@@ -3,7 +3,7 @@ import {
   type MenuActions, type PopupRequest, type PopupSession,
 } from "@browserail/menu-ui";
 
-export async function openBrowserPopup(container: HTMLElement, request: PopupRequest, actions: MenuActions, signal: AbortSignal): Promise<PopupSession> {
+export async function openBrowserPopup(container: HTMLElement, request: PopupRequest, actions: MenuActions, signal: AbortSignal, pointerInside: (inside: boolean) => void): Promise<PopupSession> {
   if (signal.aborted) throw new Error("Menu was removed");
   const doc = container.ownerDocument;
   const root = doc.createElement("div");
@@ -25,6 +25,7 @@ export async function openBrowserPopup(container: HTMLElement, request: PopupReq
     if (!lifetime.alive) return;
     cancelClose(); lifetime.destroy(); renderer?.destroy(); root.remove();
     signal.removeEventListener("abort", abort);
+    pointerInside(false);
     done();
   };
   const abort = (): void => { void close(); };
@@ -49,7 +50,7 @@ export async function openBrowserPopup(container: HTMLElement, request: PopupReq
     });
     renderer = mountFolderPopup(root, state, {
       ...actions, close, waitForFonts,
-      setPointerInside(inside) { popupInside = inside; schedule(); },
+      setPointerInside(inside) { popupInside = inside; pointerInside(inside); schedule(); },
       async commitLayout() {},
     });
     await renderer.ready;

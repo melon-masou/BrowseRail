@@ -1,5 +1,5 @@
 import { t } from "@browserail/i18n";
-import { AUTO_FONT_SIZE, type BarSettings, type NativeBarSettings } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, DEFAULT_AUTO_HIDE_PADDING, type BarSettings, type NativeBarSettings } from "@browserail/protocol";
 import { automaticButtonFontSize } from "../appearance";
 
 export function mountBarSettings(root: HTMLElement, initial: BarSettings | NativeBarSettings, changed: (settings: BarSettings | NativeBarSettings) => void, itemHeight: number) {
@@ -9,6 +9,7 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
   let autoFontSize = automaticButtonFontSize(itemHeight);
   root.classList.add("bar-settings");
   function notify(): void {
+    refreshAutoHide();
     buttonFont.refresh();
     popupFont.refresh();
     changed(structuredClone(draft));
@@ -29,6 +30,14 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
     label(key, input); return input;
   }
   select("menuSettings.direction", draft.orientation, [["column", "menuSettings.column"], ["row", "menuSettings.row"]], value => { draft.orientation = value === "row" ? "row" : "column"; });
+  const autoHide = select("bar.autoHide", draft.autoHide ?? "off", [["off", "bar.autoHideOff"], ["start", "expandDirection.left"], ["end", "expandDirection.right"]], value => {
+    draft.autoHide = value as NonNullable<BarSettings["autoHide"]>;
+  });
+  function refreshAutoHide(): void {
+    autoHide.options[1]!.textContent = t(draft.orientation === "column" ? "expandDirection.left" : "expandDirection.up");
+    autoHide.options[2]!.textContent = t(draft.orientation === "column" ? "expandDirection.right" : "expandDirection.down");
+    padding.disabled = (draft.autoHide ?? "off") === "off";
+  }
   function number(value: number, set: (value: number) => void): HTMLInputElement {
     const input = doc.createElement("input"); input.type = "number"; input.min = "1"; input.step = "1"; input.value = String(value);
     input.addEventListener("input", () => {
@@ -36,6 +45,10 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
       set(input.valueAsNumber); notify();
     }, { signal: abort.signal }); return input;
   }
+  const padding = number(draft.autoHidePadding ?? DEFAULT_AUTO_HIDE_PADDING, value => { draft.autoHidePadding = value; });
+  padding.min = "0";
+  label("bar.autoHidePadding", padding);
+  refreshAutoHide();
   function fontSetting(key: Parameters<typeof t>[0], field: "buttonFontSize" | "popupFontSize", automatic: () => number) {
     const font = number(draft[field] === AUTO_FONT_SIZE ? automatic() : draft[field], value => { draft[field] = value; });
     font.setAttribute("aria-label", t(key));

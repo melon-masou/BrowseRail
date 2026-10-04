@@ -186,6 +186,17 @@ pub enum ExpandAlignment {
     Center,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BarAutoHide {
+    #[default]
+    Off,
+    Start,
+    End,
+}
+
+fn default_auto_hide_padding() -> f64 { 6.0 }
+
 pub fn deserialize_optional_expand_direction<'de, D>(
     deserializer: D,
 ) -> Result<Option<ExpandDirection>, D::Error>
@@ -223,6 +234,10 @@ pub struct MenuView {
     #[serde(default)]
     pub orientation: MenuOrientation,
     #[serde(default)]
+    pub auto_hide: BarAutoHide,
+    #[serde(default = "default_auto_hide_padding")]
+    pub auto_hide_padding: f64,
+    #[serde(default)]
     pub color: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
     pub expand_direction: Option<ExpandDirection>,
@@ -258,6 +273,10 @@ impl MenuSpacing {
 #[serde(rename_all = "camelCase")]
 pub struct NativeBarSettings {
     pub orientation: MenuOrientation,
+    #[serde(default)]
+    pub auto_hide: BarAutoHide,
+    #[serde(default = "default_auto_hide_padding")]
+    pub auto_hide_padding: f64,
     pub button_font_size: f64,
     pub popup_font_size: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -268,12 +287,15 @@ pub struct NativeBarSettings {
 }
 impl NativeBarSettings {
     pub fn is_valid(&self) -> bool {
-        self.button_font_size.is_finite() && (self.button_font_size == -1.0 || self.button_font_size >= 1.0)
+        self.auto_hide_padding.is_finite() && self.auto_hide_padding >= 0.0
+            && self.button_font_size.is_finite() && (self.button_font_size == -1.0 || self.button_font_size >= 1.0)
             && self.popup_font_size.is_finite() && (self.popup_font_size == -1.0 || self.popup_font_size >= 1.0)
             && (self.attachment_mode != AttachmentMode::Free || self.on_top_mode == OnTopMode::AlwaysOnTop)
     }
     pub fn apply_view(&self, view: &mut MenuView) {
         view.orientation = self.orientation;
+        view.auto_hide = self.auto_hide;
+        view.auto_hide_padding = self.auto_hide_padding;
         view.button_font_size = Some(self.button_font_size);
         view.popup_font_size = Some(self.popup_font_size);
         view.expand_direction = self.expand_direction;
