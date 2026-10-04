@@ -509,6 +509,9 @@ export async function resolveMenuItems(
     temporaryNotes?: Record<string, string>;
     staticBookmarks?: Array<{ uid: string; name: string }>;
     temporaryBookmarks?: Array<{ uid: string; name: string }>;
+    // False when the browser exposes no bookmarks API: items backed by the
+    // bookmark tree are omitted from the layout but stay in the stored config.
+    bookmarksAvailable?: boolean;
   } = {},
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = context.tree ?? null;
@@ -569,6 +572,7 @@ export async function resolveMenuItems(
         }];
       }
 
+      if (context.bookmarksAvailable === false) return [];
       const effectivePath = combineRootAndItemPath(rootPrefix, path);
 
       let node: BookmarkNode | undefined;

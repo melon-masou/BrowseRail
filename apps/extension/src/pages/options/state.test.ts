@@ -21,7 +21,7 @@ function initialSettings(): SettingsDraft {
     staticBookmarks: [{ uid: "static", name: "Static", url: "https://example.com" }],
     temporaryBookmarks: [{ uid: "temporary", name: "Temporary" }],
     dynamicBookmarks: [
-      { uid: "dynamic", name: "Dynamic", code: "", urlRuleUids: ["removed-rule"] },
+      { uid: "dynamic", name: "Dynamic", type: "code", code: "", urlRuleUids: ["removed-rule"] },
     ],
     shortcuts: [{ slot: "slot_1", type: "static", staticUid: "static", tabMode: "newTab" }],
     nativeShortcuts: [
@@ -104,4 +104,17 @@ it("resets a cleared menu color to the default instead of leaving the menu uncol
   state.setColor({ kind: "menu", uid: "menu", field: "color" }, "#123456ff");
   state.setColor({ kind: "menu", uid: "menu", field: "color" }, undefined);
   expect(state.settings.menus[0]!.color).toBe(DEFAULT_MENU_COLOR);
+});
+
+
+it("keeps code when switching update modes and clears a removed single-rule selection", () => {
+  const state = createState();
+  state.setDynamicCode("dynamic", "function dynamicBookmark() { return { newUrl: null }; }");
+  state.setDynamicType("dynamic", "rule");
+  state.setDynamicRule("dynamic", "removed-rule");
+  state.removeUrlRule("removed-rule");
+  expect(state.settings.dynamicBookmarks[0]).toMatchObject({ type: "rule", code: "function dynamicBookmark() { return { newUrl: null }; }" });
+  expect(state.settings.dynamicBookmarks[0]!.urlRuleUid).toBeUndefined();
+  state.setDynamicType("dynamic", "code");
+  expect(state.settings.dynamicBookmarks[0]!.code).toBe("function dynamicBookmark() { return { newUrl: null }; }");
 });

@@ -46,6 +46,7 @@ export function mountShortcutsTab(
   const shortcutSettingTabMode = element<HTMLSelectElement>("shortcut-setting-tab-mode");
   const shortcutPickPopover = element<HTMLDivElement>("shortcut-pick-popover");
   const shortcutPickBookmarkBtn = element<HTMLButtonElement>("shortcut-pick-bookmark-btn");
+  shortcutPickBookmarkBtn.disabled = !library.available;
   const shortcutPickDynamicBtn = element<HTMLButtonElement>("shortcut-pick-dynamic-btn");
   const shortcutPickStaticBtn = element<HTMLButtonElement>("shortcut-pick-static-btn");
   const shortcutPickTemporaryBtn = element<HTMLButtonElement>("shortcut-pick-temporary-btn");

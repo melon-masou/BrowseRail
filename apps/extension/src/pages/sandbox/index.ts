@@ -1,53 +1,105 @@
-// Sandboxed executor. This script runs inside a manifest-declared sandbox page
-// (opaque origin, no `browser`/`chrome`, no extension API, no shared DOM), which
-// is the only place Manifest V3's CSP allows dynamic code (eval/new Function).
-//
-// It receives { code, args } from its parent (the offscreen document on Chrome
-// or the background page on Firefox), evaluates the user's `dynamicBookmark`
-// function purely, and posts the result back. A synchronous infinite loop here
-// hangs only this frame; the host times out and rebuilds it.
-
-interface RunMessage {
-  __dyn: true;
-  id: string;
-  code: string;
-  args: unknown;
-}
-
-function isRunMessage(value: unknown): value is RunMessage {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { __dyn?: unknown }).__dyn === true &&
-    typeof (value as { id?: unknown }).id === "string" &&
-    typeof (value as { code?: unknown }).code === "string"
-  );
-}
-
-window.addEventListener("message", (event) => {
-  const data = event.data;
-  if (!isRunMessage(data)) return;
-
-  let out: { __dyn: true; id: string; ok: boolean; value?: unknown; error?: string };
+// Blob workers inherit the sandbox CSP, including its blocked network access.
+const workerSource = `
+let supported = false;
+try {
+  supported = typeof chrome === "undefined" && typeof browser === "undefined" && new Function("return true")() === true;
+} catch {}
+self.postMessage({ phase: "ready", supported });
+self.onmessage = function(event) {
+  const id = event.data.id;
+  self.postMessage({ phase: "started", id });
   try {
-    // The user code defines `function dynamicBookmark(args) { ... }`; compile it
-    // and return the reference. No host globals are exposed.
-    const factory = new Function(
-      `"use strict";\n${data.code}\n;return typeof dynamicBookmark === "function" ? dynamicBookmark : null;`,
-    );
-    const fn = factory() as ((args: unknown) => unknown) | null;
-    if (typeof fn !== "function") {
-      throw new Error("dynamicBookmark is not defined");
-    }
-    const result = fn(data.args);
-    out = { __dyn: true, id: data.id, ok: true, value: result ?? null };
-  } catch (error) {
-    out = {
-      __dyn: true,
-      id: data.id,
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
+    const factory = new Function('"use strict";\\n' + event.data.code + '\\n;return typeof dynamicBookmark === "function" ? dynamicBookmark : null;');
+    const fn = factory();
+    if (typeof fn !== "function") throw new Error("dynamicBookmark is not defined");
+    const value = fn(event.data.args);
+    if (value && typeof value.then === "function") throw new Error("dynamicBookmark must return synchronously");
+    self.postMessage({ phase: "result", id, ok: true, value: JSON.parse(JSON.stringify(value ?? null)) });
+  } catch (error) { self.postMessage({ phase: "result", id, ok: false, error: String(error) }); }
+};`;
+let worker: Worker | undefined;
+let workerUrl: string | undefined;
+let workerReady: Promise<Worker> | undefined;
+let bootReject: ((error: Error) => void) | undefined;
+let activeId: string | undefined;
+function stopWorker(): void {
+  worker?.terminate();
+  if (workerUrl) URL.revokeObjectURL(workerUrl);
+  worker = undefined;
+  workerUrl = undefined;
+  workerReady = undefined;
+  bootReject?.(new Error("sandbox worker unavailable"));
+  bootReject = undefined;
+}
+function finish(id: string, result: { ok: boolean; value?: unknown; error?: string }): void {
+  if (activeId !== id) return;
+  activeId = undefined;
+  parent.postMessage({ __dyn: true, id, ...result }, "*");
+}
+function ensureWorker(): Promise<Worker> {
+  if (workerReady) return workerReady;
+  workerReady = new Promise<Worker>((resolve, reject) => {
+    bootReject = reject;
+    workerUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+    const created = new Worker(workerUrl);
+    worker = created;
+    created.onmessage = event => {
+      if (worker !== created) return;
+      const data = event.data;
+      if (data?.phase === "ready") {
+        bootReject = undefined;
+        if (data.supported === true) resolve(created);
+        else { reject(new Error("sandbox unsupported")); stopWorker(); }
+      } else if (data?.id === activeId && typeof activeId === "string") {
+        if (data.phase === "started") parent.postMessage({ __dyn: true, id: activeId, started: true }, "*");
+        else if (data.phase === "result" && typeof data.ok === "boolean") finish(activeId, data);
+      }
     };
+    created.onerror = () => {
+      const id = activeId;
+      stopWorker();
+      if (id) finish(id, { ok: false, error: "sandbox worker unavailable" });
+    };
+  });
+  return workerReady;
+}
+let isolated = false;
+try {
+  isolated = (globalThis as { chrome?: { runtime?: unknown } }).chrome?.runtime === undefined
+    && (globalThis as { browser?: { runtime?: unknown } }).browser?.runtime === undefined
+    && new Function("return true")() === true;
+} catch { /* An unsupported declaration may leave an ordinary extension page. */ }
+window.addEventListener("pagehide", stopWorker);
+window.addEventListener("message", event => {
+  if (event.source !== parent || !event.data || event.data.__dyn !== true) return;
+  const data = event.data;
+  if (typeof data.cancel === "string") {
+    if (activeId === data.cancel) { activeId = undefined; stopWorker(); }
+    return;
   }
-  parent.postMessage(out, "*");
+  if (data.probe === true) {
+    if (!isolated) { parent.postMessage({ __dyn: true, ready: true, status: "unsupported" }, "*"); return; }
+    void ensureWorker().then(() => {
+      parent.postMessage({ __dyn: true, ready: true, status: "supported" }, "*");
+    }).catch(error => {
+      stopWorker();
+      parent.postMessage({ __dyn: true, ready: true, status: String(error) === "Error: sandbox unsupported" ? "unsupported" : "failed" }, "*");
+    });
+    return;
+  }
+  if (!isolated || typeof data.id !== "string" || typeof data.code !== "string") return;
+  if (activeId) {
+    parent.postMessage({ __dyn: true, id: data.id, ok: false, error: "sandbox busy" }, "*");
+    return;
+  }
+  activeId = data.id;
+  void ensureWorker().then(ready => {
+    if (activeId === data.id) ready.postMessage({ id: data.id, code: data.code, args: data.args });
+  }).catch(error => {
+    if (activeId !== data.id) return;
+    stopWorker();
+    finish(data.id, { ok: false, error: String(error) });
+  });
 });
+
+export {};

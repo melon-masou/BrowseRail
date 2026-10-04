@@ -64,7 +64,8 @@ export async function mountOptionsPage() {
   if (scope.signal.aborted) return { destroy: scope.destroy };
   const state = createOptionsState(loaded.instance, loaded.settings);
   const library = createBookmarkLibrary(() => state.instance.rootPrefix);
-  library.initialize(loaded.tree);
+  library.initialize(loaded.tree, loaded.bookmarksAvailable);
+  element("bookmarks-unsupported-notice").hidden = loaded.bookmarksAvailable;
   const source = createCustomBookmarkSource(state);
   scope.add(source.destroy);
   const persistence = createPersistence(state, library);

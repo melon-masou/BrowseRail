@@ -2,9 +2,9 @@
 //  - intercepts native navigations to browserail.local markers and redirects
 //    them (Dynamic:<id> → the live URL; anything else → the options page),
 //  - on active-tab page visits, runs each matching dynamic bookmark's function
-//    in the sandbox and persists the returned URL/title and script context.
+//    in a supported sandbox and persists the returned URL/title and script context.
 
-import { isUrlMatchingSet } from "@browserail/protocol";
+import { matchesUrlRule } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
 import {
@@ -14,7 +14,7 @@ import {
   loadDynamicValues,
   saveDynamicValue,
 } from "../config";
-import { runDynamic } from "../pages/sandbox/runner";
+import { runDynamic, initializeSandbox } from "../dynamic/runner";
 
 const MARKER_HOST = "browserail.local";
 const DYNAMIC_FRAGMENT_PREFIX = "Dynamic:";
@@ -27,6 +27,11 @@ const lastVisitUrlByTab = new Map<number, string>();
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function initDynamicBookmarks(requestSync: () => void): void {
+  void initializeSandbox();
+  browser.runtime.onMessage.addListener((message: unknown, sender: browser.Runtime.MessageSender) => {
+    if (sender.id !== browser.runtime.id || sender.tab) return;
+    if (typeof message === "object" && message !== null && "type" in message && message.type === "getDynamicSandboxStatus") return initializeSandbox();
+  });
   browser.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => {
     const url = changeInfo.url;
     if (typeof url !== "string" || !url) return;
@@ -97,10 +102,15 @@ async function runVisit(url: string, title: string, requestSync: () => void): Pr
   const ruleMap = new Map(config.urlRules.map((rule) => [rule.uid, rule]));
 
   for (const db of dynamicBookmarks) {
-    if (!db.code.trim()) continue;
-    if (db.urlRuleUids && db.urlRuleUids.length > 0) {
-      const patterns = db.urlRuleUids.flatMap((uid) => ruleMap.get(uid)?.patterns ?? []);
-      if (!isUrlMatchingSet(url, patterns)) continue;
+    if (db.type === "rule") {
+      const rule = db.urlRuleUid ? ruleMap.get(db.urlRuleUid) : undefined;
+      if (!rule || !matchesUrlRule(url, rule)) continue;
+    } else {
+      if (!db.code.trim() || await initializeSandbox() !== "supported") continue;
+      if (db.urlRuleUids?.length && !db.urlRuleUids.some(uid => {
+        const rule = ruleMap.get(uid);
+        return rule && matchesUrlRule(url, rule);
+      })) continue;
     }
     scheduleRun(db, url, title, requestSync);
   }
@@ -138,7 +148,9 @@ async function executeOne(
     current: { url: current?.url ?? null, title: current?.title ?? null, note: current?.note ?? "" },
   };
 
-  const result = await runDynamic(db.code, args, TIMEOUT_MS);
+  const result = db.type === "rule"
+    ? { ok: true, value: { newUrl: url, title } }
+    : await runDynamic(db.code, args, TIMEOUT_MS);
   if (!result.ok || !result.value || typeof result.value !== "object") return;
 
   const value = result.value as { newUrl?: unknown; title?: unknown; note?: unknown };

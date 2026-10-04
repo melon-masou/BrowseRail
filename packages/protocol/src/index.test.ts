@@ -195,3 +195,24 @@ describe("URL pattern matching", () => {
     expect(isUrlMatchingSet("https://github.com", [])).toBe(false);
   });
 });
+
+
+it("applies ! exclusions after whitelist matching regardless of line order", async () => {
+  const { matchesUrlRule } = await import("./index");
+  const rule = { uid: "docs", name: "Docs", patterns: ["!https://example.com/private", "example.com", "!/[?]draft=/"] };
+  expect(matchesUrlRule("https://example.com/docs", rule)).toBe(true);
+  expect(matchesUrlRule("https://example.com/private/page", rule)).toBe(false);
+  expect(matchesUrlRule("https://example.com/docs?draft=1", rule)).toBe(false);
+  expect(matchesUrlRule("https://other.com/docs", rule)).toBe(false);
+  expect(matchesUrlRule("https://example.com/private", { ...rule, patterns: ["example.com"] })).toBe(true);
+  expect(matchesUrlRule("https://other.com/docs", { ...rule, patterns: ["!example.com"] })).toBe(false);
+  expect(matchesUrlRule("https://example.com/docs", { ...rule, patterns: [] })).toBe(false);
+});
+
+it("ignores whole-line comments without stripping URL fragments or regex hashes", async () => {
+  const { activeUrlPatterns, matchesUrlRule } = await import("./index");
+  expect(activeUrlPatterns(["", " # domain", " example.com "])).toEqual(["example.com"]);
+  expect(matchesUrlRule("https://example.com/docs", { uid: "comments", name: "", patterns: [" # example.com"] })).toBe(false);
+  expect(matchesUrlRule("https://example.com/#section", { uid: "fragment", name: "", patterns: ["https://example.com/#section"] })).toBe(true);
+  expect(matchesUrlRule("https://example.com/#section", { uid: "regex", name: "", patterns: ["/#section$/", " # exclusion"] })).toBe(true);
+});

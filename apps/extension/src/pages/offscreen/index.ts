@@ -1,36 +1,23 @@
-// Chrome offscreen document. A service worker has no DOM, so it cannot host the
-// sandbox iframe directly; this offscreen page does, and relays run requests
-// from the service worker to the sandbox over runtime messaging.
-
 import { createSandboxHost } from "../sandbox/host";
-
 declare const chrome: {
   runtime: {
+    id: string;
     getURL(path: string): string;
-    onMessage: {
-      addListener(
-        cb: (
-          message: unknown,
-          sender: unknown,
-          sendResponse: (response: unknown) => void,
-        ) => boolean | undefined,
-      ): void;
-    };
+    onMessage: { addListener(listener: (message: unknown, sender: { id?: string; tab?: unknown }, respond: (response: unknown) => void) => boolean | undefined): void };
   };
 };
-
 const host = createSandboxHost(chrome.runtime.getURL("sandbox.html"));
-
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  const msg = message as
-    | { __dynHost?: unknown; code?: unknown; args?: unknown; timeoutMs?: unknown }
-    | undefined;
-  if (!msg || msg.__dynHost !== true || typeof msg.code !== "string") {
-    return undefined;
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (sender.id !== chrome.runtime.id || sender.tab) return;
+  const data = message as { __dynHost?: unknown; code?: unknown; args?: unknown; timeoutMs?: unknown } | null;
+  if (data?.__dynHost === "probe") {
+    // A Chrome background restart can leave the offscreen document alive.
+    host.destroy();
+    void host.probe().then(respond).catch(() => respond("failed"));
+    return true;
   }
-  host
-    .run(msg.code, msg.args, typeof msg.timeoutMs === "number" ? msg.timeoutMs : 200)
-    .then(sendResponse)
-    .catch((error) => sendResponse({ ok: false, error: String(error) }));
-  return true; // keep the message channel open for the async response
+  if (data?.__dynHost !== "run" || typeof data.code !== "string") return;
+  void host.run(data.code, data.args, typeof data.timeoutMs === "number" ? data.timeoutMs : 200)
+    .then(respond).catch(error => respond({ ok: false, error: String(error) }));
+  return true;
 });

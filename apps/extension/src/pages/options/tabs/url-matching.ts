@@ -1,3 +1,4 @@
+import { activeUrlPatterns } from "@browserail/protocol";
 import { type UrlRule } from "../../../config";
 import { t } from "@browserail/i18n";
 import { element } from "../dom";
@@ -69,7 +70,12 @@ export function mountUrlMatchingTab(state: OptionsState, renderPermissionWarning
 
       const countPill = document.createElement("span");
       countPill.className = "url-rule-count-pill";
-      countPill.textContent = t("urlRules.patternCount", { count: ws.patterns.length });
+      function updateCount(): void {
+        const rule = state.settings.urlRules.find(value => value.uid === ws.uid)!;
+        const count = activeUrlPatterns(rule.patterns).length;
+        countPill.textContent = t("urlRules.patternCount", { count });
+      }
+      updateCount();
 
       const permissionWarning = document.createElement("span");
       permissionWarning.className = "site-permission-warning";
@@ -96,11 +102,10 @@ export function mountUrlMatchingTab(state: OptionsState, renderPermissionWarning
       patternsTextarea.value = ws.patterns.join("\n");
       patternsTextarea.addEventListener("input", () => {
         state.setUrlPatterns(ws.uid, patternsTextarea.value);
-        countPill.textContent = t("urlRules.patternCount", {
-          count: state.settings.urlRules.find((rule) => rule.uid === ws.uid)!.patterns.length,
-        });
+        updateCount();
       });
 
+      patternsTextarea.ariaLabel = t("section.urlRules");
       card.append(header, patternsTextarea);
       urlRulesList.appendChild(card);
     });

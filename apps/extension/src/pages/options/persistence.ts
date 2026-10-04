@@ -23,6 +23,7 @@ import {
   pruneTemporaryValues,
   normalizeConfig,
   normalizeUrlRules,
+  normalizeDynamicBookmarks,
   normalizeStaticBookmarks,
   normalizeTemporaryBookmarks,
   normalizeMenu,
@@ -30,19 +31,20 @@ import {
   type StoredMenu,
   type StoredMenuItem,
   type StoredMenuItemType,
-  type DynamicBookmark,
   type StoredShortcut,
   type StoredNativeShortcut,
   type UrlRule,
 } from "../../config";
+import { canUseBookmarks } from "../../browser/bookmarks-capability";
 import { settingsFromConfig, type OptionsState, type SettingsDraft } from "./state";
 import type { BookmarkLibrary } from "./bookmark-library";
 import { createScope } from "./lifecycle";
 export async function loadOptions() {
+  const bookmarksAvailable = await canUseBookmarks();
   const [config, enabled, tree, rootPrefix, displayMode, syncEnabled] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
-    browser.bookmarks.getTree(),
+    bookmarksAvailable ? browser.bookmarks.getTree() : [],
     loadBookmarkRootPrefix(),
     loadDisplayMode(),
     loadSyncEnabled(),
@@ -58,6 +60,7 @@ export async function loadOptions() {
     settings: settingsFromConfig(config),
     enabled,
     tree,
+    bookmarksAvailable,
   };
 }
 export function createPersistence(state: OptionsState, library: BookmarkLibrary) {
@@ -380,27 +383,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     else delete imported.defaultUrlRuleUid;
 
     if (Array.isArray(parsed.dynamicBookmarks)) {
-      imported.dynamicBookmarks = parsed.dynamicBookmarks.flatMap((db): DynamicBookmark[] => {
-        if (typeof db !== "object" || db === null) return [];
-        const record = db as unknown as Record<string, unknown>;
-        if (typeof record.uid !== "string" || !record.uid) return [];
-        const urlRuleUids = Array.isArray(record.urlRuleUids)
-          ? record.urlRuleUids.filter(
-              (u): u is string => typeof u === "string" && u.trim().length > 0,
-            )
-          : undefined;
-        return [
-          {
-            uid: record.uid,
-            name:
-              typeof record.name === "string" && record.name.trim()
-                ? record.name.trim()
-                : "Dynamic bookmark",
-            code: typeof record.code === "string" ? record.code : "",
-            ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
-          },
-        ];
-      });
+      imported.dynamicBookmarks = normalizeDynamicBookmarks(parsed.dynamicBookmarks);
     }
     if (Array.isArray(parsed.shortcuts)) {
       imported.shortcuts = parsed.shortcuts.flatMap((sc): StoredShortcut[] => {

@@ -72,6 +72,7 @@ export function mountMenusTab(
   const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
   const addItemPopover = element<HTMLDivElement>("add-item-popover");
   const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
+  addPopoverBookmarkBtn.disabled = itemSettingChangeBtn.disabled = !library.available;
   const addPopoverActionBtn = element<HTMLButtonElement>("add-popover-action-btn");
   const addActionDialog = element<HTMLDialogElement>("add-action-dialog");
   const addActionForm = element<HTMLFormElement>("add-action-form");

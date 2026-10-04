@@ -44,11 +44,13 @@ export function createCustomBookmarkPicker() {
       title.textContent = db.name || t(`${type}.defaultName`);
       info.append(icon, title);
 
-      const meta = document.createElement("span");
-      meta.className = "pick-menu-item-meta";
-      meta.textContent = db.url || t("dynamic.noValueShort");
-
-      itemBtn.append(info, meta);
+      itemBtn.append(info);
+      if (type !== "dynamic") {
+        const meta = document.createElement("span");
+        meta.className = "pick-menu-item-meta";
+        meta.textContent = db.url || t("dynamic.noValueShort");
+        itemBtn.append(meta);
+      }
       itemBtn.addEventListener("click", () => {
         finish?.(db.uid);
         finish = undefined;

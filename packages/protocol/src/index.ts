@@ -263,6 +263,8 @@ export interface ExportedMenuItem {
 }
 
 export interface ExportedDynamicBookmark {
+  type: "rule" | "code";
+  urlRuleUid?: string;
   uid: string;
   name: string;
   code: string;
@@ -326,7 +328,7 @@ export function isExportedSettingsData(value: unknown): value is ExportedSetting
  */
 export function matchUrlPattern(pattern: string, url: string): boolean {
   const p = pattern.trim();
-  if (!p || !url) return false;
+  if (!p || p.startsWith("#") || !url) return false;
 
   // 1. Regular expression: /pattern/flags
   if (p.startsWith("/") && p.lastIndexOf("/") > 0) {
@@ -428,5 +430,16 @@ export function isUrlMatchingSet(url: string, patterns: string[]): boolean {
   if (!url || !Array.isArray(patterns) || patterns.length === 0) {
     return false;
   }
-  return patterns.some((p) => matchUrlPattern(p, url));
+  const active = activeUrlPatterns(patterns);
+  return active.some(pattern => !pattern.startsWith("!") && matchUrlPattern(pattern, url))
+    && !active.some(pattern => pattern.startsWith("!") && matchUrlPattern(pattern.slice(1).trim(), url));
+}
+
+/** Executable patterns only; preserve the original lines in configuration. */
+export function activeUrlPatterns(patterns: readonly string[]): string[] {
+  return patterns.map(pattern => pattern.trim()).filter(pattern => pattern && !pattern.startsWith("#"));
+}
+
+export function matchesUrlRule(url: string, rule: UrlRule): boolean {
+  return isUrlMatchingSet(url, rule.patterns);
 }

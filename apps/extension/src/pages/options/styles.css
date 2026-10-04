@@ -1169,6 +1169,12 @@ output {
   color: #0f172a;
 }
 
+.add-popover-item:disabled {
+  background: transparent;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .add-popover-icon {
   font-size: 15px;
   width: 18px;
@@ -3094,4 +3100,25 @@ button.item-tag {
   height: 15px;
   min-height: 15px;
   margin: 0;
+}
+
+.dynamic-mode-tabs {
+  justify-self: start;
+  margin-bottom: 0;
+}
+.dynamic-card-body > select {
+  max-width: 100%;
+}
+.bookmarks-unsupported-notice {
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid #f1d3a8;
+  background: #fff7eb;
+  color: #a55f0e;
+  font-size: 12px;
+}
+.dynamic-sandbox-warning {
+  color: #d98220;
+  margin: 0 0 10px;
+  font-size: 12px;
 }

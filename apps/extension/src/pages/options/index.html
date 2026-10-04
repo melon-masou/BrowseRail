@@ -64,6 +64,7 @@
             data-i18n="section.shortcuts">Shortcuts</button>
         </nav>
         <div id="settings-content" class="settings-content">
+          <p id="bookmarks-unsupported-notice" class="bookmarks-unsupported-notice" data-i18n="picker.bookmarksUnsupported" hidden></p>
           <section id="start-panel" class="settings-panel start-panel" role="tabpanel" aria-labelledby="start-tab"></section>
           <form id="connection-form" class="settings-panel connection-card" role="tabpanel" aria-labelledby="instance-tab" hidden>
             <div id="state-card" class="state-bar state-card" data-state="disconnected">
@@ -210,7 +211,7 @@
               </section>
               <section id="dynamic-panel" class="dynamic-section" role="tabpanel" aria-labelledby="dynamic-tab" hidden>
                 <div class="dynamic-toolbar">
-                  <span class="url-rules-hint" data-i18n="dynamic.hint">Use a custom function to update a bookmark's URL dynamically.</span>
+                  <span class="url-rules-hint" data-i18n="dynamic.hint">Update the saved URL when a visited page matches a URL rule, or use a custom function.</span>
                   <button id="add-dynamic-btn" class="menu-action-btn add-dynamic-btn add-toolbar-action" type="button" data-i18n="dynamic.add">+ Add</button>
                 </div>
                 <div id="dynamic-list" class="dynamic-list"></div>

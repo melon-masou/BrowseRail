@@ -14,6 +14,7 @@ import type {
   UrlRule,
   StaticBookmark,
   TemporaryBookmark,
+  ExportedDynamicBookmark,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
@@ -36,11 +37,11 @@ export function normalizeUrlRules(value: unknown): UrlRule[] {
   });
 }
 
-export function menuUrlPatterns(menu: StoredMenu, config: Pick<ExtensionConfig, "urlRules" | "defaultUrlRuleUid">): string[][] {
+export function menuUrlRules(menu: StoredMenu, config: Pick<ExtensionConfig, "urlRules" | "defaultUrlRuleUid">): UrlRule[] {
   const uids = menu.urlRuleUids?.length
     ? menu.urlRuleUids
     : config.defaultUrlRuleUid ? [config.defaultUrlRuleUid] : [];
-  return uids.map(uid => config.urlRules.find(rule => rule.uid === uid)?.patterns ?? []);
+  return uids.map(uid => config.urlRules.find(rule => rule.uid === uid) ?? { uid, name: "", patterns: [] });
 }
 
 export type {
@@ -56,15 +57,22 @@ export type {
   TemporaryBookmark,
 };
 
-// A user-defined dynamic bookmark: its function body maintains a live URL/title
-// that updates as the user browses (see the sandbox runner). The definition is
-// synced with config; the live value lives in local `dynamic_values` only.
-export interface DynamicBookmark {
-  uid: string;
-  name: string;
-  code: string;
-  // urlRules this bookmark's function reacts to; empty/undefined = all visits.
-  urlRuleUids?: string[];
+// Definitions are shared config; the saved URL/title/note stay in local storage.
+export type DynamicBookmark = ExportedDynamicBookmark;
+
+export function normalizeDynamicBookmarks(value: unknown): DynamicBookmark[] {
+  return (Array.isArray(value) ? value : []).flatMap((db): DynamicBookmark[] => {
+    if (!isRecord(db) || typeof db.uid !== "string" || !db.uid) return [];
+    return [{
+      uid: db.uid,
+      name: typeof db.name === "string" && db.name.trim() ? db.name.trim() : "Dynamic bookmark",
+      // Existing code definitions and imported scripts keep their execution mode.
+      type: db.type === "rule" ? "rule" : "code",
+      code: typeof db.code === "string" ? db.code : "",
+      ...(typeof db.urlRuleUid === "string" && db.urlRuleUid ? { urlRuleUid: db.urlRuleUid } : {}),
+      ...(Array.isArray(db.urlRuleUids) ? { urlRuleUids: db.urlRuleUids.filter((uid): uid is string => typeof uid === "string" && !!uid.trim()) } : {}),
+    }];
+  });
 }
 
 export interface ExtensionConfig {
@@ -284,24 +292,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
 
   const urlRules = normalizeUrlRules(value.urlRules);
 
-  const rawDynamic = Array.isArray(value.dynamicBookmarks) ? value.dynamicBookmarks : [];
-  const dynamicBookmarks: DynamicBookmark[] = rawDynamic.flatMap((db) => {
-    if (!isRecord(db)) return [];
-    if (typeof db.uid !== "string" || !db.uid) return [];
-    const name = typeof db.name === "string" && db.name.trim() ? db.name.trim() : "Dynamic bookmark";
-    const code = typeof db.code === "string" ? db.code : "";
-    const urlRuleUids = Array.isArray(db.urlRuleUids)
-      ? db.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
-      : undefined;
-    return [
-      {
-        uid: db.uid,
-        name,
-        code,
-        ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
-      },
-    ];
-  });
+  const dynamicBookmarks = normalizeDynamicBookmarks(value.dynamicBookmarks);
 
   const rawShortcuts = Array.isArray(value.shortcuts) ? value.shortcuts : [];
   const shortcuts: StoredShortcut[] = rawShortcuts.flatMap((sc) => {

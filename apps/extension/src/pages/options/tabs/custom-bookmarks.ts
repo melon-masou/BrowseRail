@@ -8,6 +8,7 @@ import { createScope } from "../lifecycle";
 import { type CustomBookmarkSource } from "../custom-bookmark-source";
 import { type Overlays } from "../components/overlays";
 import { type BookmarkTools } from "../components/bookmark-tools";
+import { getSandboxStatus, type SandboxStatus } from "../../../dynamic/status";
 import { SETTINGS_ICON_SVG, REMOVE_ICON_SVG } from "../components/icons";
 import { renderPreservingFocus } from "../components/render-focus";
 
@@ -29,6 +30,10 @@ export function mountCustomBookmarksTab(
   const dynamicSettingUrlRulesList = element<HTMLDivElement>("dynamic-setting-url-rules-list");
   const DEFAULT_DYNAMIC_CODE = `/**
  * Dynamic Bookmark Handler
+ *
+ * Runs synchronously in an isolated browser sandbox worker.
+ * URL and URLSearchParams are available; page DOM and extension APIs are not.
+ * Network access is blocked by the sandbox CSP.
  *
  * @param {Object} context
  * @param {string} context.action  - Trigger event: "visit"
@@ -175,6 +180,7 @@ function dynamicBookmark({ action, url, title, current }) {
     marker.type = "button";
     marker.className = "action-btn dynamic-add-btn";
     marker.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>${t("dynamic.addToBookmarks")}</span>`;
+    marker.disabled = !tools.available;
     marker.addEventListener("click", () => tools.openTemporary(definition.uid));
     actions.append(clear, marker);
     subtitle.append(current, actions);
@@ -243,7 +249,19 @@ function dynamicBookmark({ action, url, title, current }) {
   }
 
   function createDynamicBookmark(): DynamicBookmark {
-    return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), code: DEFAULT_DYNAMIC_CODE };
+    return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), type: "rule", code: DEFAULT_DYNAMIC_CODE };
+  }
+
+  let sandboxStatus: SandboxStatus | undefined;
+  let sandboxChecking = false;
+  function checkSandbox(): void {
+    if (sandboxChecking) return;
+    sandboxChecking = true;
+    void getSandboxStatus().then(status => {
+      if (scope.signal.aborted) return;
+      sandboxStatus = status;
+      renderDynamic();
+    });
   }
 
   const collapsedDynamicUids = new Set<string>();
@@ -436,7 +454,8 @@ function dynamicBookmark({ action, url, title, current }) {
       removeCustomDefinition("dynamic", db.uid);
     });
 
-    headerActions.append(settingsBtn, del);
+    if (db.type === "code") headerActions.append(settingsBtn);
+    headerActions.append(del);
 
     const live = source.dynamicValues[db.uid];
     const subtitleRow = document.createElement("div");
@@ -460,6 +479,7 @@ function dynamicBookmark({ action, url, title, current }) {
     addToBookmarksBtn.className = "action-btn dynamic-add-btn";
     addToBookmarksBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>${t("dynamic.addToBookmarks")}</span>`;
     addToBookmarksBtn.title = t("dynamic.addToBookmarks");
+    addToBookmarksBtn.disabled = !tools.available;
     addToBookmarksBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       tools.openDynamic(db.uid);
@@ -469,9 +489,56 @@ function dynamicBookmark({ action, url, title, current }) {
     subtitleRow.append(currentGroup, actionsGroup);
     header.append(titleRow, headerActions, subtitleRow);
 
-    // Card Body: pure code editor
+    // Each mode owns its controls; the stored code survives mode switches.
     const body = document.createElement("div");
     body.className = "dynamic-card-body";
+
+    const modeRow = document.createElement("div");
+    modeRow.className = "shortcuts-subtabs dynamic-mode-tabs";
+    modeRow.setAttribute("role", "group");
+    modeRow.setAttribute("aria-label", t("dynamic.mode"));
+    for (const type of ["rule", "code"] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "shortcuts-subtab-btn" + (db.type === type ? " is-active" : "");
+      button.setAttribute("aria-pressed", String(db.type === type));
+      button.textContent = t(type === "rule" ? "dynamic.ruleMode" : "dynamic.codeMode");
+      button.addEventListener("click", () => {
+        if (db.type !== type) state.setDynamicType(db.uid, type);
+      });
+      modeRow.append(button);
+    }
+    body.append(modeRow);
+    if (db.type === "rule") {
+      const ruleSelect = document.createElement("select");
+      ruleSelect.ariaLabel = t("section.urlRules");
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = t("dynamic.chooseRule");
+      ruleSelect.append(placeholder);
+      for (const rule of state.settings.urlRules) {
+        const option = document.createElement("option");
+        option.value = rule.uid;
+        option.textContent = rule.name || t("urlRules.defaultName");
+        ruleSelect.append(option);
+      }
+      ruleSelect.value = db.urlRuleUid ?? "";
+      ruleSelect.addEventListener("change", () => state.setDynamicRule(db.uid, ruleSelect.value || undefined));
+      const ruleHint = document.createElement("div");
+      ruleHint.className = "hint";
+      ruleHint.textContent = t("dynamic.ruleHint");
+      body.append(ruleSelect, ruleHint);
+      card.append(header, body);
+      return card;
+    }
+    if (sandboxStatus === undefined) {
+      checkSandbox();
+    } else if (sandboxStatus !== "supported") {
+      const warning = document.createElement("p");
+      warning.className = "dynamic-sandbox-warning";
+      warning.textContent = t(sandboxStatus === "unsupported" ? "dynamic.sandboxUnsupported" : "dynamic.sandboxFailed");
+      body.append(warning);
+    }
 
     const code = document.createElement("textarea");
     code.className = "dynamic-code";
@@ -544,6 +611,10 @@ function dynamicBookmark({ action, url, title, current }) {
       if (change.structural) render();
     }),
   );
+  scope.add(state.subscribe(["rules"], () => {
+    renderDynamic();
+    if (dynamicSettingsDialog.open) dynamicSettingsDialog.close();
+  }));
   scope.add(
     source.subscribe((type) => {
       if (type === "temporary") renderSimple();

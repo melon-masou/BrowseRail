@@ -1,5 +1,5 @@
 import browser from "webextension-polyfill";
-import type { UrlRule } from "@browserail/protocol";
+import { activeUrlPatterns, type UrlRule } from "@browserail/protocol";
 
 export const ALL_WEBSITE_ORIGINS = ["http://*/*", "https://*/*"];
 export type UnsupportedSiteReason = "regex" | "scheme" | "pattern";
@@ -13,9 +13,9 @@ export interface RuleSites {
 export function ruleSites(rule: UrlRule): RuleSites {
   const origins = new Set<string>();
   const unsupported: RuleSites["unsupported"] = [];
-  for (const raw of rule.patterns) {
+  for (const raw of activeUrlPatterns(rule.patterns)) {
     const pattern = raw.trim();
-    if (!pattern) continue;
+    if (!pattern || pattern.startsWith("!")) continue;
     if (pattern.startsWith("/") && pattern.lastIndexOf("/") > 0) {
       unsupported.push({ pattern, reason: "regex" }); continue;
     }

@@ -63,3 +63,10 @@ it("revokes website access without removing other granted APIs or file access", 
   await revokeWebsitePermissions();
   expect(permissions.origins).toEqual(["file:///*"]);
 });
+
+
+it("does not request or report comments and excluded sites as authorization targets", () => {
+  expect(ruleSites({ uid: "web", name: "Web", patterns: [" # private context", "example.com", "!other.com", "!/^https:/", "# comment"] })).toMatchObject({
+    origins: ["http://*.example.com/*", "https://*.example.com/*"], unsupported: [],
+  });
+});

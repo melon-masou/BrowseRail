@@ -15,7 +15,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
 import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu } from "../../config";
 import { createOptionsState, settingsFromConfig } from "./state";
 import { createBookmarkLibrary } from "./bookmark-library";
-import { createPersistence } from "./persistence";
+import { createPersistence, loadOptions } from "./persistence";
 
 beforeEach(() => { local.values = {}; });
 async function fixture() {
@@ -103,4 +103,44 @@ it("uses new defaults instead of migrating legacy bar appearance and positions",
 it("fills the default color into stored menus that have none", () => {
   expect(normalizeMenu({ uid: "stored", items: [] })?.color).toBe(DEFAULT_MENU_COLOR);
   expect(normalizeMenu({ uid: "colored", color: "#123456ff", items: [] })?.color).toBe("#123456ff");
+});
+
+
+// The mocked polyfill has no `bookmarks`, like Firefox for Android.
+it("opens settings in a browser without a bookmarks API and saves without touching stored browser bookmarks", async () => {
+  const config = await loadConfig();
+  const items = [
+    { uid: "page", type: "bookmark", path: ["Bookmarks bar", "Docs"], url: "https://example.com" },
+    { uid: "flat", type: "flattenFolder", path: ["Other bookmarks", "Daily"], includeFolders: true },
+  ];
+  config.panel.menus = [{ uid: "bar", enabled: true, color: DEFAULT_MENU_COLOR, items: structuredClone(items) }];
+  config.shortcuts = [{ slot: "slot_1", type: "bookmark", path: ["Bookmarks bar", "Docs"], url: "https://example.com" }];
+  await saveConfig(config);
+  const loaded = await loadOptions();
+  expect(loaded.bookmarksAvailable).toBe(false);
+  const state = createOptionsState(loaded.instance, loaded.settings);
+  const library = createBookmarkLibrary(() => state.instance.rootPrefix);
+  library.initialize(loaded.tree, loaded.bookmarksAvailable);
+  const persistence = createPersistence(state, library);
+  state.addBookmark("static", { uid: "new", name: "New", url: "https://example.org" });
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.panel.menus[0]!.items).toEqual(items);
+  expect(saved.shortcuts).toEqual(config.shortcuts);
+  expect(saved.staticBookmarks.map(entry => entry.uid)).toContain("new");
+  persistence.destroy();
+});
+
+it("round-trips both dynamic modes, code and commented exclusion rules without executing scripts", async () => {
+  const { state, persistence } = await fixture();
+  state.addUrlRule({ uid: "docs", name: "Docs", patterns: ["# context", "example.com", "# excluded", "!https://example.com/private"] });
+  state.addBookmark("dynamic", { uid: "rule", name: "Rule", type: "rule", code: "preserved editor", urlRuleUid: "docs" });
+  state.addBookmark("dynamic", { uid: "code", name: "Code", type: "code", code: "function dynamicBookmark() { return { newUrl: null, note: 'saved' }; }", urlRuleUids: ["docs"] });
+  const exported = await persistence.exportSettings();
+  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.dynamicBookmarks).toEqual(exported.dynamicBookmarks);
+  expect(saved.urlRules).toEqual(exported.urlRules);
+  persistence.destroy();
 });

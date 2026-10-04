@@ -206,6 +206,9 @@ export function createBookmarkTools(
   );
   initTemporaryBookmarkDialog();
   return {
+    get available() {
+      return library.available;
+    },
     openTemporary: openTemporaryMarkerDialog,
     openDynamic: openDynamicMarkerDialog,
     render(): void {

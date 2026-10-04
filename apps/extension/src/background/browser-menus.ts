@@ -1,7 +1,7 @@
 import browser, { type Runtime } from "webextension-polyfill";
-import { isBarSettings, isBarSettingsGroups, isMenuSpacing, isUrlMatchingSet, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
+import { isBarSettings, isBarSettingsGroups, isMenuSpacing, matchesUrlRule, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
-  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBarLayout, toggleBrowserCollapsed, menuUrlPatterns,
+  defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBarLayout, toggleBrowserCollapsed, menuUrlRules,
   type BrowserMenuPlacement, type ExtensionConfig,
 } from "../config";
 import type { BrowserMenu, BrowserMenuState, MenuRequest, MenuCommandResult } from "../page-operations/messages";
@@ -15,8 +15,8 @@ import { createBrowserEditSession } from "./browser-edit-session";
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
   if (!menu || menu.enabled === false) return false;
-  const patterns = menuUrlPatterns(menu, config);
-  return !patterns.length || Boolean(url && patterns.some(patterns => isUrlMatchingSet(url, patterns)));
+  const rules = menuUrlRules(menu, config);
+  return !rules.length || Boolean(url && rules.some(rule => matchesUrlRule(url, rule)));
 }
 
 function leaves(entries: LayoutEntry[]): LayoutEntry[] {

@@ -39,6 +39,7 @@ export function mountInstanceTab(
   const pickBookmarkRootBtn = document.getElementById(
     "pick-bookmark-root-btn",
   ) as HTMLButtonElement | null;
+  if (pickBookmarkRootBtn) pickBookmarkRootBtn.disabled = !library.available;
   let widgetEnabled = initialEnabled;
   let desktopTestGeneration = 0;
 

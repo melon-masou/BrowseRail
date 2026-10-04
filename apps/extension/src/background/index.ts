@@ -42,6 +42,7 @@ import {
 import { loadInstanceUid } from "../config/instance-identity";
 import { ExtensionStateMachine, type ExtensionConnectionState } from "../native/state-machine";
 import { navigateToUrl } from "../browser/navigation";
+import { canUseBookmarks } from "../browser/bookmarks-capability";
 import { initDynamicBookmarks } from "./dynamic";
 import { executeMenuAction } from "./execute-menu-action";
 
@@ -240,10 +241,12 @@ const boundsChanged = (
   }
 ).onBoundsChanged;
 boundsChanged?.addListener(requestSync);
-browser.bookmarks.onCreated.addListener(requestSync);
-browser.bookmarks.onChanged.addListener(requestSync);
-browser.bookmarks.onMoved.addListener(requestSync);
-browser.bookmarks.onRemoved.addListener(requestSync);
+// Registered synchronously so the events can wake the background; absent when
+// the browser has no bookmarks API.
+browser.bookmarks?.onCreated.addListener(requestSync);
+browser.bookmarks?.onChanged.addListener(requestSync);
+browser.bookmarks?.onMoved.addListener(requestSync);
+browser.bookmarks?.onRemoved.addListener(requestSync);
 browser.tabs?.onActivated?.addListener(() => {
   requestSync();
 });
@@ -605,11 +608,12 @@ async function drainSync(): Promise<void> {
 }
 
 async function syncOnce(): Promise<void> {
+  const bookmarksAvailable = await canUseBookmarks();
   const [config, windows, rootPrefix, bookmarkTree, dynamicValues, temporaryNotes, mode, enabled, browserPlacements, browserCollapsed, browserEditing, barConfigs] = await Promise.all([
     loadConfig(),
     listBrowserWindows(),
     loadBookmarkRootPrefix(),
-    browser.bookmarks.getTree().catch(() => []),
+    bookmarksAvailable ? browser.bookmarks.getTree().catch(() => []) : [],
     loadDynamicValues(),
     loadTemporaryNotes(),
     loadDisplayMode(),
@@ -641,6 +645,7 @@ async function syncOnce(): Promise<void> {
           tree: bookmarkTree as BookmarkNode[],
           registerTarget: browserBookmarkId => bookmarkTargets.register(browserBookmarkId),
           dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks,
+          bookmarksAvailable,
         });
         return { uid: menu.uid, items, ...barSettingsFromView(settings), ...normalizeMenuSpacing(settings),
           ...(menu.color ? { color: menu.color } : {}),
@@ -737,7 +742,7 @@ async function syncOnce(): Promise<void> {
       (s) =>
         s.key &&
         s.key.trim().length > 0 &&
-        (s.type && s.type !== "bookmark" ? Boolean(customBookmarkUid(s)) : Boolean(s.path || s.url)),
+        (s.type && s.type !== "bookmark" ? Boolean(customBookmarkUid(s)) : bookmarksAvailable && Boolean(s.path || s.url)),
     )
     .map((s) => ({
       id: s.id,
@@ -931,6 +936,7 @@ browser.commands.onCommand.addListener(async (command) => {
     if (uid) await executeMenuAction(actionUid(target.type, uid, tabMode), undefined, String(windowId), requestSync);
     return;
   }
+  if (!await canUseBookmarks()) return;
 
   if (target.path) {
     const rootPrefix = await loadBookmarkRootPrefix();
@@ -957,6 +963,7 @@ async function executeNativeShortcut(shortcutId: string, targetWindowUid?: strin
     if (uid) await executeMenuAction(actionUid(target.type, uid, tabMode), undefined, String(targetWindow), requestSync);
     return;
   }
+  if (!await canUseBookmarks()) return;
   if (target.path) {
     const rootPrefix = await loadBookmarkRootPrefix();
     const effectivePath = combineRootAndItemPath(rootPrefix, target.path);

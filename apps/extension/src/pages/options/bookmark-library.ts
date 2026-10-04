@@ -14,6 +14,7 @@ import {
 } from "../../bookmarks";
 export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
   let tree: browser.Bookmarks.BookmarkTreeNode[] = [];
+  let available = false;
   function getRootNode(): browser.Bookmarks.BookmarkTreeNode | undefined {
     const segments = getRootPrefix()
       .map((s) => s.trim())
@@ -104,6 +105,7 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
   }
 
   async function refreshBookmarkTree(): Promise<void> {
+    if (!available) return;
     try {
       tree = await browser.bookmarks.getTree();
     } catch {
@@ -115,8 +117,14 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
     get tree() {
       return tree;
     },
-    initialize(value: browser.Bookmarks.BookmarkTreeNode[]): void {
+    // Without the bookmarks API the tree stays empty, so `enrich` leaves stored
+    // bookmark items untouched.
+    get available() {
+      return available;
+    },
+    initialize(value: browser.Bookmarks.BookmarkTreeNode[], bookmarksAvailable: boolean): void {
       tree = value;
+      available = bookmarksAvailable;
     },
     refresh: refreshBookmarkTree,
     async createBookmark(details: browser.Bookmarks.CreateDetails): Promise<void> {
