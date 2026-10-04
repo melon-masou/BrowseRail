@@ -1,17 +1,31 @@
 # BrowseRail
 
-BrowseRail is an external bookmark panel for browsers. It can be placed anywhere on your desktop or attached to a browser window, without modifying the page itself.
+BrowseRail puts your bookmarks in customizable bars, with configurable colors, layout, folder menus, and shortcuts.
 
-**This project is heavily vibe-coded. Things may break in unexpected ways.**
+## Modes
+
+- **Native mode:** displays bars in separate desktop windows, attached to a browser window or floating freely. Requires the desktop app. Currently supports Windows only.
+- **Browser mode:** injects bars into web pages. Works without the desktop app. Grant website permissions in the extension’s **Instance** tab before using it.
+
+## Bookmarks
+
+- **Browser bookmarks:** use existing bookmarks and folders. Flatten a folder to place its bookmarks directly on the bar.
+- **Static bookmarks:** save names and URLs in the extension.
+- **Temporary bookmarks:** hold a button to save the current page.
+- **Dynamic bookmarks:** update the saved URL when a visited page matches a URL rule, or use custom code where sandbox execution is supported.
 
 ## Installation
 
-BrowseRail consists of a browser extension and a desktop app. The extension manages bookmarks and configuration, while the desktop app displays the panels as separate desktop windows.
+- Download and install the extension for Chrome or Firefox from [Releases](https://github.com/melon-masou/BrowseRail/releases).
+- For Native mode, download and run the Windows desktop app.
+- Open the extension settings, create a menu, and add bookmarks or folders.
 
-1. Download ans install the BrowseRail extension for your browser from [Releases](https://github.com/melon-masou/BrowseRail/releases).
-2. For native mode, download and run the BrowseRail desktop app.
-    > Native mode currently supports Windows only.
-3. Open the extension settings to create a menu and select the bookmarks or folders you want to display.
+## Usage
+
+- Left-click a bookmark to open it in the current tab; right-click to open it in a new tab.
+- Hover over a folder to expand it.
+- Hold a temporary bookmark button to save the current page.
+- Enable **Edit menus** from the extension icon’s context menu to adjust bar positions, sizes, spacing, and settings.
 
 ## Development
 
@@ -20,5 +34,8 @@ BrowseRail consists of a browser extension and a desktop app. The extension mana
     pnpm test
     pnpm build
 
-    # When building the Windows executable from WSL, use the xwin build directly:
+    # Rebuild the extension and its workspace dependencies:
+    pnpm build:extension
+
+    # Build the Windows executable from WSL:
     pnpm build:windows
