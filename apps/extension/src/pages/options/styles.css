@@ -2245,6 +2245,10 @@ output {
   user-select: text;
 }
 
+.transfer-code-warning {
+  color: #a55f0e;
+}
+
 .space-bookmark-dialog-actions {
   display: flex;
   align-items: center;
@@ -2772,6 +2776,36 @@ button.item-tag {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+.dynamic-test {
+  display: grid;
+  gap: 8px;
+}
+
+.dynamic-test-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dynamic-test-inputs input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.dynamic-test-result {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dynamic-test-result[data-error="true"] {
+  color: #b42318;
+}
+
 .item-tag-dynamic {
   background: #fdf2f8;
   color: #db2777;
@@ -3102,12 +3136,30 @@ button.item-tag {
   margin: 0;
 }
 
-.dynamic-mode-tabs {
-  justify-self: start;
-  margin-bottom: 0;
+.dynamic-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 13px;
 }
-.dynamic-card-body > select {
+.dynamic-field-label {
+  color: #687287;
+  font-weight: 600;
+}
+.dynamic-field select {
   max-width: 100%;
+}
+.dynamic-mode-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dynamic-mode-options input[type="radio"] {
+  width: 15px;
+  height: 15px;
+  min-height: 15px;
+  margin: 0;
 }
 .bookmarks-unsupported-notice {
   margin: 0;

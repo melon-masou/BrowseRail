@@ -263,12 +263,13 @@ export interface ExportedMenuItem {
 }
 
 export interface ExportedDynamicBookmark {
-  type: "rule" | "code";
+  type: "rule" | "rewrite" | "code";
+  // The one URL rule that both triggers the bookmark and bounds the URLs it may save.
   urlRuleUid?: string;
   uid: string;
   name: string;
   code: string;
-  urlRuleUids?: string[];
+  rewrite?: string;
 }
 
 export interface StaticBookmark {
@@ -365,7 +366,9 @@ export function matchUrlPattern(pattern: string, url: string): boolean {
             return true;
           }
         }
-      } catch {}
+      } catch {
+        // An unparsable URL cannot match a host pattern.
+      }
       return false;
     } catch {
       return false;

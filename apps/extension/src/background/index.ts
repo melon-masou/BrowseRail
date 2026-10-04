@@ -609,12 +609,13 @@ async function drainSync(): Promise<void> {
 
 async function syncOnce(): Promise<void> {
   const bookmarksAvailable = await canUseBookmarks();
+  const configTask = loadConfig();
   const [config, windows, rootPrefix, bookmarkTree, dynamicValues, temporaryNotes, mode, enabled, browserPlacements, browserCollapsed, browserEditing, barConfigs] = await Promise.all([
-    loadConfig(),
+    configTask,
     listBrowserWindows(),
     loadBookmarkRootPrefix(),
     bookmarksAvailable ? browser.bookmarks.getTree().catch(() => []) : [],
-    loadDynamicValues(),
+    configTask.then(config => loadDynamicValues(config.dynamicBookmarks.map(bookmark => bookmark.uid))),
     loadTemporaryNotes(),
     loadDisplayMode(),
     loadWidgetEnabled(),

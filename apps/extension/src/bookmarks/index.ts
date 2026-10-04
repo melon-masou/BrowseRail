@@ -184,7 +184,7 @@ export function resolveBookmarkNodeByPath(
       const nodeTitle = (node.title || "").trim().toLowerCase();
       const nodeSpecial = isRootLevel ? getSpecialRootTypeFromNode(node) : undefined;
 
-      let matches = false;
+      let matches: boolean;
       if (isRootLevel && (targetSpecial || nodeSpecial)) {
         matches = targetSpecial !== undefined && nodeSpecial === targetSpecial;
       } else {

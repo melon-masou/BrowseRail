@@ -8,6 +8,7 @@ export function mountStartTab() {
 
   function renderStartPanel(): void {
     // Trusted static help markup shipped in the i18n package.
+    // eslint-disable-next-line no-unsanitized/property
     startPanel.innerHTML = helpDoc[getLanguage()];
   }
   renderStartPanel();

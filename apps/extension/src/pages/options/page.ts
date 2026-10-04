@@ -27,7 +27,7 @@ import { mountShortcutsTab } from "./tabs/shortcuts";
 import { mountUrlMatchingTab } from "./tabs/url-matching";
 import { element } from "./dom";
 import { createScope } from "./lifecycle";
-import type { UrlRule } from "../../config";
+import { normalizeDynamicBookmarks, type UrlRule } from "../../config";
 
 export async function mountOptionsPage() {
   const scope = createScope();
@@ -146,6 +146,14 @@ export async function mountOptionsPage() {
     if (saving || activePanel === "start-panel") return;
     const instancePanel = activePanel === "connection-form";
     if (instancePanel && !instance.validate()) return;
+    if (!instancePanel) {
+      const unbound = state.settings.dynamicBookmarks.find((db) =>
+        !state.settings.urlRules.some((rule) => rule.uid === db.urlRuleUid));
+      if (unbound) {
+        showStatus(t("dynamic.saveNeedsRule", { name: unbound.name }));
+        return;
+      }
+    }
     saving = true;
     updateSave();
     try {
@@ -208,9 +216,9 @@ export async function mountOptionsPage() {
         flash(t("export.saveFirst"), 3000);
         return;
       }
-      const includeBars = await chooseTransferOptions("export");
-      if (includeBars === undefined || scope.signal.aborted) return;
-      const data = await persistence.exportSettings(includeBars);
+      const options = await chooseTransferOptions("export");
+      if (!options || scope.signal.aborted) return;
+      const data = await persistence.exportSettings(options.includeBars);
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
       );
@@ -247,9 +255,10 @@ export async function mountOptionsPage() {
           if (scope.signal.aborted) return;
           const parsed: unknown = JSON.parse(text);
           if (!isExportedSettingsData(parsed)) throw new Error(t("import.invalidJson"));
-          const includeBars = await chooseTransferOptions("import", parsed.barConfigurations !== undefined);
-          if (includeBars === undefined || scope.signal.aborted) return;
-          await persistence.importSettings(text, includeBars);
+          const hasTransforms = normalizeDynamicBookmarks(parsed.dynamicBookmarks).some(db => db.type === "code" || db.type === "rewrite");
+          const options = await chooseTransferOptions("import", parsed.barConfigurations !== undefined, hasTransforms);
+          if (!options || scope.signal.aborted) return;
+          await persistence.importSettings(text, options.includeBars, options.includeTransforms);
           flash(t("import.savedOk"), 3000);
         })
         .catch((error) => showStatus(t("import.failed", { error: String(error) })));

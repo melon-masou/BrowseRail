@@ -13,6 +13,8 @@ class TestWorker {
   stopped = false;
   context: Context;
   constructor(url: string) {
+    // Exposes the instance to assertions; not a closure alias.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     currentWorker = this;
     this.context = createContext({
       URL, URLSearchParams,

@@ -9,8 +9,10 @@ import { type CustomBookmarkSource } from "../custom-bookmark-source";
 import { type Overlays } from "../components/overlays";
 import { type BookmarkTools } from "../components/bookmark-tools";
 import { getSandboxStatus, type SandboxStatus } from "../../../dynamic/status";
-import { SETTINGS_ICON_SVG, REMOVE_ICON_SVG } from "../components/icons";
+import { addIcon, checkIcon, copyIcon, removeIcon, setIconContent } from "../components/icons";
 import { renderPreservingFocus } from "../components/render-focus";
+import { createDynamicTester } from "../components/dynamic-test";
+import { DEFAULT_REWRITE } from "../../../dynamic/rewrite";
 
 export function mountCustomBookmarksTab(
   state: OptionsState,
@@ -20,14 +22,12 @@ export function mountCustomBookmarksTab(
   showStatus: (message: string) => void,
 ) {
   const scope = createScope();
+  const tester = createDynamicTester(state);
+  scope.add(tester.destroy);
   const dynamicList = element<HTMLDivElement>("dynamic-list");
   const staticList = element<HTMLDivElement>("static-list");
   const temporaryList = element<HTMLDivElement>("temporary-list");
   const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
-  const dynamicSettingsDialog = element<HTMLDialogElement>("dynamic-settings-dialog");
-  const dynamicSettingsDialogTitle = element<HTMLSpanElement>("dynamic-settings-dialog-title");
-  const dynamicSettingsClose = element<HTMLButtonElement>("dynamic-settings-close");
-  const dynamicSettingUrlRulesList = element<HTMLDivElement>("dynamic-setting-url-rules-list");
   const DEFAULT_DYNAMIC_CODE = `/**
  * Dynamic Bookmark Handler
  *
@@ -62,7 +62,7 @@ function dynamicBookmark({ action, url, title, current }) {
   // const visits = Number(current.note || "0") + 1;
   // return { newUrl: null, note: String(visits) };
 
-  return { newUrl: null };
+  return { newUrl: url, title };
 }
 `;
 
@@ -149,7 +149,7 @@ function dynamicBookmark({ action, url, title, current }) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "remove-item-btn menu-remove-btn";
-    remove.innerHTML = `${REMOVE_ICON_SVG}<span>${t("common.delete")}</span>`;
+    setIconContent(remove, removeIcon(), t("common.delete"));
     remove.addEventListener("click", () => removeCustomDefinition("temporary", definition.uid));
     headerActions.append(remove);
 
@@ -179,7 +179,7 @@ function dynamicBookmark({ action, url, title, current }) {
     const marker = document.createElement("button");
     marker.type = "button";
     marker.className = "action-btn dynamic-add-btn";
-    marker.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>${t("dynamic.addToBookmarks")}</span>`;
+    setIconContent(marker, addIcon(), t("dynamic.addToBookmarks"));
     marker.disabled = !tools.available;
     marker.addEventListener("click", () => tools.openTemporary(definition.uid));
     actions.append(clear, marker);
@@ -249,7 +249,7 @@ function dynamicBookmark({ action, url, title, current }) {
   }
 
   function createDynamicBookmark(): DynamicBookmark {
-    return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), type: "rule", code: DEFAULT_DYNAMIC_CODE };
+    return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), type: "rule", code: DEFAULT_DYNAMIC_CODE, rewrite: DEFAULT_REWRITE };
   }
 
   let sandboxStatus: SandboxStatus | undefined;
@@ -280,77 +280,6 @@ function dynamicBookmark({ action, url, title, current }) {
     }
   }
 
-  function openDynamicSettingsDialog(db: ReadonlyData<DynamicBookmark>): void {
-    dynamicSettingsDialogTitle.textContent = `${db.name || t("dynamic.defaultName")} - ${t("menu.settings")}`;
-    renderDynamicUrlRulesContent(db);
-    dynamicSettingsDialog.showModal();
-  }
-
-  function renderDynamicUrlRulesContent(db: ReadonlyData<DynamicBookmark>): void {
-    dynamicSettingUrlRulesList.replaceChildren();
-
-    const allRow = document.createElement("label");
-    allRow.className = "menu-setting-url-rule-item";
-    const allRadio = document.createElement("input");
-    allRadio.type = "checkbox";
-    const hasSpecificSets = Array.isArray(db.urlRuleUids) && db.urlRuleUids.length > 0;
-    allRadio.checked = !hasSpecificSets;
-
-    const allSpan = document.createElement("span");
-    allSpan.textContent = t("menuBehavior.allUrls");
-    allRow.append(allRadio, allSpan);
-    dynamicSettingUrlRulesList.appendChild(allRow);
-
-    allRadio.addEventListener("change", () => {
-      state.setDynamicRules(
-        db.uid,
-        allRadio.checked ? [] : state.settings.urlRules[0] ? [state.settings.urlRules[0].uid] : [],
-      );
-      renderDynamicUrlRulesContent(
-        state.settings.dynamicBookmarks.find((value) => value.uid === db.uid)!,
-      );
-    });
-
-    if (state.settings.urlRules.length === 0) {
-      const hint = document.createElement("div");
-      hint.className = "url-rule-empty-hint";
-      hint.style.fontSize = "11px";
-      hint.style.padding = "6px";
-      hint.textContent = t("menuBehavior.noUrlRules");
-      dynamicSettingUrlRulesList.appendChild(hint);
-    } else {
-      state.settings.urlRules.forEach((rule) => {
-        const row = document.createElement("label");
-        row.className = "menu-setting-url-rule-item";
-
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = Array.isArray(db.urlRuleUids) && db.urlRuleUids.includes(rule.uid);
-        cb.addEventListener("change", () => {
-          const current =
-            state.settings.dynamicBookmarks.find((value) => value.uid === db.uid)!.urlRuleUids ??
-            [];
-          state.setDynamicRules(
-            db.uid,
-            cb.checked ? [...current, rule.uid] : current.filter((uid) => uid !== rule.uid),
-          );
-          renderDynamicUrlRulesContent(
-            state.settings.dynamicBookmarks.find((value) => value.uid === db.uid)!,
-          );
-        });
-
-        const span = document.createElement("span");
-        span.textContent = rule.name || t("urlRules.defaultName");
-        if (rule.patterns.length > 0) {
-          span.title = rule.patterns.join("\n");
-        }
-
-        row.append(cb, span);
-        dynamicSettingUrlRulesList.appendChild(row);
-      });
-    }
-  }
-
   function appendCurrentUrl(parent: HTMLElement, url: string | undefined, title?: string): void {
     if (url) {
       const chip = document.createElement("button");
@@ -360,27 +289,19 @@ function dynamicBookmark({ action, url, title, current }) {
       chip.title = fullTooltip;
       chip.setAttribute("aria-label", fullTooltip);
 
-      const copyIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-      const checkIcon = `<svg class="dynamic-current-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
       const displayTitle = url;
-      chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
-      const titleSpan = chip.querySelector(".dynamic-current-title") as HTMLElement;
-      titleSpan.textContent = displayTitle;
+      setIconContent(chip, copyIcon(), displayTitle, "dynamic-current-title");
 
       let resetTimer: ReturnType<typeof setTimeout> | undefined;
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
         void navigator.clipboard.writeText(url).then(() => {
           chip.classList.add("is-copied");
-          chip.innerHTML = `${checkIcon}<span class="dynamic-current-title"></span>`;
-          (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent =
-            t("dynamic.copied");
+          setIconContent(chip, checkIcon(), t("dynamic.copied"), "dynamic-current-title");
           if (resetTimer) clearTimeout(resetTimer);
           resetTimer = scope.timeout(() => {
             chip.classList.remove("is-copied");
-            chip.innerHTML = `${copyIcon}<span class="dynamic-current-title"></span>`;
-            (chip.querySelector(".dynamic-current-title") as HTMLElement).textContent =
-              displayTitle;
+            setIconContent(chip, copyIcon(), displayTitle, "dynamic-current-title");
           }, 1500);
         });
       });
@@ -435,26 +356,16 @@ function dynamicBookmark({ action, url, title, current }) {
     const headerActions = document.createElement("div");
     headerActions.className = "dynamic-header-actions";
 
-    const settingsBtn = document.createElement("button");
-    settingsBtn.type = "button";
-    settingsBtn.className = "action-btn menu-header-btn";
-    settingsBtn.innerHTML = `${SETTINGS_ICON_SVG}<span>${t("menu.settings")}</span>`;
-    settingsBtn.title = t("menu.settingsTitle");
-    settingsBtn.addEventListener("click", () => {
-      openDynamicSettingsDialog(db);
-    });
-
     const del = document.createElement("button");
     del.type = "button";
     del.className = "remove-item-btn menu-remove-btn";
     del.title = t("common.delete");
     del.setAttribute("aria-label", t("common.delete"));
-    del.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("common.delete")}</span>`;
+    setIconContent(del, removeIcon(), t("common.delete"));
     del.addEventListener("click", () => {
       removeCustomDefinition("dynamic", db.uid);
     });
 
-    if (db.type === "code") headerActions.append(settingsBtn);
     headerActions.append(del);
 
     const live = source.dynamicValues[db.uid];
@@ -477,7 +388,7 @@ function dynamicBookmark({ action, url, title, current }) {
     const addToBookmarksBtn = document.createElement("button");
     addToBookmarksBtn.type = "button";
     addToBookmarksBtn.className = "action-btn dynamic-add-btn";
-    addToBookmarksBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>${t("dynamic.addToBookmarks")}</span>`;
+    setIconContent(addToBookmarksBtn, addIcon(), t("dynamic.addToBookmarks"));
     addToBookmarksBtn.title = t("dynamic.addToBookmarks");
     addToBookmarksBtn.disabled = !tools.available;
     addToBookmarksBtn.addEventListener("click", (e) => {
@@ -489,51 +400,73 @@ function dynamicBookmark({ action, url, title, current }) {
     subtitleRow.append(currentGroup, actionsGroup);
     header.append(titleRow, headerActions, subtitleRow);
 
-    // Each mode owns its controls; the stored code survives mode switches.
+    // All update methods share the selected URL rule; switching keeps editor content.
     const body = document.createElement("div");
     body.className = "dynamic-card-body";
 
-    const modeRow = document.createElement("div");
-    modeRow.className = "shortcuts-subtabs dynamic-mode-tabs";
-    modeRow.setAttribute("role", "group");
-    modeRow.setAttribute("aria-label", t("dynamic.mode"));
-    for (const type of ["rule", "code"] as const) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "shortcuts-subtab-btn" + (db.type === type ? " is-active" : "");
-      button.setAttribute("aria-pressed", String(db.type === type));
-      button.textContent = t(type === "rule" ? "dynamic.ruleMode" : "dynamic.codeMode");
-      button.addEventListener("click", () => {
-        if (db.type !== type) state.setDynamicType(db.uid, type);
-      });
-      modeRow.append(button);
+    const ruleField = document.createElement("label");
+    ruleField.className = "dynamic-field";
+    const ruleLabel = document.createElement("span");
+    ruleLabel.className = "dynamic-field-label";
+    ruleLabel.textContent = t("dynamic.ruleMode");
+    const ruleSelect = document.createElement("select");
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = t("dynamic.chooseRule");
+    ruleSelect.append(placeholder);
+    for (const rule of state.settings.urlRules) {
+      const option = document.createElement("option");
+      option.value = rule.uid;
+      option.textContent = rule.name || t("urlRules.defaultName");
+      ruleSelect.append(option);
     }
-    body.append(modeRow);
+    ruleSelect.value = state.settings.urlRules.some((rule) => rule.uid === db.urlRuleUid) ? db.urlRuleUid! : "";
+    ruleSelect.addEventListener("change", () => {
+      tester.reset(db.uid);
+      state.setDynamicRule(db.uid, ruleSelect.value || undefined);
+    });
+    ruleField.append(ruleLabel, ruleSelect);
+    body.append(ruleField);
+    const modeField = document.createElement("div");
+    modeField.className = "dynamic-field dynamic-mode-options";
+    modeField.setAttribute("role", "radiogroup");
+    const modeLabel = document.createElement("span");
+    modeLabel.className = "dynamic-field-label";
+    modeLabel.textContent = t("dynamic.mode");
+    modeField.append(modeLabel);
+    for (const type of ["rule", "rewrite", "code"] as const) {
+      const option = document.createElement("label");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = `dynamic-mode-${db.uid}`;
+      radio.checked = db.type === type;
+      radio.addEventListener("change", () => {
+        if (radio.checked && db.type !== type) {
+          tester.reset(db.uid);
+          state.setDynamicType(db.uid, type);
+        }
+      });
+      const text = document.createElement("span");
+      text.textContent = t(type === "rule" ? "dynamic.updateAll" : type === "rewrite" ? "dynamic.rewriteMode" : "dynamic.codeMode");
+      option.append(radio, text);
+      modeField.append(option);
+    }
+    body.append(modeField);
     if (db.type === "rule") {
-      const ruleSelect = document.createElement("select");
-      ruleSelect.ariaLabel = t("section.urlRules");
-      const placeholder = document.createElement("option");
-      placeholder.value = "";
-      placeholder.textContent = t("dynamic.chooseRule");
-      ruleSelect.append(placeholder);
-      for (const rule of state.settings.urlRules) {
-        const option = document.createElement("option");
-        option.value = rule.uid;
-        option.textContent = rule.name || t("urlRules.defaultName");
-        ruleSelect.append(option);
-      }
-      ruleSelect.value = db.urlRuleUid ?? "";
-      ruleSelect.addEventListener("change", () => state.setDynamicRule(db.uid, ruleSelect.value || undefined));
       const ruleHint = document.createElement("div");
       ruleHint.className = "hint";
       ruleHint.textContent = t("dynamic.ruleHint");
-      body.append(ruleSelect, ruleHint);
+      body.append(ruleHint);
       card.append(header, body);
       return card;
     }
-    if (sandboxStatus === undefined) {
+    const risk = document.createElement("p");
+    risk.className = "dynamic-sandbox-warning";
+    risk.textContent = t("dynamic.transformWarning");
+    body.append(risk);
+    if (db.type === "code" && sandboxStatus === undefined) {
       checkSandbox();
-    } else if (sandboxStatus !== "supported") {
+    } else if (db.type === "code" && sandboxStatus !== "supported") {
       const warning = document.createElement("p");
       warning.className = "dynamic-sandbox-warning";
       warning.textContent = t(sandboxStatus === "unsupported" ? "dynamic.sandboxUnsupported" : "dynamic.sandboxFailed");
@@ -544,9 +477,15 @@ function dynamicBookmark({ action, url, title, current }) {
     code.className = "dynamic-code";
     code.rows = 14;
     code.spellcheck = false;
-    code.value = db.code;
+    code.value = db.type === "rewrite" ? db.rewrite ?? "" : db.code;
+    code.ariaLabel = t(db.type === "rewrite" ? "dynamic.rewriteMode" : "dynamic.codeLabel");
+    const updateCode = () => {
+      tester.reset(db.uid);
+      if (db.type === "rewrite") state.setDynamicRewrite(db.uid, code.value);
+      else state.setDynamicCode(db.uid, code.value);
+    };
     code.addEventListener("input", () => {
-      state.setDynamicCode(db.uid, code.value);
+      updateCode();
     });
     code.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
@@ -555,11 +494,12 @@ function dynamicBookmark({ action, url, title, current }) {
         const end = code.selectionEnd;
         code.value = code.value.substring(0, start) + "  " + code.value.substring(end);
         code.selectionStart = code.selectionEnd = start + 2;
-        state.setDynamicCode(db.uid, code.value);
+        updateCode();
       }
     });
 
     body.append(code);
+    body.append(tester.render(db.uid));
     card.append(header, body);
     return card;
   }
@@ -578,17 +518,6 @@ function dynamicBookmark({ action, url, title, current }) {
       "click",
       () => {
         void source.refreshDynamic();
-      },
-      { signal: scope.signal },
-    );
-
-    dynamicSettingsClose.addEventListener("click", () => dynamicSettingsDialog.close(), {
-      signal: scope.signal,
-    });
-    dynamicSettingsDialog.addEventListener(
-      "click",
-      (e) => {
-        if (e.target === dynamicSettingsDialog) dynamicSettingsDialog.close();
       },
       { signal: scope.signal },
     );
@@ -612,8 +541,8 @@ function dynamicBookmark({ action, url, title, current }) {
     }),
   );
   scope.add(state.subscribe(["rules"], () => {
+    for (const bookmark of state.settings.dynamicBookmarks) tester.reset(bookmark.uid);
     renderDynamic();
-    if (dynamicSettingsDialog.open) dynamicSettingsDialog.close();
   }));
   scope.add(
     source.subscribe((type) => {
@@ -627,12 +556,10 @@ function dynamicBookmark({ action, url, title, current }) {
   return {
     render,
     destroy(): void {
-      dynamicSettingsDialog.close();
       scope.destroy();
       staticList.replaceChildren();
       temporaryList.replaceChildren();
       dynamicList.replaceChildren();
-      dynamicSettingUrlRulesList.replaceChildren();
     },
   };
 }

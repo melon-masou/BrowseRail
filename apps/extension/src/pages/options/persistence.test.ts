@@ -131,16 +131,67 @@ it("opens settings in a browser without a bookmarks API and saves without touchi
   persistence.destroy();
 });
 
+it("does not let an imported dynamic bookmark borrow a local URL rule that only shares its uid", async () => {
+  const { state, persistence } = await fixture();
+  state.addUrlRule({ uid: "docs", name: "Local", patterns: ["*"] });
+  const script = { uid: "script", name: "Script", type: "code", code: "function dynamicBookmark() {}", urlRuleUid: "docs" };
+  const withoutRules = { version: 2, exportedAt: "2026-10-04T00:00:00.000Z", menus: [], dynamicBookmarks: [script] };
+  await persistence.importSettings(JSON.stringify(withoutRules), false, true);
+  expect(state.settings.dynamicBookmarks[0]).not.toHaveProperty("urlRuleUid");
+  const withRules = { ...withoutRules, urlRules: [{ uid: "docs", name: "Docs", patterns: ["example.com"] }] };
+  await persistence.importSettings(JSON.stringify(withRules), false, true);
+  expect(state.settings.dynamicBookmarks[0]!.urlRuleUid).toBe("docs");
+  persistence.destroy();
+});
+
 it("round-trips both dynamic modes, code and commented exclusion rules without executing scripts", async () => {
   const { state, persistence } = await fixture();
   state.addUrlRule({ uid: "docs", name: "Docs", patterns: ["# context", "example.com", "# excluded", "!https://example.com/private"] });
   state.addBookmark("dynamic", { uid: "rule", name: "Rule", type: "rule", code: "preserved editor", urlRuleUid: "docs" });
-  state.addBookmark("dynamic", { uid: "code", name: "Code", type: "code", code: "function dynamicBookmark() { return { newUrl: null, note: 'saved' }; }", urlRuleUids: ["docs"] });
+  state.addBookmark("dynamic", { uid: "code", name: "Code", type: "code", code: "function dynamicBookmark() { return { newUrl: null, note: 'saved' }; }", urlRuleUid: "docs" });
   const exported = await persistence.exportSettings();
-  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.importSettings(JSON.stringify(exported), false, true);
   await persistence.saveSettings();
   const saved = await loadConfig();
   expect(saved.dynamicBookmarks).toEqual(exported.dynamicBookmarks);
   expect(saved.urlRules).toEqual(exported.urlRules);
+  persistence.destroy();
+});
+
+it.each([false, true])("imports script definitions and their references only with explicit consent (%s)", async (includeCode) => {
+  const { state, persistence } = await fixture();
+  const data = await persistence.exportSettings();
+  data.urlRules = [{ uid: "docs", name: "Docs", patterns: ["example.com"] }];
+  const rule = { uid: "rule", name: "Rule", type: "rule" as const, code: "hidden imported script", urlRuleUid: "docs" };
+  const script = { uid: "script", name: "Script", type: "code" as const, code: "function dynamicBookmark() {}", urlRuleUid: "docs" };
+  const rewrite = { uid: "rewrite", name: "Rewrite", type: "rewrite" as const, code: "", rewrite: 'replace "/article/" "/reader/"', urlRuleUid: "docs" };
+  data.dynamicBookmarks = [rule, script, rewrite];
+  data.menus[0]!.items = [
+    { uid: "rule-item", type: "dynamic", dynamicUid: rule.uid },
+    { uid: "script-item", type: "dynamic", dynamicUid: script.uid },
+    { uid: "static-item", type: "static", staticUid: "link" },
+    { uid: "rewrite-item", type: "dynamic", dynamicUid: rewrite.uid },
+  ];
+  data.shortcuts = [
+    { slot: "slot_1", type: "dynamic", dynamicUid: rule.uid },
+    { slot: "slot_2", type: "dynamic", dynamicUid: script.uid },
+    { slot: "slot_3", type: "static", staticUid: "link" },
+    { slot: "slot_4", type: "dynamic", dynamicUid: rewrite.uid },
+  ];
+  data.nativeShortcuts = [
+    { id: "rule-key", key: "F1", type: "dynamic", dynamicUid: rule.uid },
+    { id: "script-key", key: "F2", type: "dynamic", dynamicUid: script.uid },
+    { id: "static-key", key: "F3", type: "static", staticUid: "link" },
+    { id: "rewrite-key", key: "F4", type: "dynamic", dynamicUid: rewrite.uid },
+  ];
+  if (includeCode) await persistence.importSettings(JSON.stringify(data), false, true);
+  else await persistence.importSettings(JSON.stringify(data));
+  expect(state.settings.dynamicBookmarks).toEqual(includeCode ? [rule, script, rewrite] : [{ ...rule, code: "" }]);
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.dynamicBookmarks).toEqual(includeCode ? [rule, script, rewrite] : [{ ...rule, code: "" }]);
+  expect(saved.panel.menus[0]!.items.map(item => item.uid)).toEqual(includeCode ? ["rule-item", "script-item", "static-item", "rewrite-item"] : ["rule-item", "static-item"]);
+  expect(saved.shortcuts.map(shortcut => shortcut.slot)).toEqual(includeCode ? ["slot_1", "slot_2", "slot_3", "slot_4"] : ["slot_1", "slot_3"]);
+  expect(saved.nativeShortcuts.map(shortcut => shortcut.id)).toEqual(includeCode ? ["rule-key", "script-key", "static-key", "rewrite-key"] : ["rule-key", "static-key"]);
   persistence.destroy();
 });

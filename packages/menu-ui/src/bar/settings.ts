@@ -7,7 +7,7 @@ import { showMenuError } from "../lifetime";
 export function mountBarSettings(root: HTMLElement, initial: BarSettings | NativeBarSettings, changed: (settings: BarSettings | NativeBarSettings, applyToAll: BarSettingsGroup[]) => void, itemHeight: number, installedFonts?: Promise<readonly string[]>, initialApplyToAll: readonly BarSettingsGroup[] = []) {
   const doc = root.ownerDocument;
   const abort = new AbortController();
-  let draft = structuredClone(initial);
+  const draft = structuredClone(initial);
   let autoFontSize = automaticButtonFontSize(itemHeight);
   const applyToAll = new Set(initialApplyToAll);
   let sectionRoot = root;
@@ -135,7 +135,6 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
   });
   select("menuSettings.expandAlignment", draft.expandAlignment, [["edge", "expandAlignment.edge"], ["center", "expandAlignment.center"]], value => { draft.expandAlignment = value === "center" ? "center" : "edge"; });
   if ("attachmentMode" in draft) {
-    let onTop: HTMLSelectElement;
     const refreshOnTop = (): void => {
       const free = "attachmentMode" in draft && draft.attachmentMode === "free";
       onTop.disabled = free; onTopApply.disabled = free;
@@ -151,7 +150,7 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
       if (value === "free") native.onTopMode = "alwaysOnTop";
       onTop.value = native.onTopMode; refreshOnTop();
     }, "attachment");
-    onTop = select("form.onTopMode", draft.onTopMode, [["aboveBrowser", "form.onTopMode.aboveBrowser"], ["alwaysOnTop", "form.onTopMode.alwaysOnTop"]], value => { (draft as NativeBarSettings).onTopMode = value as NativeBarSettings["onTopMode"]; });
+    const onTop = select("form.onTopMode", draft.onTopMode, [["aboveBrowser", "form.onTopMode.aboveBrowser"], ["alwaysOnTop", "form.onTopMode.alwaysOnTop"]], value => { (draft as NativeBarSettings).onTopMode = value as NativeBarSettings["onTopMode"]; });
     const onTopApply = inline(onTop.parentElement!, "onTop");
     refreshOnTop();
   }

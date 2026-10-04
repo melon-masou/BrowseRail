@@ -67,10 +67,10 @@ export function normalizeDynamicBookmarks(value: unknown): DynamicBookmark[] {
       uid: db.uid,
       name: typeof db.name === "string" && db.name.trim() ? db.name.trim() : "Dynamic bookmark",
       // Existing code definitions and imported scripts keep their execution mode.
-      type: db.type === "rule" ? "rule" : "code",
+      type: db.type === "rule" || db.type === "rewrite" ? db.type : "code",
       code: typeof db.code === "string" ? db.code : "",
+      ...(typeof db.rewrite === "string" ? { rewrite: db.rewrite } : {}),
       ...(typeof db.urlRuleUid === "string" && db.urlRuleUid ? { urlRuleUid: db.urlRuleUid } : {}),
-      ...(Array.isArray(db.urlRuleUids) ? { urlRuleUids: db.urlRuleUids.filter((uid): uid is string => typeof uid === "string" && !!uid.trim()) } : {}),
     }];
   });
 }
@@ -642,7 +642,7 @@ export async function initBookmarkRootPrefix(): Promise<string[]> {
 // Live values of dynamic bookmarks, keyed by dynamic bookmark uid. Local only
 // (never synced): they update on every qualifying page visit, so syncing would
 // blow the sync quota. Bar configurations are kept local for the same reason.
-export const DYNAMIC_VALUES_STORAGE_KEY = "dynamic_values";
+export const DYNAMIC_VALUE_STORAGE_PREFIX = "dynamic_value:";
 
 export interface DynamicValue {
   url?: string;
@@ -653,37 +653,40 @@ export interface DynamicValue {
 
 export type DynamicValuesMap = Record<string, DynamicValue>;
 
-export async function loadDynamicValues(): Promise<DynamicValuesMap> {
-  const stored = await browser.storage.local.get(DYNAMIC_VALUES_STORAGE_KEY);
-  const raw = stored[DYNAMIC_VALUES_STORAGE_KEY];
-  if (!isRecord(raw)) {
-    return {};
-  }
+function normalizeDynamicValue(value: unknown): DynamicValue | undefined {
+  if (!isRecord(value) || (typeof value.url !== "string" && typeof value.note !== "string")) return;
+  return {
+    ...(typeof value.url === "string" ? { url: value.url } : {}),
+    ...(typeof value.title === "string" ? { title: value.title } : {}),
+    ...(typeof value.note === "string" ? { note: value.note } : {}),
+    updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
+  };
+}
+
+export async function loadDynamicValue(uid: string): Promise<DynamicValue | undefined> {
+  const key = DYNAMIC_VALUE_STORAGE_PREFIX + uid;
+  const stored = await browser.storage.local.get(key);
+  return normalizeDynamicValue(stored[key]);
+}
+
+export async function loadDynamicValues(uids?: readonly string[]): Promise<DynamicValuesMap> {
+  const targets = uids ?? (await loadConfig()).dynamicBookmarks.map(bookmark => bookmark.uid);
+  if (!targets.length) return {};
+  const stored = await browser.storage.local.get(targets.map(uid => DYNAMIC_VALUE_STORAGE_PREFIX + uid));
   const result: DynamicValuesMap = {};
-  for (const [uid, value] of Object.entries(raw)) {
-    if (isRecord(value) && (typeof value.url === "string" || typeof value.note === "string")) {
-      result[uid] = {
-        ...(typeof value.url === "string" ? { url: value.url } : {}),
-        ...(typeof value.title === "string" ? { title: value.title } : {}),
-        ...(typeof value.note === "string" ? { note: value.note } : {}),
-        updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
-      };
-    }
+  for (const uid of targets) {
+    const value = normalizeDynamicValue(stored[DYNAMIC_VALUE_STORAGE_PREFIX + uid]);
+    if (value) result[uid] = value;
   }
   return result;
 }
 
-export async function saveDynamicValue(uid: string, value: DynamicValue): Promise<void> {
-  const current = await loadDynamicValues();
-  current[uid] = value;
-  await browser.storage.local.set({ [DYNAMIC_VALUES_STORAGE_KEY]: current });
+export function saveDynamicValue(uid: string, value: DynamicValue): Promise<void> {
+  return browser.storage.local.set({ [DYNAMIC_VALUE_STORAGE_PREFIX + uid]: value });
 }
 
-export async function removeDynamicValues(uid: string): Promise<void> {
-  const current = await loadDynamicValues();
-  if (!(uid in current)) return;
-  delete current[uid];
-  await browser.storage.local.set({ [DYNAMIC_VALUES_STORAGE_KEY]: current });
+export function removeDynamicValues(uid: string): Promise<void> {
+  return browser.storage.local.remove(DYNAMIC_VALUE_STORAGE_PREFIX + uid);
 }
 
 const TEMPORARY_VALUES_STORAGE_KEY = "temporary_bookmark_values";

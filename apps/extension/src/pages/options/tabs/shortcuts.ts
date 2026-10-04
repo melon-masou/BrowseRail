@@ -17,7 +17,7 @@ import { type CustomBookmarkSource } from "../custom-bookmark-source";
 import { type BookmarkPicker } from "../components/bookmark-picker";
 import { type CustomBookmarkPicker } from "../components/custom-bookmark-picker";
 import { type Overlays } from "../components/overlays";
-import { SETTINGS_ICON_SVG, REMOVE_ICON_SVG } from "../components/icons";
+import { removeIcon, setIconContent, settingsIcon } from "../components/icons";
 import { browserActions } from "../browser";
 
 export function mountShortcutsTab(
@@ -436,7 +436,7 @@ export function mountShortcutsTab(
       deleteBtn.type = "button";
       deleteBtn.className = "remove-item-btn";
       deleteBtn.title = t("common.delete");
-      deleteBtn.innerHTML = REMOVE_ICON_SVG;
+      setIconContent(deleteBtn, removeIcon());
       deleteBtn.addEventListener("click", () => {
         const idx = state.settings.nativeShortcuts.findIndex((s) => s.id === item.id);
         if (idx !== -1) {
@@ -454,7 +454,7 @@ export function mountShortcutsTab(
         settingsBtn.type = "button";
         settingsBtn.className = "item-settings-btn";
         settingsBtn.title = t("itemSettings.title");
-        settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+        setIconContent(settingsBtn, settingsIcon());
         settingsBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           openShortcutSettingsPopover(item, item.key || t("itemSettings.title"), settingsBtn);
@@ -545,7 +545,7 @@ export function mountShortcutsTab(
         settingsBtn.type = "button";
         settingsBtn.className = "item-settings-btn";
         settingsBtn.title = t("menu.settings");
-        settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+        setIconContent(settingsBtn, settingsIcon());
         settingsBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           openShortcutSettingsPopover(
@@ -560,7 +560,7 @@ export function mountShortcutsTab(
         clearBtn.type = "button";
         clearBtn.className = "remove-item-btn";
         clearBtn.title = t("shortcuts.clearTarget");
-        clearBtn.innerHTML = REMOVE_ICON_SVG;
+        setIconContent(clearBtn, removeIcon());
         clearBtn.addEventListener("click", () => {
           const idx = state.settings.shortcuts.findIndex((s) => s.slot === slotKey);
           if (idx !== -1) {

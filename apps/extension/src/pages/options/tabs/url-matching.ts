@@ -5,6 +5,7 @@ import { element } from "../dom";
 import { createScope } from "../lifecycle";
 import { type OptionsState } from "../state";
 import { renderPreservingFocus } from "../components/render-focus";
+import { removeIcon, setIconContent } from "../components/icons";
 
 export function mountUrlMatchingTab(state: OptionsState, renderPermissionWarnings: () => void) {
   const scope = createScope();
@@ -88,7 +89,7 @@ export function mountUrlMatchingTab(state: OptionsState, renderPermissionWarning
       deleteBtn.className = "remove-item-btn menu-remove-btn";
       deleteBtn.title = t("common.delete");
       deleteBtn.setAttribute("aria-label", t("common.delete"));
-      deleteBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("common.delete")}</span>`;
+      setIconContent(deleteBtn, removeIcon(), t("common.delete"));
       deleteBtn.addEventListener("click", () => {
         state.removeUrlRule(ws.uid);
       });

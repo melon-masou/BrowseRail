@@ -393,19 +393,13 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       requireTarget(settingsDraft.dynamicBookmarks.find(value => value.uid === uid), `dynamic bookmark ${uid}`).type = type;
       publish(["bookmarks"], true);
     },
+    setDynamicRewrite(uid: string, rewrite: string): void {
+      requireTarget(settingsDraft.dynamicBookmarks.find(value => value.uid === uid), `dynamic bookmark ${uid}`).rewrite = rewrite;
+      publish(["bookmarks"]);
+    },
     setDynamicRule(uid: string, ruleUid: string | undefined): void {
       if (ruleUid) ruleUids([ruleUid]);
       setOptional(requireTarget(settingsDraft.dynamicBookmarks.find(value => value.uid === uid), `dynamic bookmark ${uid}`), { urlRuleUid: ruleUid });
-      publish(["bookmarks"]);
-    },
-    setDynamicRules(uid: string, uids: readonly string[]): void {
-      setOptional(
-        requireTarget(
-          settingsDraft.dynamicBookmarks.find((value) => value.uid === uid),
-          `dynamic bookmark ${uid}`,
-        ),
-        { urlRuleUids: ruleUids(uids) },
-      );
       publish(["bookmarks"]);
     },
     removeBookmark(type: CustomBookmarkType, uid: string): void {
@@ -474,7 +468,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       for (const bookmark of settingsDraft.dynamicBookmarks) {
         if (bookmark.urlRuleUid === uid) delete bookmark.urlRuleUid;
       }
-      for (const target of [...settingsDraft.menus, ...settingsDraft.dynamicBookmarks]) {
+      for (const target of settingsDraft.menus) {
         const remaining = target.urlRuleUids?.filter((value) => value !== uid);
         setOptional(target, { urlRuleUids: remaining?.length ? remaining : undefined });
       }

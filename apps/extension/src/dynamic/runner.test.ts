@@ -46,3 +46,11 @@ it("reports document creation failures as initialization failure rather than uns
   expect(await runner.initializeSandbox()).toBe("failed");
   expect(await runner.runDynamic("function dynamicBookmark() {}", {})).toMatchObject({ error: "sandbox initialization failed" });
 });
+
+it("executes fixed URL rewrites independently of sandbox support", async () => {
+  api.message.mockImplementation(async message => message.__dynHost === "probe" ? "unsupported" : { ok: true, url: "https://example.com/reader/123" });
+  const runner = await import("./runner");
+  expect(await runner.initializeSandbox()).toBe("unsupported");
+  expect(await runner.runRewrite('replace "/article/" "/reader/"', "https://example.com/article/123"))
+    .toEqual({ ok: true, url: "https://example.com/reader/123" });
+});

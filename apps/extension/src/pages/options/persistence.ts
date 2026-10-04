@@ -39,6 +39,7 @@ import { canUseBookmarks } from "../../browser/bookmarks-capability";
 import { settingsFromConfig, type OptionsState, type SettingsDraft } from "./state";
 import type { BookmarkLibrary } from "./bookmark-library";
 import { createScope } from "./lifecycle";
+import { validateRewrite } from "../../dynamic/rewrite";
 export async function loadOptions() {
   const bookmarksAvailable = await canUseBookmarks();
   const [config, enabled, tree, rootPrefix, displayMode, syncEnabled] = await Promise.all([
@@ -97,6 +98,11 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       shortcuts,
       nativeShortcuts,
     } = saving;
+    for (const bookmark of dynamicBookmarks) {
+      if (bookmark.type !== "rewrite") continue;
+      const error = validateRewrite(bookmark.rewrite ?? "");
+      if (error) throw new Error(t("dynamic.invalidRewrite", { name: bookmark.name, error }));
+    }
     for (const menu of menus) {
       library.enrich(menu.items, library.tree);
     }
@@ -253,7 +259,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
 
     return exportData;
   }
-  async function importSettings(text: string, includeBars = false): Promise<void> {
+  async function importSettings(text: string, includeBars = false, includeTransforms = false): Promise<void> {
     const parsed = JSON.parse(text) as unknown;
     if (!isExportedSettingsData(parsed)) {
       throw new Error(t("import.invalidJson"));
@@ -382,8 +388,23 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       imported.defaultUrlRuleUid = parsed.defaultUrlRuleUid;
     else delete imported.defaultUrlRuleUid;
 
+    const skippedTransformUids = new Set<string>();
     if (Array.isArray(parsed.dynamicBookmarks)) {
-      imported.dynamicBookmarks = normalizeDynamicBookmarks(parsed.dynamicBookmarks);
+      // A rule reference resolves only against rules in the same file: binding it to a
+      // local rule that happens to share the uid would widen where the script runs.
+      const fileRuleUids = new Set(Array.isArray(parsed.urlRules) ? imported.urlRules.map((rule) => rule.uid) : []);
+      imported.dynamicBookmarks = normalizeDynamicBookmarks(parsed.dynamicBookmarks).flatMap(({ urlRuleUid, ...db }) => {
+        if (!includeTransforms && (db.type === "code" || db.type === "rewrite")) {
+          skippedTransformUids.add(db.uid);
+          return [];
+        }
+        return [{
+          ...db,
+          code: includeTransforms ? db.code : "",
+          ...(!includeTransforms && db.rewrite !== undefined ? { rewrite: "" } : {}),
+          ...(urlRuleUid && fileRuleUids.has(urlRuleUid) ? { urlRuleUid } : {}),
+        }];
+      });
     }
     if (Array.isArray(parsed.shortcuts)) {
       imported.shortcuts = parsed.shortcuts.flatMap((sc): StoredShortcut[] => {
@@ -438,6 +459,11 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         ];
       });
     }
+    const keepReference = (item: StoredMenuItem | StoredShortcut | StoredNativeShortcut): boolean =>
+      item.type !== "dynamic" || !item.dynamicUid || !skippedTransformUids.has(item.dynamicUid);
+    for (const menu of imported.menus) menu.items = menu.items.filter(keepReference);
+    imported.shortcuts = imported.shortcuts.filter(keepReference);
+    imported.nativeShortcuts = imported.nativeShortcuts.filter(keepReference);
     state.importSettings(imported);
   }
 

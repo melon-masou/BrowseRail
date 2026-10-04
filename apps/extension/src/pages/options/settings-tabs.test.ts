@@ -7,14 +7,14 @@ import type { Storage } from "webextension-polyfill";
 
 const mock = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
-  sendMessage: vi.fn(async () => ({ state: "disconnected" })),
+  sendMessage: vi.fn<(message?: unknown) => Promise<unknown>>(async () => ({ state: "disconnected" })),
   bookmarkTree: [{id: "0", title: "", children: []}] as browser.Bookmarks.BookmarkTreeNode[],
   storageListeners: [] as Array<(changes: Record<string, Storage.StorageChange>, area: string) => void>,
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
   storage: {
     local: {
-      get: async (key: string) => ({ [key]: mock.storage[key] }),
+      get: async (keys: string | string[]) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, mock.storage[key]])),
       set: async (values: Record<string, unknown>) => { Object.assign(mock.storage, values); },
     },
     onChanged: {
@@ -60,6 +60,7 @@ async function save(): Promise<void> {
 beforeEach(async () => {
   vi.resetModules();
   vi.stubGlobal("confirm", vi.fn(() => true));
+  mock.sendMessage.mockReset().mockResolvedValue({ state: "disconnected" });
   mock.storage = {};
   mock.storageListeners = [];
   mock.bookmarkTree = [{id: "0", title: "", children: []}];
@@ -70,6 +71,8 @@ beforeEach(async () => {
   mock.storage.config = config;
   document.open();
   const html = readFileSync(new NodeURL("./index.html", import.meta.url), "utf8");
+  // Loads the page's own markup as the test fixture.
+  // eslint-disable-next-line no-unsanitized/method
   document.write(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ""));
   document.close();
   await import("./index");
@@ -99,6 +102,73 @@ it("keeps externally added static bookmarks when saving drafts, without restorin
   expect(saved.staticBookmarks).toEqual([
     expect.objectContaining({ name: "Unsaved draft" }), external,
   ]);
+});
+
+it("refuses to save a dynamic bookmark without a URL rule", async () => {
+  button("custom-bookmarks-tab").click();
+  button("add-dynamic-btn").click();
+  await save();
+  expect(document.getElementById("status")!.textContent).toContain("URL rule");
+  expect((await savedConfig()).dynamicBookmarks).toEqual([]);
+});
+
+it("refreshes a dynamic bookmark's current URL while retaining unsaved edits", async () => {
+  button("custom-bookmarks-tab").click();
+  button("add-dynamic-btn").click();
+  const card = document.querySelector<HTMLElement>("#dynamic-list article");
+  const name = card?.querySelector<HTMLInputElement>(".dynamic-name-input");
+  if (!card?.dataset.recordId || !name) throw new Error("Missing dynamic bookmark");
+  name.value = "Unsaved name";
+  name.dispatchEvent(new Event("input", { bubbles: true }));
+  const { DYNAMIC_VALUE_STORAGE_PREFIX, saveDynamicValue } = await import("../../config");
+  const key = DYNAMIC_VALUE_STORAGE_PREFIX + card.dataset.recordId;
+  await saveDynamicValue(card.dataset.recordId, { url: "https://example.com/updated", updatedAt: 1 });
+  for (const listener of mock.storageListeners) listener({ [key]: { newValue: mock.storage[key] } }, "local");
+  await vi.waitFor(() => expect(document.querySelector("#dynamic-list .dynamic-current-chip")?.textContent).toContain("https://example.com/updated"));
+  expect(document.querySelector<HTMLInputElement>("#dynamic-list .dynamic-name-input")?.value).toBe("Unsaved name");
+  expect((await savedConfig()).dynamicBookmarks).toEqual([]);
+});
+
+it.each(["rewrite", "code"])("tests unsaved dynamic bookmark edits and shows the output without saving (%s)", async type => {
+  button("url-rules-tab").click(); button("add-url-rule-btn").click();
+  const patterns = document.querySelector("#url-rules-list textarea");
+  if (!(patterns instanceof HTMLTextAreaElement)) throw new Error("Missing URL pattern editor");
+  patterns.value = "example.com";
+  patterns.dispatchEvent(new Event("input", { bubbles: true }));
+  button("custom-bookmarks-tab").click(); button("add-dynamic-btn").click();
+  const ruleSelect = document.querySelector("#dynamic-list select");
+  if (!(ruleSelect instanceof HTMLSelectElement)) throw new Error("Missing URL rule selector");
+  ruleSelect.value = ruleSelect.options[1]!.value;
+  ruleSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  const mode = Array.from(document.querySelectorAll("#dynamic-list label")).find(label => label.textContent === (type === "code" ? "Custom code" : "Regex rewrite"))?.querySelector("input");
+  if (!(mode instanceof HTMLInputElement)) throw new Error("Missing update mode");
+  mode.click();
+  const editor = document.querySelector("#dynamic-list textarea");
+  if (!(editor instanceof HTMLTextAreaElement)) throw new Error("Missing dynamic editor");
+  editor.value = type === "rewrite" ? 'replace "/old" "/new"' : 'function dynamicBookmark({ url }) { return { newUrl: url }; }';
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+  const url = document.querySelector(".dynamic-test input");
+  if (!(url instanceof HTMLInputElement)) throw new Error("Missing test URL");
+  url.value = "https://example.com/old";
+  url.dispatchEvent(new Event("input", { bubbles: true }));
+  mock.sendMessage.mockImplementation(async message => {
+    if (typeof message === "object" && message !== null && "type" in message && message.type === "testDynamicBookmark")
+      return { ok: true, value: { newUrl: "https://example.com/new" } };
+    return "supported";
+  });
+  const test = document.querySelector(".dynamic-test button");
+  if (!(test instanceof HTMLButtonElement)) throw new Error("Missing test button");
+  test.click();
+  await vi.waitFor(() => expect(document.querySelector(".dynamic-test-result")?.textContent).toContain("https://example.com/new"));
+  expect(document.querySelector(".dynamic-test-result")?.textContent).toBe(type === "rewrite" ? "https://example.com/new" : JSON.stringify({ newUrl: "https://example.com/new" }, null, 2));
+  const request = mock.sendMessage.mock.calls.map(([message]) => message).find(message => typeof message === "object" && message !== null && "type" in message && message.type === "testDynamicBookmark");
+  expect(request).toMatchObject({ bookmark: { type, [type === "code" ? "code" : "rewrite"]: editor.value }, rule: { patterns: ["example.com"] }, url: "https://example.com/old" });
+  expect((await savedConfig()).dynamicBookmarks).toEqual([]);
+  const currentEditor = document.querySelector("#dynamic-list textarea");
+  if (!(currentEditor instanceof HTMLTextAreaElement)) throw new Error("Missing editor after source refresh");
+  currentEditor.value += "\n# changed draft";
+  currentEditor.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(document.querySelector(".dynamic-test-result")?.hasAttribute("hidden")).toBe(true);
 });
 
 it("cancels or discards unsaved instance changes with the native confirmation, retaining other drafts", async () => {
@@ -148,6 +218,44 @@ it("saves the instance separately, and freely switches other tabs before saving 
 });
 
 afterEach(() => { window.dispatchEvent(new Event("pagehide")); });
+
+it.each([
+  { type: "rule", includeCode: false },
+  { type: "code", includeCode: false },
+  { type: "code", includeCode: true },
+  { type: "rewrite", includeCode: false },
+  { type: "rewrite", includeCode: true },
+])("offers script imports only when present and requires opt-in ($type, $includeCode)", async ({ type, includeCode }) => {
+  button("custom-bookmarks-tab").click();
+  const data = {
+    version: 2,
+    exportedAt: "2026-10-04T00:00:00.000Z",
+    menus: [],
+    urlRules: [{ uid: "docs", name: "Docs", patterns: ["example.com"] }],
+    dynamicBookmarks: [{ uid: "imported", name: "Imported", type, code: "function dynamicBookmark() {}", urlRuleUid: "docs", ...(type === "rewrite" ? { rewrite: 'replace "/article/" "/reader/"' } : {}) }],
+  };
+  const fileInput = input("import-file-input");
+  Object.defineProperty(fileInput, "files", { configurable: true, value: [new File([JSON.stringify(data)], "settings.json")] });
+  fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector("dialog[open]")).not.toBeNull());
+  const dialog = document.querySelector("dialog[open]");
+  if (!(dialog instanceof HTMLDialogElement)) throw new Error("Missing import dialog");
+  const scriptChoice = Array.from(dialog.querySelectorAll("label")).find(label => label.textContent === "Dynamic bookmarks with custom code or regex rewrites");
+  expect(Boolean(scriptChoice)).toBe(type !== "rule");
+  expect(dialog.textContent?.includes("Only import configurations you trust.")).toBe(type !== "rule");
+  if (scriptChoice) {
+    const checkbox = scriptChoice.querySelector("input");
+    if (!(checkbox instanceof HTMLInputElement)) throw new Error("Missing script checkbox");
+    expect(checkbox.checked).toBe(false);
+    if (includeCode) checkbox.click();
+  }
+  const confirm = Array.from(dialog.querySelectorAll("button")).find(button => button.textContent === "Import");
+  if (!(confirm instanceof HTMLButtonElement)) throw new Error("Missing import button");
+  confirm.click();
+  await vi.waitFor(() => expect(button("save-btn").classList.contains("is-dirty")).toBe(true));
+  await save();
+  expect((await savedConfig()).dynamicBookmarks).toEqual(includeCode ? data.dynamicBookmarks : type !== "rule" ? [] : [{ ...data.dynamicBookmarks[0], code: "" }]);
+});
 
 it("releases unsaved-page handlers on exit and mounts a fresh editor without duplicate actions", async () => {
   button("instance-tab").click(); changeLabel("Unsaved page");

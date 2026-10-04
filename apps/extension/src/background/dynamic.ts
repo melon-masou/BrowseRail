@@ -10,18 +10,21 @@ import browser from "webextension-polyfill";
 import {
   type DynamicBookmark,
   type DynamicValue,
+  type UrlRule,
   loadConfig,
-  loadDynamicValues,
+  loadDynamicValue,
   saveDynamicValue,
+  normalizeDynamicBookmarks,
+  normalizeUrlRules,
 } from "../config";
-import { runDynamic, initializeSandbox } from "../dynamic/runner";
+import { initializeSandbox } from "../dynamic/runner";
+import { evaluateDynamicBookmark, type DynamicUpdate } from "../dynamic/evaluate";
 
 const MARKER_HOST = "browserail.local";
 const DYNAMIC_FRAGMENT_PREFIX = "Dynamic:";
 const DEBOUNCE_MS = 200;
-const TIMEOUT_MS = 200;
 
-// Last committed URL per tab, to dedup onUpdated (it fires repeatedly per load).
+// Ignore repeated notifications for the same tab URL.
 const lastVisitUrlByTab = new Map<number, string>();
 // Per-bookmark debounce timers.
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -29,12 +32,23 @@ const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export function initDynamicBookmarks(requestSync: () => void): void {
   void initializeSandbox();
   browser.runtime.onMessage.addListener((message: unknown, sender: browser.Runtime.MessageSender) => {
-    if (sender.id !== browser.runtime.id || sender.tab) return;
+    // The options page opens in a tab, so check that the sender is an extension page
+    // rather than rejecting every sender with a tab (which also covers content scripts).
+    if (sender.id !== browser.runtime.id || !sender.url?.startsWith(browser.runtime.getURL(""))) return;
     if (typeof message === "object" && message !== null && "type" in message && message.type === "getDynamicSandboxStatus") return initializeSandbox();
+    if (typeof message === "object" && message !== null && "type" in message && message.type === "testDynamicBookmark") {
+      const data = message as { bookmark?: unknown; rule?: unknown; url?: unknown };
+      const bookmark = normalizeDynamicBookmarks([data.bookmark])[0];
+      if (!bookmark || typeof data.url !== "string") return Promise.resolve({ ok: false, error: "Invalid test input" });
+      const rule = normalizeUrlRules([data.rule])[0];
+      return loadDynamicValue(bookmark.uid).then(current => evaluateDynamicBookmark(bookmark, rule, data.url as string, "", current, true));
+    }
   });
   browser.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => {
     const url = changeInfo.url;
     if (typeof url !== "string" || !url) return;
+    if (lastVisitUrlByTab.get(tabId) === url) return;
+    lastVisitUrlByTab.set(tabId, url);
     void handleNavigation(tabId, url, Boolean(tab.active), tab.title ?? "", requestSync);
   });
   browser.tabs?.onRemoved?.addListener((tabId) => {
@@ -52,11 +66,9 @@ async function handleNavigation(
   // 1) browserail.local marker interception (any tab), preempts the function run.
   if (await maybeInterceptMarker(tabId, url)) return;
 
-  // 2) Function trigger: active tab, real web page, deduped per (tabId, url).
+  // 2) Function trigger: active tab, real web page.
   if (!active) return;
   if (!/^https?:\/\//i.test(url)) return;
-  if (lastVisitUrlByTab.get(tabId) === url) return;
-  lastVisitUrlByTab.set(tabId, url);
   await runVisit(url, title, requestSync);
 }
 
@@ -74,8 +86,7 @@ async function maybeInterceptMarker(tabId: number, url: string): Promise<boolean
 
   if (fragment.startsWith(DYNAMIC_FRAGMENT_PREFIX)) {
     const id = fragment.slice(DYNAMIC_FRAGMENT_PREFIX.length);
-    const values = await loadDynamicValues();
-    const live = values[id];
+    const live = await loadDynamicValue(id);
     // No value yet → leave the tab as-is (do not redirect).
     if (live?.url) {
       try {
@@ -98,26 +109,19 @@ async function maybeInterceptMarker(tabId: number, url: string): Promise<boolean
 async function runVisit(url: string, title: string, requestSync: () => void): Promise<void> {
   const config = await loadConfig();
   const dynamicBookmarks = config.dynamicBookmarks ?? [];
-  if (dynamicBookmarks.length === 0) return;
   const ruleMap = new Map(config.urlRules.map((rule) => [rule.uid, rule]));
 
   for (const db of dynamicBookmarks) {
-    if (db.type === "rule") {
-      const rule = db.urlRuleUid ? ruleMap.get(db.urlRuleUid) : undefined;
-      if (!rule || !matchesUrlRule(url, rule)) continue;
-    } else {
-      if (!db.code.trim() || await initializeSandbox() !== "supported") continue;
-      if (db.urlRuleUids?.length && !db.urlRuleUids.some(uid => {
-        const rule = ruleMap.get(uid);
-        return rule && matchesUrlRule(url, rule);
-      })) continue;
-    }
-    scheduleRun(db, url, title, requestSync);
+    const rule = db.urlRuleUid ? ruleMap.get(db.urlRuleUid) : undefined;
+    if (!rule || !matchesUrlRule(url, rule)) continue;
+    if (db.type === "code" && (!db.code.trim() || await initializeSandbox() !== "supported")) continue;
+    scheduleRun(db, rule, url, title, requestSync);
   }
 }
 
 function scheduleRun(
   db: DynamicBookmark,
+  rule: UrlRule,
   url: string,
   title: string,
   requestSync: () => void,
@@ -128,44 +132,30 @@ function scheduleRun(
     db.uid,
     setTimeout(() => {
       debounceTimers.delete(db.uid);
-      void executeOne(db, url, title, requestSync);
+      void executeOne(db, rule, url, title, requestSync);
     }, DEBOUNCE_MS),
   );
 }
 
 async function executeOne(
   db: DynamicBookmark,
+  rule: UrlRule,
   url: string,
   title: string,
   requestSync: () => void,
 ): Promise<void> {
-  const values = await loadDynamicValues();
-  const current = values[db.uid];
-  const args = {
-    action: "visit" as const,
-    url,
-    title,
-    current: { url: current?.url ?? null, title: current?.title ?? null, note: current?.note ?? "" },
-  };
-
-  const result = db.type === "rule"
-    ? { ok: true, value: { newUrl: url, title } }
-    : await runDynamic(db.code, args, TIMEOUT_MS);
-  if (!result.ok || !result.value || typeof result.value !== "object") return;
-
-  const value = result.value as { newUrl?: unknown; title?: unknown; note?: unknown };
-  const newUrl = typeof value.newUrl === "string" ? value.newUrl : null;
-  // A null URL permits a context-only update; other URLs must remain HTTP(S).
-  if (value.newUrl !== null && (!newUrl || !/^https?:\/\//i.test(newUrl))) return;
-  if (newUrl === null && typeof value.note !== "string") return;
+  const current = await loadDynamicValue(db.uid);
+  const result = await evaluateDynamicBookmark(db, rule, url, title, current);
+  if (!result.ok || !("value" in result)) return;
+  const { newUrl, title: newTitle, note } = result.value as DynamicUpdate;
 
   const next: DynamicValue = {
     ...current,
     ...(newUrl !== null ? {
       url: newUrl,
-      title: typeof value.title === "string" && value.title ? value.title : title,
+      title: newTitle ?? title,
     } : {}),
-    ...(typeof value.note === "string" ? { note: value.note } : {}),
+    ...(typeof note === "string" ? { note } : {}),
     updatedAt: Date.now(),
   };
   if (current?.url === next.url && current?.title === next.title && current?.note === next.note) {

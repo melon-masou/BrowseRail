@@ -6,6 +6,7 @@ import {
   type CustomBookmarkType,
 } from "@browserail/protocol";
 import {
+  DYNAMIC_VALUE_STORAGE_PREFIX,
   clearTemporaryValue,
   loadDynamicValues,
   loadTemporaryValues,
@@ -69,7 +70,7 @@ export function createCustomBookmarkSource(state: OptionsState) {
 
   async function refreshDynamicValues(): Promise<void> {
     try {
-      dynamicValuesCache = await loadDynamicValues();
+      dynamicValuesCache = await loadDynamicValues(state.settings.dynamicBookmarks.map(bookmark => bookmark.uid));
     } catch {
       dynamicValuesCache = {};
     }
@@ -77,8 +78,11 @@ export function createCustomBookmarkSource(state: OptionsState) {
   }
 
   const changed = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {
-    if (area === "local" && (changes.temporary_bookmark_values || changes.temporary_bookmark_notes))
+    if (area !== "local") return;
+    if (changes.temporary_bookmark_values || changes.temporary_bookmark_notes)
       void refreshTemporaryValues();
+    if (Object.keys(changes).some(key => key.startsWith(DYNAMIC_VALUE_STORAGE_PREFIX)))
+      void refreshDynamicValues();
   };
   browser.storage.onChanged.addListener(changed);
   scope.add(() => browser.storage.onChanged.removeListener(changed));

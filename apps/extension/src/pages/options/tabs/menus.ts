@@ -27,7 +27,7 @@ import { type BookmarkPicker } from "../components/bookmark-picker";
 import { type CustomBookmarkPicker } from "../components/custom-bookmark-picker";
 
 import { type Overlays } from "../components/overlays";
-import { SETTINGS_ICON_SVG } from "../components/icons";
+import { removeIcon, setIconContent, settingsIcon } from "../components/icons";
 import { renderPreservingFocus } from "../components/render-focus";
 import { browserActions } from "../browser";
 
@@ -797,7 +797,7 @@ export function mountMenusTab(
         const settingsBtn = document.createElement("button");
         settingsBtn.type = "button";
         settingsBtn.className = "action-btn menu-header-btn";
-        settingsBtn.innerHTML = `${SETTINGS_ICON_SVG}<span>${t("menu.settings")}</span>`;
+        setIconContent(settingsBtn, settingsIcon(), t("menu.settings"));
         settingsBtn.title = t("menu.settingsTitle");
         settingsBtn.addEventListener("click", () => {
           openMenuSettingsDialog(menuIndex);
@@ -830,7 +830,7 @@ export function mountMenusTab(
         removeMenu.className = "remove-item-btn menu-remove-btn";
         removeMenu.title = t("menu.removeMenu");
         removeMenu.setAttribute("aria-label", t("menu.removeMenu"));
-        removeMenu.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg><span>${t("menu.remove")}</span>`;
+        setIconContent(removeMenu, removeIcon(), t("menu.remove"));
         removeMenu.addEventListener("click", () => {
           if (activeMenuSettingsIndex === menuIndex) {
             closeMenuSettingsDialog();
@@ -947,7 +947,7 @@ export function mountMenusTab(
               settingsBtn.type = "button";
               settingsBtn.className = "item-settings-btn";
               settingsBtn.title = t("itemSettings.title");
-              settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+              setIconContent(settingsBtn, settingsIcon());
               settingsBtn.addEventListener("click", (event) => {
                 event.stopPropagation();
                 openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
@@ -1088,7 +1088,7 @@ export function mountMenusTab(
               settingsBtn.type = "button";
               settingsBtn.className = "item-settings-btn";
               settingsBtn.title = t("itemSettings.title");
-              settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+              setIconContent(settingsBtn, settingsIcon());
               settingsBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
                 openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);
@@ -1263,7 +1263,7 @@ export function mountMenusTab(
             settingsBtn.type = "button";
             settingsBtn.className = "item-settings-btn";
             settingsBtn.title = t("item.settingsTitle");
-            settingsBtn.innerHTML = SETTINGS_ICON_SVG;
+            setIconContent(settingsBtn, settingsIcon());
             settingsBtn.addEventListener("click", (e) => {
               e.stopPropagation();
               openItemSettingsPopover(menuIndex, itemIndex, settingsBtn);

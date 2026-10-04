@@ -21,7 +21,7 @@ function initialSettings(): SettingsDraft {
     staticBookmarks: [{ uid: "static", name: "Static", url: "https://example.com" }],
     temporaryBookmarks: [{ uid: "temporary", name: "Temporary" }],
     dynamicBookmarks: [
-      { uid: "dynamic", name: "Dynamic", type: "code", code: "", urlRuleUids: ["removed-rule"] },
+      { uid: "dynamic", name: "Dynamic", type: "code", code: "", urlRuleUid: "removed-rule" },
     ],
     shortcuts: [{ slot: "slot_1", type: "static", staticUid: "static", tabMode: "newTab" }],
     nativeShortcuts: [
@@ -66,7 +66,7 @@ it("removes URL rule references from the global selection, menus and dynamic boo
   state.removeUrlRule("removed-rule");
   expect(state.settings.defaultUrlRuleUid).toBeUndefined();
   expect(state.settings.menus[0]!.urlRuleUids).toEqual(["kept-rule"]);
-  expect(state.settings.dynamicBookmarks[0]!.urlRuleUids).toBeUndefined();
+  expect(state.settings.dynamicBookmarks[0]!.urlRuleUid).toBeUndefined();
   expect(state.settings.urlRules.map((rule) => rule.uid)).toEqual(["kept-rule"]);
 });
 

@@ -87,7 +87,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems([
       { uid: "item-dev-tools", path: ["Dev Tools"], type: "folder", expandOnHover: false },
@@ -115,7 +115,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems([
       { uid: "item-docs", path: ["Docs"], type: "folder" },
@@ -143,7 +143,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems([
       { uid: "item-quick-links", path: ["Quick Links"], type: "flattenFolder" },
@@ -214,7 +214,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-temps", path: ["Temps"], type: "flattenFolder" }],
@@ -262,7 +262,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const withoutFolders = await resolveMenuItems([
       { uid: "item-mixed", path: ["Mixed"], type: "flattenFolder" },
@@ -310,7 +310,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const result = await resolveMenuItems([
       {
@@ -342,7 +342,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems([
       { uid: "item-slash", path: ["A/B"], type: "flattenFolder" },
@@ -363,7 +363,7 @@ describe("resolveMenuItems", () => {
           { id: "bm-color-1", title: "GitHub", url: "https://github.com" },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-github", path: ["GitHub"], url: "https://github.com" }],
@@ -384,7 +384,7 @@ describe("resolveMenuItems", () => {
           { id: "bm-color-2", title: "GitHub", url: "https://github.com" },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-github", path: ["GitHub"], url: "https://github.com", color: "#f59e0b" }],
@@ -412,7 +412,7 @@ describe("resolveMenuItems", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-links", path: ["Links"], type: "flattenFolder" }],
@@ -524,7 +524,7 @@ describe("rename and emoji support", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems([
       { uid: "item-rename", path: ["Very Long GitHub Bookmark Title"], url: "https://github.com", rename: "GH" },
@@ -548,7 +548,7 @@ describe("rename and emoji support", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems([
       { uid: "item-title-emoji", path: ["📁工作台"], url: "https://prod.example.com" },
@@ -574,7 +574,7 @@ describe("tabMode configuration", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-replace", path: ["Example"], url: "https://example.com" }],
@@ -602,7 +602,7 @@ describe("tabMode configuration", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-menu-tab", path: ["Example"], url: "https://example.com" }],
@@ -626,7 +626,7 @@ describe("tabMode configuration", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-override", path: ["Example 1"], url: "https://example.com/1", tabMode: "replace" }],
@@ -650,7 +650,7 @@ describe("tabMode configuration", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-item-newtab", path: ["Example 2"], url: "https://example.com/2", tabMode: "newTab" }],
@@ -676,7 +676,7 @@ describe("tabMode configuration", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     // /书签栏 + /书签栏 = /书签栏/书签栏 -> does not exist under 书签栏
     const entries = await resolveMenuItems(
@@ -709,7 +709,7 @@ describe("tabMode configuration", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const entries = await resolveMenuItems(
       [{ uid: "item-gbfsync", path: ["gbfsync"] }],
@@ -888,7 +888,7 @@ describe("combineRootAndItemPath", () => {
           },
         ],
       },
-    ] as any);
+    ]);
 
     const { normalizeStoredMenuItem } = await import("../config");
     const normalized = normalizeStoredMenuItem({

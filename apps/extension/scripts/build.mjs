@@ -109,6 +109,20 @@ await build({
   },
 });
 
+await build({
+  configFile: false,
+  build: {
+    emptyOutDir: false,
+    lib: {
+      entry: resolve(root, "src/dynamic/rewrite-worker.ts"),
+      fileName: () => "rewrite-worker.js",
+      formats: ["iife"],
+      name: "BrowseRailRewrite",
+    },
+    outDir,
+  },
+});
+
 const manifestRaw = await readFile(resolve(root, `manifest.${target}.json`), "utf8");
 const manifestJson = JSON.parse(manifestRaw);
 if (isRelease) {

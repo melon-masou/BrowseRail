@@ -1,6 +1,6 @@
 import browser from "webextension-polyfill";
 import { isDynamicAction, parseDynamicAction, parseTemporaryAction, parseStaticAction } from "@browserail/protocol";
-import { loadConfig, saveConfig, loadDynamicValues, loadTemporaryValues } from "../config";
+import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues } from "../config";
 import { navigateBookmark, navigateToUrl } from "../browser/navigation";
 import { captureTemporaryUrl } from "./temporary";
 import { runTabAction, toggleTargetMenus } from "./menu-actions";
@@ -29,7 +29,7 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     if (definition?.url) await navigateToUrl(browser, targetWindowUid, definition.url, tabMode);
   } else if (isDynamicAction(actionUid)) {
     const { dynamicUid, tabMode } = parseDynamicAction(actionUid);
-    const live = (await loadDynamicValues())[dynamicUid];
+    const live = await loadDynamicValue(dynamicUid);
     if (live?.url) {
       await navigateToUrl(browser, targetWindowUid, live.url, tabMode);
     }
