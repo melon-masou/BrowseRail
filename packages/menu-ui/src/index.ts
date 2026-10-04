@@ -1,4 +1,5 @@
 export type * from "./types";
+export { resolveFontFamily, SYSTEM_FONT_FAMILY } from "./fonts";
 export { mountBar } from "./bar";
 export { mountFolderPopup } from "./popup";
 export { applyBarTheme, menuButton } from "./appearance";
@@ -7,7 +8,8 @@ export { calculateColumnWidth, createTextMeasure, popupEnvelope, planFolderPopup
 export { createLifetime } from "./lifetime";
 export { attachTemporaryBookmarkButton } from "./temporary-bookmark";
 export { mountBookmarkConfirmation, mountTemporaryConfirmation } from "./confirmation";
-export { createCustomizationRail, controlButton, createAnchorIcon, createMoveIcon, createSpacingIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel } from "./bar/customization";
+export { createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createMoveIcon, createSpacingIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel } from "./bar/customization";
 export { mountSpacingEditor } from "./bar/spacing-editor";
 
 export { mountBarSettings, createSettingsIcon } from "./bar/settings";
+export { placeBarSettings } from "./bar/settings-position";

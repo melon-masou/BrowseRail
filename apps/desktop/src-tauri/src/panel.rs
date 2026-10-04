@@ -737,6 +737,16 @@ impl SurfaceRegistry {
             .unwrap_or(false)
     }
 
+    pub fn begin_customizing(&self, instance_uid: &str, label: &str) -> bool {
+        let prefixes = [instance_surface_prefix("menu", instance_uid), instance_surface_prefix("free", instance_uid)];
+        let Ok(mut set) = self.customizing.lock() else { return false; };
+        if set.iter().any(|active| active != label && prefixes.iter().any(|prefix| active.starts_with(prefix))) {
+            return false;
+        }
+        set.insert(label.to_string());
+        true
+    }
+
     pub fn set_customizing(&self, label: &str, customizing: bool) {
         if let Ok(mut set) = self.customizing.lock() {
             let changed = if customizing {

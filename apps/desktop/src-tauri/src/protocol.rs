@@ -84,6 +84,8 @@ pub enum NativeMessage {
         placement: MenuPlacement,
         spacing: MenuSpacing,
         settings: NativeBarSettings,
+        #[serde(rename = "applyToAll")]
+        apply_to_all: Vec<BarSettingsGroup>,
     },
     #[serde(rename = "verifyWindowPairing")]
     VerifyWindowPairing {
@@ -238,6 +240,8 @@ pub struct MenuView {
     #[serde(default = "default_auto_hide_padding")]
     pub auto_hide_padding: f64,
     #[serde(default)]
+    pub font_family: Option<String>,
+    #[serde(default)]
     pub color: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_expand_direction")]
     pub expand_direction: Option<ExpandDirection>,
@@ -271,8 +275,14 @@ impl MenuSpacing {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum BarSettingsGroup { Orientation, Font, Expand, AutoHide, Attachment, OnTop }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NativeBarSettings {
     pub orientation: MenuOrientation,
+    #[serde(default)]
+    pub font_family: String,
     #[serde(default)]
     pub auto_hide: BarAutoHide,
     #[serde(default = "default_auto_hide_padding")]
@@ -294,6 +304,7 @@ impl NativeBarSettings {
     }
     pub fn apply_view(&self, view: &mut MenuView) {
         view.orientation = self.orientation;
+        view.font_family = Some(self.font_family.trim().to_string());
         view.auto_hide = self.auto_hide;
         view.auto_hide_padding = self.auto_hide_padding;
         view.button_font_size = Some(self.button_font_size);

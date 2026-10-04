@@ -11,7 +11,6 @@ interface PopupPayload {
 }
 
 interface PopupSurfaceState {
-  fontFamily: string;
   payload?: PopupPayload;
 }
 
@@ -27,7 +26,6 @@ export async function initializePopupSurface(): Promise<void> {
   let currentState: PopupState | undefined;
   let renderer: Controller<PopupState> | undefined;
   let receivedStateEvent = false;
-  let fontFamily = "";
   let destroyed = false;
   const disposers: Array<() => void> = [];
   const report = (action: Promise<void>): void => {
@@ -52,7 +50,7 @@ export async function initializePopupSurface(): Promise<void> {
   };
   async function render(payload: PopupPayload): Promise<void> {
     currentPayload = payload;
-    currentState = { ...payload.state, theme: { ...payload.state.theme, fontFamily } };
+    currentState = payload.state;
     try {
       if (renderer) await renderer.update(currentState);
       else { renderer = mountFolderPopup(root, currentState, host); await renderer.ready; }
@@ -77,19 +75,8 @@ export async function initializePopupSurface(): Promise<void> {
     currentState = { ...currentState, editingLocked: payload };
     report(renderer.update(currentState));
   }));
-  disposers.push(await listen<string>("font-family-changed", ({ payload }) => {
-    fontFamily = payload;
-    if (!currentState || !renderer) return;
-    currentState = { ...currentState, theme: { ...currentState.theme, fontFamily } };
-    report(renderer.update(currentState));
-  }));
   const state = await invoke<PopupSurfaceState>("surface_state", { instanceUid, menuUid, surface: "popup", windowUid });
-  fontFamily = state.fontFamily;
   if (state.payload && !receivedStateEvent) await render(state.payload);
-  else if (currentState && renderer) {
-    currentState = { ...currentState, theme: { ...currentState.theme, fontFamily } };
-    await renderer.update(currentState);
-  }
   window.addEventListener("pagehide", () => {
     destroyed = true;
     renderer?.destroy();

@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 pub const DEFAULT_LISTENER_PORT: u16 = 17654;
-pub const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
 
 /// Desktop-local persisted settings. This is a SEPARATE channel from the
 /// extension⇄native wire protocol (see packages/protocol): it is stored on disk
@@ -20,8 +19,6 @@ pub const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
 ///                     (open / new-tab, no customize), false = edit mode where
 ///                     a click enters a menu's customize (pages/menu.ts `editingLocked`).
 ///                     Pushed to the webview via the `editing-lock-changed` event.
-///   font_family     — webview `--desktop-font-family` CSS var
-///                     (main.ts `applyFontFamily`), delivered in SurfaceState.
 ///   collapsed_menus — per-menu collapsed state; drives native geometry and the
 ///                     webview's collapsed render (SurfaceState/menu-state `collapsed`).
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -32,12 +29,12 @@ pub struct DesktopSettings {
     pub display_panels: bool,
     #[serde(default)]
     pub debug_enabled: bool,
-    #[serde(default)]
+    // Must match Default: a settings file written before this field existed
+    // would otherwise deserialize as `false` and start in edit mode.
+    #[serde(default = "lock_editing_by_default")]
     pub lock_editing: bool,
     #[serde(default = "enable_shortcuts_by_default")]
     pub enable_shortcuts: bool,
-    #[serde(default = "font_family_by_default")]
-    pub font_family: String,
     #[serde(default)]
     pub collapsed_menus: Vec<CollapsedMenu>,
 }
@@ -49,9 +46,8 @@ impl Default for DesktopSettings {
             display_panels: true,
             debug_enabled: false,
             // Default to browsing: edit mode is a deliberate, explicit toggle.
-            lock_editing: true,
+            lock_editing: lock_editing_by_default(),
             enable_shortcuts: true,
-            font_family: DEFAULT_FONT_FAMILY.into(),
             collapsed_menus: Vec::new(),
         }
     }
@@ -97,8 +93,8 @@ fn enable_shortcuts_by_default() -> bool {
     true
 }
 
-fn font_family_by_default() -> String {
-    DEFAULT_FONT_FAMILY.into()
+fn lock_editing_by_default() -> bool {
+    true
 }
 
 pub fn validate_listener_port(port: u16) -> Result<(), String> {

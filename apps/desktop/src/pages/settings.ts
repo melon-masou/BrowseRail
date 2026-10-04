@@ -4,7 +4,6 @@ import { showWindowWhenReady } from "../window-ready";
 
 export async function initializeListenerSettings(
   root: HTMLElement,
-  applyFontFamily: (fontFamily: string) => void,
 ): Promise<void> {
   document.body.dataset.view = "settings";
   root.className = "listener-settings";
@@ -50,21 +49,6 @@ export async function initializeListenerSettings(
   debugLabel.append(debugCheckbox, debugText);
   debugSection.append(debugLabel);
 
-  const fontSection = document.createElement("div");
-  fontSection.className = "settings-section";
-
-  const fontLabel = document.createElement("label");
-  fontLabel.className = "settings-label";
-  fontLabel.htmlFor = "settings-font-input";
-  fontLabel.textContent = t("settings.fontFamily");
-
-  const fontSelect = document.createElement("select");
-  fontSelect.id = "settings-font-input";
-  fontSelect.className = "settings-language-select";
-  fontSelect.style.width = "100%";
-
-  fontSection.append(fontLabel, fontSelect);
-
   const langSection = document.createElement("div");
   langSection.className = "settings-section";
 
@@ -93,16 +77,14 @@ export async function initializeListenerSettings(
   const statusCard = document.createElement("div");
   statusCard.className = "settings-status-card";
 
-  root.append(portSection, debugSection, fontSection, langSection, statusCard);
+  root.append(portSection, debugSection, langSection, statusCard);
 
   let currentState: ListenerState | null = null;
   let isSubmitting = false;
-  let fontOptionsPromise: Promise<string[]> | null = null;
 
   onLanguageChange(() => {
     portLabel.textContent = t("settings.listenPort");
     applyBtn.textContent = t("settings.apply");
-    fontLabel.textContent = t("settings.fontFamily");
     debugText.textContent = t("settings.debug");
     langLabel.textContent = t("language.label");
     for (const opt of langSelect.options) {
@@ -115,50 +97,12 @@ export async function initializeListenerSettings(
     }
   });
 
-  function renderFontOptions(fonts: string[], selectedFont: string): void {
-    fontSelect.replaceChildren();
-    for (const font of fonts) {
-      const option = document.createElement("option");
-      option.value = font;
-      option.textContent = font;
-      if (font === selectedFont) {
-        option.selected = true;
-      }
-      fontSelect.append(option);
-    }
-  }
-
-  function syncFontSelection(fontFamily: string): void {
-    if (![...fontSelect.options].some((option) => option.value === fontFamily)) {
-      const option = document.createElement("option");
-      option.value = fontFamily;
-      option.textContent = fontFamily;
-      fontSelect.append(option);
-    }
-    fontSelect.value = fontFamily;
-  }
-
-  function loadFontOptions(): Promise<string[]> {
-    fontOptionsPromise ??= invoke<string[]>("installed_fonts")
-      .catch((error) => {
-        fontOptionsPromise = null;
-        throw error;
-      });
-    return fontOptionsPromise;
-  }
-
-  void loadFontOptions()
-    .then((fonts) => renderFontOptions(fonts, currentState?.fontFamily ?? fontSelect.value))
-    .catch(() => undefined);
-
   function renderStatus(state: ListenerState): void {
     currentState = state;
     if (!portInput.matches(":focus")) {
       portInput.value = String(state.port);
     }
     debugCheckbox.checked = Boolean(state.debugEnabled);
-    applyFontFamily(state.fontFamily);
-    syncFontSelection(state.fontFamily);
 
     statusCard.replaceChildren();
 
@@ -312,31 +256,6 @@ export async function initializeListenerSettings(
     }
   }
 
-  fontSelect.addEventListener("focus", () => {
-    void loadFontOptions()
-      .then((fonts) => renderFontOptions(fonts, currentState?.fontFamily ?? fontSelect.value))
-      .catch(() => undefined);
-  });
-
-  fontSelect.addEventListener("change", () => {
-    const fontFamily = fontSelect.value;
-    if (!fontFamily) return;
-    isSubmitting = true;
-    void invoke<ListenerState>("set_font_family", { fontFamily })
-      .then(renderStatus)
-      .catch((error) => {
-        if (currentState) {
-          renderStatus({
-            ...currentState,
-            error: String(error),
-          });
-        }
-      })
-      .finally(() => {
-        isSubmitting = false;
-      });
-  });
-
   debugCheckbox.addEventListener("change", () => {
     const enabled = debugCheckbox.checked;
     void invoke<ListenerState>("set_debug_enabled", { enabled })
@@ -368,6 +287,5 @@ interface ListenerState {
   listening: boolean;
   port: number;
   debugEnabled: boolean;
-  fontFamily: string;
   extensions: ConnectedExtension[];
 }

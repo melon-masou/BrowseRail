@@ -18,15 +18,18 @@ export const browserActions = {
   probeDesktop: probeDesktopConnection,
   resetMenuPosition: (menuUid: string) =>
     browser.runtime.sendMessage({ type: "resetMenuLayout", menuUid }),
-  openShortcutSettings(): Promise<browser.Tabs.Tab> {
+  async openShortcutSettings(): Promise<void> {
     const kind = browserKind();
-    return browser.tabs.create({
-      url:
-        kind === "firefox"
-          ? "about:addons"
-          : kind === "edge"
-            ? "edge://extensions/shortcuts"
-            : "chrome://extensions/shortcuts",
+    if (kind === "firefox") {
+      // Firefox blocks privileged about: URLs in tabs.create; use its dedicated API.
+      const commands = browser.commands as typeof browser.commands & {
+        openShortcutSettings(): Promise<void>;
+      };
+      await commands.openShortcutSettings();
+      return;
+    }
+    await browser.tabs.create({
+      url: kind === "edge" ? "edge://extensions/shortcuts" : "chrome://extensions/shortcuts",
     });
   },
   onDesktopState(listener: (state: string) => void): () => void {

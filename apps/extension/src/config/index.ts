@@ -1,4 +1,4 @@
-import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
 import type {
   MenuAnchor,
   MenuFontSize,
@@ -103,7 +103,7 @@ export function normalizeFontSize(value: unknown): number {
 }
 
 export function createMenu(uid: string = crypto.randomUUID()): StoredMenu {
-  return { enabled: true, items: [], uid };
+  return { color: DEFAULT_MENU_COLOR, enabled: true, items: [], uid };
 }
 
 const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
@@ -404,7 +404,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
   const uid = typeof value.uid === "string" && value.uid
     ? value.uid
     : crypto.randomUUID();
-  const color = typeof value.color === "string" && value.color ? value.color : undefined;
+  const color = typeof value.color === "string" && value.color ? value.color : DEFAULT_MENU_COLOR;
   const dockColor = typeof value.dockColor === "string" && value.dockColor ? value.dockColor : undefined;
   const tabMode: TabMode | undefined =
     value.tabMode === "newTab" || value.tabMode === "replace"
@@ -425,7 +425,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     return true;
   });
   return {
-    ...(color !== undefined ? { color } : {}),
+    color,
     ...(dockColor !== undefined ? { dockColor } : {}),
     enabled, items,
     ...(tabMode !== undefined ? { tabMode } : {}),

@@ -12,10 +12,6 @@ const root = requiredElement("app");
 
 const query = new URLSearchParams(location.search);
 
-function applyFontFamily(fontFamily: string): void {
-  document.documentElement.style.setProperty("--desktop-font-family", fontFamily);
-}
-
 // Keep the Rust-rendered tray/menu and window titles in this webview's language.
 void invoke("set_ui_language", { language: getLanguage() }).catch(() => {});
 
@@ -30,7 +26,7 @@ document.addEventListener("contextmenu", (event) => {
 if (query.get("view") === "host") {
   document.body.replaceChildren();
 } else if (query.get("view") === "settings") {
-  void initializeListenerSettings(root, applyFontFamily);
+  void initializeListenerSettings(root);
 } else if (query.get("view") === "barSettings") {
   initializeBarSettings(root, query);
 } else if (query.get("view") === "temporaryConfirm") {
@@ -38,7 +34,7 @@ if (query.get("view") === "host") {
 } else if (query.get("surface") === "popup") {
   void initializePopupSurface();
 } else {
-  void initializeSurface(root, query, applyFontFamily);
+  void initializeSurface(root, query);
 }
 
 function requiredElement(id: string): HTMLElement {

@@ -19,6 +19,8 @@
 /** Configured colors include alpha as #rrggbbaa, shared by items and menu surfaces. */
 export type MenuColor = string;
 export const DEFAULT_DOCK_COLOR = "#161b24e0";
+/** Every menu has a default color; menus stored without one are filled with this. */
+export const DEFAULT_MENU_COLOR = "#3a465cff";
 
 export type MenuOrientation = "row" | "column";
 export type BarAutoHide = "off" | "start" | "end";
@@ -129,6 +131,7 @@ export interface MenuView {
   orientation: MenuOrientation;
   autoHide?: BarAutoHide;
   autoHidePadding?: number;
+  fontFamily?: string;
   color?: MenuColor;
   expandDirection?: ExpandDirection;
   expandAlignment?: ExpandAlignment;

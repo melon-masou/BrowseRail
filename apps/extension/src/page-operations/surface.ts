@@ -1,14 +1,13 @@
 import { t } from "@browserail/i18n";
-import { mountBar, barSurfaceDimensions, barToggleOffset, type MenuActions, type PopupSession } from "@browserail/menu-ui";
-import type { BrowserMenu, MenuRequest, TemporaryConfirmationResult } from "./messages";
+import { mountBar, resolveFontFamily, barSurfaceDimensions, barToggleOffset, type MenuActions, type PopupSession } from "@browserail/menu-ui";
+import type { BrowserMenu, MenuRequest, MenuCommandResult } from "./messages";
 import { openBrowserPopup } from "./popup";
 import { mountBrowserCustomization } from "./customization";
 import { placementPoint } from "./placement";
 
 export type MenuCommand = MenuRequest;
-const FONT = 'Segoe UI, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
 
-export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, send: (command: MenuCommand) => Promise<TemporaryConfirmationResult | undefined>) {
+export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, send: (command: MenuCommand) => Promise<MenuCommandResult | undefined>) {
   const doc = container.ownerDocument;
   const viewport = doc.defaultView!;
   const lifetime = new AbortController();
@@ -18,6 +17,8 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
   let state = initial;
   let popup: PopupSession | undefined;
   let editor: ReturnType<typeof mountBrowserCustomization> | undefined;
+  let editToken: string | undefined;
+  let startingEdit = false;
   const report = (action: Promise<void>): void => {
     void action.catch(error => { if (!lifetime.signal.aborted) { wrapper.title = String(error); root.dataset.error = ""; } });
   };
@@ -34,31 +35,45 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
       if (note !== null && !lifetime.signal.aborted) await send({ type: "temporarySave", menuUid: state.view.uid, uid, note: note.trim() });
     },
   };
+  function releaseEdit(): void {
+    const token = editToken; editToken = undefined;
+    if (token) report(send({ type: "editEnd", menuUid: state.view.uid, token }).then(() => {}));
+  }
   async function customize(): Promise<void> {
-    if (state.editingLocked || state.collapsed || editor) return;
-    await closePopup();
-    if (lifetime.signal.aborted || state.editingLocked || editor) return;
-    renderer?.destroy(); renderer = undefined;
-    editor = mountBrowserCustomization(wrapper, root, barState(), state.placement,
-      async (placement, spacing, settings) => {
-        await send({ type: "layout", settings, menuUid: state.view.uid, placement, spacing });
-        if (lifetime.signal.aborted) return;
-        state = { ...state, placement, view: { ...state.view, ...settings, ...spacing } };
-        finishCustomization();
-      }, finishCustomization,
-    );
+    if (state.editingLocked || state.collapsed || editor || startingEdit) return;
+    startingEdit = true;
+    try {
+      await closePopup();
+      if (lifetime.signal.aborted || state.editingLocked) return;
+      const token = crypto.randomUUID();
+      const accepted = await send({ type: "editBegin", menuUid: state.view.uid, token });
+      if (accepted !== true) { wrapper.title = t("bar.editBusy"); return; }
+      editToken = token;
+      if (lifetime.signal.aborted || state.editingLocked) { releaseEdit(); return; }
+      renderer?.destroy(); renderer = undefined;
+      editor = mountBrowserCustomization(wrapper, root, barState(), state.placement,
+        async (placement, spacing, settings, applyToAll) => {
+          await send({ type: "layout", token, applyToAll, settings, menuUid: state.view.uid, placement, spacing });
+          if (lifetime.signal.aborted) return;
+          state = { ...state, placement, view: { ...state.view, ...settings, ...spacing } };
+          finishCustomization();
+        }, finishCustomization,
+      );
+      wrapper.removeAttribute("title");
+    } catch (error) { releaseEdit(); throw error; }
+    finally { startingEdit = false; }
   }
   function finishCustomization(): void {
-    editor?.destroy(); editor = undefined;
+    editor?.destroy(); editor = undefined; releaseEdit();
     root.removeAttribute("title"); delete root.dataset.error;
     layout(); mountRenderer();
   }
-  const barState = () => ({ menu: state.view, itemSize: { width: state.placement.itemWidth, height: state.placement.itemHeight }, collapsed: state.collapsed, editingLocked: state.editingLocked, fontFamily: FONT });
+  const barState = () => ({ menu: state.view, itemSize: { width: state.placement.itemWidth, height: state.placement.itemHeight }, collapsed: state.collapsed, editingLocked: state.editingLocked, fontFamily: resolveFontFamily(state.view.fontFamily) });
   let renderer: ReturnType<typeof mountBar> | undefined;
   function mountRenderer(): void {
     renderer = mountBar(root, barState(), {
       ...actions, requestCustomize: customize,
-      waitForFonts: () => doc.fonts.load(`13px ${FONT}`),
+      waitForFonts: () => doc.fonts.load(`13px ${resolveFontFamily(state.view.fontFamily)}`),
       async openPopup(request, pointerInside) {
         await closePopup();
         const opened = await openBrowserPopup(container, request, actions, lifetime.signal, pointerInside);
@@ -102,7 +117,7 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
       layout(); await renderer?.update(barState());
     },
     destroy(): void {
-      lifetime.abort(); void closePopup(); editor?.destroy(); renderer?.destroy(); wrapper.remove();
+      lifetime.abort(); releaseEdit(); void closePopup(); editor?.destroy(); renderer?.destroy(); wrapper.remove();
     },
   };
 }

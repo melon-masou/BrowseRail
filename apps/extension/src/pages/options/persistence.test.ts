@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { defaultBarSettings, defaultNativeBarSettings } from "@browserail/protocol";
+import { DEFAULT_MENU_COLOR, defaultBarSettings, defaultNativeBarSettings } from "@browserail/protocol";
 
 const local = vi.hoisted(() => ({ values: {} as Record<string, unknown> }));
 vi.mock("webextension-polyfill", () => ({ default: {
@@ -12,7 +12,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
   },
   runtime: { sendMessage: async () => {} },
 } }));
-import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement } from "../../config";
+import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu } from "../../config";
 import { createOptionsState, settingsFromConfig } from "./state";
 import { createBookmarkLibrary } from "./bookmark-library";
 import { createPersistence } from "./persistence";
@@ -69,12 +69,16 @@ it("stages both modes until Save, then consumes the import so future saves prese
   const before = await loadBarConfigurations();
   data.barConfigurations!.browser.bar!.popupFontSize = 24;
   data.barConfigurations!.native.bar!.buttonFontSize = 21;
+  data.barConfigurations!.browser.bar!.fontFamily = "Arial";
+  data.barConfigurations!.native.bar!.fontFamily = "Microsoft YaHei";
   await persistence.importSettings(JSON.stringify(data), true);
   expect(await loadBarConfigurations()).toEqual(before);
   expect(state.dirty.settings).toBe(true);
   await persistence.saveSettings();
   expect((await loadBarConfigurations()).browser.bar!.popupFontSize).toBe(24);
   expect((await loadBarConfigurations()).native.bar!.buttonFontSize).toBe(21);
+  expect((await loadBarConfigurations()).browser.bar!.fontFamily).toBe("Arial");
+  expect((await loadBarConfigurations()).native.bar!.fontFamily).toBe("Microsoft YaHei");
   expect(state.settings.barConfigurations).toBeUndefined();
   const bars = await loadBarConfigurations();
   const browser = bars.browser.bar!;
@@ -94,4 +98,9 @@ it("uses new defaults instead of migrating legacy bar appearance and positions",
   expect(config.panel.menus[0]).toMatchObject({ color: "#336699aa", enabled: false });
   expect(resolveBarConfiguration(bars, "native", "bar")).toMatchObject(defaultNativeBarSettings());
   expect(resolveBarConfiguration(bars, "browser", "bar")).toMatchObject(defaultBarSettings());
+});
+
+it("fills the default color into stored menus that have none", () => {
+  expect(normalizeMenu({ uid: "stored", items: [] })?.color).toBe(DEFAULT_MENU_COLOR);
+  expect(normalizeMenu({ uid: "colored", color: "#123456ff", items: [] })?.color).toBe("#123456ff");
 });

@@ -97,3 +97,11 @@ it("rejects missing targets without altering drafts and stops notifications afte
   state.renameBookmark("static", "static", "Second");
   expect(names).toEqual(["First"]);
 });
+
+it("resets a cleared menu color to the default instead of leaving the menu uncolored", async () => {
+  const { DEFAULT_MENU_COLOR } = await import("@browserail/protocol");
+  const state = createState();
+  state.setColor({ kind: "menu", uid: "menu", field: "color" }, "#123456ff");
+  state.setColor({ kind: "menu", uid: "menu", field: "color" }, undefined);
+  expect(state.settings.menus[0]!.color).toBe(DEFAULT_MENU_COLOR);
+});

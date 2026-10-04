@@ -1,5 +1,5 @@
 import { t } from "@browserail/i18n";
-import { DEFAULT_DOCK_COLOR, type MenuAnchor } from "@browserail/protocol";
+import { DEFAULT_DOCK_COLOR, type MenuAnchor, type MenuOrientation } from "@browserail/protocol";
 import { applyBarTheme, menuButton } from "../appearance";
 import { applyBarLayout } from "../layout";
 import type { BarState } from "../types";
@@ -37,6 +37,32 @@ export function controlButton(doc: Document, content: string | Element): HTMLBut
     button.append(content);
   }
   return button;
+}
+
+export function createOrientationControl(doc: Document, initial: MenuOrientation, changed: (orientation: MenuOrientation) => void) {
+  let orientation = initial;
+  const button = controlButton(doc, "");
+  function render(): void {
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("fill", "currentColor");
+    for (let i = 0; i < 3; i++) {
+      const rect = doc.createElementNS(svg.namespaceURI, "rect");
+      const row = orientation === "row";
+      rect.setAttribute("x", String(row ? 2 + i * 4.5 : 2));
+      rect.setAttribute("y", String(row ? 2 : 2 + i * 4.5));
+      rect.setAttribute("width", row ? "3" : "12"); rect.setAttribute("height", row ? "12" : "3");
+      rect.setAttribute("rx", "1"); svg.append(rect);
+    }
+    button.replaceChildren(svg);
+    button.title = `${t("menuSettings.direction")}: ${t(orientation === "row" ? "menuSettings.row" : "menuSettings.column")}`;
+    button.ariaLabel = button.title;
+  }
+  button.addEventListener("click", () => { changed(orientation === "row" ? "column" : "row"); });
+  render();
+  return {
+    button,
+    update(value: MenuOrientation): void { if (orientation !== value) { orientation = value; render(); } },
+  };
 }
 
 export function createAnchorIcon(doc: Document, anchor: MenuAnchor): SVGSVGElement {

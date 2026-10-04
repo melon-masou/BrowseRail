@@ -1,21 +1,22 @@
 import { t } from "@browserail/i18n";
 import {
-  applyBarTheme, mountBarSettings, createSettingsIcon, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon,
-  createCancelIcon, createSaveIcon, nextAnchor, anchorLabel, type BarState,
+  applyBarTheme, resolveFontFamily, mountBarSettings, placeBarSettings, createSettingsIcon, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon,
+  createCancelIcon, createSaveIcon, createOrientationControl, nextAnchor, anchorLabel, type BarState,
 } from "@browserail/menu-ui";
-import { barSettingsFromView, type BarSettings, type MenuSpacing } from "@browserail/protocol";
+import { barSettingsFromView, type BarSettings, type BarSettingsGroup, type MenuSpacing } from "@browserail/protocol";
 import type { BrowserMenuPlacement } from "../config";
 import { placementAtPoint, placementPoint } from "./placement";
 
 export function mountBrowserCustomization(
   wrapper: HTMLElement, root: HTMLElement, state: BarState, placement: BrowserMenuPlacement,
-  save: (placement: BrowserMenuPlacement, spacing: MenuSpacing, settings: BarSettings) => Promise<void>, cancel: () => void,
+  save: (placement: BrowserMenuPlacement, spacing: MenuSpacing, settings: BarSettings, applyToAll: BarSettingsGroup[]) => Promise<void>, cancel: () => void,
 ) {
   const doc = root.ownerDocument;
   const viewport = doc.defaultView!;
   const lifetime = new AbortController();
   const options = { signal: lifetime.signal };
   let settings: BarSettings = barSettingsFromView(state.menu);
+  let applyToAll: BarSettingsGroup[] = [];
   let anchor = placement.anchor;
   let size = barDimensions(state.menu, state.itemSize);
   const initialSurface = barSurfaceDimensions(state.menu, state.itemSize);
@@ -34,9 +35,12 @@ export function mountBrowserCustomization(
   spacingButton.title = t("customize.adjustSpacing");
   spacingButton.setAttribute("aria-pressed", "false");
   const settingsButton = controlButton(doc, createSettingsIcon(doc)); settingsButton.title = t("bar.settings");
+  const orientationControl = createOrientationControl(doc, settings.orientation, orientation => {
+    stopGesture?.(); settings = { ...settings, orientation }; spacingEditor.setSettings(settings);
+  });
   const toolsRow = doc.createElement("div"); toolsRow.className = "customize-toolbar-row";
   const actionsRow = doc.createElement("div"); actionsRow.className = "customize-toolbar-row";
-  toolsRow.append(anchorButton, spacingButton, settingsButton);
+  toolsRow.append(anchorButton, orientationControl.button, spacingButton, settingsButton);
   actionsRow.append(cancelButton, saveButton);
   toolbar.append(toolsRow, actionsRow);
   content.append(rail, toolbar);
@@ -58,16 +62,18 @@ export function mountBrowserCustomization(
   header.append(title, close);
   const settingsForm = doc.createElement("div");
   settingsPopup.append(header, settingsForm); wrapper.append(settingsPopup);
-  const settingsController = mountBarSettings(settingsForm, settings, next => {
-    stopGesture?.(); settings = next;
+  const settingsController = mountBarSettings(settingsForm, settings, (next, groups) => {
+    stopGesture?.(); settings = next; applyToAll = groups;
     spacingEditor.setSettings(next);
   }, spacingEditor.itemSize.height);
   settingsPopup.classList.add("bar-settings");
   close.addEventListener("click", () => { settingsPopup.hidden = true; }, options);
   settingsButton.addEventListener("click", () => { settingsPopup.hidden = !settingsPopup.hidden; layout(); }, options);
   function layout(): void {
+    settingsController.updateOrientation(spacingEditor.menu.orientation);
+    orientationControl.update(spacingEditor.menu.orientation);
     settingsController.updateItemHeight(spacingEditor.itemSize.height);
-    const theme = applyBarTheme(root, { ...state, menu: spacingEditor.menu, itemSize: spacingEditor.itemSize });
+    const theme = applyBarTheme(root, { ...state, menu: spacingEditor.menu, itemSize: spacingEditor.itemSize, fontFamily: resolveFontFamily(spacingEditor.menu.fontFamily) });
     rail.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
     const frame = barFrameInsets(spacingEditor.menu);
     const surfaceWidth = size.width + 2 * frame.x;
@@ -89,9 +95,11 @@ export function mountBrowserCustomization(
     wrapper.style.top = `${point.y - (above ? toolbarSpace : 0)}px`;
     anchorButton.title = t("customize.anchor", { anchor: anchorLabel(anchor) });
     if (!settingsPopup.hidden) {
-      const rect = settingsButton.getBoundingClientRect();
-      settingsPopup.style.left = `${Math.max(8, Math.min(rect.left, viewport.innerWidth - settingsPopup.offsetWidth - 8))}px`;
-      settingsPopup.style.top = `${Math.max(8, Math.min(rect.bottom + 4, viewport.innerHeight - settingsPopup.offsetHeight - 8))}px`;
+      const position = placeBarSettings(root.getBoundingClientRect(),
+        { width: settingsPopup.offsetWidth, height: settingsPopup.offsetHeight },
+        { left: 8, top: 8, right: viewport.innerWidth - 8, bottom: viewport.innerHeight - 8 }, spacingEditor.menu.orientation);
+      settingsPopup.style.left = `${position.x}px`;
+      settingsPopup.style.top = `${position.y}px`;
     }
 
   }
@@ -155,17 +163,17 @@ export function mountBrowserCustomization(
   saveButton.addEventListener("click", () => {
     if (saving) return;
     saving = true; stopGesture?.(); spacingEditor.stopGesture(); rail.inert = true;
-    for (const button of [anchorButton, spacingButton, settingsButton, cancelButton, saveButton]) button.disabled = true;
+    for (const button of [anchorButton, orientationControl.button, spacingButton, settingsButton, cancelButton, saveButton]) button.disabled = true;
     const frame = barFrameInsets(spacingEditor.menu);
     const draft = placementAtPoint({ ...placement, anchor,
       itemWidth: spacingEditor.itemSize.width,
       itemHeight: spacingEditor.itemSize.height,
     }, point.x, point.y, size.width + 2 * frame.x, size.height + 2 * frame.y, viewport.innerWidth, viewport.innerHeight);
     settingsPopup.hidden = true;
-    void save(draft, spacingEditor.spacing, settings).catch(error => {
+    void save(draft, spacingEditor.spacing, settings, applyToAll).catch(error => {
       if (lifetime.signal.aborted) return;
       root.dataset.error = ""; root.title = String(error); saving = false; rail.inert = false;
-      for (const button of [anchorButton, spacingButton, settingsButton, cancelButton, saveButton]) button.disabled = false;
+      for (const button of [anchorButton, orientationControl.button, spacingButton, settingsButton, cancelButton, saveButton]) button.disabled = false;
     });
   }, options);
   rail.addEventListener("contextmenu", event => event.preventDefault(), options);

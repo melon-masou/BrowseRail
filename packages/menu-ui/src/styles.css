@@ -4,7 +4,7 @@
 
 .browserail-menu-ui {
   color-scheme: dark;
-  --menu-font-family: Segoe UI, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --menu-font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
   font-family: var(--menu-font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

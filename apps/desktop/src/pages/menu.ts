@@ -1,9 +1,9 @@
-import { barSettingsFromView, isNativeBarSettings, type NativeBarSettings, type MenuPlacement, type MenuView } from "@browserail/protocol";
+import { barSettingsFromView, isNativeBarSettings, isBarSettingsGroups, type BarSettingsGroup, type NativeBarSettings, type MenuPlacement, type MenuView } from "@browserail/protocol";
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { createSettingsIcon, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller, type Rect } from "@browserail/menu-ui";
+import { createSettingsIcon, resolveFontFamily, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller, type Rect } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -14,7 +14,6 @@ type SurfaceMenu = MenuView & { placement: MenuPlacement; attachmentMode: Native
 export async function initializeSurface(
   root: HTMLElement,
   query: URLSearchParams,
-  applyFontFamily: (fontFamily: string) => void,
 ): Promise<void> {
   function requiredQuery(name: string): string {
     const value = query.get(name);
@@ -37,8 +36,6 @@ export async function initializeSurface(
   const initial = isFree
     ? await invoke<SurfaceState>("free_surface_state", { instanceUid, menuUid })
     : await invoke<SurfaceState>("surface_state", { instanceUid, menuUid, surface: "menu", windowUid });
-  let fontFamily = initial.fontFamily;
-  applyFontFamily(fontFamily);
   document.body.dataset.surface = "menu";
   if (isFree) document.body.dataset.free = "1";
   let customizing = false;
@@ -66,7 +63,7 @@ export async function initializeSurface(
   function stateFor(menu: SurfaceMenu): BarState {
     return {
       menu, itemSize: { width: menu.placement.itemWidth ?? 84, height: menu.placement.itemHeight ?? 36 },
-      collapsed: menuCollapsed, editingLocked, fontFamily,
+      collapsed: menuCollapsed, editingLocked, fontFamily: resolveFontFamily(menu.fontFamily),
     };
   }
   function computeMenuDimensions(menu: SurfaceMenu) { return barDimensions(menu, stateFor(menu).itemSize); }
@@ -113,11 +110,6 @@ export async function initializeSurface(
     editingLocked = payload;
     if (payload && customizing && cancelActiveCustomization) report(cancelActiveCustomization());
     else if (currentMenu && !customizing) report(renderSurface(currentMenu));
-  }));
-  disposers.push(await listen<string>("font-family-changed", ({ payload }) => {
-    fontFamily = payload;
-    applyFontFamily(payload);
-    if (currentMenu && !customizing) report(renderSurface(currentMenu));
   }));
   window.addEventListener("pagehide", () => {
     bar?.destroy();
@@ -170,53 +162,43 @@ export async function initializeSurface(
     });
   }
 
+  let customizationStarting = false;
   async function enterCustomization(): Promise<void> {
     const menu = currentMenu;
-    if (!menu || menuCollapsed) return;
-    if (customizing) return;
-    // If a popup is open, close it and wait for size and position to restore completely before customizing.
-    await closePopup();
-    const menuBar = root.querySelector<HTMLElement>(".menu-bar");
-    if (!menuBar) return;
-
-    const fromAnchor = elementOrigin(menuBar);
-    const menuHeight = menuBar.getBoundingClientRect().height;
-    customizationStartPosition = await windowOrigin();
-    customizing = true;
-    const menuToCustomize = currentMenu ?? menu;
-    const toolbar = renderCustomize(menuToCustomize);
-    const toolbarSpace = customizationToolbarSpace(toolbar, menuToCustomize);
-    await invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
-      anchorOffsetY: fromAnchor.y,
-      instanceUid,
-      menuHeight,
-      menuUid,
-      toolbarSpace,
-      windowUid,
-    })
-      .then(async (info) => {
-        if (info?.toolbarPosition === "top") {
-          renderCustomize(menuToCustomize, "top");
-        }
-        const rail = root.querySelector<HTMLElement>(".customize-rail");
-        const content = root.querySelector<HTMLElement>(".customize-content");
-        if (!rail || !content) return;
-        const contentRect = content.getBoundingClientRect();
-        await resizeAndPosition(
-          fromAnchor,
-          elementOrigin(rail),
-          contentRect.width,
-          contentRect.height,
-        );
-        delete root.dataset.error;
-        root.removeAttribute("title");
-      })
-      .catch(async (err) => {
-        customizing = false;
-        customizationStartPosition = null;
-        await renderSurface(menuToCustomize);
-        showSurfaceError(err);
+    if (!menu || menuCollapsed || customizing || customizationStarting) return;
+    customizationStarting = true;
+    let claimed = false;
+    try {
+      await closePopup();
+      const menuBar = root.querySelector<HTMLElement>(".menu-bar");
+      if (!menuBar) return;
+      const fromAnchor = elementOrigin(menuBar);
+      const menuHeight = menuBar.getBoundingClientRect().height;
+      claimed = await invoke<boolean>("claim_menu_customization", { instanceUid });
+      if (!claimed) { root.title = t("bar.editBusy"); return; }
+      customizationStartPosition = await windowOrigin();
+      customizing = true;
+      const menuToCustomize = currentMenu ?? menu;
+      const toolbar = renderCustomize(menuToCustomize);
+      const info = await invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
+        anchorOffsetY: fromAnchor.y, instanceUid, menuHeight, menuUid,
+        toolbarSpace: customizationToolbarSpace(toolbar, menuToCustomize), windowUid,
       });
+      if (info.toolbarPosition === "top") renderCustomize(menuToCustomize, "top");
+      const rail = root.querySelector<HTMLElement>(".customize-rail");
+      const content = root.querySelector<HTMLElement>(".customize-content");
+      if (!rail || !content) throw new Error("Bar editor is unavailable");
+      const contentRect = content.getBoundingClientRect();
+      await resizeAndPosition(fromAnchor, elementOrigin(rail), contentRect.width, contentRect.height);
+      delete root.dataset.error; root.removeAttribute("title");
+    } catch (error) {
+      if (claimed) {
+        teardownCustomize?.(); customizing = false; customizationStartPosition = null;
+        await invoke("cancel_menu_customization", { instanceUid, menuUid, windowUid });
+        if (currentMenu) await renderSurface(currentMenu);
+      }
+      showSurfaceError(error);
+    } finally { customizationStarting = false; }
   }
 
   function customizationToolbarSpace(toolbar: HTMLElement, menu: SurfaceMenu): number {
@@ -302,25 +284,29 @@ export async function initializeSurface(
       spacingEditor.setEnabled(!spacingEditor.enabled);
       spacingButton.setAttribute("aria-pressed", String(spacingEditor.enabled));
     });
+    const orientationControl = createOrientationControl(document, settings.orientation, orientation => {
+      stopActiveResize?.(); settings = { ...settings, orientation }; spacingEditor.setSettings(settings);
+    });
 
     const settingsButton = controlButton(document, createSettingsIcon(document));
     settingsButton.title = t("bar.settings");
     settingsButton.disabled = true;
     let settingsWindowLabel: string | undefined;
+    let applyToAll: BarSettingsGroup[] = [];
     settingsButton.addEventListener("click", () => {
-      report(invoke<string>("open_bar_settings", { instanceUid, settings, itemHeight: spacingEditor.itemSize.height, title: t("bar.settings") }).then(label => {
+      report(invoke<string>("open_bar_settings", { instanceUid, settings, applyToAll, itemHeight: spacingEditor.itemSize.height, title: t("bar.settings") }).then(label => {
         if (!customizeAlive) return;
         settingsWindowLabel = label;
         return emitTo(label, "bar-settings-item-height", spacingEditor.itemSize.height);
       }));
     });
     let unlistenSettings: (() => void) | undefined;
-    void listen<NativeBarSettings>("bar-settings-draft", ({ payload }) => {
-      if (!customizeAlive || saving || !isNativeBarSettings(payload)) return;
-      settings = payload;
+    void listen<{ settings: NativeBarSettings; applyToAll: BarSettingsGroup[] }>("bar-settings-draft", ({ payload }) => {
+      if (!customizeAlive || saving || !isNativeBarSettings(payload.settings) || !isBarSettingsGroups(payload.applyToAll)) return;
+      settings = payload.settings; applyToAll = payload.applyToAll;
       stopActiveResize?.();
       spacingEditor.setSettings(settings);
-    }).then(unlisten => { if (customizeAlive) { unlistenSettings = unlisten; settingsButton.disabled = false; } else unlisten(); });
+    }, { target: surfaceLabel }).then(unlisten => { if (customizeAlive) { unlistenSettings = unlisten; settingsButton.disabled = false; } else unlisten(); });
 
     // A free (detached) menu has no owner window to anchor against — hide that
     // control so the toolbar only shows actions that make sense off-window.
@@ -329,7 +315,7 @@ export async function initializeSurface(
     const actionsRow = document.createElement("div");
     actionsRow.className = "customize-toolbar-row";
     if (!isFree) toolsRow.append(anchorButton);
-    toolsRow.append(spacingButton, settingsButton);
+    toolsRow.append(orientationControl.button, spacingButton, settingsButton);
     actionsRow.append(cancelButton, saveButton);
     toolbar.append(toolsRow, actionsRow);
 
@@ -345,8 +331,12 @@ export async function initializeSurface(
     };
 
     function applyTargetSize(): void {
-      if (settingsWindowLabel) report(emitTo(settingsWindowLabel, "bar-settings-item-height", spacingEditor.itemSize.height));
-      const theme = applyBarTheme(root, { ...stateFor(menu), menu: spacingEditor.menu, itemSize: spacingEditor.itemSize });
+      orientationControl.update(spacingEditor.menu.orientation);
+      if (settingsWindowLabel) {
+        report(emitTo(settingsWindowLabel, "bar-settings-item-height", spacingEditor.itemSize.height));
+        report(emitTo(settingsWindowLabel, "bar-settings-orientation", spacingEditor.menu.orientation));
+      }
+      const theme = applyBarTheme(root, { ...stateFor(menu), menu: spacingEditor.menu, itemSize: spacingEditor.itemSize, fontFamily: resolveFontFamily(spacingEditor.menu.fontFamily) });
       railContainer.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
       const toolbarWidth = Math.ceil(toolbar.scrollWidth);
       const frame = barFrameInsets(spacingEditor.menu);
@@ -563,7 +553,7 @@ export async function initializeSurface(
       railContainer.inert = true;
       const spacing = spacingEditor.spacing;
       const itemSize = spacingEditor.itemSize;
-      const controls = [anchorButton, spacingButton, settingsButton, cancelButton, saveButton];
+      const controls = [anchorButton, orientationControl.button, spacingButton, settingsButton, cancelButton, saveButton];
       for (const button of controls) button.disabled = true;
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
       resizeFrame = undefined;
@@ -584,6 +574,7 @@ export async function initializeSurface(
           itemHeight: itemSize.height,
           spacing,
           settings,
+          applyToAll,
           instanceUid,
           menuUid,
           width: targetWidth,
@@ -616,7 +607,6 @@ interface SurfaceState {
   kind: "menu";
   menu?: SurfaceMenu;
   collapsed?: boolean;
-  fontFamily: string;
 }
 
 interface MenuStateEvent {

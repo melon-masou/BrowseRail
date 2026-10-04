@@ -1,15 +1,16 @@
 import browser, { type Runtime } from "webextension-polyfill";
-import { isBarSettings, isMenuSpacing, isUrlMatchingSet, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
+import { isBarSettings, isBarSettingsGroups, isMenuSpacing, isUrlMatchingSet, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
   defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBarLayout, toggleBrowserCollapsed, menuUrlPatterns,
   type BrowserMenuPlacement, type ExtensionConfig,
 } from "../config";
-import type { BrowserMenu, BrowserMenuState, MenuRequest, TemporaryConfirmationResult } from "../page-operations/messages";
+import type { BrowserMenu, BrowserMenuState, MenuRequest, MenuCommandResult } from "../page-operations/messages";
 import { executeMenuAction } from "./execute-menu-action";
 import { captureTemporaryUrl } from "./temporary";
 import { hasWebsitePermission } from "../browser/site-permissions";
 import { openTemporaryConfirmation, temporaryConfirmationContext } from "./temporary-confirmation";
 import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
+import { createBrowserEditSession } from "./browser-edit-session";
 
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
@@ -27,6 +28,7 @@ function requireTemporaryBookmark(menu: BrowserMenu, uid: unknown): asserts uid 
 }
 
 export function createBrowserMenus(changed: () => void | Promise<void>) {
+  const editSession = createBrowserEditSession();
   let snapshot: { config: ExtensionConfig; menus: BrowserMenu[]; active: boolean };
   let ready!: () => void;
   const firstSnapshot = new Promise<void>(resolve => { ready = resolve; });
@@ -57,7 +59,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
       if (type === "browserMenusSnapshot") return { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState;
       const result = await handle(tabId, (message as { command: MenuRequest }).command);
       await changed();
-      return { ...(result ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState };
+      return { ...(result !== undefined ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState };
     })().catch(error => ({ error: String(error) }));
   });
   async function saveTemporary(config: ExtensionConfig, uid: string, windowId: number, note: string): Promise<void> {
@@ -79,14 +81,21 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     await saveTemporary(config, context.uid, context.sourceWindowId, note);
     await requestBrowserMenuRefresh(context.sourceTabId);
   }
-  async function handle(tabId: number, request: MenuRequest): Promise<TemporaryConfirmationResult | undefined> {
+  async function handle(tabId: number, request: MenuRequest): Promise<MenuCommandResult | undefined> {
     if (!request || typeof request.menuUid !== "string") throw new Error("Invalid menu request");
+    if (request.type === "editEnd") {
+      if (typeof request.token !== "string") throw new Error("Invalid editing session");
+      await editSession.end(tabId, request.token); return;
+    }
     const [mode, enabled, config, tab, menus] = await Promise.all([loadDisplayMode(), loadWidgetEnabled(), loadConfig(), browser.tabs.get(tabId), forTab(tabId)]);
     const menu = menus.find(menu => menu.view.uid === request.menuUid);
     if (!menu || mode !== "browser" || !enabled || !menuVisibleForUrl(config, request.menuUid, tab.url) || !await hasWebsitePermission(tab.url)) throw new Error("Menu is unavailable");
     if (tab.windowId === undefined) throw new Error("Source window is unavailable");
     const entries = leaves(menu.view.items);
     switch (request.type) {
+      case "editBegin":
+        if (!await loadBrowserEditing() || typeof request.token !== "string" || !request.token) throw new Error("Menu editing is disabled");
+        return editSession.begin(tabId, request.menuUid, request.token);
       case "invoke":
         if (!entries.some(entry => (entry.kind === "bookmark" || entry.kind === "browserAction" || entry.kind === "menusToggle") && (entry.uid === request.actionUid || (entry.kind === "bookmark" && !entry.uid.startsWith("noop") && invertNavigationActionUid(entry.uid) === request.actionUid)))) throw new Error("Action is unavailable");
         await executeMenuAction(request.actionUid, request.menuUid, String(tab.windowId), changed);
@@ -100,7 +109,8 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
         if (!await loadBrowserEditing()) throw new Error("Menu editing is disabled");
         if (!isMenuSpacing(request.spacing)) throw new Error("Invalid menu spacing");
         if (!isBarSettings(request.settings)) throw new Error("Invalid bar settings");
-        await saveBarLayout(request.menuUid, "browser", { boundPosition: { anchor: request.placement.anchor, offsetX: request.placement.offsetX, offsetY: request.placement.offsetY }, itemWidth: request.placement.itemWidth, itemHeight: request.placement.itemHeight }, request.spacing, request.settings);
+        if (!isBarSettingsGroups(request.applyToAll) || !await editSession.owns(tabId, request.menuUid, request.token)) throw new Error("Bar editing is unavailable");
+        await saveBarLayout(request.menuUid, "browser", { boundPosition: { anchor: request.placement.anchor, offsetX: request.placement.offsetX, offsetY: request.placement.offsetY }, itemWidth: request.placement.itemWidth, itemHeight: request.placement.itemHeight }, request.spacing, request.settings, request.applyToAll);
         changed();
         break;
       case "temporaryConfirm":
@@ -128,6 +138,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
         };
       });
       snapshot = { config, menus, active }; ready();
+      if (!active || !editing) await editSession.clear();
     },
   };
 }

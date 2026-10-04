@@ -1,5 +1,6 @@
 import {
   DEFAULT_DOCK_COLOR,
+  DEFAULT_MENU_COLOR,
   type BrowserActionKind,
   type CustomBookmarkType,
   customBookmarkUid,
@@ -1372,7 +1373,9 @@ export function mountMenusTab(
         defaultColor:
           field === "dockColor"
             ? DEFAULT_DOCK_COLOR
-            : DEFAULT_COLOR,
+            : "items" in target
+              ? DEFAULT_MENU_COLOR
+              : DEFAULT_COLOR,
         title:
           field === "dockColor"
             ? t("menuSettings.dockColor")

@@ -1,4 +1,4 @@
-import type { MenuView, MenuSpacing, BarSettings } from "@browserail/protocol";
+import type { MenuView, MenuSpacing, BarSettings, BarSettingsGroup } from "@browserail/protocol";
 import type { BrowserMenuPlacement } from "../config";
 
 export interface BrowserMenu {
@@ -13,7 +13,9 @@ export type MenuRequest = { menuUid: string } & (
   | { type: "fold" }
   | { type: "temporaryConfirm"; uid: string }
   | { type: "temporarySave"; uid: string; note: string }
-  | { type: "layout"; settings: BarSettings; placement: BrowserMenuPlacement; spacing: MenuSpacing }
+  | { type: "editBegin" | "editEnd"; token: string }
+  | { type: "layout"; token: string; applyToAll: BarSettingsGroup[]; settings: BarSettings; placement: BrowserMenuPlacement; spacing: MenuSpacing }
 );
 export type TemporaryConfirmationResult = "opened" | "prompt";
-export interface MenuReply { error?: string; result?: TemporaryConfirmationResult; state?: BrowserMenuState }
+export type MenuCommandResult = TemporaryConfirmationResult | boolean;
+export interface MenuReply { error?: string; result?: MenuCommandResult; state?: BrowserMenuState }

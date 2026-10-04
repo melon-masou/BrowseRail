@@ -1,6 +1,7 @@
 import {
   customBookmarkReference,
   customBookmarkUid,
+  DEFAULT_MENU_COLOR,
   isCustomBookmarkType,
   type CustomBookmarkType,
   type BarConfigurations,
@@ -348,7 +349,9 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       publish(["menus"]);
     },
     setColor(id: ColorId, value: string | undefined): void {
-      setOptional(colorTarget(id), { [id.kind === "menu" ? id.field : "color"]: value });
+      // A menu always keeps a default color; clearing it resets to the default.
+      const next = id.kind === "menu" && id.field === "color" ? value ?? DEFAULT_MENU_COLOR : value;
+      setOptional(colorTarget(id), { [id.kind === "menu" ? id.field : "color"]: next });
       publish(["menus"]);
     },
     setCycleColors(id: Extract<ColorId, { kind: "item" }>, colors: readonly string[]): void {

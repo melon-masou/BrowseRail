@@ -6,6 +6,9 @@ import type { MenuRequest, MenuReply } from "../page-operations/messages";
 const mocks = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
   syncStorage: {} as Record<string, unknown>,
+  sessionStorage: {} as Record<string, unknown>,
+  tabRemoved: vi.fn(),
+  tabUpdated: vi.fn(),
   message: vi.fn<(listener: (message: unknown, sender: Runtime.MessageSender) => unknown) => void>(),
   popupSupported: true,
   popupUrls: {} as Record<number, string>,
@@ -24,14 +27,18 @@ vi.mock("webextension-polyfill", () => ({ default: {
   },
   get action() { return { setPopup: mocks.setPopup, openPopup: mocks.popupSupported ? mocks.openPopup : undefined }; },
   permissions: { contains: mocks.permission },
-  storage: { local: {
+  storage: { session: {
+    get: async (key: string) => ({ [key]: mocks.sessionStorage[key] }),
+    set: async (values: Record<string, unknown>) => { Object.assign(mocks.sessionStorage, values); },
+    remove: async (key: string) => { delete mocks.sessionStorage[key]; },
+  }, local: {
     get: async (key: string) => ({ [key]: mocks.storage[key] }),
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.storage, values); },
   }, sync: {
     get: async (key: string) => ({ [key]: mocks.syncStorage[key] }),
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.syncStorage, values); },
   } },
-  tabs: { get: mocks.getTab, query: mocks.queryTabs, reload: mocks.reload, sendMessage: mocks.sendToTab },
+  tabs: { get: mocks.getTab, query: mocks.queryTabs, reload: mocks.reload, sendMessage: mocks.sendToTab, onRemoved: { addListener: mocks.tabRemoved }, onUpdated: { addListener: mocks.tabUpdated } },
   bookmarks: { getTree: async () => [] },
 } }));
 
@@ -47,6 +54,7 @@ import {
 beforeEach(() => {
   mocks.storage = {};
   mocks.syncStorage = {};
+  mocks.sessionStorage = {}; mocks.tabRemoved.mockClear(); mocks.tabUpdated.mockClear();
   mocks.reload.mockClear(); mocks.sendToTab.mockClear();
   mocks.message.mockClear(); mocks.popupSupported = true; mocks.popupUrls = {};
   mocks.setPopup.mockClear(); mocks.openPopup.mockReset(); mocks.openPopup.mockResolvedValue();
@@ -55,10 +63,10 @@ beforeEach(() => {
   mocks.permission.mockResolvedValue(true);
 });
 
-function client() {
+function client(tabId = 17) {
   const posted: unknown[] = [];
   const sender: Runtime.MessageSender = {
-    id: "browserail", frameId: 0, tab: { id: 17, windowId: 42, active: true, highlighted: true, incognito: false, index: 0, pinned: false },
+    id: "browserail", frameId: 0, tab: { id: tabId, windowId: 42, active: true, highlighted: true, incognito: false, index: 0, pinned: false },
   };
   const listener = mocks.message.mock.calls.at(-1)![0];
   return {
@@ -285,17 +293,18 @@ it("rejects confirmation messages from webpages and rechecks permissions before 
 
 it("only saves browser layout while editing is enabled and keeps Native settings independent", async () => {
   const config = await fixture();
-  const native = { ...defaultNativeBarSettings(), gapRatio: 0.4, extraGaps: { "item-1": 0.7 }, placement: defaultMenuPlacement() };
+  const native = { ...defaultNativeBarSettings(), fontFamily: "Microsoft YaHei", gapRatio: 0.4, extraGaps: { "item-1": 0.7 }, placement: defaultMenuPlacement() };
   await saveBarLayout("source", "native", native.placement, native, native);
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   const placement = { anchor: "bottomRight" as const, offsetX: 30, offsetY: 40, itemWidth: 120, itemHeight: 50 };
-  const settings = { ...defaultBarSettings(), orientation: "row" as const, expandAlignment: "center" as const, buttonFontSize: 20 };
+  const settings = { ...defaultBarSettings(), fontFamily: "Arial", orientation: "row" as const, expandAlignment: "center" as const, buttonFontSize: 20 };
   const spacing = { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } };
-  const command = { type: "layout" as const, menuUid: "source", placement, settings, spacing };
+  const command = { type: "layout" as const, menuUid: "source", token: "edit", applyToAll: [], placement, settings, spacing };
   expect(await page.request(command)).toHaveProperty("error");
   expect((await loadBrowserPlacements()).source).toBeUndefined();
   await saveBrowserEditing(true);
+  await page.request({ type: "editBegin", menuUid: "source", token: "edit" });
   expect(await page.request(command)).not.toHaveProperty("error");
   expect((await loadBrowserPlacements()).source).toEqual(placement);
   const bars = await loadBarConfigurations();
@@ -317,4 +326,58 @@ it("does not offer empty menus or menus on websites whose permission was revoked
   expect(await service.forTab(17)).toHaveLength(1);
   mocks.permission.mockResolvedValue(false);
   expect(await service.forTab(17)).toEqual([]);
+});
+
+it("applies selected settings to all configured bars without changing geometry or the other mode", async () => {
+  const config = await fixture();
+  config.panel.menus.push({ uid: "target", items: [] });
+  await saveConfig(config);
+  const placement = { ...defaultMenuPlacement(), itemWidth: 140, itemHeight: 45 };
+  const spacing = { gapRatio: 0.6, extraGaps: { a: 0.3 } };
+  const target = { ...defaultBarSettings(), expandDirection: "left" as const, fontFamily: "Arial" };
+  await saveBarLayout("target", "browser", placement, spacing, target);
+  const native = { ...defaultNativeBarSettings(), fontFamily: "Segoe UI" };
+  await saveBarLayout("target", "native", placement, spacing, native);
+  const source = { ...defaultBarSettings(), orientation: "row" as const, autoHide: "end" as const, autoHidePadding: 20, expandAlignment: "center" as const };
+  await saveBarLayout("source", "browser", defaultMenuPlacement(), { gapRatio: 0, extraGaps: {} }, source, ["autoHide", "expand"]);
+  const bars = await loadBarConfigurations();
+  expect(bars.browser.target).toMatchObject({ ...spacing, placement, orientation: target.orientation, fontFamily: "Arial", autoHide: "end", autoHidePadding: 20, expandAlignment: "center" });
+  expect(bars.browser.target).not.toHaveProperty("expandDirection");
+  expect(bars.native.target).toMatchObject({ ...native, ...spacing, placement });
+});
+
+it("does not apply bulk on-top preferences to free bars", async () => {
+  const config = await fixture();
+  config.panel.menus.push({ uid: "free", items: [] }, { uid: "bound", items: [] });
+  await saveConfig(config);
+  const spacing = { gapRatio: 0, extraGaps: {} };
+  await saveBarLayout("free", "native", defaultMenuPlacement(), spacing, { ...defaultNativeBarSettings(), attachmentMode: "free", onTopMode: "alwaysOnTop" });
+  await saveBarLayout("bound", "native", defaultMenuPlacement(), spacing, { ...defaultNativeBarSettings(), onTopMode: "alwaysOnTop" });
+  await saveBarLayout("source", "native", defaultMenuPlacement(), spacing, defaultNativeBarSettings(), ["onTop"]);
+  const bars = await loadBarConfigurations();
+  expect(bars.native.free).toMatchObject({ attachmentMode: "free", onTopMode: "alwaysOnTop" });
+  expect(bars.native.bound).toMatchObject({ onTopMode: "aboveBrowser" });
+  await saveBarLayout("free", "native", defaultMenuPlacement(), spacing, { ...defaultNativeBarSettings(), attachmentMode: "free", onTopMode: "alwaysOnTop" }, ["onTop"]);
+  expect((await loadBarConfigurations()).native.bound).toMatchObject({ onTopMode: "aboveBrowser" });
+});
+
+it("rejects a second editor across tabs and releases ownership on cancel or navigation", async () => {
+  const config = await fixture();
+  await saveBrowserEditing(true);
+  const service = createBrowserMenus(() => {});
+  await service.publish(config, [view], {}, {}, true, true);
+  const a = client(17), b = client(18);
+  expect(await a.request({ type: "editBegin", menuUid: "source", token: "a" })).toMatchObject({ result: true });
+  expect(await b.request({ type: "editBegin", menuUid: "source", token: "b" })).toMatchObject({ result: false });
+  await b.request({ type: "editEnd", menuUid: "source", token: "a" });
+  expect(await b.request({ type: "editBegin", menuUid: "source", token: "b" })).toMatchObject({ result: false });
+  await a.request({ type: "editEnd", menuUid: "source", token: "a" });
+  expect(await b.request({ type: "editBegin", menuUid: "source", token: "b" })).toMatchObject({ result: true });
+  mocks.tabUpdated.mock.calls.at(-1)![0](18, { status: "loading" });
+  expect(await a.request({ type: "editBegin", menuUid: "source", token: "new-a" })).toMatchObject({ result: true });
+  mocks.tabRemoved.mock.calls.at(-1)![0](17);
+  expect(await b.request({ type: "editBegin", menuUid: "source", token: "new-b" })).toMatchObject({ result: true });
+  const restarted = createBrowserMenus(() => {});
+  await restarted.publish(config, [view], {}, {}, true, true);
+  expect(await client(19).request({ type: "editBegin", menuUid: "source", token: "restart" })).toMatchObject({ result: false });
 });

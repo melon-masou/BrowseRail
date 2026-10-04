@@ -242,7 +242,9 @@ export function mountShortcutsTab(
     configureBrowserShortcutsBtn.addEventListener(
       "click",
       () => {
-        void browserActions.openShortcutSettings();
+        void browserActions.openShortcutSettings().catch(error => {
+          if (!scope.signal.aborted) showStatus(t("shortcuts.openSettingsFailed", { error: String(error) }));
+        });
       },
       { signal: scope.signal },
     );

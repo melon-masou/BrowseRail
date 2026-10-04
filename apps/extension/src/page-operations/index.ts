@@ -1,7 +1,7 @@
 import browser, { type Runtime } from "webextension-polyfill";
 import menuStyles from "@browserail/menu-ui/styles.css?inline";
 import hostStyles from "./styles.css?inline";
-import type { BrowserMenuState, MenuReply, TemporaryConfirmationResult } from "./messages";
+import type { BrowserMenuState, MenuReply, MenuCommandResult } from "./messages";
 import { mountBrowserMenu, type MenuCommand } from "./surface";
 
 function createPageController() {
@@ -38,7 +38,7 @@ function createPageController() {
     });
   }
 
-  async function send(command: MenuCommand): Promise<TemporaryConfirmationResult | undefined> {
+  async function send(command: MenuCommand): Promise<MenuCommandResult | undefined> {
     const revision = stateRevision;
     const reply = await browser.runtime.sendMessage({ type: "browserMenuCommand", command }) as MenuReply | undefined;
     if (reply?.error) throw new Error(reply.error);

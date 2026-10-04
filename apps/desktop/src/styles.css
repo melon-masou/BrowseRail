@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --desktop-font-family: Segoe UI, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --desktop-font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
   font-family: var(--desktop-font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

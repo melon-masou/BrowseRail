@@ -176,6 +176,7 @@ pub enum NativeCommand {
         placement: MenuPlacement,
         spacing: MenuSpacing,
         settings: crate::protocol::NativeBarSettings,
+        apply_to_all: Vec<crate::protocol::BarSettingsGroup>,
     },
     CancelCustomization {
         instance_uid: String,
@@ -1115,8 +1116,7 @@ impl NativeReactor {
                     self.popups.remove(&instance_uid, &window_uid, &menu_uid);
                     self.hide_popup_window(&instance_uid, &window_uid, &menu_uid);
                 }
-                NativeCommand::BeginCustomization { label } => {
-                    self.surfaces.set_customizing(&label, true);
+                NativeCommand::BeginCustomization { label: _ } => {
                     self.check_update_tray();
                 }
                 NativeCommand::SaveMenuLayout {
@@ -1125,10 +1125,11 @@ impl NativeReactor {
                     placement,
                     spacing,
                     settings,
+                    apply_to_all,
                 } => {
                     let _ = self
                         .registry
-                        .update_menu_layout(&instance_uid, menu_uid, placement, spacing, settings);
+                        .update_menu_layout(&instance_uid, menu_uid, placement, spacing, settings, apply_to_all);
                     self.check_update_tray();
                 }
                 NativeCommand::CancelCustomization {

@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 #[cfg(target_os = "windows")]
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -38,7 +38,7 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 #[cfg(target_os = "windows")]
 use tauri::tray::TrayIconBuilder;
 #[cfg(target_os = "windows")]
-use tauri::{Emitter, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
 #[cfg(target_os = "windows")]
 use tokio::sync::mpsc::UnboundedSender;
 #[cfg(target_os = "windows")]
@@ -58,7 +58,6 @@ pub struct AppState {
     pub display_panels: Arc<AtomicBool>,
     pub enable_shortcuts: Arc<AtomicBool>,
     pub lock_editing: Arc<AtomicBool>,
-    pub font_family: Arc<Mutex<String>>,
     pub popups: Arc<panel::PopupRegistry>,
     pub registry: Arc<SessionRegistry>,
     pub socket: Arc<socket::SocketServer>,
@@ -76,7 +75,6 @@ struct ListenerState {
     listening: bool,
     port: u16,
     debug_enabled: bool,
-    font_family: String,
     extensions: Vec<session::ConnectedExtension>,
 }
 
@@ -88,7 +86,6 @@ struct SurfaceState {
     menu: Option<SurfaceMenu>,
     payload: Option<serde_json::Value>,
     collapsed: bool,
-    font_family: String,
 }
 
 #[cfg(target_os = "windows")]
@@ -101,11 +98,6 @@ fn listener_state(state: tauri::State<'_, AppState>) -> ListenerState {
         listening: status.listening,
         port: status.port,
         debug_enabled: crate::debug::is_debug_enabled(),
-        font_family: state
-            .font_family
-            .lock()
-            .map(|font| font.clone())
-            .unwrap_or_else(|_| settings::DEFAULT_FONT_FAMILY.into()),
         extensions: state.registry.active_extensions(),
     }
 }
@@ -175,7 +167,8 @@ unsafe extern "system" fn collect_font_name(
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn installed_fonts() -> Vec<String> {
-    enumerate_installed_fonts()
+    static FONTS: OnceLock<Vec<String>> = OnceLock::new();
+    FONTS.get_or_init(enumerate_installed_fonts).clone()
 }
 
 #[cfg(target_os = "windows")]
@@ -202,33 +195,6 @@ fn enumerate_installed_fonts() -> Vec<String> {
         ReleaseDC(None, dc);
     }
     fonts.into_iter().collect()
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
-fn set_font_family(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-    font_family: String,
-) -> Result<ListenerState, String> {
-    let font_family = font_family.trim().to_string();
-    if !enumerate_installed_fonts().contains(&font_family) {
-        return Err("Font is not installed".into());
-    }
-
-    let mut settings = settings::load(&app).unwrap_or_default();
-    settings.font_family = font_family.clone();
-    settings.display_panels = state.display_panels.load(Ordering::Relaxed);
-    settings.enable_shortcuts = state.enable_shortcuts.load(Ordering::Relaxed);
-    settings.lock_editing = state.lock_editing.load(Ordering::Relaxed);
-    settings::save(&app, &settings)?;
-
-    *state
-        .font_family
-        .lock()
-        .map_err(|_| "Font family lock failed")? = font_family.clone();
-    let _ = app.emit("font-family-changed", font_family);
-    Ok(listener_state(state))
 }
 
 #[cfg(target_os = "windows")]
@@ -359,7 +325,6 @@ fn free_surface_state(
         menu: Some(menu),
         payload: None,
         collapsed,
-        font_family: current_font_family(&state),
     })
 }
 
@@ -407,15 +372,12 @@ fn surface_state(
                 menu: Some(menu),
                 payload: None,
                 collapsed,
-                font_family: current_font_family(&state),
             })
         }
         "popup" => {
             // A pre-warmed popup window loads before it is ever opened, so its
-            // registry entry does not exist yet. Return the (global) font with an
-            // empty payload rather than erroring, so the pre-warmed surface still
-            // picks up the correct font on load; the content arrives via the
-            // `popup-state` event when the popup is first opened.
+            // registry entry does not exist yet. Its content, including the
+            // owning bar's font, arrives via `popup-state` on first open.
             let payload = state
                 .popups
                 .surface(&instance_uid, &window_uid, &menu_uid)
@@ -425,20 +387,10 @@ fn surface_state(
                 menu: None,
                 payload,
                 collapsed: false,
-                font_family: current_font_family(&state),
             })
         }
         _ => Err("Unknown surface type".into()),
     }
-}
-
-#[cfg(target_os = "windows")]
-fn current_font_family(state: &tauri::State<'_, AppState>) -> String {
-    state
-        .font_family
-        .lock()
-        .map(|font| font.clone())
-        .unwrap_or_else(|_| settings::DEFAULT_FONT_FAMILY.into())
 }
 
 #[cfg(target_os = "windows")]
@@ -681,6 +633,12 @@ fn choose_toolbar_position(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn claim_menu_customization(state: tauri::State<'_, AppState>, window: tauri::Window, instance_uid: String) -> bool {
+    !state.lock_editing.load(Ordering::Relaxed) && state.surfaces.begin_customizing(&instance_uid, window.label())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn begin_menu_customization(
     state: tauri::State<'_, AppState>,
     window: tauri::Window,
@@ -699,12 +657,15 @@ fn begin_menu_customization(
     let toolbar_position =
         choose_toolbar_position(&window, toolbar_space, anchor_offset_y, menu_height)?;
 
-    state.surfaces.set_customizing(window.label(), true);
-    let _ = state
+    if !state.surfaces.begin_customizing(&instance_uid, window.label()) { return Err("Another bar is being edited".into()); }
+    if state
         .native_sender
         .send(native::NativeCommand::BeginCustomization {
             label: window.label().to_string(),
-        });
+        }).is_err() {
+        state.surfaces.set_customizing(window.label(), false);
+        return Err("Native editor is unavailable".into());
+    }
 
     Ok(CustomizationStartInfo { toolbar_position })
 }
@@ -774,6 +735,7 @@ fn save_menu_placement(
     item_height: f64,
     spacing: protocol::MenuSpacing,
     settings: protocol::NativeBarSettings,
+    apply_to_all: Vec<protocol::BarSettingsGroup>,
     anchor_offset_x: f64,
     anchor_offset_y: f64,
 ) -> Result<MenuPlacement, String> {
@@ -882,6 +844,7 @@ fn save_menu_placement(
             placement,
             spacing,
             settings,
+            apply_to_all,
         });
     Ok(placement)
 }
@@ -1056,6 +1019,7 @@ async fn open_bar_settings(
     window: tauri::WebviewWindow,
     instance_uid: String,
     settings: protocol::NativeBarSettings,
+    apply_to_all: Vec<protocol::BarSettingsGroup>,
     item_height: f64,
     title: String,
 ) -> Result<String, String> {
@@ -1068,21 +1032,32 @@ async fn open_bar_settings(
         return Ok(label);
     }
     let data = serde_json::to_string(&settings).map_err(|error| error.to_string())?;
-    let url = format!("index.html?view=barSettings&parent={}&settings={}&itemHeight={item_height}", urlencoding::encode(window.label()), urlencoding::encode(&data));
+    let groups = serde_json::to_string(&apply_to_all).map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
+    let size = window.outer_size().map_err(|error| error.to_string())?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let monitor = window.current_monitor().map_err(|error| error.to_string())?.ok_or("Monitor is unavailable")?;
     let area = monitor.work_area();
-    let left = f64::from(area.position.x) / scale;
-    let top = f64::from(area.position.y) / scale;
-    let x = (f64::from(position.x) / scale).min(left + f64::from(area.size.width) / scale - 400.0).max(left);
-    let y = (f64::from(position.y) / scale).min(top + f64::from(area.size.height) / scale - 390.0).max(top);
+    let positioning = serde_json::json!({
+        "anchor": {
+            "left": position.x, "top": position.y,
+            "right": f64::from(position.x) + f64::from(size.width),
+            "bottom": f64::from(position.y) + f64::from(size.height),
+        },
+        "bounds": {
+            "left": area.position.x, "top": area.position.y,
+            "right": f64::from(area.position.x) + f64::from(area.size.width),
+            "bottom": f64::from(area.position.y) + f64::from(area.size.height),
+        },
+    }).to_string();
+    let url = format!("index.html?view=barSettings&parent={}&settings={}&itemHeight={item_height}&positioning={}&applyToAll={}",
+        urlencoding::encode(window.label()), urlencoding::encode(&data), urlencoding::encode(&positioning), urlencoding::encode(&groups));
     let created = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
         .title(title)
         .owner(&window).map_err(|error| error.to_string())?
         .background_color(FORM_WINDOW_BACKGROUND)
         .inner_size(380.0, 340.0)
-        .position(x, y)
+        .position(f64::from(position.x) / scale, f64::from(position.y) / scale)
         .resizable(false)
         .visible(false)
         .build().map_err(|error| error.to_string())?;
@@ -1177,7 +1152,6 @@ pub fn run() {
     let enable_shortcuts = Arc::new(AtomicBool::new(true));
     // Browsing by default; the persisted setting overwrites this during setup.
     let lock_editing = Arc::new(AtomicBool::new(true));
-    let font_family = Arc::new(Mutex::new(settings::DEFAULT_FONT_FAMILY.into()));
     let popups = Arc::new(panel::PopupRegistry::default());
     let registry = Arc::new(SessionRegistry::default());
     let socket = Arc::new(socket::SocketServer::default());
@@ -1189,7 +1163,6 @@ pub fn run() {
             let display_panels = display_panels.clone();
             let enable_shortcuts = enable_shortcuts.clone();
             let lock_editing = lock_editing.clone();
-            let font_family = font_family.clone();
             let popups = popups.clone();
             let registry = registry.clone();
             let socket = socket.clone();
@@ -1205,8 +1178,6 @@ pub fn run() {
                 display_panels.store(settings.display_panels, Ordering::Relaxed);
                 enable_shortcuts.store(settings.enable_shortcuts, Ordering::Relaxed);
                 lock_editing.store(settings.lock_editing, Ordering::Relaxed);
-                *font_family.lock().expect("font family lock poisoned") =
-                    settings.font_family.clone();
                 crate::debug::set_debug_enabled(settings.debug_enabled);
                 i18n::set_language(i18n::detect_system_lang());
 
@@ -1232,7 +1203,6 @@ pub fn run() {
                     display_panels,
                     enable_shortcuts,
                     lock_editing,
-                    font_family,
                     popups,
                     registry,
                     socket: socket.clone(),
@@ -1262,6 +1232,11 @@ pub fn run() {
                 Ok(())
             }
         })
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                window.state::<AppState>().surfaces.set_customizing(window.label(), false);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             surface_state,
             toggle_menu_collapsed,
@@ -1274,7 +1249,6 @@ pub fn run() {
             set_listener_port,
             set_debug_enabled,
             installed_fonts,
-            set_font_family,
             open_popup,
             show_popup,
             set_popup_hit_regions,
@@ -1285,6 +1259,7 @@ pub fn run() {
             set_popup_pointer_inside,
             close_popup,
             begin_menu_customization,
+            claim_menu_customization,
             customization_toolbar_flip,
             start_menu_drag,
             save_menu_placement,

@@ -29,7 +29,6 @@ export function createBookmarkTools(
   const temporaryBookmarkClose = element<HTMLButtonElement>("temporary-bookmark-close");
   const temporaryBookmarkCloseBtn = element<HTMLButtonElement>("temporary-bookmark-close-btn");
   const temporaryBookmarkForm = element<HTMLFormElement>("temporary-bookmark-form");
-  const temporaryBookmarkDefinition = element<HTMLSpanElement>("temporary-bookmark-definition");
   const temporaryBookmarkFolderBtn = element<HTMLButtonElement>("temporary-bookmark-folder-btn");
   const temporaryBookmarkFolderDisplay = element<HTMLSpanElement>(
     "temporary-bookmark-folder-display",
@@ -119,7 +118,6 @@ export function createBookmarkTools(
     const definition = state.settings.temporaryBookmarks.find((entry) => entry.uid === uid);
     if (!definition) return;
     temporaryMarkerUid = uid;
-    temporaryBookmarkDefinition.textContent = definition.name || t("temporary.defaultName");
     temporaryBookmarkResult.textContent = "";
     delete temporaryBookmarkResult.dataset.state;
     updateTemporaryBookmarkFolderDisplay();
