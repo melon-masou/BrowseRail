@@ -13,6 +13,7 @@
   --min-column-width: 84px;
   /* Theme tokens: unified dock surface base, faint hairline, and nested radius */
   --surface-base: #1f2531;
+  --default-button-fill: #3a465c;
   --dock-surface: rgba(22, 27, 36, 0.88);
   --dock-border: rgba(255, 255, 255, 0.08);
   --dock-radius: 7px;
@@ -174,8 +175,9 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 35%) transparent;
     color: var(--label-color);
-    background: rgba(27, 33, 45, 0.94);
+    background: var(--default-button-fill);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -284,18 +286,17 @@
     background-color: var(--column-custom-color, var(--button-custom-color));
     border-color: rgba(255, 255, 255, 0.08);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
-    scrollbar-color: rgb(255 255 255 / 35%) transparent;
   }
 
-  .menu-column[data-accent="true"]::-webkit-scrollbar {
+  .menu-column::-webkit-scrollbar {
     width: 6px;
   }
 
-  .menu-column[data-accent="true"]::-webkit-scrollbar-track {
+  .menu-column::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .menu-column[data-accent="true"]::-webkit-scrollbar-thumb {
+  .menu-column::-webkit-scrollbar-thumb {
     background: rgb(255 255 255 / 35%);
     border-radius: 3px;
   }
