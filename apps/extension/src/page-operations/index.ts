@@ -83,7 +83,10 @@ function createPageController() {
         // styling stays inside the shadow tree.
         for (const [name, value] of Object.entries({ all: "initial", position: "fixed", inset: "0", width: "100vw", height: "100vh", "z-index": "2147483647", "pointer-events": "none" })) host.style.setProperty(name, value, "important");
         const shadow = host.attachShadow({ mode: "closed" });
-        const sheet = new CSSStyleSheet(); sheet.replaceSync(menuStyles + "\n" + hostStyles); shadow.adoptedStyleSheets = [sheet];
+        const sheet = new CSSStyleSheet(); sheet.replaceSync(menuStyles + "\n" + hostStyles);
+        // push, not `= [sheet]`: in Firefox a content-script array can't be assigned
+        // to the page's adoptedStyleSheets (Xray wrapper error, bug 1827104).
+        shadow.adoptedStyleSheets.push(sheet);
         container = document.createElement("div"); container.className = "browser-menus"; shadow.append(container);
         body.append(host);
       }

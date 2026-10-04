@@ -9,6 +9,7 @@ import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
+const OPTIONS_MENU_ID = "browserail-open-options";
 
 export function createBrowserEditingMenu(host: { setNativeEditing(editing: boolean): void }) {
   let nativeEditing: boolean | undefined;
@@ -27,6 +28,13 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
       const error = browser.runtime.lastError;
       if (error) reject(new Error(error.message)); else resolve();
     });
+  })).then(() => new Promise<void>((resolve, reject) => {
+    browser.contextMenus.create({
+      id: OPTIONS_MENU_ID, title: t("action.openOptions"), contexts: ["action"],
+    }, () => {
+      const error = browser.runtime.lastError;
+      if (error) reject(new Error(error.message)); else resolve();
+    });
   }));
   async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
     const editing = mode === "browser" ? await loadBrowserEditing() : nativeEditing;
@@ -36,12 +44,17 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
       title: t("injection.editMenus"), enabled: available, checked: available && editing === true,
     });
     await browser.contextMenus.update(ADD_STATIC_MENU_ID, { title: t("static.addCurrentPage") });
+    await browser.contextMenus.update(OPTIONS_MENU_ID, { title: t("action.openOptions") });
   }
   const refresh = async (): Promise<void> => {
     const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
     await update(mode, enabled);
   };
   browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === OPTIONS_MENU_ID) {
+      void browser.runtime.openOptionsPage().catch(error => console.error("BrowseRail options:", error));
+      return;
+    }
     if (info.menuItemId === ADD_STATIC_MENU_ID) {
       if (!tab?.url || tab.id === undefined || tab.windowId === undefined) return;
       void openStaticConfirmation({ sourceTabId: tab.id, sourceWindowId: tab.windowId }, {
