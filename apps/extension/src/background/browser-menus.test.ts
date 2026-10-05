@@ -81,7 +81,7 @@ function client(tabId = 17) {
 
 const view: MenuView = { uid: "source", orientation: "row", items: [
   { kind: "browserAction", uid: "browserAction:reload", label: "Reload" },
-  { kind: "bookmark", uid: "temporary:slot", label: "Later" },
+  { kind: "bookmark", uid: "temporary:slot-button", label: "Later" },
 ] };
 
 async function fixture() {
@@ -220,7 +220,7 @@ it("saves a confirmed temporary URL with its note and rejects unlisted actions",
   const config = await fixture();
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
-  await page.request({ type: "temporarySave", menuUid: "source", uid: "slot", note: "Read later" });
+  await page.request({ type: "temporarySave", menuUid: "source", uid: "slot-button", note: "Read later" });
   expect((await loadTemporaryValues()).slot).toBe("https://example.com/page");
   expect((await loadTemporaryNotes()).slot).toBe("Read later");
   await page.request({ type: "invoke", menuUid: "source", actionUid: "temporarySave:slot?confirmed=1" });
@@ -231,7 +231,7 @@ it("opens confirmation in the original window, restores icon clicks, and saves a
   const config = await fixture();
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
-  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot-button" });
   expect(page.posted.at(-1)).toMatchObject({ result: "opened" });
   expect(await loadTemporaryValues()).toEqual({});
   const url = mocks.setPopup.mock.calls.find(([options]) => options.popup)![0].popup;
@@ -254,7 +254,7 @@ it("only requests prompt fallback for popup opening failure, never for an unavai
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   mocks.openPopup.mockRejectedValue(new Error("Toolbar popups are unsupported"));
-  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot-button" });
   expect(page.posted.at(-1)).toMatchObject({ result: "prompt" });
   expect(await loadTemporaryValues()).toEqual({});
   expect(mocks.popupUrls[17]).toBe("");
@@ -268,7 +268,7 @@ it("uses prompt when the toolbar popup API is absent without installing a confir
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
   mocks.popupSupported = false;
-  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot-button" });
   expect(page.posted.at(-1)).toMatchObject({ result: "prompt" });
   expect(mocks.popupUrls[17]).toBeUndefined();
   expect(await loadTemporaryValues()).toEqual({});
@@ -278,7 +278,7 @@ it("rejects confirmation messages from webpages and rechecks permissions before 
   const config = await fixture();
   const service = createBrowserMenus(() => {}); const page = client();
   await service.publish(config, [view], {}, {}, true);
-  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot" });
+  await page.request({ type: "temporaryConfirm", menuUid: "source", uid: "slot-button" });
   const url = mocks.setPopup.mock.calls.find(([options]) => options.popup)![0].popup;
   const message = mocks.message.mock.calls.at(-1)![0];
   expect(await message({ type: "temporarySaveConfirmed", note: "" }, {

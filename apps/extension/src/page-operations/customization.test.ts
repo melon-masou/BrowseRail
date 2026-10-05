@@ -8,8 +8,8 @@ function fixture() {
   const wrapper = document.createElement("div");
   const root = document.createElement("div"); wrapper.append(root); document.body.append(wrapper);
   const menu: MenuView = { ...defaultBarSettings(), uid: "bar", items: [
-    { kind: "bookmark", uid: "bookmark:a", layoutId: "a", label: "A" },
-    { kind: "bookmark", uid: "bookmark:b", layoutId: "b", label: "B" },
+    { kind: "bookmark", uid: "bookmark:a", label: "A" },
+    { kind: "bookmark", uid: "bookmark:b", label: "B" },
   ] };
   const initial = structuredClone(menu);
   const saved = vi.fn(async () => {});

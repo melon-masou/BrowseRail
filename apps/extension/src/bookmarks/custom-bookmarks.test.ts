@@ -107,7 +107,7 @@ it("resolves a static menu button without a browser bookmark and does not send i
   ], undefined, undefined, undefined, undefined, {
     staticBookmarks: definitions,
   });
-  expect(entries).toMatchObject([{ label: "Documentation", uid: "static:docs" }]);
+  expect(entries).toMatchObject([{ label: "Documentation", uid: "static:button" }]);
   expect(entries).toHaveLength(1);
   expect(JSON.stringify(entries)).not.toContain("https://private.example/docs");
 });

@@ -526,8 +526,6 @@ pub struct WindowBounds {
 pub enum LayoutEntry {
     Bookmark {
         uid: String,
-        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
-        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
@@ -536,32 +534,24 @@ pub enum LayoutEntry {
     },
     MenuFold {
         uid: String,
-        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
-        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
     },
     MenusToggle {
         uid: String,
-        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
-        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
     },
     BrowserAction {
         uid: String,
-        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
-        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
     },
     Folder {
         uid: String,
-        #[serde(default, rename = "layoutId", skip_serializing_if = "Option::is_none")]
-        layout_id: Option<String>,
         label: String,
         #[serde(default)]
         color: Option<String>,
@@ -579,16 +569,16 @@ pub enum LayoutEntry {
 
 fn menu_gap_ratio_after(view: &MenuView, index: usize) -> f64 {
     if index + 1 >= view.items.len() { return 0.0; }
-    let layout_id = match &view.items[index] {
-        LayoutEntry::Bookmark { layout_id, .. }
-        | LayoutEntry::Folder { layout_id, .. }
-        | LayoutEntry::MenuFold { layout_id, .. }
-        | LayoutEntry::MenusToggle { layout_id, .. }
-        | LayoutEntry::BrowserAction { layout_id, .. } => layout_id.as_ref(),
+    let uid = match &view.items[index] {
+        LayoutEntry::Bookmark { uid, .. }
+        | LayoutEntry::Folder { uid, .. }
+        | LayoutEntry::MenuFold { uid, .. }
+        | LayoutEntry::MenusToggle { uid, .. }
+        | LayoutEntry::BrowserAction { uid, .. } => Some(uid),
         LayoutEntry::Unknown => None,
     };
     view.gap_ratio.unwrap_or(0.11)
-        + layout_id.and_then(|id| view.extra_gaps.get(id)).copied().unwrap_or(0.0)
+        + uid.and_then(|id| view.extra_gaps.get(id)).copied().unwrap_or(0.0)
 }
 
 pub fn menu_length_factor(view: &MenuView) -> f64 {
@@ -958,10 +948,10 @@ mod tests {
                 "gapRatio": 0.1,
                 "extraGaps": { "a": 0.2, "e": 3 },
                 "items": [
-                    { "kind": "bookmark", "uid": "a", "layoutId": "a", "label": "A" },
+                    { "kind": "bookmark", "uid": "a", "label": "A" },
                     { "kind": "bookmark", "uid": "b", "label": "B" },
                     { "kind": "menuFold", "uid": "toggle", "label": "D" },
-                    { "kind": "bookmark", "uid": "e", "layoutId": "e", "label": "E" }
+                    { "kind": "bookmark", "uid": "e", "label": "E" }
                 ]
             }"#,
         )

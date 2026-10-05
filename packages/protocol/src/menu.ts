@@ -108,10 +108,7 @@ export function isMenuSpacing(value: unknown): value is MenuSpacing {
     && Object.values(raw.extraGaps as object).every(value => typeof value === "number" && Number.isFinite(value) && value >= 0);
 }
 
-export type LayoutEntry = (BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry) & {
-  // Stable identity of the button occurrence, separate from its navigation action.
-  layoutId?: string;
-};
+export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry;
 
 /**
  * Render content for one menu: the item tree plus its appearance. Everything

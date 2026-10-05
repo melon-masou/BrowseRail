@@ -11,6 +11,7 @@ import {
 import browser from "webextension-polyfill";
 
 import type { StoredMenuItem, TabMode } from "../config";
+import { menuItemIdentity } from "./identity";
 
 export { actionUid, SPECIAL_ROOT_PLACEHOLDERS, type SpecialRootType };
 
@@ -504,7 +505,6 @@ export async function resolveMenuItems(
   rootPrefix?: string[],
   context: {
     tree?: BookmarkNode[];
-    registerTarget?: (browserBookmarkId: string) => string;
     dynamicResolve?: DynamicResolver;
     temporaryNotes?: Record<string, string>;
     staticBookmarks?: Array<{ uid: string; name: string }>;
@@ -515,7 +515,6 @@ export async function resolveMenuItems(
   } = {},
 ): Promise<LayoutEntry[]> {
   let treeCache: BookmarkNode[] | null = context.tree ?? null;
-  const registerTarget = context.registerTarget ?? (() => crypto.randomUUID());
   const dynamicResolve = context.dynamicResolve ?? (() => undefined);
   const staticByUid = new Map(context.staticBookmarks?.map(entry => [entry.uid, entry]));
   const temporaryByUid = new Map(context.temporaryBookmarks?.map(entry => [entry.uid, entry]));
@@ -551,13 +550,13 @@ export async function resolveMenuItems(
         const info = dynamicResolve(dynamicUid);
         if (!info) return []; // orphan (definition removed): omit
         const effectiveTabMode: TabMode = tabMode || menuTabMode || "replace";
-        return [dynamicBookmarkEntry(dynamicUid, info, effectiveTabMode, color || menuColor, rename, showPageTitle)];
+        return [dynamicBookmarkEntry(menuItemIdentity(uid), info, effectiveTabMode, color || menuColor, rename, showPageTitle)];
       }
 
       if (type === "static") {
         const definition = staticUid ? staticByUid.get(staticUid) : undefined;
         if (!definition) return [];
-        return [{ kind: "bookmark", uid: actionUid("static", definition.uid, tabMode || menuTabMode || "replace"),
+        return [{ kind: "bookmark", uid: actionUid("static", menuItemIdentity(uid), tabMode || menuTabMode || "replace"),
           label: rename || definition.name || t("static.defaultName"), ...(color || menuColor ? { color: (color || menuColor) as string } : {}) }];
       }
 
@@ -566,7 +565,7 @@ export async function resolveMenuItems(
         if (!definition) return [];
         return [{
           kind: "bookmark",
-          uid: actionUid("temporary", definition.uid, tabMode || menuTabMode || "replace"),
+          uid: actionUid("temporary", menuItemIdentity(uid), tabMode || menuTabMode || "replace"),
           label: context.temporaryNotes?.[definition.uid] || rename || definition.name || t("temporary.defaultName"),
           ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
         }];
@@ -604,7 +603,7 @@ export async function resolveMenuItems(
         const entry: LayoutEntry = isFolder
           ? {
               kind: "folder",
-              uid: `noop:folder-${crypto.randomUUID()}`,
+              uid: `noop:${encodeURIComponent(menuItemIdentity(uid))}`,
               label: fallbackTitle,
               children: [],
               ...(effectiveColor ? { color: effectiveColor } : {}),
@@ -614,7 +613,7 @@ export async function resolveMenuItems(
             }
           : {
               kind: "bookmark",
-              uid: `noop:bookmark-${crypto.randomUUID()}`,
+              uid: `noop:${encodeURIComponent(menuItemIdentity(uid))}`,
               label: fallbackTitle,
               ...(effectiveColor ? { color: effectiveColor } : {}),
               ...(effectiveRename ? { rename: effectiveRename } : {}),
@@ -626,7 +625,7 @@ export async function resolveMenuItems(
         const colors = Array.isArray(cycleColors) && cycleColors.length > 0 ? cycleColors : [];
         let flattenedIdx = 0;
         return (node.children ?? []).flatMap((child): LayoutEntry[] => {
-          const layoutId = `${uid}/${encodeURIComponent(child.id)}`;
+          const identity = menuItemIdentity(uid, child.id);
           const tempDirective = parseFlattenTemporaryDirective(child);
           if (tempDirective) {
             const definition = temporaryByUid.get(tempDirective.uid);
@@ -639,9 +638,8 @@ export async function resolveMenuItems(
             const bookmarkTitle = !isTitleDirective && child.title.trim() ? child.title.trim() : undefined;
             const label = note || bookmarkTitle || tempDirective.name || definition.name || t("temporary.defaultName");
             return [{
-              layoutId,
               kind: "bookmark",
-              uid: actionUid("temporary", tempDirective.uid, effectiveMode),
+              uid: actionUid("temporary", identity, effectiveMode),
               label,
               ...(itemColor ? { color: itemColor } : {}),
             }];
@@ -655,14 +653,14 @@ export async function resolveMenuItems(
             flattenedIdx++;
             return [
               { ...dynamicBookmarkEntry(
-                dynamicId,
+                identity,
                 info,
                 effectiveTabMode,
                 itemColor,
                 undefined,
                 undefined,
                 child.title,
-              ), layoutId },
+              ) },
             ];
           }
           if (child.url === undefined) {
@@ -673,27 +671,26 @@ export async function resolveMenuItems(
             flattenedIdx++;
             const folderEntry = toLayoutEntry(
               child,
+              uid,
               effectiveHover,
               effectiveTabMode,
               undefined,
               menuExpandDirection,
-              registerTarget,
+              true,
             );
             // Apply the flatten item's cycle color to the outside folder button itself,
             // matching the flattened bookmarks on the rail.
             if (itemColor) {
               folderEntry.color = itemColor;
             }
-            return [{ ...folderEntry, layoutId }];
+            return [folderEntry];
           }
           const itemColor = colors.length > 0 ? colors[flattenedIdx % colors.length] : menuColor;
           flattenedIdx++;
           const rawTitle = child.title || child.url || "Untitled";
-          const childUid = registerTarget(child.id);
           const entry: LayoutEntry = {
-            layoutId,
             kind: "bookmark",
-            uid: actionUid("bookmark", childUid, effectiveTabMode),
+            uid: actionUid("bookmark", identity, effectiveTabMode),
             label: rawTitle,
             ...(itemColor ? { color: itemColor } : {}),
           };
@@ -703,11 +700,11 @@ export async function resolveMenuItems(
 
       const entry = toLayoutEntry(
         node,
+        uid,
         effectiveHover,
         effectiveTabMode,
         effectiveColor,
         menuExpandDirection,
-        registerTarget,
       );
       if (effectiveColor) {
         entry.color = effectiveColor;
@@ -719,22 +716,23 @@ export async function resolveMenuItems(
     }),
   );
 
-  return entryGroups.flatMap((entries, index) => entries.map(entry => ({ ...entry, layoutId: entry.layoutId ?? items[index]!.uid })));
+  return entryGroups.flat();
 }
 
 function toLayoutEntry(
   node: BookmarkNode,
+  itemUid: string,
   expandOnHover?: boolean,
   tabMode?: TabMode,
   defaultColor?: string,
   expandDirection?: ExpandDirection,
-  registerTarget: (browserBookmarkId: string) => string = () => crypto.randomUUID(),
+  subitem = false,
 ): BookmarkEntry | FolderEntry {
-  const runtimeUid = registerTarget(node.id);
+  const identity = menuItemIdentity(itemUid, subitem ? node.id : undefined);
   if (node.url !== undefined) {
     return {
       kind: "bookmark",
-      uid: actionUid("bookmark", runtimeUid, tabMode),
+      uid: actionUid("bookmark", identity, tabMode),
       label: node.title || node.url,
       ...(defaultColor ? { color: defaultColor } : {}),
     };
@@ -742,16 +740,17 @@ function toLayoutEntry(
 
   return {
     kind: "folder",
-    uid: actionUid("folder", runtimeUid),
+    uid: actionUid("folder", identity),
     label: node.title || "Bookmarks",
     children: (node.children ?? []).map((child) =>
       toLayoutEntry(
         child,
+        itemUid,
         expandOnHover,
         tabMode,
         defaultColor,
         expandDirection,
-        registerTarget,
+        true,
       ),
     ),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),

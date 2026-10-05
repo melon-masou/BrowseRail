@@ -8,9 +8,9 @@ function menu(orientation: "row" | "column" = "row"): MenuView {
   return {
     uid: "menu", orientation, gapRatio: 0.1, extraGaps: { first: 0.2, fold: 8 },
     items: [
-      { kind: "bookmark", uid: "bookmark:first", layoutId: "first", label: "First" },
-      { kind: "bookmark", uid: "bookmark:second", layoutId: "second", label: "Second" },
-      { kind: "menuFold", uid: "fold", layoutId: "fold", label: "Fold" },
+      { kind: "bookmark", uid: "first", label: "First" },
+      { kind: "bookmark", uid: "second", label: "Second" },
+      { kind: "menuFold", uid: "fold", label: "Fold" },
     ],
   };
 }

@@ -3,7 +3,7 @@ import type { Size } from "./types";
 
 export function gapRatioAfter(menu: MenuView, index: number): number {
   if (index >= menu.items.length - 1) return 0;
-  const id = menu.items[index]?.layoutId;
+  const id = menu.items[index]?.uid;
   const extra = id && menu.extraGaps && Object.hasOwn(menu.extraGaps, id) ? menu.extraGaps[id]! : 0;
   return (menu.gapRatio ?? DEFAULT_MENU_GAP_RATIO) + extra;
 }

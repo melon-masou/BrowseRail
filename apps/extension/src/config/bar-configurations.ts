@@ -2,7 +2,9 @@ import browser from "webextension-polyfill";
 import { defaultBarSettings, defaultNativeBarSettings, normalizeBarConfigurations, normalizeMenuSpacing, isBarSettings, isNativeBarSettings, isMenuSpacing, type BarConfigurations, type BarConfiguration, type NativeBarConfiguration, type BarSettings, type NativeBarSettings, type MenuPlacement, type MenuSpacing } from "@browserail/protocol";
 import { defaultMenuPlacement, normalizeBrowserPlacement, type BrowserMenuPlacement, type DisplayMode } from "./index";
 import { applyBarSettingsGroups, isBarSettingsGroups, type BarSettingsGroup } from "@browserail/protocol";
-import { loadConfig } from "./index";
+import { loadConfig, loadBookmarkRootPrefix } from "./index";
+import { menuEntryIdentity } from "../bookmarks/identity";
+import { storeMenuSpacing } from "../bookmarks/spacing";
 
 export const BAR_CONFIGURATIONS_STORAGE_KEY = "bar_configurations";
 export async function loadBarConfigurations(): Promise<BarConfigurations> {
@@ -18,13 +20,17 @@ export async function saveBarLayout(uid: string, mode: DisplayMode, placement: M
   if (!isMenuSpacing(spacing)) throw new Error("Invalid bar spacing");
   if (!(mode === "native" ? isNativeBarSettings(settings) : isBarSettings(settings))) throw new Error("Invalid bar settings");
   if (!isBarSettingsGroups(applyToAll)) throw new Error("Invalid bar settings groups");
+  const config = await loadConfig();
+  const items = config.panel.menus.find(menu => menu.uid === uid)?.items ?? [];
+  const hasSubitems = Object.keys(spacing.extraGaps).some(key => !items.some(item => item.uid === key) && menuEntryIdentity(key).bookmarkId !== undefined);
+  const [tree, rootPrefix] = hasSubitems ? await Promise.all([browser.bookmarks.getTree(), loadBookmarkRootPrefix()]) : [[], []];
+  const storedSpacing = storeMenuSpacing(spacing, items, tree, rootPrefix);
   const current = await loadBarConfigurations();
-  const updated = normalizeBarConfigurations({ [mode]: { [uid]: { ...settings, ...normalizeMenuSpacing(spacing), placement } } });
+  const updated = normalizeBarConfigurations({ [mode]: { [uid]: { ...settings, ...storedSpacing, placement } } });
   if (!updated[mode][uid]) throw new Error("Invalid bar layout");
   if (mode === "native") current.native[uid] = updated.native[uid]!;
   else current.browser[uid] = updated.browser[uid]!;
   if (applyToAll.length) {
-    const config = await loadConfig();
     for (const [index, menu] of config.panel.menus.entries()) {
       if (menu.uid === uid) continue;
       if (mode === "native") {

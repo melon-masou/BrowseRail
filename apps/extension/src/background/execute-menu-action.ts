@@ -1,17 +1,20 @@
 import browser from "webextension-polyfill";
-import { isDynamicAction, parseDynamicAction, parseTemporaryAction, parseStaticAction } from "@browserail/protocol";
+import { actionUid as formatActionUid, isDynamicAction, parseBookmarkAction, parseDynamicAction, parseTemporaryAction, parseStaticAction, type CustomBookmarkType } from "@browserail/protocol";
 import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues } from "../config";
 import { navigateBookmark, navigateToUrl } from "../browser/navigation";
 import { captureTemporaryUrl } from "./temporary";
 import { runTabAction, toggleTargetMenus } from "./menu-actions";
+import { resolveMenuBookmarkTarget } from "../bookmarks/menu-target";
 
 export async function executeMenuAction(actionUid: string, menuUid: string | undefined, targetWindowUid: string, changed: () => void): Promise<void> {
   if (actionUid.startsWith("noop")) return;
+  const config = await loadConfig();
+  const targetUid = (identity: string, type: "bookmark" | CustomBookmarkType): Promise<string> =>
+    menuUid === undefined ? Promise.resolve(identity) : resolveMenuBookmarkTarget(config, menuUid, identity, type);
   if (actionUid.startsWith("browserAction:") || actionUid.startsWith("menusToggle:")) {
     const separator = actionUid.indexOf(":");
     const type = actionUid.slice(0, separator);
     const uid = decodeURIComponent(actionUid.slice(separator + 1));
-    const config = await loadConfig();
     const sourceMenu = config.panel.menus.find((menu) => menu.uid === menuUid);
     const action = sourceMenu?.items.find((item) => item.uid === uid && item.type === type);
     if (sourceMenu && action?.type === "menusToggle") {
@@ -25,11 +28,12 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     }
   } else if (actionUid.startsWith("static:")) {
     const { uid, tabMode } = parseStaticAction(actionUid);
-    const definition = (await loadConfig()).staticBookmarks.find(entry => entry.uid === uid);
+    const target = await targetUid(uid, "static");
+    const definition = config.staticBookmarks.find(entry => entry.uid === target);
     if (definition?.url) await navigateToUrl(browser, targetWindowUid, definition.url, tabMode);
   } else if (isDynamicAction(actionUid)) {
     const { dynamicUid, tabMode } = parseDynamicAction(actionUid);
-    const live = await loadDynamicValue(dynamicUid);
+    const live = await loadDynamicValue(await targetUid(dynamicUid, "dynamic"));
     if (live?.url) {
       await navigateToUrl(browser, targetWindowUid, live.url, tabMode);
     }
@@ -38,11 +42,10 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     const queryIndex = raw.indexOf("?");
     const uid = decodeURIComponent(queryIndex < 0 ? raw : raw.slice(0, queryIndex));
     const params = new URLSearchParams(queryIndex < 0 ? "" : raw.slice(queryIndex + 1));
-    const config = await loadConfig();
     const result = await captureTemporaryUrl(
       browser.tabs,
       config.temporaryBookmarks,
-      uid,
+      await targetUid(uid, "temporary"),
       targetWindowUid,
       params.get("confirmed") === "1",
       params.get("note") ?? "",
@@ -50,10 +53,12 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     if (result === "saved") changed();
   } else if (actionUid.startsWith("temporary:")) {
     const { uid, tabMode } = parseTemporaryAction(actionUid);
-    if (!(await loadConfig()).temporaryBookmarks.some(entry => entry.uid === uid)) return;
-    const url = (await loadTemporaryValues())[uid];
+    const target = await targetUid(uid, "temporary");
+    if (!config.temporaryBookmarks.some(entry => entry.uid === target)) return;
+    const url = (await loadTemporaryValues())[target];
     if (url) await navigateToUrl(browser, targetWindowUid, url, tabMode);
   } else {
-    await navigateBookmark(browser, targetWindowUid, actionUid);
+    const { uid, tabMode } = parseBookmarkAction(actionUid);
+    await navigateBookmark(browser, targetWindowUid, formatActionUid("bookmark", await targetUid(uid, "bookmark"), tabMode));
   }
 }

@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { clearBookmarkTargets, createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmarks/registry";
 import { navigateBookmark, type TabActionBrowser } from "./navigation";
 
 function createBrowser(): TabActionBrowser {
@@ -17,21 +16,12 @@ function createBrowser(): TabActionBrowser {
   };
 }
 
-function registerTarget(browserBookmarkId: string): string {
-  const draft = createBookmarkTargetDraft();
-  const runtimeUid = draft.register(browserBookmarkId);
-  draft.commit();
-  return runtimeUid;
-}
-
 describe("navigateBookmark", () => {
-  beforeEach(() => clearBookmarkTargets());
-
   it("navigates the active tab in the bound window", async () => {
     const api = createBrowser();
-    const runtimeUid = registerTarget("bookmark-1");
+    const bookmarkId = "bookmark-1";
 
-    await navigateBookmark(api, "42", `bookmark:${runtimeUid}`);
+    await navigateBookmark(api, "42", `bookmark:${bookmarkId}`);
 
     expect(api.bookmarks.get).toHaveBeenCalledWith("bookmark-1");
     expect(api.tabs.query).toHaveBeenCalledWith({ active: true, windowId: 42 });
@@ -40,9 +30,9 @@ describe("navigateBookmark", () => {
 
   it("opens a new tab when tabMode is newTab", async () => {
     const api = createBrowser();
-    const runtimeUid = registerTarget("bookmark-1");
+    const bookmarkId = "bookmark-1";
 
-    await navigateBookmark(api, "42", `bookmark:${runtimeUid}?tab=newTab`);
+    await navigateBookmark(api, "42", `bookmark:${bookmarkId}?tab=newTab`);
 
     expect(api.tabs.create).toHaveBeenCalledWith({
       active: true,
@@ -54,10 +44,10 @@ describe("navigateBookmark", () => {
 
   it("falls back to creating a tab when bound window has no active tab", async () => {
     const api = createBrowser();
-    const runtimeUid = registerTarget("bookmark-1");
+    const bookmarkId = "bookmark-1";
     vi.mocked(api.tabs.query).mockResolvedValue([]);
 
-    await navigateBookmark(api, "42", `bookmark:${runtimeUid}`);
+    await navigateBookmark(api, "42", `bookmark:${bookmarkId}`);
     expect(api.tabs.create).toHaveBeenCalledWith({
       active: true,
       url: "https://example.com",
@@ -75,51 +65,23 @@ describe("navigateBookmark", () => {
     expect(api.tabs.query).not.toHaveBeenCalled();
   });
 
-  it("rejects an action whose bookmark target is no longer known", async () => {
+  it("rejects a deleted bookmark", async () => {
     const api = createBrowser();
 
+    vi.mocked(api.bookmarks.get).mockResolvedValue([]);
     await expect(navigateBookmark(api, "42", "bookmark:missing")).rejects.toThrow(
       "no longer exists",
     );
     expect(api.tabs.query).not.toHaveBeenCalled();
   });
 
-  it("keeps runtime ids stable and accepts the previous sync generation during handoff", async () => {
-    const firstDraft = createBookmarkTargetDraft();
-    const firstUid = firstDraft.register("bookmark-1");
-    firstDraft.commit();
-
-    const secondDraft = createBookmarkTargetDraft();
-    expect(secondDraft.register("bookmark-1")).toBe(firstUid);
-    secondDraft.register("bookmark-2");
-    secondDraft.commit();
-
-    const thirdDraft = createBookmarkTargetDraft();
-    thirdDraft.register("bookmark-2");
-    thirdDraft.commit();
-
+  it("opens the requested bookmark after the navigation module is initialized again, without a saved UID mapping", async () => {
     const api = createBrowser();
-    await navigateBookmark(api, "42", `bookmark:${firstUid}`);
-    expect(api.bookmarks.get).toHaveBeenCalledWith("bookmark-1");
-  });
-
-  it("opens a page's original bookmark after the background worker has restarted", async () => {
-    const values: Record<string, unknown> = {};
-    const storage = {
-      get: async (key: string) => ({ [key]: values[key] }),
-      set: vi.fn(async (updated: Record<string, unknown>) => { Object.assign(values, updated); }),
-    };
-    await loadBookmarkTargets(storage);
-    const originalUid = registerTarget("bookmark-1");
-    await persistBookmarkTargets(storage);
-    clearBookmarkTargets();
-    await loadBookmarkTargets(storage);
-    registerTarget("bookmark-1");
-    const api = createBrowser();
-    await navigateBookmark(api, "42", `bookmark:${originalUid}`);
-    expect(api.bookmarks.get).toHaveBeenCalledWith("bookmark-1");
-    expect(api.tabs.update).toHaveBeenCalledWith(17, { url: "https://example.com" });
-    await persistBookmarkTargets(storage);
-    expect(storage.set).toHaveBeenCalledOnce();
+    await navigateBookmark(api, "42", "bookmark:bookmark-1");
+    vi.resetModules();
+    const { navigateBookmark: afterRestart } = await import("./navigation");
+    await afterRestart(api, "42", "bookmark:bookmark-1");
+    expect(api.bookmarks.get).toHaveBeenLastCalledWith("bookmark-1");
+    expect(api.tabs.update).toHaveBeenCalledTimes(2);
   });
 });

@@ -11,6 +11,7 @@ import { hasWebsitePermission } from "../browser/site-permissions";
 import { openTemporaryConfirmation, temporaryConfirmationContext } from "./temporary-confirmation";
 import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
 import { createBrowserEditSession } from "./browser-edit-session";
+import { resolveMenuBookmarkTarget } from "../bookmarks/menu-target";
 
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
@@ -62,8 +63,9 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
       return { ...(result !== undefined ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState };
     })().catch(error => ({ error: String(error) }));
   });
-  async function saveTemporary(config: ExtensionConfig, uid: string, windowId: number, note: string): Promise<void> {
-    const result = await captureTemporaryUrl(browser.tabs, config.temporaryBookmarks, uid, String(windowId), true, note);
+  async function saveTemporary(config: ExtensionConfig, menuUid: string, uid: string, windowId: number, note: string): Promise<void> {
+    const target = await resolveMenuBookmarkTarget(config, menuUid, uid, "temporary");
+    const result = await captureTemporaryUrl(browser.tabs, config.temporaryBookmarks, target, String(windowId), true, note);
     if (result !== "saved") throw new Error("Temporary bookmark was not saved");
     await changed();
   }
@@ -78,7 +80,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     const menu = menus.find(menu => menu.view.uid === context.menuUid);
     if (!menu || tab.windowId !== context.sourceWindowId || !menuVisibleForUrl(config, context.menuUid, tab.url)) throw new Error("Menu is unavailable");
     requireTemporaryBookmark(menu, context.uid);
-    await saveTemporary(config, context.uid, context.sourceWindowId, note);
+    await saveTemporary(config, context.menuUid, context.uid, context.sourceWindowId, note);
     await requestBrowserMenuRefresh(context.sourceTabId);
   }
   async function handle(tabId: number, request: MenuRequest): Promise<MenuCommandResult | undefined> {
@@ -119,7 +121,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
       case "temporarySave": {
         requireTemporaryBookmark(menu, request.uid);
         if (typeof request.note !== "string") throw new Error("Invalid temporary bookmark note");
-        await saveTemporary(config, request.uid, tab.windowId, request.note);
+        await saveTemporary(config, request.menuUid, request.uid, tab.windowId, request.note);
         break;
       }
       default: throw new Error("Unknown menu request");

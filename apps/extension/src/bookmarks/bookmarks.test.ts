@@ -16,7 +16,9 @@ vi.mock("webextension-polyfill", () => ({
 }));
 
 import browser from "webextension-polyfill";
-import { parseBookmarkAction, type BookmarkEntry, type FolderEntry } from "@browserail/protocol";
+import { defaultBarSettings, parseBookmarkAction, type BookmarkEntry, type FolderEntry } from "@browserail/protocol";
+import { barDimensions } from "@browserail/menu-ui";
+import { projectMenuSpacing, storeMenuSpacing } from "./spacing";
 import {
   buildTemporaryDirectiveUrl,
   findBookmarkNodeByPath,
@@ -25,6 +27,25 @@ import {
 } from "./index";
 
 describe("resolveMenuItems", () => {
+  it("restores flattened folder spacing across browsers with different bookmark IDs", async () => {
+    const items = [{ uid: "flat", path: ["${bookmarks-bar}", "Tools"], type: "flattenFolder" as const, includeFolders: true }];
+    const context = (rootId: string, folderId: string, childIds: string[]) => ({ tree: [{
+      id: rootId, title: "Toolbar", children: [{ id: folderId, title: "Tools", children: [
+        { id: childIds[0]!, title: "Docs/API", url: "https://docs.example" },
+        { id: childIds[1]!, title: "Daily", children: [] },
+        { id: childIds[2]!, title: "Search", url: "https://search.example" },
+      ] }],
+    }] });
+    const chrome = await resolveMenuItems(items, undefined, undefined, undefined, undefined, context("1", "10", ["11", "12", "13"]));
+    const firefox = await resolveMenuItems(items, undefined, undefined, undefined, undefined, context("toolbar_____", "folder-uuid", ["docs-uuid", "daily-uuid", "search-uuid"]));
+    const spacing = storeMenuSpacing({ gapRatio: 0.1, extraGaps: { [chrome[0]!.uid]: 0.5, [chrome[1]!.uid]: 0.25 } }, items, context("1", "10", ["11", "12", "13"]).tree, []);
+    const layout = { ...defaultBarSettings(), uid: "bar", ...spacing };
+    const imported = JSON.parse(JSON.stringify(layout)) as typeof layout;
+    expect(barDimensions({ ...imported, ...projectMenuSpacing(imported, items, firefox, context("toolbar_____", "folder-uuid", ["docs-uuid", "daily-uuid", "search-uuid"]).tree, []), items: firefox }, { width: 80, height: 40 }))
+      .toEqual(barDimensions({ ...layout, ...projectMenuSpacing(layout, items, chrome, context("1", "10", ["11", "12", "13"]).tree, []), items: chrome }, { width: 80, height: 40 }));
+    expect(firefox[0]!.uid).not.toBe(chrome[0]!.uid);
+  });
+
   it("keeps separate spacing identities for duplicate and flattened buttons when their actions or order change", async () => {
     const tree = [{ id: "folder", title: "Folder", children: [
       { id: "a", title: "A", url: "https://a.example" },
@@ -37,39 +58,24 @@ describe("resolveMenuItems", () => {
       { uid: "flatten-two", path: ["Folder"], type: "flattenFolder" as const },
     ];
     const first = await resolveMenuItems(items, undefined, undefined, undefined, undefined, { tree });
-    expect(new Set(first.map(entry => entry.layoutId)).size).toBe(first.length);
+    expect(new Set(first.map(entry => entry.uid)).size).toBe(first.length);
     tree[0]!.children.reverse();
-    const next = await resolveMenuItems(items.map(item => ({ ...item, tabMode: "newTab" as const })), undefined, undefined, undefined, undefined, { tree });
-    expect(next.map(entry => entry.layoutId).sort()).toEqual(first.map(entry => entry.layoutId).sort());
-    expect(next[0]!.layoutId).toBe(first[0]!.layoutId);
-    expect(next[2]!.layoutId).toBe(first[3]!.layoutId);
-    expect(next[0]!.uid).not.toBe(first[0]!.uid);
+    const next = await resolveMenuItems(items, undefined, undefined, undefined, undefined, { tree });
+    expect(next.map(entry => entry.uid).sort()).toEqual(first.map(entry => entry.uid).sort());
+    expect(next[0]!.uid).toBe(first[0]!.uid);
+    expect(next[2]!.uid).toBe(first[3]!.uid);
+
   });
 
-  it("uses the sync bookmark snapshot and registers the browser id without re-reading the tree", async () => {
+  it("uses the sync bookmark snapshot and makes a configured bookmark clickable without a generated mapping", async () => {
     vi.mocked(browser.bookmarks.getTree).mockClear();
-    const registerTarget = vi.fn(() => "runtime-bookmark");
     const entries = await resolveMenuItems(
       [{ uid: "item-docs", path: ["Docs"], url: "https://docs.example" }],
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        tree: [
-          {
-            id: "browser-bookmark-id",
-            title: "Docs",
-            url: "https://docs.example",
-          },
-        ],
-        registerTarget,
-      },
+      undefined, undefined, undefined, undefined,
+      { tree: [{ id: "browser-bookmark-id", title: "Docs", url: "https://docs.example" }] },
     );
-
     expect(browser.bookmarks.getTree).not.toHaveBeenCalled();
-    expect(registerTarget).toHaveBeenCalledWith("browser-bookmark-id");
-    expect(entries[0]?.uid).toBe("bookmark:runtime-bookmark");
+    expect(parseBookmarkAction(entries[0]!.uid).uid).toBe("item-docs");
   });
 
   it("resolves a folder with expandOnHover set to false", async () => {
@@ -183,16 +189,16 @@ describe("resolveMenuItems", () => {
   });
 
   it("renders browser actions and menu visibility controls without resolving browser bookmarks", async () => {
-    const registerTarget = vi.fn();
+    vi.mocked(browser.bookmarks.getTree).mockClear();
     const entries = await resolveMenuItems([
       { uid: "back-button", type: "browserAction", browserAction: "back", rename: "←", color: "#123456" },
       { uid: "menus-button", type: "menusToggle", targetMenuUids: ["other-menu"] },
-    ], undefined, undefined, undefined, undefined, { tree: [], registerTarget });
+    ], undefined, undefined, undefined, undefined, { tree: [] });
     expect(entries).toMatchObject([
       { kind: "browserAction", uid: "browserAction:back-button", label: "←", color: "#123456" },
       { kind: "menusToggle", uid: "menusToggle:menus-button", label: "Menu Toggle" },
     ]);
-    expect(registerTarget).not.toHaveBeenCalled();
+    expect(browser.bookmarks.getTree).not.toHaveBeenCalled();
   });
 
 
@@ -231,13 +237,13 @@ describe("resolveMenuItems", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({
       kind: "bookmark",
-      uid: "temporary:slot-temp?tab=newTab",
+      uid: "temporary:item-temps%23temp-url?tab=newTab",
       label: "Note for slot 1",
       color: "#12345680",
     });
     expect(entries[1]).toMatchObject({
       kind: "bookmark",
-      uid: "temporary:slot-two",
+      uid: "temporary:item-temps%23temp-title",
       label: "SecondSlot",
     });
   });
@@ -582,11 +588,10 @@ describe("tabMode configuration", () => {
       undefined,
       undefined,
       undefined,
-      { registerTarget: (browserBookmarkId) => `runtime-${browserBookmarkId}` },
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.uid).toBe("bookmark:runtime-bm-replace");
+    expect(entries[0]?.uid).toBe("bookmark:item-replace");
   });
 
   it("inherits newTab tabMode from menuTabMode", async () => {

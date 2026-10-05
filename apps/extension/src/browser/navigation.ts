@@ -4,8 +4,6 @@ import {
   type TabMode,
 } from "@browserail/protocol";
 
-import { resolveBookmarkTarget } from "../bookmarks/registry";
-
 export { parseBookmarkAction, type ParsedBookmarkAction, type TabMode };
 
 export interface TabActionBrowser {
@@ -37,11 +35,7 @@ export async function navigateBookmark(
   }
 
   const { uid, tabMode } = parseBookmarkAction(actionUid);
-  const browserBookmarkId = resolveBookmarkTarget(uid);
-  if (!browserBookmarkId) {
-    throw new Error("The bookmark no longer exists");
-  }
-  const [bookmark] = await api.bookmarks.get(browserBookmarkId);
+  const [bookmark] = await api.bookmarks.get(uid);
   const url = bookmark?.url;
   if (!url) {
     throw new Error("The bookmark no longer exists");

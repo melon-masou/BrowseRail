@@ -23,12 +23,12 @@ export function mountSpacingEditor(
     handle.title = t("customize.spacingHint");
     handle.addEventListener("contextmenu", event => event.preventDefault(), options);
     handle.addEventListener("pointerdown", event => {
-      if (!enabled || (event.button !== 0 && event.button !== 2) || !entry.layoutId) return;
+      if (!enabled || (event.button !== 0 && event.button !== 2) || !entry.uid) return;
       event.preventDefault();
       event.stopPropagation();
       stopGesture?.();
       const global = event.button === 2;
-      const start = global ? menu.gapRatio : menu.extraGaps[entry.layoutId] ?? 0;
+      const start = global ? menu.gapRatio : menu.extraGaps[entry.uid] ?? 0;
       const position = row ? event.screenX : event.screenY;
       const dimension = row ? itemSize.width : itemSize.height;
       // A global drag changes the bar length once, spread across all gaps.
@@ -38,8 +38,8 @@ export function mountSpacingEditor(
         if (next.pointerId !== event.pointerId) return;
         const ratio = Math.max(0, start + ((row ? next.screenX : next.screenY) - position) / (dimension * dragScale));
         if (global) menu.gapRatio = ratio;
-        else if (ratio === 0) delete menu.extraGaps[entry.layoutId!];
-        else menu.extraGaps[entry.layoutId!] = ratio;
+        else if (ratio === 0) delete menu.extraGaps[entry.uid!];
+        else menu.extraGaps[entry.uid!] = ratio;
         render();
         onChange(menu, itemSize);
       };
@@ -60,8 +60,8 @@ export function mountSpacingEditor(
     handle.addEventListener("dblclick", event => {
       event.preventDefault();
       event.stopPropagation();
-      if (!enabled || !entry.layoutId) return;
-      delete menu.extraGaps[entry.layoutId];
+      if (!enabled || !entry.uid) return;
+      delete menu.extraGaps[entry.uid];
       render();
       onChange(menu, itemSize);
     }, options);

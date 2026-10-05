@@ -20,7 +20,7 @@ import {
   findBookmarkNodeByPath,
   resolveMenuItems,
 } from "../bookmarks";
-import { createBookmarkTargetDraft, loadBookmarkTargets, persistBookmarkTargets } from "../bookmarks/registry";
+import { projectMenuSpacing } from "../bookmarks/spacing";
 import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser/windows";
 import {
   loadBookmarkRootPrefix,
@@ -636,19 +636,16 @@ async function syncOnce(): Promise<void> {
     };
   };
   const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
-  await loadBookmarkTargets(browser.storage.local);
-  const bookmarkTargets = createBookmarkTargetDraft();
   const menuStates = await Promise.all(
     activeMenus.map(async (menu, index) => {
       async function viewForMode(mode: "native" | "browser"): Promise<MenuView> {
         const settings = mode === "native" ? resolveBarConfiguration(barConfigs, "native", menu.uid, index) : resolveBarConfiguration(barConfigs, "browser", menu.uid, index);
         const items = await resolveMenuItems(menu.items, menu.tabMode, menu.color, settings.expandDirection, rootPrefix, {
           tree: bookmarkTree as BookmarkNode[],
-          registerTarget: browserBookmarkId => bookmarkTargets.register(browserBookmarkId),
           dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks,
           bookmarksAvailable,
         });
-        return { uid: menu.uid, items, ...barSettingsFromView(settings), ...normalizeMenuSpacing(settings),
+        return { uid: menu.uid, items, ...barSettingsFromView(settings), ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),
           ...(menu.color ? { color: menu.color } : {}),
           ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
         };
@@ -661,8 +658,6 @@ async function syncOnce(): Promise<void> {
       };
     }),
   );
-  bookmarkTargets.commit();
-  await persistBookmarkTargets(browser.storage.local);
   updateLastFocusedWindow(windows);
 
   const menuVisibleForUrl = (uid: string, url: string | undefined): boolean => isMenuVisibleForUrl(config, uid, url);
