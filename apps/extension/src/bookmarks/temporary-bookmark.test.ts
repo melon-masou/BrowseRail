@@ -29,7 +29,6 @@ it("keeps a temporary URL across a fresh storage read and resolves it without a 
     undefined,
     undefined,
     undefined,
-    undefined,
     { temporaryNotes: reloadedNotes, temporaryBookmarks: [{ uid: "slot-one", name: "Later" }] },
   );
 
@@ -66,7 +65,6 @@ it("requires confirmation before both the first save and replacement", async () 
   expect((await loadTemporaryNotes()).slot).toBeUndefined();
   const [entry] = await resolveMenuItems(
     [{ uid: "button", type: "temporary", temporaryUid: "slot", rename: "Fixed name" }],
-    undefined,
     undefined,
     undefined,
     undefined,
@@ -140,7 +138,6 @@ it("ignores a malformed temporary marker and keeps other temporary slots usable"
 
   const entries = await resolveMenuItems(
     [{ uid: "flatten-temp", path: ["Temps"], type: "flattenFolder" }],
-    undefined,
     undefined,
     undefined,
     undefined,

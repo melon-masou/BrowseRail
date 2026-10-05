@@ -397,10 +397,6 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     : crypto.randomUUID();
   const color = typeof value.color === "string" && value.color ? value.color : DEFAULT_MENU_COLOR;
   const dockColor = typeof value.dockColor === "string" && value.dockColor ? value.dockColor : undefined;
-  const tabMode: TabMode | undefined =
-    value.tabMode === "newTab" || value.tabMode === "replace"
-      ? value.tabMode
-      : undefined;
   const enabled = typeof value.enabled === "boolean" ? value.enabled : true;
   const urlRuleUids = Array.isArray(value.urlRuleUids)
     ? value.urlRuleUids.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
@@ -419,7 +415,6 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     color,
     ...(dockColor !== undefined ? { dockColor } : {}),
     enabled, items,
-    ...(tabMode !== undefined ? { tabMode } : {}),
     uid,
     ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
   };
@@ -480,16 +475,12 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     if (!dynamicUid) return undefined;
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
-    const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
-    const showPageTitle = typeof value.showPageTitle === "boolean" ? value.showPageTitle : undefined;
     return {
       uid,
       type: "dynamic",
       dynamicUid,
       ...(rename ? { rename } : {}),
       ...(color ? { color } : {}),
-      ...(tabMode ? { tabMode } : {}),
-      ...(showPageTitle ? { showPageTitle } : {}),
     };
   }
 
@@ -498,8 +489,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     if (typeof targetUid !== "string" || !targetUid) return undefined;
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
-    const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
-    return { uid, ...customBookmarkReference(rawType === "static" ? "static" : "temporary", targetUid), ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(tabMode ? { tabMode } : {}) };
+    return { uid, ...customBookmarkReference(rawType === "static" ? "static" : "temporary", targetUid), ...(rename ? { rename } : {}), ...(color ? { color } : {}) };
   }
 
   const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")
@@ -514,7 +504,6 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     ? value.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
     : undefined;
   const color = typeof value.color === "string" && value.color ? value.color : undefined;
-  const tabMode = value.tabMode === "newTab" || value.tabMode === "replace" ? value.tabMode : undefined;
   const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
   const includeFolders = value.includeFolders === true ? true : undefined;
   return {
@@ -525,7 +514,6 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     ...(rename ? { rename } : {}),
     ...(color ? { color } : {}),
     ...(cycleColors && cycleColors.length > 0 ? { cycleColors } : {}),
-    ...(tabMode ? { tabMode } : {}),
     ...(expandOnHover !== undefined ? { expandOnHover } : {}),
     ...(includeFolders ? { includeFolders } : {}),
   };

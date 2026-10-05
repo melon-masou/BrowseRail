@@ -36,8 +36,8 @@ describe("resolveMenuItems", () => {
         { id: childIds[2]!, title: "Search", url: "https://search.example" },
       ] }],
     }] });
-    const chrome = await resolveMenuItems(items, undefined, undefined, undefined, undefined, context("1", "10", ["11", "12", "13"]));
-    const firefox = await resolveMenuItems(items, undefined, undefined, undefined, undefined, context("toolbar_____", "folder-uuid", ["docs-uuid", "daily-uuid", "search-uuid"]));
+    const chrome = await resolveMenuItems(items, undefined, undefined, undefined, context("1", "10", ["11", "12", "13"]));
+    const firefox = await resolveMenuItems(items, undefined, undefined, undefined, context("toolbar_____", "folder-uuid", ["docs-uuid", "daily-uuid", "search-uuid"]));
     const spacing = storeMenuSpacing({ gapRatio: 0.1, extraGaps: { [chrome[0]!.uid]: 0.5, [chrome[1]!.uid]: 0.25 } }, items, context("1", "10", ["11", "12", "13"]).tree, []);
     const layout = { ...defaultBarSettings(), uid: "bar", ...spacing };
     const imported = JSON.parse(JSON.stringify(layout)) as typeof layout;
@@ -57,21 +57,36 @@ describe("resolveMenuItems", () => {
       { uid: "flatten-one", path: ["Folder"], type: "flattenFolder" as const },
       { uid: "flatten-two", path: ["Folder"], type: "flattenFolder" as const },
     ];
-    const first = await resolveMenuItems(items, undefined, undefined, undefined, undefined, { tree });
+    const first = await resolveMenuItems(items, undefined, undefined, undefined, { tree });
     expect(new Set(first.map(entry => entry.uid)).size).toBe(first.length);
     tree[0]!.children.reverse();
-    const next = await resolveMenuItems(items, undefined, undefined, undefined, undefined, { tree });
+    const next = await resolveMenuItems(items, undefined, undefined, undefined, { tree });
     expect(next.map(entry => entry.uid).sort()).toEqual(first.map(entry => entry.uid).sort());
     expect(next[0]!.uid).toBe(first[0]!.uid);
     expect(next[2]!.uid).toBe(first[3]!.uid);
 
   });
 
+  it("keeps dynamic names and aliases stable when page titles change despite an obsolete title setting", async () => {
+    const { normalizeStoredMenuItem } = await import("../config");
+    const items = [
+      normalizeStoredMenuItem({ uid: "recent", type: "dynamic", dynamicUid: "definition", showPageTitle: true })!,
+      normalizeStoredMenuItem({ uid: "alias", type: "dynamic", dynamicUid: "definition", rename: "My recent", showPageTitle: true })!,
+    ];
+    const info = { name: "Recent", title: "First page", url: "https://example.com/first" };
+    const context = { dynamicResolve: () => info };
+    const first = await resolveMenuItems(items, undefined, undefined, undefined, context);
+    expect(first.map(entry => entry.label)).toEqual(["Recent", "My recent"]);
+    info.title = "Second page";
+    info.url = "https://example.com/second";
+    const next = await resolveMenuItems(items, undefined, undefined, undefined, context);
+    expect(next.map(entry => entry.label)).toEqual(["Recent", "My recent"]);
+  });
+
   it("uses the sync bookmark snapshot and makes a configured bookmark clickable without a generated mapping", async () => {
     vi.mocked(browser.bookmarks.getTree).mockClear();
     const entries = await resolveMenuItems(
-      [{ uid: "item-docs", path: ["Docs"], url: "https://docs.example" }],
-      undefined, undefined, undefined, undefined,
+      [{ uid: "item-docs", path: ["Docs"], url: "https://docs.example" }], undefined, undefined, undefined,
       { tree: [{ id: "browser-bookmark-id", title: "Docs", url: "https://docs.example" }] },
     );
     expect(browser.bookmarks.getTree).not.toHaveBeenCalled();
@@ -193,7 +208,7 @@ describe("resolveMenuItems", () => {
     const entries = await resolveMenuItems([
       { uid: "back-button", type: "browserAction", browserAction: "back", rename: "←", color: "#123456" },
       { uid: "menus-button", type: "menusToggle", targetMenuUids: ["other-menu"] },
-    ], undefined, undefined, undefined, undefined, { tree: [] });
+    ], undefined, undefined, undefined, { tree: [] });
     expect(entries).toMatchObject([
       { kind: "browserAction", uid: "browserAction:back-button", label: "←", color: "#123456" },
       { kind: "menusToggle", uid: "menusToggle:menus-button", label: "Menu Toggle" },
@@ -204,7 +219,7 @@ describe("resolveMenuItems", () => {
 
 
   it("creates Temporary bookmarks that flatten back into the configured temporary bookmark entry", async () => {
-    const url = buildTemporaryDirectiveUrl({ id: "slot-temp", color: "#12345680", tabMode: "newTab" });
+    const url = buildTemporaryDirectiveUrl({ id: "slot-temp", color: "#12345680" });
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
         id: "0",
@@ -227,7 +242,6 @@ describe("resolveMenuItems", () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       {
         temporaryNotes: { "slot-temp": "Note for slot 1" },
         temporaryBookmarks: [{ uid: "slot-temp", name: "First" }, { uid: "slot-two", name: "Second" }],
@@ -237,7 +251,7 @@ describe("resolveMenuItems", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({
       kind: "bookmark",
-      uid: "temporary:item-temps%23temp-url?tab=newTab",
+      uid: "temporary:item-temps%23temp-url",
       label: "Note for slot 1",
       color: "#12345680",
     });
@@ -373,7 +387,6 @@ describe("resolveMenuItems", () => {
 
     const entries = await resolveMenuItems(
       [{ uid: "item-github", path: ["GitHub"], url: "https://github.com" }],
-      "replace",
       "#10b981",
     );
 
@@ -394,7 +407,6 @@ describe("resolveMenuItems", () => {
 
     const entries = await resolveMenuItems(
       [{ uid: "item-github", path: ["GitHub"], url: "https://github.com", color: "#f59e0b" }],
-      "replace",
       "#10b981",
     );
 
@@ -422,7 +434,6 @@ describe("resolveMenuItems", () => {
 
     const entries = await resolveMenuItems(
       [{ uid: "item-links", path: ["Links"], type: "flattenFolder" }],
-      "replace",
       "#8b5cf6",
     );
 
@@ -566,8 +577,8 @@ describe("rename and emoji support", () => {
   });
 });
 
-describe("tabMode configuration", () => {
-  it("defaults to standard actionUid when tabMode is replace or unspecified", async () => {
+describe("portable bookmark resolution", () => {
+  it("opens resolved bookmarks in the current tab", async () => {
     vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
       {
         id: "0",
@@ -587,83 +598,10 @@ describe("tabMode configuration", () => {
       undefined,
       undefined,
       undefined,
-      undefined,
     );
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.uid).toBe("bookmark:item-replace");
-  });
-
-  it("inherits newTab tabMode from menuTabMode", async () => {
-    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
-      {
-        id: "0",
-        title: "",
-        children: [
-          {
-            id: "bm-menu-tab",
-            title: "Example",
-            url: "https://example.com",
-          },
-        ],
-      },
-    ]);
-
-    const entries = await resolveMenuItems(
-      [{ uid: "item-menu-tab", path: ["Example"], url: "https://example.com" }],
-      "newTab",
-    );
-
-    expect(entries).toHaveLength(1);
-    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("newTab");
-  });
-
-  it("allows individual item to override menuTabMode", async () => {
-    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
-      {
-        id: "0",
-        title: "",
-        children: [
-          {
-            id: "bm-override-replace",
-            title: "Example 1",
-            url: "https://example.com/1",
-          },
-        ],
-      },
-    ]);
-
-    const entries = await resolveMenuItems(
-      [{ uid: "item-override", path: ["Example 1"], url: "https://example.com/1", tabMode: "replace" }],
-      "newTab",
-    );
-
-    expect(entries).toHaveLength(1);
-    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("replace");
-  });
-
-  it("allows individual item to specify newTab when menu is replace", async () => {
-    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
-      {
-        id: "0",
-        title: "",
-        children: [
-          {
-            id: "bm-item-newtab",
-            title: "Example 2",
-            url: "https://example.com/2",
-          },
-        ],
-      },
-    ]);
-
-    const entries = await resolveMenuItems(
-      [{ uid: "item-item-newtab", path: ["Example 2"], url: "https://example.com/2", tabMode: "newTab" }],
-      "replace",
-    );
-
-    expect(entries).toHaveLength(1);
-    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("newTab");
   });
 
   it("preserves invalid items as noop entries when rootPrefix is /书签栏 and item path is 书签栏", async () => {
@@ -686,7 +624,6 @@ describe("tabMode configuration", () => {
     // /书签栏 + /书签栏 = /书签栏/书签栏 -> does not exist under 书签栏
     const entries = await resolveMenuItems(
       [{ uid: "item-root", path: ["书签栏"], rename: "我的书签栏" }],
-      "replace",
       "#ff0000",
       undefined,
       ["书签栏"],
@@ -718,7 +655,6 @@ describe("tabMode configuration", () => {
 
     const entries = await resolveMenuItems(
       [{ uid: "item-gbfsync", path: ["gbfsync"] }],
-      "replace",
       undefined,
       undefined,
       ["书签栏"],
@@ -737,7 +673,6 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
       path: ["Bookmarks Toolbar", "Dev"],
       rename: "Devs",
       color: "#2563eb",
-      tabMode: "newTab",
     });
 
     expect(item).toBeDefined();
@@ -745,7 +680,6 @@ describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
     expect(item?.path).toEqual(["Bookmarks Toolbar", "Dev"]);
     expect(item?.rename).toBe("Devs");
     expect(item?.color).toBe("#2563eb");
-    expect(item?.tabMode).toBe("newTab");
   });
 
 
@@ -905,7 +839,6 @@ describe("combineRootAndItemPath", () => {
 
     const entries = await resolveMenuItems(
       [{ uid: "item-root-empty", path: [], type: "folder" }],
-      undefined,
       undefined,
       undefined,
       ["书签栏"],

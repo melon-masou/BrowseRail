@@ -57,15 +57,12 @@ export type ShortcutTarget =
   | { type: CustomBookmarkType; uid: string };
 type Editable<T> = { [K in keyof T]?: T[K] | undefined };
 export type MenuAppearance = Editable<Pick<StoredMenu, "color" | "dockColor">>;
-export type MenuBehavior = Editable<Pick<StoredMenu, "tabMode">>;
 export type ItemBehavior = Editable<
   Pick<
     StoredMenuItem,
     | "rename"
-    | "tabMode"
     | "expandOnHover"
     | "includeFolders"
-    | "showPageTitle"
     | "targetMenuUids"
   >
 >;
@@ -272,11 +269,6 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     editMenuAppearance(uid: string, values: MenuAppearance): void {
       setOptional(menu(uid), values);
-      publish(["menus"]);
-    },
-    editMenuBehavior(uid: string, values: MenuBehavior): void {
-      const target = menu(uid);
-      setOptional(target, values);
       publish(["menus"]);
     },
     setMenuRules(uid: string, uids: readonly string[]): void {

@@ -46,8 +46,6 @@ export interface StoredMenuItem {
   // For flattenFolder items: also emit the folder's sub-folders (as folders
   // inheriting this item's folder options), not just its bookmarks. Default off.
   includeFolders?: boolean;
-  tabMode?: TabMode;
-  showPageTitle?: boolean;
   browserAction?: BrowserActionKind;
   targetMenuUids?: string[];
 }
@@ -102,7 +100,6 @@ export interface StoredMenu {
   dockColor?: MenuColor;
   enabled?: boolean;
   items: StoredMenuItem[];
-  tabMode?: TabMode;
   uid: string;
   urlRuleUids?: string[];
 }
@@ -251,13 +248,11 @@ export interface ExportedMenuItem {
   cycleColors?: MenuColor[];
   expandOnHover?: boolean;
   includeFolders?: boolean;
-  tabMode?: TabMode;
   // For `dynamic` items: the dynamic bookmark id they reference (resolved
   // against ExportedSettingsData.dynamicBookmarks on import).
   dynamicUid?: string;
   staticUid?: string;
   temporaryUid?: string;
-  showPageTitle?: boolean;
   browserAction?: BrowserActionKind;
   targetMenuUids?: string[];
 }
@@ -287,7 +282,6 @@ export interface ExportedMenu {
   uid: string;
   color?: MenuColor;
   dockColor?: MenuColor;
-  tabMode?: TabMode;
   items: ExportedMenuItem[];
   urlRuleUids?: string[];
 }

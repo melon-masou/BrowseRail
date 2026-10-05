@@ -45,18 +45,20 @@ it("opens configured bookmarks and expanded children without a persisted target 
   expect(mocks.create).toHaveBeenLastCalledWith({ active: true, windowId: 42, url: "https://docs.example" });
 });
 
-it("keeps duplicated custom buttons distinct while opening the shared definition and shortcut target", async () => {
+it("keeps duplicate buttons distinct and uses fixed click actions despite obsolete open modes", async () => {
+  mocks.storage.config = {
+    staticBookmarks: [{ uid: "definition", name: "Docs", url: "https://docs.example" }],
+    panel: { menus: [{ uid: "menu", tabMode: "newTab", items: [
+      { uid: "first", type: "static", staticUid: "definition", tabMode: "newTab" },
+      { uid: "second", type: "static", staticUid: "definition", tabMode: "newTab" },
+    ] }] },
+  };
   const config = await loadConfig();
-  config.staticBookmarks = [{ uid: "definition", name: "Docs", url: "https://docs.example" }];
-  config.panel.menus = [{ uid: "menu", items: [
-    { uid: "first", type: "static", staticUid: "definition" },
-    { uid: "second", type: "static", staticUid: "definition", tabMode: "newTab" },
-  ] }];
   await saveConfig(config);
-  const entries = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, undefined, { staticBookmarks: config.staticBookmarks });
+  const entries = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, { staticBookmarks: config.staticBookmarks });
   expect(entries[0]!.uid).not.toBe(entries[1]!.uid);
   await executeMenuAction(entries[0]!.uid, "menu", "42", () => {});
-  await executeMenuAction(entries[1]!.uid, "menu", "42", () => {});
+  await executeMenuAction(invertNavigationActionUid(entries[1]!.uid), "menu", "42", () => {});
   await executeMenuAction("static:definition", undefined, "42", () => {});
   expect(mocks.update).toHaveBeenCalledTimes(2);
   expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://docs.example" });
@@ -73,7 +75,7 @@ it("opens flattened dynamic markers and saves confirmed temporary markers to the
   ] }];
   await saveConfig(config);
   await saveDynamicValue("recent", { url: "https://recent.example", updatedAt: 1 });
-  const entries = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, undefined, {
+  const entries = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, {
     temporaryBookmarks: config.temporaryBookmarks, dynamicResolve: uid => uid === "recent" ? { name: "Recent", url: "https://recent.example" } : undefined,
   });
   expect(entries).toHaveLength(2);
@@ -89,7 +91,7 @@ it("restores independent gaps after layout import into a browser with different 
   const config = await loadConfig();
   const items: StoredMenuItem[] = [
     { uid: "flat-one", type: "flattenFolder", path: ["Tools"] },
-    { uid: "flat-two", type: "flattenFolder", path: ["Tools"], tabMode: "newTab" },
+    { uid: "flat-two", type: "flattenFolder", path: ["Tools"] },
   ];
   config.panel.menus = [{ uid: "menu", items }];
   await saveConfig(config);
@@ -106,7 +108,6 @@ it("restores independent gaps after layout import into a browser with different 
   mocks.storage.bar_configurations = {};
   mocks.tree[0]!.id = "firefox-folder";
   mocks.tree[0]!.children.forEach((node, index) => { node.id = `firefox-${index}`; });
-  items[1]!.tabMode = "replace";
   await importBarConfigurations(exported, ["menu"]);
   const imported = (await loadBarConfigurations()).native.menu!;
   const rendered = await resolveMenuItems(items);

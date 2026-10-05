@@ -190,7 +190,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           : {}),
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
-        ...(menu.tabMode ? { tabMode: menu.tabMode } : {}),
         items: menu.items.map((item) => {
           if (
             item.type === "menuFold" ||
@@ -214,8 +213,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
               ...(item.dynamicUid ? { dynamicUid: item.dynamicUid } : {}),
               ...(item.rename ? { rename: item.rename } : {}),
               ...(item.color ? { color: item.color } : {}),
-              ...(item.tabMode ? { tabMode: item.tabMode } : {}),
-              ...(item.showPageTitle ? { showPageTitle: true } : {}),
             } satisfies ExportedMenuItem;
           }
 
@@ -227,7 +224,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
               ...(item.temporaryUid ? { temporaryUid: item.temporaryUid } : {}),
               ...(item.rename ? { rename: item.rename } : {}),
               ...(item.color ? { color: item.color } : {}),
-              ...(item.tabMode ? { tabMode: item.tabMode } : {}),
             } satisfies ExportedMenuItem;
           }
 
@@ -250,7 +246,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
                 : {}),
             ...(item.expandOnHover !== undefined ? { expandOnHover: item.expandOnHover } : {}),
             ...(item.includeFolders ? { includeFolders: true } : {}),
-            ...(item.tabMode ? { tabMode: item.tabMode } : {}),
           };
           return exportedItem;
         }),
@@ -345,16 +340,10 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             ? { expandOnHover: itemRecord.expandOnHover }
             : {}),
           ...(itemRecord.includeFolders === true ? { includeFolders: true } : {}),
-          ...(itemRecord.tabMode === "newTab" || itemRecord.tabMode === "replace"
-            ? { tabMode: itemRecord.tabMode }
-            : {}),
           ...(type === "dynamic" &&
           typeof itemRecord.dynamicUid === "string" &&
           itemRecord.dynamicUid
             ? { dynamicUid: itemRecord.dynamicUid }
-            : {}),
-          ...(type === "dynamic" && itemRecord.showPageTitle === true
-            ? { showPageTitle: true }
             : {}),
         });
       }

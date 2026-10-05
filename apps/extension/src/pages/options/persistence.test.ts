@@ -47,6 +47,33 @@ it("exports shared colors and bindings; optionally includes both modes without r
   persistence.destroy();
 });
 
+it("drops menu and item open modes on import and save while preserving shortcut choices", async () => {
+  const { persistence } = await fixture();
+  const data = await persistence.exportSettings();
+  const shortcuts = [{ slot: "slot_1", type: "static", staticUid: "link", tabMode: "newTab" }];
+  const nativeShortcuts = [{ id: "native-link", key: "Ctrl+A", type: "static", staticUid: "link", tabMode: "newTab" }];
+  await persistence.importSettings(JSON.stringify({
+    ...data,
+    menus: [{ uid: "bar", tabMode: "newTab", items: [
+      { uid: "static", type: "static", staticUid: "link", tabMode: "newTab" },
+      { uid: "folder", type: "folder", path: ["Docs"], tabMode: "newTab" },
+    ] }],
+    shortcuts, nativeShortcuts,
+  }));
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  const portable = await persistence.exportSettings();
+  for (const menu of [saved.panel.menus[0]!, portable.menus[0]!]) {
+    expect(menu).not.toHaveProperty("tabMode");
+    for (const item of menu.items) expect(item).not.toHaveProperty("tabMode");
+  }
+  expect(saved.shortcuts).toEqual(shortcuts);
+  expect(saved.nativeShortcuts).toEqual(nativeShortcuts);
+  expect(portable.shortcuts).toEqual(shortcuts);
+  expect(portable.nativeShortcuts).toEqual(nativeShortcuts);
+  persistence.destroy();
+});
+
 it("imports shared data without changing existing bar layouts, runtime enablement or the instance", async () => {
   const { state, persistence } = await fixture(); await saveLayouts();
   const before = await loadBarConfigurations();

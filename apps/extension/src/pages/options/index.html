@@ -359,13 +359,6 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <span class="menu-setting-label" data-i18n="menuSettings.dockColor">Bar background color</span>
               <button type="button" id="menu-setting-dock-color" class="item-color-swatch menu-setting-color-swatch"></button>
             </div>
-            <label>
-              <span data-i18n="menuSettings.openIn">Open in</span>
-              <select id="menu-setting-tab-mode">
-                <option value="replace" data-i18n="menuSettings.replaceTab">Replace current tab</option>
-                <option value="newTab" data-i18n="menuSettings.newTab">New tab</option>
-              </select>
-            </label>
           </div>
           <section class="menu-setting-url-rules-section" aria-labelledby="menu-setting-url-rules-title">
             <h3 id="menu-setting-url-rules-title" data-i18n="section.urlRules">URL matching</h3>
@@ -390,14 +383,6 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
                 <button type="button" id="item-setting-clear-rename" class="action-btn item-setting-clear-btn" data-i18n-title="itemSettings.clearRename" title="Clear rename">✕</button>
               </div>
             </div>
-            <div class="item-setting-field">
-              <span class="item-setting-field-title" data-i18n="itemSettings.openMode">Open mode</span>
-              <select id="item-setting-tab-mode" class="item-setting-select">
-                <option value="" data-i18n="itemSettings.inherit">Inherit menu setting</option>
-                <option value="replace" data-i18n="itemSettings.replaceTab">Replace current tab</option>
-                <option value="newTab" data-i18n="itemSettings.newTab">New tab</option>
-              </select>
-            </div>
             <div id="item-settings-folder-controls" class="item-settings-folder-controls">
               <label class="item-setting-check-label">
                 <input type="checkbox" id="item-setting-flatten" />
@@ -410,12 +395,6 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <label class="item-setting-check-label" id="item-setting-include-folders-label" style="display: none;">
                 <input type="checkbox" id="item-setting-include-folders" />
                 <span data-i18n="itemSettings.includeFolders">Include subfolders when flattening</span>
-              </label>
-            </div>
-            <div id="item-settings-dynamic-controls" class="item-settings-folder-controls" style="display: none;">
-              <label class="item-setting-check-label">
-                <input type="checkbox" id="item-setting-dynamic-show-page-title" />
-                <span data-i18n="dynamic.showPageTitle">Show current bookmark title</span>
               </label>
             </div>
             <div id="item-settings-action-targets" class="item-settings-folder-controls" style="display: none;"></div>

@@ -50,7 +50,6 @@ export function mountMenusTab(
   const menuSettingsDialogTitle = element<HTMLSpanElement>("menu-settings-dialog-title");
   const menuSettingsClose = element<HTMLButtonElement>("menu-settings-close");
   const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
-  const menuSettingTabMode = element<HTMLSelectElement>("menu-setting-tab-mode");
   const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
   const itemSettingsTitle = element<HTMLSpanElement>("item-settings-title");
   const itemSettingsClose = element<HTMLButtonElement>("item-settings-close");
@@ -58,17 +57,12 @@ export function mountMenusTab(
   const itemSettingsBookmarkControls = element<HTMLDivElement>("item-settings-bookmark-controls");
   const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
   const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
-  const itemSettingTabMode = element<HTMLSelectElement>("item-setting-tab-mode");
   const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
   const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
   const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>(
     "item-setting-include-folders-label",
   );
   const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
-  const itemSettingsDynamicControls = element<HTMLDivElement>("item-settings-dynamic-controls");
-  const itemSettingDynamicShowPageTitle = element<HTMLInputElement>(
-    "item-setting-dynamic-show-page-title",
-  );
   const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
   const addItemPopover = element<HTMLDivElement>("add-item-popover");
   const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
@@ -129,19 +123,6 @@ export function mountMenusTab(
       },
       { signal: scope.signal },
     );
-
-    menuSettingTabMode.addEventListener(
-      "change",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu) {
-          state.editMenuBehavior(menu.uid, {
-            tabMode: menuSettingTabMode.value === "newTab" ? "newTab" : "replace",
-          });
-        }
-      },
-      { signal: scope.signal },
-    );
   }
 
   function openMenuSettingsDialog(menuIndex: number): void {
@@ -155,7 +136,6 @@ export function mountMenusTab(
 
     menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
     updateMenuColorSwatch(menuSettingDockColor, menu, "dockColor");
-    menuSettingTabMode.value = menu.tabMode ?? "replace";
     renderMenuUrlRulesContent(menu);
 
     menuSettingsDialog.style.marginTop = "";
@@ -272,25 +252,6 @@ export function mountMenusTab(
       { signal: scope.signal },
     );
 
-    itemSettingTabMode.addEventListener(
-      "change",
-      () => {
-        if (!activeItemSettings) return;
-        const menu = state.settings.menus[activeItemSettings.menuIndex];
-        const item = menu?.items[activeItemSettings.itemIndex];
-        if (!item) return;
-
-        const val = itemSettingTabMode.value;
-        if (val === "newTab" || val === "replace") {
-          state.editItemBehavior(menu!.uid, item.uid, { tabMode: val });
-        } else {
-          state.editItemBehavior(menu!.uid, item.uid, { tabMode: undefined });
-        }
-        renderMenus();
-      },
-      { signal: scope.signal },
-    );
-
     itemSettingFlatten.addEventListener(
       "change",
       () => {
@@ -346,24 +307,6 @@ export function mountMenusTab(
         state.editItemBehavior(menu!.uid, item.uid, {
           expandOnHover: itemSettingHoverExpand.checked,
         });
-      },
-      { signal: scope.signal },
-    );
-
-    itemSettingDynamicShowPageTitle.addEventListener(
-      "change",
-      () => {
-        if (!activeItemSettings) return;
-        const menu = state.settings.menus[activeItemSettings.menuIndex];
-        const item = menu?.items[activeItemSettings.itemIndex];
-        if (!item || item.type !== "dynamic") return;
-
-        if (itemSettingDynamicShowPageTitle.checked) {
-          state.editItemBehavior(menu!.uid, item.uid, { showPageTitle: true });
-        } else {
-          state.editItemBehavior(menu!.uid, item.uid, { showPageTitle: undefined });
-        }
-        renderMenus();
       },
       { signal: scope.signal },
     );
@@ -439,9 +382,7 @@ export function mountMenusTab(
     const isMenuFold = item.type === "menuFold";
     const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction";
     const isDynamic = item.type === "dynamic";
-    const tabModeField = itemSettingTabMode.parentElement;
     const changeActions = itemSettingChangeBtn.parentElement;
-    if (tabModeField) tabModeField.style.display = isAction ? "none" : "";
     if (changeActions)
       changeActions.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
     itemSettingsActionTargets.style.display = "none";
@@ -450,7 +391,6 @@ export function mountMenusTab(
       itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
-      itemSettingsDynamicControls.style.display = "none";
       positionPopover(itemSettingsPopover, rect, 250);
       return;
     }
@@ -463,7 +403,6 @@ export function mountMenusTab(
       itemSettingsTitle.textContent = item.rename || actionLabel;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
-      itemSettingsDynamicControls.style.display = "none";
       if (item.type === "menusToggle") {
         itemSettingsActionTargets.style.display = "flex";
         renderActionTargetChoices(
@@ -483,10 +422,7 @@ export function mountMenusTab(
       const db = state.settings.dynamicBookmarks.find((d) => d.uid === item.dynamicUid);
       itemSettingsTitle.textContent = `🜂 ${db?.name || t("dynamic.defaultName")}`;
       itemSettingRename.value = item.rename ?? "";
-      itemSettingTabMode.value = item.tabMode ?? "";
       itemSettingsFolderControls.style.display = "none";
-      itemSettingsDynamicControls.style.display = "block";
-      itemSettingDynamicShowPageTitle.checked = item.showPageTitle === true;
       positionPopover(itemSettingsPopover, rect, 250);
       return;
     }
@@ -494,14 +430,10 @@ export function mountMenusTab(
     if (item.type === "temporary" || item.type === "static") {
       itemSettingsTitle.textContent = `${source.icon(item.type === "static" ? "static" : "temporary")} ${item.rename || source.name(item)}`;
       itemSettingRename.value = item.rename ?? "";
-      itemSettingTabMode.value = item.tabMode ?? "";
       itemSettingsFolderControls.style.display = "none";
-      itemSettingsDynamicControls.style.display = "none";
       positionPopover(itemSettingsPopover, rect, 250);
       return;
     }
-
-    itemSettingsDynamicControls.style.display = "none";
 
     const node = library.item(item);
     const isFolderNode = node
@@ -515,7 +447,6 @@ export function mountMenusTab(
       node?.title ?? (lastSeg ? formatSpecialRootForDisplay(lastSeg, library.tree) : "");
     itemSettingsTitle.textContent = `${isFolder ? "📁" : "🔖"} ${rawLabel.trim()}`;
     itemSettingRename.value = item.rename ?? "";
-    itemSettingTabMode.value = item.tabMode ?? "";
 
     if (isFolder) {
       itemSettingsFolderControls.style.display = "flex";

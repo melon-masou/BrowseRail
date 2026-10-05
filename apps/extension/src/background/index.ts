@@ -640,7 +640,7 @@ async function syncOnce(): Promise<void> {
     activeMenus.map(async (menu, index) => {
       async function viewForMode(mode: "native" | "browser"): Promise<MenuView> {
         const settings = mode === "native" ? resolveBarConfiguration(barConfigs, "native", menu.uid, index) : resolveBarConfiguration(barConfigs, "browser", menu.uid, index);
-        const items = await resolveMenuItems(menu.items, menu.tabMode, menu.color, settings.expandDirection, rootPrefix, {
+        const items = await resolveMenuItems(menu.items, menu.color, settings.expandDirection, rootPrefix, {
           tree: bookmarkTree as BookmarkNode[],
           dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks,
           bookmarksAvailable,

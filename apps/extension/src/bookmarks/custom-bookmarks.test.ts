@@ -51,7 +51,7 @@ it("shares a temporary slot across menu buttons and shortcuts without exposing i
   const entries = await resolveMenuItems([
     { uid: "button-a", type: "temporary", temporaryUid: "slot" },
     { uid: "button-b", type: "temporary", temporaryUid: "slot" },
-  ], undefined, undefined, undefined, undefined, {
+  ], undefined, undefined, undefined, {
     temporaryBookmarks: config.temporaryBookmarks, temporaryNotes: { slot: "First note" },
   });
   expect(entries.map(entry => entry.kind === "bookmark" ? entry.label : undefined)).toEqual(["First note", "First note"]);
@@ -104,7 +104,7 @@ it("resolves a static menu button without a browser bookmark and does not send i
   const entries = await resolveMenuItems([
     { uid: "button", type: "static", staticUid: "docs" },
     { uid: "missing", type: "static", staticUid: "deleted" },
-  ], undefined, undefined, undefined, undefined, {
+  ], undefined, undefined, undefined, {
     staticBookmarks: definitions,
   });
   expect(entries).toMatchObject([{ label: "Documentation", uid: "static:button" }]);
