@@ -92,7 +92,7 @@ export async function initializeSurface(
         requestTemporarySave: input => invoke("open_temporary_confirmation", {
           instanceUid, menuUid, windowUid: isFree ? null : windowUid, ...input,
         }),
-        openPopup: (request, pointerInside) => popup.open(request, pointerInside),
+        openPopup: (request, pointerInside, pinned) => popup.open(request, pointerInside, pinned),
         commitHitRegion,
         requestCustomize: enterCustomization,
       });

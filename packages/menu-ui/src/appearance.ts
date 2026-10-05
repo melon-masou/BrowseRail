@@ -1,6 +1,6 @@
 import { isAutoFontSize, type LayoutEntry } from "@browserail/protocol";
 import { barFrameInsets } from "./layout";
-import type { BarState } from "./types";
+import type { BarState, PopupPin } from "./types";
 
 export function automaticButtonFontSize(itemHeight: number): number {
   return Math.max(6, Math.round(itemHeight / 2.7));
@@ -128,6 +128,28 @@ export function menuButton(
   if (entry.kind === "folder") {
     button.dataset.folder = "";
     button.setAttribute("aria-haspopup", "menu");
+    // Inline geometry avoids font dependencies and CSP image loads.
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const lock = doc.createElementNS(svgNamespace, "svg");
+    lock.classList.add("folder-lock-marker");
+    lock.setAttribute("viewBox", "0 0 12 12");
+    lock.setAttribute("aria-hidden", "true");
+    lock.setAttribute("focusable", "false");
+    const body = doc.createElementNS(svgNamespace, "rect");
+    body.setAttribute("x", "2");
+    body.setAttribute("y", "5");
+    body.setAttribute("width", "8");
+    body.setAttribute("height", "6");
+    body.setAttribute("rx", "1");
+    const shackle = doc.createElementNS(svgNamespace, "path");
+    shackle.setAttribute("d", "M3.5 5V3.5a2.5 2.5 0 0 1 5 0V5");
+    lock.append(body, shackle);
+    button.append(lock);
   }
   return button;
+}
+
+export function applyFolderPin(button: HTMLElement, pin: PopupPin): void {
+  if (pin === "none") delete button.dataset.pin;
+  else button.dataset.pin = pin;
 }

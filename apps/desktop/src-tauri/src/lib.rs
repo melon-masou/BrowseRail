@@ -522,6 +522,33 @@ fn set_popup_pointer_inside(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+fn set_popup_pin(
+    state: tauri::State<'_, AppState>, instance_uid: String, window_uid: String, menu_uid: String, request_uid: String, pin: panel::PopupPin, root_pin: panel::PopupPin,
+) -> Result<(), String> {
+    state.native_sender.send(native::NativeCommand::SetPopupPin { instance_uid, window_uid, menu_uid, request_uid, pin, root_pin })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn toggle_popup_pin(
+    state: tauri::State<'_, AppState>, instance_uid: String, window_uid: String, menu_uid: String, request_uid: String, pin: panel::PopupPin,
+) -> Result<(), String> {
+    state.native_sender.send(native::NativeCommand::TogglePopupPin { instance_uid, window_uid, menu_uid, request_uid, pin })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn dismiss_popup(
+    state: tauri::State<'_, AppState>, instance_uid: String, window_uid: String, menu_uid: String, request_uid: String,
+) -> Result<(), String> {
+    state.native_sender.send(native::NativeCommand::DismissPopup { instance_uid, window_uid, menu_uid, request_uid })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 fn close_popup(
     state: tauri::State<'_, AppState>,
     instance_uid: String,
@@ -1114,6 +1141,9 @@ pub fn run() {
             cancel_popup_close,
             schedule_popup_close,
             set_popup_pointer_inside,
+            set_popup_pin,
+            toggle_popup_pin,
+            dismiss_popup,
             close_popup,
             begin_menu_customization,
             claim_menu_customization,

@@ -74,9 +74,9 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
     renderer = mountBar(root, barState(), {
       ...actions, requestCustomize: customize,
       waitForFonts: () => doc.fonts.load(`13px ${resolveFontFamily(state.view.fontFamily)}`),
-      async openPopup(request, pointerInside) {
+      async openPopup(request, pointerInside, pinned) {
         await closePopup();
-        const opened = await openBrowserPopup(container, request, actions, lifetime.signal, pointerInside);
+        const opened = await openBrowserPopup(container, root, request, actions, lifetime.signal, pointerInside, pinned);
         popup = opened;
         void opened.closed.then(() => { if (popup === opened) popup = undefined; });
         return opened;

@@ -8,7 +8,7 @@ function request(direction: PopupRequest["direction"]): PopupRequest {
       { kind: "folder", uid: "child", label: "Child", children: Array.from({ length: 30 }, (_, i) => ({ kind: "bookmark", uid: String(i), label: `Bookmark ${i}` })) },
     ] },
     anchor: { left: 900, right: 984, top: 500, bottom: 536 },
-    theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction, editingLocked: true,
+    theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction, editingLocked: true, pin: "none",
   };
 }
 const measure = (text: string) => text.length * 7;

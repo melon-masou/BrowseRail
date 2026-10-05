@@ -119,6 +119,39 @@
     border-radius: 0;
   }
 
+  .menu-button[data-folder][data-pin="temporary"]::after {
+    width: calc(var(--folder-marker-size, 9px) * 0.65);
+    height: calc(var(--folder-marker-size, 9px) * 0.65);
+    top: calc(var(--folder-marker-size, 9px) * 0.175);
+    right: calc(var(--folder-marker-size, 9px) * 0.175);
+    border: 0;
+    border-radius: 50%;
+    background: var(--folder-marker-color, rgb(255 255 255 / 60%));
+  }
+
+  .folder-lock-marker {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: var(--folder-marker-size, 9px);
+    height: var(--folder-marker-size, 9px);
+    pointer-events: none;
+    color: var(--folder-marker-color, rgb(255 255 255 / 60%));
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+  }
+
+  .menu-button[data-folder][data-pin="locked"]::after {
+    display: none;
+  }
+
+  .menu-button[data-folder][data-pin="locked"] > .folder-lock-marker {
+    display: block;
+  }
+
   .popup-container {
     position: absolute;
     z-index: 10;

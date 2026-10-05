@@ -1,9 +1,9 @@
 import { invertNavigationActionUid, type ExpandDirection, type LayoutEntry } from "@browserail/protocol";
-import { applyMenuColor, menuButton } from "../appearance";
+import { applyMenuColor, applyFolderPin, menuButton } from "../appearance";
 import { calculateColumnWidth as columnWidth, createTextMeasure, submenuHeightLimit } from "./layout";
 import { createLifetime, showMenuError, type Lifetime } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
-import type { Controller, PopupHost, PopupState, Rect } from "../types";
+import type { PopupController, PopupHost, PopupState, Rect, FolderPin } from "../types";
 
 interface PointerSample { time: number; x: number; y: number }
 const HOVER_OPEN_DELAY_MS = 60;
@@ -11,7 +11,7 @@ const SUBMENU_SWITCH_DELAY_MS = 180;
 const SUBMENU_AIM_DELAY_MS = 320;
 const POINTER_TRAIL_MAX_AGE_MS = 180;
 
-export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: PopupHost): Controller<PopupState> {
+export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: PopupHost): PopupController {
   const doc = root.ownerDocument;
   const lifetime = createLifetime(root, host.waitForFonts);
   let renderLifetime = createLifetime(root, host.waitForFonts);
@@ -20,8 +20,9 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
   let revision = 0;
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
   let hoverTarget: HTMLElement | undefined;
+  let toggleRootPin: (pin: FolderPin) => void;
+  let dismiss: () => void;
   let commitCurrent: () => Promise<void>;
-  const setPopupPointerInside = (inside: boolean): void => host.setPointerInside(inside);
   const run = (action: Promise<void>): void => {
     void action.catch(error => { if (lifetime.alive) showMenuError(root, error); });
   };
@@ -30,12 +31,14 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
   render(state);
   return {
     ready: commitCurrent!(),
+    toggleRootPin(pin): void { if (lifetime.alive) toggleRootPin(pin); },
+    dismiss(): void { if (lifetime.alive) dismiss(); },
     async update(next): Promise<void> {
       if (!lifetime.alive) return;
       const sameLayout = next.entries === state.entries && next.direction === state.direction
         && next.rootDirection === state.rootDirection && next.rootOffsetX === state.rootOffsetX
         && next.rootOffsetY === state.rootOffsetY
-        && next.expandAlignment === state.expandAlignment
+        && next.expandAlignment === state.expandAlignment && next.rootExpandOnHover === state.rootExpandOnHover
         && next.maxColumnHeight === state.maxColumnHeight && next.bounds === state.bounds
         && next.theme.fontSize === state.theme.fontSize && next.theme.itemHeight === state.theme.itemHeight
         && next.theme.color === state.theme.color;
@@ -80,13 +83,63 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
     popup.style.display = "block";
     popup.style.height = "100%";
     let levels: LayoutEntry[][] = [payload.entries];
+    const pins = new Map<number, FolderPin>();
+    if (host.pin !== "none") pins.set(0, host.pin);
+    const pinnedThrough = (): number => Math.max(-1, ...pins.keys());
+    const lockedFrom = (level: number): boolean => Array.from(pins).some(([depth, pin]) => depth >= level && pin === "locked");
+    const publishPin = (): void => {
+      updatePinMarkers();
+      run(host.setPin(lockedFrom(0) ? "locked" : pins.size ? "temporary" : "none", pins.get(0) ?? "none"));
+    };
+    const togglePin = (level: number, pin: FolderPin): void => {
+      const current = pins.get(level);
+      if (current === "locked" || (current === "temporary" && pin === "temporary")) {
+        pins.delete(level);
+        for (const [depth, value] of pins) if (depth > level && value !== "locked") pins.delete(depth);
+      } else {
+        if (pin === "temporary") {
+          for (let ancestor = 0; ancestor < level; ancestor++) if (!pins.has(ancestor)) pins.set(ancestor, "temporary");
+        }
+        pins.set(level, pin);
+      }
+      publishPin();
+    };
+    toggleRootPin = pin => {
+      if (pin === "locked" || payload.rootExpandOnHover !== false || pins.get(0) === "locked") togglePin(0, pin);
+    };
     let expandedUids: string[] = [];
     let expandedDirections: ExpandDirection[] = [];
     const columns: HTMLElement[] = [];
+    const updatePinMarkers = (): void => {
+      for (let level = 0; level < columns.length; level++) {
+        for (const button of columns[level]!.querySelectorAll<HTMLElement>(".menu-button[data-uid]")) {
+          applyFolderPin(button, button.dataset.uid === expandedUids[level] ? pins.get(level + 1) ?? "none" : "none");
+        }
+      }
+    };
     const columnDisposers = new WeakMap<HTMLElement, () => void>();
     const renderedLevels: LayoutEntry[][] = [];
     const pointerTrail: PointerSample[] = [];
     let hitRegionRevision = 0;
+    const setPopupPointerInside = (inside: boolean): void => {
+      if (!inside && pins.size) trimLevels(pinnedThrough() + 1);
+      host.setPointerInside(inside);
+    };
+
+    const trimLevels = (count: number): void => {
+      if (levels.length <= count) return;
+      levels = levels.slice(0, count);
+      expandedUids = expandedUids.slice(0, count - 1);
+      expandedDirections = expandedDirections.slice(0, count - 1);
+      renderLevels();
+    };
+    dismiss = (): void => {
+      if (!lockedFrom(0)) { run(host.close()); return; }
+      for (const [depth, pin] of pins) if (pin !== "locked") pins.delete(depth);
+      trimLevels(pinnedThrough() + 1);
+      publishPin();
+    };
+    popup.addEventListener("contextmenu", event => event.preventDefault(), { signal: renderLifetime.signal });
 
     popup.addEventListener("wheel", event => {
       if (event.ctrlKey) return;
@@ -131,7 +184,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
     };
 
     const dispatchAction = (actionUid: string): void => {
-      run(host.close());
+      dismiss();
       if (!actionUid.startsWith("noop")) run(host.invokeAction(actionUid));
     };
 
@@ -196,7 +249,16 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
               : payload.direction;
           button.dataset.expandDirection = preferredDirection;
           button.toggleAttribute("data-expanded", expandedUids[level] === entry.uid);
-          const openChild = (): void => {
+          const openChild = (pin?: FolderPin, clicked = false): void => {
+            const sameFolder = expandedUids[level] === entry.uid;
+            if (!sameFolder && lockedFrom(level + 1)) return;
+            if (!pin && !clicked && level < pinnedThrough()) return;
+            if (!sameFolder && clicked) {
+              const changed = pins.size;
+              for (const depth of pins.keys()) if (depth > level) pins.delete(depth);
+              if (changed !== pins.size) publishPin();
+            }
+            if (pin) togglePin(level + 1, pin);
             setPopupPointerInside(true);
             if (expandedUids[level] === entry.uid && levels.length > level + 1) return;
             levels = [...levels.slice(0, level + 1), entry.children];
@@ -210,34 +272,35 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
           if (entry.expandOnHover !== false) {
             scheduleHover(
               columnLifetime, button,
-              openChild,
+              () => openChild(),
               () => levels.length > level + 1
                 ? submenuSwitchDelay(level)
                 : HOVER_OPEN_DELAY_MS,
             );
-          } else {
-            button.addEventListener("pointerdown", (event) => {
-              if (event.button !== 0) return;
-              event.preventDefault();
-              if (expandedUids[level] === entry.uid) {
-                levels = levels.slice(0, level + 1);
-                expandedUids = expandedUids.slice(0, level);
-                expandedDirections = expandedDirections.slice(0, level);
-                renderLevels();
-              } else {
-                openChild();
-              }
-            }, { signal: columnLifetime.signal });
           }
+          button.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0 && event.button !== 2) return;
+            event.preventDefault();
+            if (event.button === 2 || entry.expandOnHover !== false || pins.get(level + 1) === "locked") {
+              openChild(event.button === 2 ? "locked" : "temporary", true);
+            } else if (expandedUids[level] === entry.uid) {
+              if (lockedFrom(level + 1)) return;
+              const changed = pins.size;
+              for (const depth of pins.keys()) if (depth > level) pins.delete(depth);
+              if (changed !== pins.size) publishPin();
+              trimLevels(level + 1);
+            } else openChild(undefined, true);
+          }, { signal: columnLifetime.signal });
         } else {
           button.addEventListener("pointerenter", () => {
             setPopupPointerInside(true);
           }, { signal: columnLifetime.signal });
           scheduleHover(columnLifetime, button, () => {
-            if (levels.length <= level + 1) return;
-            levels = levels.slice(0, level + 1);
-            expandedUids = expandedUids.slice(0, level);
-            expandedDirections = expandedDirections.slice(0, level);
+            const keep = Math.max(level + 1, pinnedThrough() + 1);
+            if (levels.length <= keep) return;
+            levels = levels.slice(0, keep);
+            expandedUids = expandedUids.slice(0, keep - 1);
+            expandedDirections = expandedDirections.slice(0, keep - 1);
             renderLevels();
           }, () => submenuSwitchDelay(level));
           if (entry.uid.startsWith("temporary:")) {
@@ -357,6 +420,7 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
           button.toggleAttribute("data-expanded", button.dataset.uid === expandedUid);
         }
       }
+      updatePinMarkers();
       layoutColumns();
       scheduleHitRegionUpdate();
     };

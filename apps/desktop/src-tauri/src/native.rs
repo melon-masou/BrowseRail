@@ -23,11 +23,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetGUIThreadInfo, GetWindowRect, GetWindowThreadProcessId, GUITHREADINFO,
     HHOOK, IsWindow, KBDLLHOOKSTRUCT, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL,
     WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_KEYDOWN, WM_SYSKEYDOWN,
+    MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_XBUTTONDOWN, WindowFromPoint,
 };
 use windows::core::PWSTR;
 
 use crate::panel::{
-    PopupPointerAction, PopupPointerSource, PopupRegistry, PopupRequest, SurfaceRegistry,
+    PopupPin, PopupPointerAction, PopupPointerSource, PopupRegistry, PopupRequest, SurfaceRegistry,
     ensure_popup_window, free_label, instance_surface_prefix, is_window_always_on_top, menu_label,
     popup_label, set_window_always_on_top, set_window_no_activate, set_window_owner,
     set_window_visible_without_activation, surface_prefix,
@@ -156,6 +157,17 @@ pub enum NativeCommand {
         source: PopupPointerSource,
         inside: bool,
     },
+    SetPopupPin {
+        instance_uid: String,
+        window_uid: String,
+        menu_uid: String,
+        request_uid: String,
+        pin: PopupPin,
+        root_pin: PopupPin,
+    },
+    TogglePopupPin { instance_uid: String, window_uid: String, menu_uid: String, request_uid: String, pin: PopupPin },
+    DismissPopup { instance_uid: String, window_uid: String, menu_uid: String, request_uid: String },
+    PopupPointerDown { point: (i32, i32), target_hwnd: isize },
     ClosePopupIfGeneration {
         instance_uid: String,
         window_uid: String,
@@ -241,6 +253,37 @@ pub struct NativeReactor {
 
 static FOREGROUND_EVENT_SENDER: OnceLock<UnboundedSender<NativeCommand>> = OnceLock::new();
 static FOREGROUND_EVENT_HOOK: OnceLock<isize> = OnceLock::new();
+
+static POPUP_MOUSE_EVENT_SENDER: OnceLock<UnboundedSender<NativeCommand>> = OnceLock::new();
+// Read and changed only on Tauri's main message thread, where the hook runs.
+static mut POPUP_MOUSE_HOOK: isize = 0;
+
+unsafe extern "system" fn popup_mouse_callback(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code >= 0 && matches!(wparam.0 as u32, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN) {
+        let sample = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
+        let target = unsafe { GetAncestor(WindowFromPoint(sample.pt), GA_ROOT) };
+        if let Some(sender) = POPUP_MOUSE_EVENT_SENDER.get() {
+            let _ = sender.send(NativeCommand::PopupPointerDown { point: (sample.pt.x, sample.pt.y), target_hwnd: target.0 as isize });
+        }
+    }
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+fn sync_popup_mouse_hook(app: &AppHandle, popups: Arc<PopupRegistry>) {
+    let _ = app.run_on_main_thread(move || unsafe {
+        if popups.has_pinned() {
+            if POPUP_MOUSE_HOOK == 0 {
+                match SetWindowsHookExW(WH_MOUSE_LL, Some(popup_mouse_callback), None, 0) {
+                    Ok(hook) => POPUP_MOUSE_HOOK = hook.0 as isize,
+                    Err(error) => crate::debug::log("Native:Popup", format!("Failed to watch outside popup clicks: {error}")),
+                }
+            }
+        } else if POPUP_MOUSE_HOOK != 0 {
+            let _ = UnhookWindowsHookEx(HHOOK(POPUP_MOUSE_HOOK as *mut _));
+            POPUP_MOUSE_HOOK = 0;
+        }
+    });
+}
 
 unsafe extern "system" fn foreground_event_callback(
     _hook: HWINEVENTHOOK,
@@ -713,6 +756,7 @@ impl NativeReactor {
 
         install_foreground_event_hook(&reactor.app, sender.clone());
         let _ = KEYBOARD_EVENT_SENDER.set(sender.clone());
+        let _ = POPUP_MOUSE_EVENT_SENDER.set(sender.clone());
 
         // Cursor safety-net: WebView2 occasionally drops a mouseleave, leaving a
         // popup's pointer-inside state stuck true so its normal close never fires
@@ -743,7 +787,7 @@ impl NativeReactor {
                         if !window_contains(&app, &label, cursor, true)
                             && !window_contains(&app, &parent_label, cursor, false)
                         {
-                            let _ = guard_sender.send(NativeCommand::ClosePopup {
+                            let _ = guard_sender.send(NativeCommand::SchedulePopupClose {
                                 instance_uid,
                                 window_uid,
                                 menu_uid,
@@ -763,6 +807,12 @@ impl NativeReactor {
 
     async fn run(&mut self, mut receiver: UnboundedReceiver<NativeCommand>) {
         while let Some(cmd) = receiver.recv().await {
+            let reconcile_popup_hook = matches!(&cmd,
+                NativeCommand::OpenPopup { .. } | NativeCommand::SetPopupPin { .. } | NativeCommand::DismissPopup { .. } | NativeCommand::PopupPointerDown { .. }
+                | NativeCommand::ClosePopup { .. } | NativeCommand::BeginPopupClose { .. } | NativeCommand::ClosePopupIfGeneration { .. }
+                | NativeCommand::ClientDisconnected { .. } | NativeCommand::ClientDetached { .. } | NativeCommand::SyncMenus { .. }
+                | NativeCommand::RebuildInstanceSurfaces { .. } | NativeCommand::ToggleDisplayPanels
+                | NativeCommand::RefreshWindowLevels | NativeCommand::SetEditing { .. });
             match cmd {
                 NativeCommand::ClientRegistered {
                     connection_uid,
@@ -1093,6 +1143,49 @@ impl NativeReactor {
                         Ok(PopupPointerAction::None) | Err(_) => {}
                     }
                 }
+                NativeCommand::SetPopupPin { instance_uid, window_uid, menu_uid, request_uid, pin, root_pin } => {
+                    if let Some((surface, outside)) = self.popups.set_pin(&instance_uid, &window_uid, &menu_uid, &request_uid, pin) {
+                        let event = serde_json::json!({ "requestUid": request_uid, "pin": pin, "rootPin": root_pin });
+                        let _ = self.app.emit_to(&surface.parent_label, "popup-pin-changed", &event);
+                        if pin == PopupPin::None && outside {
+                            let _ = self.native_sender.send(NativeCommand::SetPopupPointerInside {
+                                instance_uid, window_uid, menu_uid, source: PopupPointerSource::Popup, inside: false,
+                            });
+                        }
+                    }
+                }
+                NativeCommand::TogglePopupPin { instance_uid, window_uid, menu_uid, request_uid, pin } => {
+                    if self.popups.can_show(&instance_uid, &window_uid, &menu_uid, &request_uid) {
+                        let event = serde_json::json!({ "requestUid": request_uid, "pin": pin });
+                        let _ = self.app.emit_to(&popup_label(&instance_uid, &window_uid, &menu_uid), "popup-toggle-pin", event);
+                    }
+                }
+                NativeCommand::DismissPopup { instance_uid, window_uid, menu_uid, request_uid } => {
+                    if self.popups.can_show(&instance_uid, &window_uid, &menu_uid, &request_uid) {
+                        if self.popups.pin(&instance_uid, &window_uid, &menu_uid) == Some(PopupPin::Locked) {
+                            let event = serde_json::json!({ "requestUid": request_uid });
+                            let _ = self.app.emit_to(&popup_label(&instance_uid, &window_uid, &menu_uid), "popup-dismiss", event);
+                        } else {
+                            self.popups.remove(&instance_uid, &window_uid, &menu_uid);
+                            self.hide_popup_window(&instance_uid, &window_uid, &menu_uid);
+                        }
+                    }
+                }
+                NativeCommand::PopupPointerDown { point, target_hwnd } => {
+                    for (instance_uid, window_uid, menu_uid, parent_label) in self.popups.pinned_identities() {
+                        let label = popup_label(&instance_uid, &window_uid, &menu_uid);
+                        let inside = [(&label, true), (&parent_label, false)].iter().any(|(label, shaped)| {
+                            self.app.get_webview_window(label).and_then(|window| window.hwnd().ok())
+                                .is_some_and(|hwnd| hwnd.0 as isize == target_hwnd)
+                                && window_contains(&self.app, label, point, *shaped)
+                        });
+                        if !inside {
+                            if let Some(surface) = self.popups.surface(&instance_uid, &window_uid, &menu_uid) {
+                                let _ = self.native_sender.send(NativeCommand::DismissPopup { instance_uid, window_uid, menu_uid, request_uid: surface.request_uid });
+                            }
+                        }
+                    }
+                }
                 NativeCommand::ClosePopupIfGeneration {
                     instance_uid,
                     window_uid,
@@ -1214,6 +1307,7 @@ impl NativeReactor {
                     self.handle_native_shortcut_triggered(&key, foreground_hwnd);
                 }
             }
+            if reconcile_popup_hook { sync_popup_mouse_hook(&self.app, self.popups.clone()); }
         }
     }
 
@@ -2387,6 +2481,13 @@ impl NativeReactor {
                 if !should_be_visible && self.surfaces.is_visible(&popup_label) {
                     popup_labels_to_hide.push(popup_label);
                 }
+            }
+        }
+
+        for (instance_uid, window_uid, menu_uid, _) in self.popups.pinned_identities() {
+            if popup_labels_to_hide.contains(&popup_label(&instance_uid, &window_uid, &menu_uid)) {
+                self.popups.remove(&instance_uid, &window_uid, &menu_uid);
+                self.hide_popup_window(&instance_uid, &window_uid, &menu_uid);
             }
         }
 

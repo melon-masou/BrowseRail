@@ -271,6 +271,10 @@ pub fn is_window_always_on_top(window: &WebviewWindow) -> Result<bool, String> {
     Ok(extended_style & WS_EX_TOPMOST.0 as isize != 0)
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum PopupPin { None, Temporary, Locked }
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PopupRequest {
@@ -284,6 +288,7 @@ pub struct PopupRequest {
     pub request_uid: String,
     pub width: f64,
     pub window_uid: String,
+    pub pin: PopupPin,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -377,6 +382,7 @@ struct StoredPopup {
     content_closed: bool,
     height: f64,
     popup_pointer_inside: bool,
+    pin: PopupPin,
     surface: PopupSurface,
     width: f64,
 }
@@ -440,6 +446,7 @@ impl PopupRegistry {
             content_closed: false,
             height: request.height,
             popup_pointer_inside: false,
+            pin: request.pin,
             surface: PopupSurface {
                 instance_uid: request.instance_uid,
                 menu_uid: request.menu_uid,
@@ -521,6 +528,7 @@ impl PopupRegistry {
         if popup.content_closed {
             return Err("Popup content is already closed".into());
         }
+        if popup.pin != PopupPin::None { return Err("Popup is pinned".into()); }
         popup.close_generation = popup.close_generation.wrapping_add(1);
         popup.close_pending = Some(PopupCloseReason::Intent);
         Ok(popup.close_generation)
@@ -546,6 +554,7 @@ impl PopupRegistry {
             PopupPointerSource::Bar => popup.bar_pointer_inside = inside,
             PopupPointerSource::Popup => popup.popup_pointer_inside = inside,
         }
+        if popup.pin != PopupPin::None { return Ok(PopupPointerAction::None); }
 
         if popup.bar_pointer_inside || popup.popup_pointer_inside {
             if popup.close_pending == Some(PopupCloseReason::PointerExit) {
@@ -573,7 +582,7 @@ impl PopupRegistry {
     ) -> Option<u64> {
         let mut entries = self.entries.lock().ok()?;
         let popup = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid))?;
-        if popup.close_pending.is_none() || popup.close_generation != generation {
+        if popup.pin != PopupPin::None || popup.close_pending.is_none() || popup.close_generation != generation {
             return None;
         }
         popup.close_generation = popup.close_generation.wrapping_add(1);
@@ -608,6 +617,34 @@ impl PopupRegistry {
         if let Ok(mut entries) = self.entries.lock() {
             entries.remove(&popup_label(instance_uid, window_uid, menu_uid));
         }
+    }
+
+    pub fn set_pin(&self, instance_uid: &str, window_uid: &str, menu_uid: &str, request_uid: &str, pin: PopupPin) -> Option<(PopupSurface, bool)> {
+        let mut entries = self.entries.lock().ok()?;
+        let popup = entries.get_mut(&popup_label(instance_uid, window_uid, menu_uid))?;
+        if popup.surface.request_uid != request_uid || popup.content_closed { return None; }
+        popup.pin = pin;
+        popup.close_generation = popup.close_generation.wrapping_add(1);
+        popup.close_pending = None;
+        Some((popup.surface.clone(), !popup.bar_pointer_inside && !popup.popup_pointer_inside))
+    }
+
+    pub fn pin(&self, instance_uid: &str, window_uid: &str, menu_uid: &str) -> Option<PopupPin> {
+        let entries = self.entries.lock().ok()?;
+        let popup = entries.get(&popup_label(instance_uid, window_uid, menu_uid))?;
+        if popup.content_closed { return None; }
+        Some(popup.pin)
+    }
+
+    pub fn has_pinned(&self) -> bool {
+        self.entries.lock().map(|entries| entries.values().any(|popup| popup.pin != PopupPin::None && !popup.content_closed)).unwrap_or(false)
+    }
+
+    pub fn pinned_identities(&self) -> Vec<(String, String, String, String)> {
+        self.entries.lock().map(|entries| entries.values()
+            .filter(|popup| popup.pin != PopupPin::None && !popup.content_closed)
+            .map(|popup| (popup.surface.instance_uid.clone(), popup.surface.window_uid.clone(), popup.surface.menu_uid.clone(), popup.surface.parent_label.clone()))
+            .collect()).unwrap_or_default()
     }
 
     /// Drop the stored state for any of these window labels. The registry is
@@ -646,6 +683,7 @@ impl PopupRegistry {
             .map(|entries| {
                 entries
                     .values()
+                    .filter(|popup| popup.pin == PopupPin::None && !popup.content_closed)
                     .map(|popup| {
                         (
                             popup.surface.instance_uid.clone(),
@@ -1073,6 +1111,7 @@ mod tests {
             request_uid: "request".into(),
             width,
             window_uid: "window".into(),
+            pin: PopupPin::None,
         }
     }
 
@@ -1096,5 +1135,33 @@ mod tests {
         ] {
             assert!(registry.set(popup_request(width, height)).is_err());
         }
+    }
+
+    #[test]
+    fn pinning_cancels_pending_hover_close_and_removal_releases_the_pin() {
+        let registry = PopupRegistry::default();
+        registry.set(popup_request(240.0, 200.0)).unwrap();
+        let generation = registry.schedule_close("instance", "window", "menu").unwrap();
+        assert!(registry.set_pin("instance", "window", "menu", "request", PopupPin::Temporary).is_some());
+        assert!(registry.advance_close("instance", "window", "menu", generation).is_none());
+        assert_eq!(registry.set_pointer_inside("instance", "window", "menu", PopupPointerSource::Bar, false).unwrap(), PopupPointerAction::None);
+        assert!(registry.open_identities().is_empty());
+        assert!(registry.has_pinned());
+        assert!(registry.set_pin("instance", "window", "menu", "request", PopupPin::None).is_some());
+        assert!(!registry.has_pinned());
+        assert_eq!(registry.open_identities().len(), 1);
+        let resumed = registry.set_pointer_inside("instance", "window", "menu", PopupPointerSource::Popup, false).unwrap();
+        assert!(matches!(resumed, PopupPointerAction::Schedule(_)));
+        assert!(registry.set_pin("instance", "window", "menu", "request", PopupPin::Temporary).is_some());
+        registry.remove("instance", "window", "menu");
+        assert!(!registry.has_pinned());
+
+        let mut next = popup_request(240.0, 200.0);
+        next.request_uid = "next".into();
+        registry.set(next).unwrap();
+        assert!(registry.set_pin("instance", "window", "menu", "request", PopupPin::Temporary).is_none());
+        assert!(!registry.has_pinned());
+        let generation = registry.schedule_close("instance", "window", "menu").unwrap();
+        assert!(registry.advance_close("instance", "window", "menu", generation).is_some());
     }
 }

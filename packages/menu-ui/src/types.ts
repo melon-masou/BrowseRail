@@ -15,7 +15,11 @@ export interface PopupTheme {
   fontSize: number;
   itemHeight: number;
 }
+export type PopupPin = "none" | "temporary" | "locked";
+export type FolderPin = Exclude<PopupPin, "none">;
+
 export interface PopupState {
+  rootExpandOnHover?: boolean;
   entries: LayoutEntry[];
   theme: PopupTheme;
   direction: ExpandDirection;
@@ -45,22 +49,31 @@ export interface PopupRequest {
   direction: ExpandDirection;
   expandAlignment?: ExpandAlignment;
   editingLocked: boolean;
+  pin: PopupPin;
 }
 export interface BarHost extends MenuActions {
   waitForFonts?(): Promise<unknown>;
-  openPopup(request: PopupRequest, pointerInside: (inside: boolean) => void): Promise<PopupSession>;
+  openPopup(request: PopupRequest, pointerInside: (inside: boolean) => void, pinChanged: (pin: PopupPin, rootPin: PopupPin) => void): Promise<PopupSession>;
   requestCustomize(): Promise<void>;
   commitHitRegion?(region: Rect | null): Promise<void>;
 }
 export interface PopupSession {
+  togglePin(pin: FolderPin): Promise<void>;
+  dismiss(): Promise<void>;
   close(): Promise<void>;
   requestClose(): void;
   cancelClose(): void;
   setBarPointerInside(inside: boolean): void;
   readonly closed: Promise<void>;
 }
+export interface PopupController extends Controller<PopupState> {
+  toggleRootPin(pin: FolderPin): void;
+  dismiss(): void;
+}
 export interface PopupLayout { columns: Rect[] }
 export interface PopupHost extends MenuActions {
+  readonly pin: PopupPin;
+  setPin(pin: PopupPin, rootPin: PopupPin): Promise<void>;
   waitForFonts?(): Promise<unknown>;
   close(): Promise<void>;
   setPointerInside(inside: boolean): void;

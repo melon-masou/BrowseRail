@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountBar, mountFolderPopup, createCustomizationRail } from "./index";
-import type { BarHost, BarState, Controller, PopupHost, PopupState, Rect } from "./types";
+import type { BarHost, BarState, Controller, PopupHost, PopupState, Rect, PopupPin, FolderPin } from "./types";
 
 const controllers: Array<{ destroy(): void }> = [];
 beforeEach(() => {
@@ -31,7 +31,7 @@ function host(): BarHost {
     invokeAction: vi.fn(async () => {}), requestToggleFold: vi.fn(async () => {}),
     requestTemporarySave: vi.fn(async () => {}), requestCustomize: vi.fn(async () => {}),
     openPopup: vi.fn(async () => ({
-      close: async () => {}, requestClose: () => {}, cancelClose: () => {}, setBarPointerInside: () => {},
+      togglePin: async () => {}, dismiss: async () => {}, close: async () => {}, requestClose: () => {}, cancelClose: () => {}, setBarPointerInside: () => {},
       closed: new Promise<void>(() => {}),
     })),
   };
@@ -115,7 +115,7 @@ describe("shared menu mounting", () => {
     const root = container(); const adapter = host(); const state = barState();
     let close!: () => void;
     adapter.openPopup = vi.fn(async () => ({
-      close: async () => close(), requestClose: () => {}, cancelClose: () => {}, setBarPointerInside: () => {},
+      togglePin: async () => {}, dismiss: async () => {}, close: async () => close(), requestClose: () => {}, cancelClose: () => {}, setBarPointerInside: () => {},
       closed: new Promise<void>(resolve => { close = resolve; }),
     }));
     state.menu.items = [{ kind: "folder", uid: "folder", label: "Folder", expandOnHover: false,
@@ -153,7 +153,7 @@ describe("shared menu mounting", () => {
     const close = vi.fn(async () => { finishClosing(); });
     adapter.openPopup = vi.fn(async () => {
       if (pending) await opening;
-      return { close, closed, requestClose() {}, cancelClose() {}, setBarPointerInside() {} };
+      return { togglePin: async () => {}, dismiss: async () => {}, close, closed, requestClose() {}, cancelClose() {}, setBarPointerInside() {} };
     });
     await mount(root, state, adapter).ready;
     vi.useFakeTimers();
@@ -182,6 +182,67 @@ describe("shared menu mounting", () => {
     expect(adapter.requestTemporarySave).not.toHaveBeenCalled();
     expect(adapter.invokeAction).not.toHaveBeenCalled();
   });
+
+  it("pins a hovered folder on click, retains it across sibling hover, and releases it on a bookmark click", async () => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu.items.unshift(...["A", "B"].map(uid => ({ kind: "folder" as const, uid, label: uid,
+      children: [{ kind: "bookmark" as const, uid: "child", label: "Child" }] })));
+    const close = vi.fn(async () => {}); const togglePin = vi.fn(async () => {});
+    adapter.openPopup = vi.fn(async (_request, _inside, changed) => ({
+      togglePin: async (pin: FolderPin) => { togglePin(); changed(pin, pin); }, dismiss: async () => {}, close,
+      closed: new Promise<void>(() => {}), requestClose() {}, cancelClose() {}, setBarPointerInside() {},
+    }));
+    await mount(root, state, adapter).ready;
+    vi.useFakeTimers();
+    const [a, b, bookmark] = root.querySelectorAll("button");
+    a!.dispatchEvent(new Event("pointerenter"));
+    await vi.advanceTimersByTimeAsync(100);
+    press(a!);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(togglePin).toHaveBeenCalledOnce();
+    a!.dispatchEvent(new Event("pointerleave"));
+    b!.dispatchEvent(new Event("pointerenter"));
+    await vi.advanceTimersByTimeAsync(500);
+    bookmark!.dispatchEvent(new Event("pointerenter"));
+    expect(adapter.openPopup).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+    press(bookmark!);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(close).toHaveBeenCalledOnce();
+    expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
+  });
+});
+
+it("unlocks a pinned bar folder on a second click and lets hover switch folders again", async () => {
+  const root = container(); const adapter = host(); const state = barState();
+  state.menu.items = ["A", "B"].map(uid => ({ kind: "folder", uid, label: uid,
+    children: [{ kind: "bookmark", uid: `${uid}-link`, label: `${uid} link` }] }));
+  adapter.openPopup = vi.fn(async (_request, _inside, changed) => ({
+    togglePin: async () => { changed("none", "none"); }, dismiss: async () => {}, close: async () => {},
+    closed: new Promise<void>(() => {}), requestClose() {}, cancelClose() {}, setBarPointerInside() {},
+  }));
+  await mount(root, state, adapter).ready;
+  vi.useFakeTimers();
+  const [a, b] = root.querySelectorAll("button");
+  press(a!); await vi.advanceTimersByTimeAsync(0);
+  press(a!); await vi.advanceTimersByTimeAsync(0);
+  b!.dispatchEvent(new Event("pointerenter"));
+  await vi.advanceTimersByTimeAsync(100);
+  expect(adapter.openPopup).toHaveBeenLastCalledWith(expect.objectContaining({ folder: expect.objectContaining({ uid: "B" }), pin: "none" }), expect.any(Function), expect.any(Function));
+});
+
+it("lets a click-only bar folder replace a temporary pin using its normal left click", async () => {
+  const root = container(); const adapter = host(); const state = barState();
+  state.menu.items = [
+    { kind: "folder", uid: "hover", label: "Hover", children: [{ kind: "bookmark", uid: "one", label: "One" }] },
+    { kind: "folder", uid: "click", label: "Click", expandOnHover: false, children: [{ kind: "bookmark", uid: "two", label: "Two" }] },
+  ];
+  await mount(root, state, adapter).ready;
+  vi.useFakeTimers();
+  const [hover, click] = root.querySelectorAll("button");
+  press(hover!); await vi.advanceTimersByTimeAsync(0);
+  press(click!); await vi.advanceTimersByTimeAsync(0);
+  expect(adapter.openPopup).toHaveBeenLastCalledWith(expect.objectContaining({ folder: expect.objectContaining({ uid: "click" }), pin: "none" }), expect.any(Function), expect.any(Function));
 });
 
 describe("bar auto-hide", () => {
@@ -257,7 +318,7 @@ describe("bar auto-hide", () => {
   it("stays revealed while the pointer is in its popup and hides after leaving both surfaces", async () => {
     const root = container(); const adapter = host(); const state = barState();
     state.menu.autoHide = "start";
-    state.menu.items = [{ kind: "folder", uid: "folder", label: "Folder", expandOnHover: false,
+    state.menu.items = [{ kind: "folder", uid: "folder", label: "Folder", expandOnHover: true,
       children: [{ kind: "bookmark", uid: "child", label: "Child" }] }];
     let pointerInside!: (inside: boolean) => void;
     let region: Rect | null = null;
@@ -268,15 +329,15 @@ describe("bar auto-hide", () => {
       let closed!: () => void;
       const done = new Promise<void>(resolve => { closed = resolve; });
       close.mockImplementation(async () => closed());
-      return { close, closed: done, requestClose() {}, cancelClose() {}, setBarPointerInside() {} };
+      return { togglePin: async () => {}, dismiss: async () => {}, close, closed: done, requestClose() {}, cancelClose() {}, setBarPointerInside() {} };
     };
     await mount(root, state, adapter).ready;
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const viewport = root.querySelector(".bar-viewport")!;
     viewport.dispatchEvent(new Event("pointerenter"));
     await vi.advanceTimersByTimeAsync(200);
-    press(root.querySelector("button")!);
-    await vi.advanceTimersByTimeAsync(0);
+    root.querySelector("button")!.dispatchEvent(new Event("pointerenter"));
+    await vi.advanceTimersByTimeAsync(100);
     viewport.dispatchEvent(new Event("pointerleave"));
     pointerInside(true);
     await vi.advanceTimersByTimeAsync(1000);
@@ -298,10 +359,147 @@ function popupState(): PopupState {
 }
 function popupHost(): PopupHost {
   return {
+    pin: "none", setPin: vi.fn(async () => {}),
     invokeAction: vi.fn(async () => {}), requestToggleFold: vi.fn(async () => {}), requestTemporarySave: vi.fn(async () => {}),
     close: vi.fn(async () => {}), setPointerInside: vi.fn(), commitLayout: vi.fn(async () => {}),
   };
 }
+
+it("keeps a clicked child layer while hovering its siblings, allows explicit switching, and closes the chain on navigation", async () => {
+  const root = container(); const adapter = popupHost(); const state = popupState();
+  let pin: PopupPin = "none";
+  Object.defineProperty(adapter, "pin", { get: () => pin });
+  adapter.setPin = async next => { pin = next; };
+  state.entries = [
+    { kind: "folder", uid: "a", label: "A", children: [
+      { kind: "folder", uid: "nested", label: "Nested", children: [{ kind: "bookmark", uid: "deep", label: "Deep" }] },
+      { kind: "bookmark", uid: "a-link", label: "A link" },
+    ] },
+    { kind: "folder", uid: "b", label: "B", children: [{ kind: "bookmark", uid: "b-link", label: "B link" }] },
+    { kind: "bookmark", uid: "root-link", label: "Root link" },
+  ];
+  const controller = mountFolderPopup(root, state, adapter); controllers.push(controller); await controller.ready;
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const [a, b, rootLink] = root.querySelectorAll<HTMLButtonElement>("button");
+  press(a!);
+  b!.dispatchEvent(new Event("pointerenter"));
+  await vi.advanceTimersByTimeAsync(500);
+  rootLink!.dispatchEvent(new Event("pointerenter"));
+  await vi.advanceTimersByTimeAsync(500);
+  expect(root.textContent).toContain("A link");
+  expect(root.textContent).not.toContain("B link");
+  const child = root.querySelectorAll<HTMLElement>(".menu-column")[1]!;
+  child.querySelector("button")!.dispatchEvent(new Event("pointerenter"));
+  await vi.advanceTimersByTimeAsync(100);
+  expect(root.textContent).toContain("Deep");
+  root.querySelectorAll<HTMLElement>(".menu-column")[2]!.dispatchEvent(new Event("pointerleave"));
+  expect(root.textContent).not.toContain("Deep");
+  expect(root.textContent).toContain("A link");
+  press(b!);
+  expect(root.textContent).toContain("B link");
+  expect(root.textContent).not.toContain("A link");
+  press(root.querySelectorAll<HTMLElement>(".menu-column")[1]!.querySelector("button")!);
+  expect(adapter.close).toHaveBeenCalledOnce();
+  expect(adapter.invokeAction).toHaveBeenCalledWith("b-link");
+});
+
+it("unlocks a clicked child branch on a second click while keeping its parent pinned", async () => {
+  const root = container(); const adapter = popupHost(); const state = popupState();
+  let pin: PopupPin = "none";
+  Object.defineProperty(adapter, "pin", { get: () => pin });
+  adapter.setPin = async next => { pin = next; };
+  state.entries = [
+    { kind: "folder", uid: "a", label: "A", children: [
+      { kind: "folder", uid: "nested", label: "Nested", children: [{ kind: "bookmark", uid: "deep", label: "Deep" }] },
+      { kind: "bookmark", uid: "a-link", label: "A link" },
+    ] },
+    { kind: "bookmark", uid: "root-link", label: "Root link" },
+  ];
+  const controller = mountFolderPopup(root, state, adapter); controllers.push(controller); await controller.ready;
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const a = root.querySelector("button")!;
+  press(a);
+  const child = root.querySelectorAll<HTMLElement>(".menu-column")[1]!;
+  const nested = child.querySelector("button")!;
+  press(nested); press(nested);
+  child.querySelectorAll("button")[1]!.dispatchEvent(new Event("pointerenter"));
+  await vi.advanceTimersByTimeAsync(500);
+  expect(root.textContent).not.toContain("Deep");
+  expect(root.textContent).toContain("A link");
+  root.querySelectorAll<HTMLElement>(".menu-column")[0]!.querySelectorAll("button")[1]!.dispatchEvent(new Event("pointerenter"));
+  await vi.advanceTimersByTimeAsync(500);
+  expect(root.textContent).toContain("A link");
+  press(a);
+  child.dispatchEvent(new Event("pointerleave"));
+  expect(root.textContent).not.toContain("A link");
+  expect(adapter.close).not.toHaveBeenCalled();
+});
+
+it.each([0, 2])("keeps right-locked layers through other clicks and releases only the clicked folder (%s)", async mouseButton => {
+  const root = container(); const adapter = popupHost(); const state = popupState();
+  state.entries = [
+    { kind: "folder", uid: "a", label: "A", children: [
+      { kind: "folder", uid: "nested", label: "Nested", children: [{ kind: "bookmark", uid: "deep", label: "Deep" }] },
+      { kind: "bookmark", uid: "a-link", label: "A link" },
+    ] },
+    { kind: "folder", uid: "b", label: "B", children: [{ kind: "bookmark", uid: "b-link", label: "B link" }] },
+    { kind: "bookmark", uid: "root-link", label: "Root link" },
+  ];
+  const controller = mountFolderPopup(root, state, adapter); controllers.push(controller); await controller.ready;
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const [a, b, rootLink] = root.querySelectorAll<HTMLButtonElement>("button");
+  press(a!, 2);
+  const child = root.querySelectorAll<HTMLElement>(".menu-column")[1]!;
+  const nested = child.querySelector("button")!;
+  press(nested, 2);
+  press(a!, mouseButton);
+  press(b!, 2);
+  b!.dispatchEvent(new Event("pointerenter"));
+  await vi.advanceTimersByTimeAsync(500);
+  press(rootLink!);
+  controller.dismiss();
+  expect(adapter.invokeAction).toHaveBeenCalledWith("root-link");
+  expect(adapter.close).not.toHaveBeenCalled();
+  expect(root.textContent).toContain("Deep");
+  expect(root.textContent).not.toContain("B link");
+  press(nested, mouseButton);
+  controller.dismiss();
+  expect(adapter.close).toHaveBeenCalledOnce();
+});
+
+it("upgrades a temporary pin with a right click and unlocks it on the next right click", async () => {
+  const root = container(); const adapter = popupHost(); const state = popupState();
+  state.entries = [{ kind: "folder", uid: "folder", label: "Folder",
+    children: [{ kind: "bookmark", uid: "child", label: "Child link" }] }];
+  const controller = mountFolderPopup(root, state, adapter); controllers.push(controller); await controller.ready;
+  const folder = root.querySelector("button")!;
+  press(folder); press(folder, 2);
+  controller.dismiss();
+  expect(root.textContent).toContain("Child link");
+  expect(adapter.close).not.toHaveBeenCalled();
+  press(folder, 2); controller.dismiss();
+  expect(adapter.close).toHaveBeenCalledOnce();
+});
+
+it.each([0, 2])("keeps left-click expansion for click-only folders and unlocks their right-click lock with either button (%s)", async mouseButton => {
+  const root = container(); const adapter = popupHost(); const state = popupState();
+  state.entries = [{ kind: "folder", uid: "folder", label: "Folder", expandOnHover: false,
+    children: [{ kind: "bookmark", uid: "child", label: "Child link" }] }];
+  const controller = mountFolderPopup(root, state, adapter); controllers.push(controller); await controller.ready;
+  const folder = root.querySelector("button")!;
+  press(folder);
+  expect(root.textContent).toContain("Child link");
+  expect(adapter.setPin).not.toHaveBeenCalled();
+  press(folder);
+  expect(root.textContent).not.toContain("Child link");
+  press(folder, 2); controller.dismiss();
+  expect(root.textContent).toContain("Child link");
+  expect(adapter.close).not.toHaveBeenCalled();
+  press(folder, mouseButton);
+  expect(adapter.setPin).toHaveBeenLastCalledWith("none", "none");
+  press(folder);
+  expect(root.textContent).not.toContain("Child link");
+});
 
 it("does not mark a popup ready before its host commits the clickable columns", async () => {
   const root = container(true); const adapter = popupHost();
@@ -329,8 +527,11 @@ it("rejects popup readiness when the host cannot commit its layout", async () =>
 
 it("cancels a temporary hold when its popup column is removed", async () => {
   const root = container(); const adapter = popupHost(); const state = popupState();
-  state.entries = [{ kind: "folder", uid: "parent", label: "Parent", expandOnHover: false,
-    children: [{ kind: "bookmark", uid: "temporary:slot", label: "Later" }] }];
+  state.entries = [
+    { kind: "folder", uid: "parent", label: "Parent", expandOnHover: false,
+      children: [{ kind: "bookmark", uid: "temporary:slot", label: "Later" }] },
+    { kind: "folder", uid: "other", label: "Other", children: [{ kind: "bookmark", uid: "other-child", label: "Other child" }] },
+  ];
   const controller = mountFolderPopup(root, state, adapter); controllers.push(controller); await controller.ready;
   const parent = root.querySelector<HTMLButtonElement>("button")!;
   press(parent);
@@ -338,7 +539,7 @@ it("cancels a temporary hold when its popup column is removed", async () => {
   child.setPointerCapture = vi.fn(); child.hasPointerCapture = () => false;
   vi.useFakeTimers();
   child.dispatchEvent(Object.assign(new MouseEvent("pointerdown", { button: 0, bubbles: true }), { pointerId: 7 }));
-  press(parent);
+  press([...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Other")!);
   expect(child.isConnected).toBe(false);
   await vi.advanceTimersByTimeAsync(500);
   expect(adapter.requestTemporarySave).not.toHaveBeenCalled();
@@ -354,7 +555,7 @@ it("can fold a bar while its folder popup is open", async () => {
   ];
   let closed!: () => void;
   adapter.openPopup = vi.fn(async () => ({
-    close: async () => closed(), requestClose: () => {}, cancelClose: () => {}, setBarPointerInside: () => {},
+    togglePin: async () => {}, dismiss: async () => {}, close: async () => closed(), requestClose: () => {}, cancelClose: () => {}, setBarPointerInside: () => {},
     closed: new Promise<void>(resolve => { closed = resolve; }),
   }));
   const controller = mount(root, state, adapter); await controller.ready;
@@ -379,6 +580,7 @@ it("closes the previous popup before opening a different folder", async () => {
     let closed!: () => void;
     const done = new Promise<void>(resolve => { closed = resolve; });
     return {
+      togglePin: async () => {}, dismiss: async () => {},
       close: async () => { await closing; visible.delete(folder.uid); closed(); }, closed: done,
       requestClose() {}, cancelClose() {}, setBarPointerInside() {},
     };

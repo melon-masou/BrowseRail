@@ -70,7 +70,7 @@ export function planFolderPopup(
     rootOffsetX: x - surface.left, rootOffsetY: (centered ? anchorCenter : y) - surface.top,
     expandAlignment: request.expandAlignment ?? "edge",
     bounds: { left: 0, top: 0, right: surface.right - surface.left, bottom: surface.bottom - surface.top },
-    maxColumnHeight, editingLocked: request.editingLocked,
+    maxColumnHeight, editingLocked: request.editingLocked, rootExpandOnHover: request.folder.expandOnHover !== false,
   } };
 }
 

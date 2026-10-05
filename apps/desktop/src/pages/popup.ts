@@ -1,4 +1,4 @@
-import { mountFolderPopup, type Controller, type PopupState, type PopupHost } from "@browserail/menu-ui";
+import { mountFolderPopup, type PopupController, type PopupState, type PopupHost, type PopupPin, type FolderPin } from "@browserail/menu-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -8,6 +8,7 @@ interface PopupPayload {
   isFree: boolean;
   requestUid: string;
   parentLabel: string;
+  pin: PopupPin;
 }
 
 interface PopupSurfaceState {
@@ -24,14 +25,21 @@ export async function initializePopupSurface(): Promise<void> {
   document.body.dataset.surface = "popup";
   let currentPayload: PopupPayload | undefined;
   let currentState: PopupState | undefined;
-  let renderer: Controller<PopupState> | undefined;
+  let renderer: PopupController | undefined;
   let receivedStateEvent = false;
   let destroyed = false;
+  let pin: PopupPin = "none";
   const disposers: Array<() => void> = [];
   const report = (action: Promise<void>): void => {
     void action.catch(error => { if (!destroyed) { root.title = String(error); root.dataset.error = ""; } });
   };
   const host: PopupHost = {
+    get pin() { return pin; },
+    async setPin(next, rootPin) {
+      if (!currentPayload) return;
+      pin = next;
+      await invoke("set_popup_pin", { instanceUid, menuUid, windowUid, requestUid: currentPayload.requestUid, pin, rootPin });
+    },
     invokeAction: actionUid => currentPayload?.isFree
       ? invoke("invoke_free_action", { actionUid, instanceUid, menuUid })
       : invoke("invoke_action", { actionUid, instanceUid, windowUid, menuUid }),
@@ -49,6 +57,7 @@ export async function initializePopupSurface(): Promise<void> {
     commitLayout: layout => invoke("set_popup_hit_regions", { rects: layout.columns }),
   };
   async function render(payload: PopupPayload): Promise<void> {
+    if (currentPayload?.requestUid !== payload.requestUid) pin = payload.pin;
     currentPayload = payload;
     currentState = payload.state;
     try {
@@ -69,6 +78,12 @@ export async function initializePopupSurface(): Promise<void> {
   }, { target: surfaceLabel }));
   disposers.push(await listen<boolean>("popup-content-visibility", ({ payload }) => {
     root.toggleAttribute("data-popup-content-hidden", !payload);
+  }, { target: surfaceLabel }));
+  disposers.push(await listen<{ requestUid: string; pin: FolderPin }>("popup-toggle-pin", ({ payload }) => {
+    if (currentPayload?.requestUid === payload.requestUid) renderer?.toggleRootPin(payload.pin);
+  }, { target: surfaceLabel }));
+  disposers.push(await listen<{ requestUid: string }>("popup-dismiss", ({ payload }) => {
+    if (currentPayload?.requestUid === payload.requestUid) renderer?.dismiss();
   }, { target: surfaceLabel }));
   disposers.push(await listen<boolean>("editing-lock-changed", ({ payload }) => {
     if (!currentState || !renderer) return;

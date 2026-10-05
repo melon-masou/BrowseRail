@@ -39,7 +39,7 @@ it("waits for the current popup's render acknowledgement before returning its se
   const request: PopupRequest = {
     folder: { kind: "folder", uid: "folder", label: "Folder", children: [{ kind: "bookmark", uid: "child", label: "Child" }] },
     anchor: { left: 0, right: 84, top: 0, bottom: 36 },
-    theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction: "down", editingLocked: true,
+    theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction: "down", editingLocked: true, pin: "none",
   };
   let returned = false;
   const opened = link.open(request).then(session => { returned = true; return session; });
@@ -61,7 +61,7 @@ function popupRequest(direction: "down" | "right" = "down"): PopupRequest {
   return {
     folder: { kind: "folder", uid: "folder", label: "Folder", children: [{ kind: "bookmark", uid: "child", label: "Child" }] },
     anchor: { left: 0, right: 84, top: 0, bottom: 36 },
-    theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction, editingLocked: true,
+    theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction, editingLocked: true, pin: "none",
   };
 }
 async function popupLink() {

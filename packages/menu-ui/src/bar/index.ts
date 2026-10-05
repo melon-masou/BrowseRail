@@ -1,10 +1,10 @@
 import { DEFAULT_DOCK_COLOR, invertNavigationActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
-import { applyBarTheme, menuButton } from "../appearance";
+import { applyBarTheme, applyFolderPin, menuButton } from "../appearance";
 import { applyBarLayout } from "../layout";
 import { createLifetime, showMenuError } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
-import type { BarHost, BarState, Controller, PopupSession } from "../types";
+import type { BarHost, BarState, Controller, PopupSession, PopupPin, FolderPin } from "../types";
 import { createBarAutoHide } from "./auto-hide";
 
 export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): Controller<BarState> {
@@ -22,15 +22,20 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   let opening = 0;
   let popupOpening = false;
   let popupInside = false;
+  let popupPin: PopupPin = "none";
+  const pendingPins: FolderPin[] = [];
   const waiting: Array<{ resolve(): void; reject(error: unknown): void }> = [];
   const run = (action: Promise<void>): void => {
     void action.catch(error => { if (lifetime.alive) showMenuError(root, error); });
   };
   const autoHide = createBarAutoHide(root, host, () => !doc.hidden && !waitForPointerMovement,
     () => { cancelHover(); run(closePopup()); }, run);
-  const updatePopupHold = (): void => { autoHide.setHeld(popupOpening || popupInside); };
+  const updatePopupHold = (): void => { autoHide.setHeld(popupOpening || popupInside || popupPin !== "none"); };
   const clearExpanded = (): void => {
-    for (const button of root.querySelectorAll(".menu-button[data-expanded]")) button.removeAttribute("data-expanded");
+    for (const button of root.querySelectorAll<HTMLElement>(".menu-button[data-folder]")) {
+      button.removeAttribute("data-expanded");
+      applyFolderPin(button, "none");
+    }
   };
   const cancelHover = (): void => {
     renderLifetime.cancelTimeout(hoverTimer);
@@ -53,6 +58,8 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     activeFolder = undefined;
     popupOpening = false;
     popupInside = false;
+    popupPin = "none";
+    pendingPins.length = 0;
     updatePopupHold();
     clearExpanded();
     await closing?.close();
@@ -60,7 +67,8 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   }
   const dispatch = (uid: string): void => {
     if (uid.startsWith("noop") || autoHide.hidden) return;
-    run(closePopup());
+    if (popupPin === "locked") run(session?.dismiss() ?? Promise.resolve());
+    else run(closePopup());
     run(host.invokeAction(uid));
   };
   function scheduleHover(button: HTMLElement, open: () => void): void {
@@ -81,18 +89,34 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     button.addEventListener("pointercancel", cancelHover, options);
     button.addEventListener("pointerdown", cancelHover, { ...options, capture: true });
   }
-  async function openPopup(entry: FolderEntry, button: HTMLElement): Promise<void> {
+  async function openPopup(entry: FolderEntry, button: HTMLElement, pin?: FolderPin, clicked = false): Promise<void> {
     if (!state.editingLocked || !lifetime.alive || doc.hidden || waitForPointerMovement || autoHide.hidden) return;
+    if (activeFolder === entry.uid && (session || popupOpening)) {
+      if (pin) {
+        if (session) await session.togglePin(pin);
+        else pendingPins.push(pin);
+      } else if (entry.expandOnHover === false) {
+        if (popupPin === "locked") {
+          if (session) await session.togglePin("temporary");
+          else pendingPins.push("temporary");
+        } else await closePopup();
+      }
+      return;
+    }
+    if (popupPin === "locked" || (popupPin !== "none" && !clicked)) return;
     cancelHover();
     cancelClose();
     clearExpanded();
     button.toggleAttribute("data-expanded", true);
+    applyFolderPin(button, pin ?? "none");
     activeFolder = entry.uid;
     const previous = session;
     session = undefined;
     const token = ++opening;
     popupOpening = true;
     popupInside = false;
+    popupPin = pin ?? "none";
+    pendingPins.length = 0;
     updatePopupHold();
     const theme = applyBarTheme(root, state);
     try {
@@ -110,9 +134,16 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
         direction: entry.expandDirection ?? state.menu.expandDirection ?? (state.menu.orientation === "column" ? "right" : "down"),
         expandAlignment: state.menu.expandAlignment ?? "edge",
         editingLocked: state.editingLocked,
+        pin: popupPin,
       }, inside => {
         if (!lifetime.alive || token !== opening) return;
         popupInside = inside;
+        updatePopupHold();
+      }, (nextPin, rootPin) => {
+        if (!lifetime.alive || token !== opening) return;
+        popupPin = nextPin;
+        applyFolderPin(button, rootPin);
+        cancelHover();
         updatePopupHold();
       });
       if (!lifetime.alive || token !== opening || autoHide.hidden) { await opened.close(); return; }
@@ -126,17 +157,25 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
         session = undefined;
         activeFolder = undefined;
         popupInside = false;
+        popupPin = "none";
+        pendingPins.length = 0;
         updatePopupHold();
         clearExpanded();
         run(flush());
       });
+      for (const pending of pendingPins.splice(0)) await opened.togglePin(pending);
     } catch (error) {
       if (token === opening && lifetime.alive) {
+        const failed = session;
+        session = undefined;
         activeFolder = undefined;
         popupOpening = false;
         popupInside = false;
+        popupPin = "none";
+        pendingPins.length = 0;
         updatePopupHold();
         clearExpanded();
+        await failed?.close();
         await flush();
         throw error;
       }
@@ -147,7 +186,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     const button = menuButton(doc, entry, false);
     if (entry.kind !== "folder" || entry.expandOnHover === false || !entry.children.length) {
       button.addEventListener("pointerenter", () => {
-        if (activeFolder && activeFolder !== entry.uid) run(closePopup());
+        if (popupPin === "none" && activeFolder && activeFolder !== entry.uid) run(closePopup());
       }, options);
     }
     if (entry.kind === "menuFold") {
@@ -183,18 +222,21 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
           }
         }, options);
       }
-    } else if (entry.expandOnHover !== false) {
-      scheduleHover(button, () => { if (entry.children.length) run(openPopup(entry, button)); });
-      button.addEventListener("focus", () => {
-        if (doc.hidden || waitForPointerMovement) return;
-        cancelClose(); if (entry.children.length) run(openPopup(entry, button));
-      }, options);
     } else {
+      if (entry.expandOnHover !== false) {
+        scheduleHover(button, () => { if (entry.children.length) run(openPopup(entry, button)); });
+        button.addEventListener("focus", () => {
+          if (doc.hidden || waitForPointerMovement) return;
+          cancelClose(); if (entry.children.length) run(openPopup(entry, button));
+        }, options);
+      }
       button.addEventListener("pointerdown", event => {
-        if (event.button !== 0 || !state.editingLocked) return;
+        if (!state.editingLocked || (event.button !== 0 && event.button !== 2)) return;
         event.preventDefault();
-        if (activeFolder === entry.uid) run(closePopup());
-        else if (entry.children.length) run(openPopup(entry, button));
+        if (entry.children.length) {
+          const pin = event.button === 2 ? "locked" : entry.expandOnHover === false ? undefined : "temporary";
+          run(openPopup(entry, button, pin, true));
+        }
       }, options);
     }
     return button;

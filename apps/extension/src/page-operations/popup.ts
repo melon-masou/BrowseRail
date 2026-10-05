@@ -1,9 +1,9 @@
 import {
   mountFolderPopup, createLifetime, createTextMeasure, planFolderPopup,
-  type MenuActions, type PopupRequest, type PopupSession,
+  type MenuActions, type PopupRequest, type PopupSession, type PopupPin,
 } from "@browserail/menu-ui";
 
-export async function openBrowserPopup(container: HTMLElement, request: PopupRequest, actions: MenuActions, signal: AbortSignal, pointerInside: (inside: boolean) => void): Promise<PopupSession> {
+export async function openBrowserPopup(container: HTMLElement, bar: HTMLElement, request: PopupRequest, actions: MenuActions, signal: AbortSignal, pointerInside: (inside: boolean) => void, onPinChanged: (pin: PopupPin, rootPin: PopupPin) => void): Promise<PopupSession> {
   if (signal.aborted) throw new Error("Menu was removed");
   const doc = container.ownerDocument;
   const root = doc.createElement("div");
@@ -20,6 +20,7 @@ export async function openBrowserPopup(container: HTMLElement, request: PopupReq
   let timer: ReturnType<typeof setTimeout> | undefined;
   let barInside = true;
   let popupInside = false;
+  let pin = request.pin;
   const cancelClose = (): void => { clearTimeout(timer); };
   const close = async (): Promise<void> => {
     if (!lifetime.alive) return;
@@ -32,13 +33,27 @@ export async function openBrowserPopup(container: HTMLElement, request: PopupReq
   signal.addEventListener("abort", abort, { once: true });
   const schedule = (): void => {
     cancelClose();
-    if (!barInside && !popupInside) timer = setTimeout(() => { void close(); }, 80);
+    if (pin === "none" && !barInside && !popupInside) timer = setTimeout(() => { void close(); }, 80);
   };
   const session: PopupSession = {
+    async togglePin(next) { if (lifetime.alive) renderer?.toggleRootPin(next); },
+    async dismiss() { if (lifetime.alive) renderer?.dismiss(); },
     closed, close, cancelClose,
     requestClose: schedule,
     setBarPointerInside(inside) { barInside = inside; schedule(); },
   };
+  doc.addEventListener("pointerdown", event => {
+    if (pin === "none") return;
+    const path = event.composedPath();
+    const treeRoot = container.getRootNode();
+    const inOverlay = treeRoot instanceof doc.defaultView!.ShadowRoot ? path.includes(treeRoot.host) : path.includes(container);
+    const contains = (element: HTMLElement): boolean => {
+      const rect = element.getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX < rect.right && event.clientY >= rect.top && event.clientY < rect.bottom;
+    };
+    if (inOverlay && (contains(bar) || Array.from(root.querySelectorAll<HTMLElement>(".menu-column")).some(contains))) return;
+    void session.dismiss();
+  }, { capture: true, signal: lifetime.signal });
   try {
     await lifetime.settle();
     if (!lifetime.alive) return session;
@@ -50,6 +65,11 @@ export async function openBrowserPopup(container: HTMLElement, request: PopupReq
     });
     renderer = mountFolderPopup(root, state, {
       ...actions, close, waitForFonts,
+      get pin() { return pin; },
+      async setPin(next, rootPin) {
+        if (!lifetime.alive) return;
+        pin = next; onPinChanged(next, rootPin); schedule();
+      },
       setPointerInside(inside) { popupInside = inside; pointerInside(inside); schedule(); },
       async commitLayout() {},
     });
