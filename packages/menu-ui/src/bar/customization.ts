@@ -2,7 +2,21 @@ import { t } from "@browserail/i18n";
 import { DEFAULT_DOCK_COLOR, type MenuAnchor, type MenuOrientation } from "@browserail/protocol";
 import { applyBarTheme, menuButton } from "../appearance";
 import { applyBarLayout } from "../layout";
-import type { BarState } from "../types";
+import type { BarState, Rect } from "../types";
+import { placeCustomizationToolbar, type ToolbarSide } from "./customization-position";
+
+export function layoutCustomization(content: HTMLElement, rail: HTMLElement, toolbar: HTMLElement, anchor: Rect, bounds: Rect, current?: ToolbarSide) {
+  const position = placeCustomizationToolbar(anchor, toolbar.getBoundingClientRect(), bounds, current);
+  const envelope = position.bounds;
+  content.style.width = `${envelope.right - envelope.left}px`;
+  content.style.height = `${envelope.bottom - envelope.top}px`;
+  // The rail's margins contain its frame; anchor describes that whole surface.
+  rail.style.left = `${anchor.left - envelope.left}px`;
+  rail.style.top = `${anchor.top - envelope.top}px`;
+  toolbar.style.left = `${position.x - envelope.left}px`;
+  toolbar.style.top = `${position.y - envelope.top}px`;
+  return position;
+}
 
 export function createCustomizationRail(root: HTMLElement, state: BarState): HTMLElement {
   const doc = root.ownerDocument;

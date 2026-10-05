@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { createSettingsIcon, resolveFontFamily, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller, type Rect } from "@browserail/menu-ui";
+import { createSettingsIcon, resolveFontFamily, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller, type Rect, layoutCustomization, type ToolbarSide } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -129,14 +129,6 @@ export async function initializeSurface(
     return { x: rect.left, y: rect.top };
   }
 
-  function requestDoubleAnimationFrame(): Promise<void> {
-    return new Promise((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => resolve());
-      });
-    });
-  }
-
   async function windowOrigin(): Promise<SurfacePoint> {
     const appWindow = getCurrentWindow();
     const [position, scale] = await Promise.all([
@@ -173,18 +165,17 @@ export async function initializeSurface(
       const menuBar = root.querySelector<HTMLElement>(".menu-bar");
       if (!menuBar) return;
       const fromAnchor = elementOrigin(menuBar);
-      const menuHeight = menuBar.getBoundingClientRect().height;
       claimed = await invoke<boolean>("claim_menu_customization", { instanceUid });
       if (!claimed) { root.title = t("bar.editBusy"); return; }
       customizationStartPosition = await windowOrigin();
       customizing = true;
       const menuToCustomize = currentMenu ?? menu;
-      const toolbar = renderCustomize(menuToCustomize);
-      const info = await invoke<{ toolbarPosition: "top" | "bottom" }>("begin_menu_customization", {
-        anchorOffsetY: fromAnchor.y, instanceUid, menuHeight, menuUid,
-        toolbarSpace: customizationToolbarSpace(toolbar, menuToCustomize), windowUid,
+      const bounds = await invoke<Rect>("surface_work_area");
+      await invoke("begin_menu_customization", { instanceUid, menuUid, windowUid });
+      renderCustomize(menuToCustomize, {
+        left: bounds.left - fromAnchor.x, top: bounds.top - fromAnchor.y,
+        right: bounds.right - fromAnchor.x, bottom: bounds.bottom - fromAnchor.y,
       });
-      if (info.toolbarPosition === "top") renderCustomize(menuToCustomize, "top");
       const rail = root.querySelector<HTMLElement>(".customize-rail");
       const content = root.querySelector<HTMLElement>(".customize-content");
       if (!rail || !content) throw new Error("Bar editor is unavailable");
@@ -201,17 +192,7 @@ export async function initializeSurface(
     } finally { customizationStarting = false; }
   }
 
-  function customizationToolbarSpace(toolbar: HTMLElement, menu: SurfaceMenu): number {
-    const container = toolbar.parentElement ?? root;
-    const rowGap = Number.parseFloat(getComputedStyle(container).rowGap);
-    const gap = Number.isFinite(rowGap) ? rowGap : 0;
-    return Math.ceil(toolbar.getBoundingClientRect().height + gap + 2 * barFrameInsets(menu).y);
-  }
-
-  function renderCustomize(
-    menu: SurfaceMenu,
-    toolbarPosition: "top" | "bottom" = "bottom",
-  ): HTMLElement {
+  function renderCustomize(menu: SurfaceMenu, initialBounds: Rect): void {
     teardownCustomize?.();
     teardownCustomize = undefined;
     let settings: NativeBarSettings = { ...barSettingsFromView(menu), attachmentMode: menu.attachmentMode, onTopMode: menu.onTopMode };
@@ -219,11 +200,11 @@ export async function initializeSurface(
     const initialDims = computeMenuDimensions(menu);
     let targetWidth = initialDims.width;
     let targetHeight = initialDims.height;
-    let toolbarSide: "top" | "bottom" = toolbarPosition;
+    let toolbarSide: ToolbarSide | undefined;
+    let workArea = initialBounds;
     bar?.destroy();
     bar = undefined;
     root.className = "browserail-menu-ui customize-mode";
-    root.dataset.toolbarPosition = toolbarSide;
     root.dataset.orientation = menu.orientation;
     root.onpointerdown = null;
 
@@ -338,11 +319,13 @@ export async function initializeSurface(
       }
       const theme = applyBarTheme(root, { ...stateFor(menu), menu: spacingEditor.menu, itemSize: spacingEditor.itemSize, fontFamily: resolveFontFamily(spacingEditor.menu.fontFamily) });
       railContainer.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
-      const toolbarWidth = Math.ceil(toolbar.scrollWidth);
       const frame = barFrameInsets(spacingEditor.menu);
-      content.style.width = `${Math.max(targetWidth + 2 * frame.x, toolbarWidth)}px`;
       railContainer.style.setProperty("--config-bar-width", `${targetWidth}px`);
       railContainer.style.setProperty("--config-bar-height", `${targetHeight}px`);
+      const layout = layoutCustomization(content, railContainer, toolbar,
+        { left: -frame.x, top: -frame.y, right: targetWidth + frame.x, bottom: targetHeight + frame.y },
+        workArea, toolbarSide);
+      toolbarSide = layout.side;
     }
 
     let resizeFrame: number | undefined;
@@ -431,60 +414,34 @@ export async function initializeSurface(
       resizeHandle("southEast"),
     );
 
-    // Order the toolbar against the rail. Re-ordering preserves the rail's on-
-    // screen position (see maybeFlipToolbarSide), so a flip only moves the
-    // toolbar to the other edge.
-    const layoutForToolbarSide = (side: "top" | "bottom"): void => {
-      toolbarSide = side;
-      root.dataset.toolbarPosition = side;
-      if (side === "top") {
-        content.replaceChildren(toolbar, railContainer);
-      } else {
-        content.replaceChildren(railContainer, toolbar);
-      }
-      applyTargetSize();
-    };
-    layoutForToolbarSide(toolbarPosition);
+    content.append(railContainer, toolbar);
     root.replaceChildren(content);
     applyTargetSize();
 
-    // While the window is dragged, re-check which edge has room for the toolbar.
-    // Dragging the bar past the screen edge would push the toolbar off-screen;
-    // when that happens we flip sides and re-anchor so the rail stays put and the
-    // toolbar jumps to the opposite edge, keeping save/cancel reachable.
     const appWindow = getCurrentWindow();
     let flipCheckTimer: ReturnType<typeof setTimeout> | undefined;
     let flipInFlight = false;
     async function maybeFlipToolbarSide(): Promise<void> {
       if (saving || !customizeAlive || flipInFlight || !root.isConnected) return;
-      const railRect = railContainer.getBoundingClientRect();
-      let side: "top" | "bottom";
-      try {
-        side = await invoke<"top" | "bottom">("customization_toolbar_flip", {
-          anchorOffsetY: railRect.top,
-          current: toolbarSide,
-          menuHeight: railRect.height,
-          toolbarSpace: customizationToolbarSpace(toolbar, { ...menu, ...settings }),
-        });
-      } catch {
-        return;
-      }
-      if (saving || !customizeAlive || side === toolbarSide || !root.isConnected) return;
-
       flipInFlight = true;
       try {
+        const bounds = await invoke<Rect>("surface_work_area");
+        if (saving || !customizeAlive || !root.isConnected) return;
         const beforeRail = elementOrigin(railContainer);
-        layoutForToolbarSide(side);
-        await requestDoubleAnimationFrame();
+        const beforeContent = content.getBoundingClientRect();
+        workArea = {
+          left: bounds.left - beforeRail.x, top: bounds.top - beforeRail.y,
+          right: bounds.right - beforeRail.x, bottom: bounds.bottom - beforeRail.y,
+        };
+        applyTargetSize();
+        const afterRail = elementOrigin(railContainer);
         const contentRect = content.getBoundingClientRect();
-        await resizeAndPosition(
-          beforeRail,
-          elementOrigin(railContainer),
-          contentRect.width,
-          contentRect.height,
-        );
-      } catch {
-        // Ignore: the next move event will retry.
+        if (beforeRail.x !== afterRail.x || beforeRail.y !== afterRail.y
+          || beforeContent.width !== contentRect.width || beforeContent.height !== contentRect.height) {
+          await resizeAndPosition(beforeRail, afterRail, contentRect.width, contentRect.height);
+        }
+      } catch (error) {
+        if (customizeAlive) showSurfaceError(error);
       } finally {
         flipInFlight = false;
       }
@@ -598,8 +555,6 @@ export async function initializeSurface(
 
     // Expose the cancel hook so leaving edit mode mid-customize discards it.
     cancelActiveCustomization = cancelCustomization;
-
-    return toolbar;
   }
 }
 

@@ -2,6 +2,7 @@ import { t } from "@browserail/i18n";
 import {
   applyBarTheme, resolveFontFamily, mountBarSettings, placeBarSettings, createSettingsIcon, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon,
   createCancelIcon, createSaveIcon, createOrientationControl, nextAnchor, anchorLabel, type BarState,
+  layoutCustomization, type ToolbarSide,
 } from "@browserail/menu-ui";
 import { barSettingsFromView, type BarSettings, type BarSettingsGroup, type MenuSpacing } from "@browserail/protocol";
 import type { BrowserMenuPlacement } from "../config";
@@ -23,6 +24,7 @@ export function mountBrowserCustomization(
   let point = placementPoint(placement, initialSurface.width, initialSurface.height, viewport.innerWidth, viewport.innerHeight);
   let stopGesture: (() => void) | undefined;
   let saving = false;
+  let toolbarSide: ToolbarSide | undefined;
   root.className = "browserail-menu-ui customize-mode";
   root.style.flex = "0 0 auto";
   const rail = createCustomizationRail(root, state);
@@ -82,17 +84,14 @@ export function mountBrowserCustomization(
     point.y = Math.max(0, Math.min(viewport.innerHeight - surfaceHeight, point.y));
     rail.style.setProperty("--config-bar-width", `${size.width}px`);
     rail.style.setProperty("--config-bar-height", `${size.height}px`);
-    // Keep the rail fixed when the toolbar changes sides near the viewport edge.
-    const toolbarSpace = toolbar.getBoundingClientRect().height + 4;
-    const above = point.y + surfaceHeight + toolbarSpace > viewport.innerHeight && point.y >= toolbarSpace;
-    content.style.flexDirection = above ? "column-reverse" : "column";
-    const width = Math.max(surfaceWidth, toolbar.getBoundingClientRect().width);
-    point.x = Math.max(0, Math.min(viewport.innerWidth - width, point.x));
-    content.style.width = `${width}px`;
-    root.style.width = `${width}px`;
-    root.style.height = `${surfaceHeight + toolbarSpace}px`;
-    wrapper.style.left = `${point.x}px`;
-    wrapper.style.top = `${point.y - (above ? toolbarSpace : 0)}px`;
+    const position = layoutCustomization(content, rail, toolbar,
+      { left: point.x, top: point.y, right: point.x + surfaceWidth, bottom: point.y + surfaceHeight },
+      { left: 0, top: 0, right: viewport.innerWidth, bottom: viewport.innerHeight }, toolbarSide);
+    toolbarSide = position.side;
+    root.style.width = content.style.width;
+    root.style.height = content.style.height;
+    wrapper.style.left = `${position.bounds.left}px`;
+    wrapper.style.top = `${position.bounds.top}px`;
     anchorButton.title = t("customize.anchor", { anchor: anchorLabel(anchor) });
     if (!settingsPopup.hidden) {
       const position = placeBarSettings(root.getBoundingClientRect(),

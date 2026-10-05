@@ -3,12 +3,7 @@
 
 .browserail-menu-ui {
   .customize-content {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 4px;
-    width: fit-content;
-    height: fit-content;
+    position: relative;
   }
 
   .customize-rail {
@@ -21,7 +16,7 @@
     padding: 0;
     margin: var(--config-bar-frame-y) var(--config-bar-frame-x);
     gap: 0;
-    position: relative;
+    position: absolute;
     overflow: visible;
     --button-font-size: var(--bar-font-size, var(--config-bar-font-size));
     height: var(--bar-height, var(--config-bar-height, auto));
@@ -54,6 +49,8 @@
   }
 
   .customize-toolbar {
+    position: absolute;
+    z-index: 4;
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
