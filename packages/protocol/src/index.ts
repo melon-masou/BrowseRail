@@ -271,6 +271,7 @@ export interface StaticBookmark {
   uid: string;
   name: string;
   url: string;
+  tags?: string[];
 }
 
 export interface TemporaryBookmark {

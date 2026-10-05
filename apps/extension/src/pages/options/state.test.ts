@@ -61,6 +61,45 @@ it("removes a bookmark and its menu and shortcut references before notifying rea
   expect(state.dirty.settings).toBe(true);
 });
 
+it("normalizes static tags and removes the last tag without leaving an empty tag value", () => {
+  const state = createState();
+  const tags = [" work ", "", "work", "reading"];
+  state.setStaticTags("static", tags);
+  tags.push("changed outside");
+  expect(state.settings.staticBookmarks[0]!.tags).toEqual(["work", "reading"]);
+  state.setStaticTags("static", []);
+  expect(state.settings.staticBookmarks[0]!.tags ?? []).toEqual([]);
+});
+
+it("moves static bookmarks immediately before the target in the full list, retaining hidden entries and references", () => {
+  const input = initialSettings();
+  input.staticBookmarks = [
+    { uid: "b", name: "B", url: "https://b.example", tags: ["work"] },
+    { uid: "hidden", name: "Hidden", url: "https://hidden.example", tags: ["reading"] },
+    { uid: "static", name: "A", url: "https://a.example", tags: ["work"] },
+    { uid: "last", name: "Last", url: "https://last.example" },
+  ];
+  const state = createState(input);
+  state.moveStaticBookmarkBefore("static", "b");
+  expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["static", "b", "hidden", "last"]);
+  state.moveStaticBookmarkBefore("static", "last");
+  expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["b", "hidden", "static", "last"]);
+  expect(state.settings.menus[0]!.items[0]!.staticUid).toBe("static");
+  expect(state.settings.shortcuts[0]!.staticUid).toBe("static");
+});
+
+it("ignores unchanged static order and rejects missing reorder targets without removing the source", () => {
+  const state = createState();
+  state.addBookmark("static", { uid: "next", name: "Next", url: "https://next.example" });
+  state.acceptSettingsSave(state.settings);
+  state.moveStaticBookmarkBefore("static", "next");
+  state.moveStaticBookmarkBefore("static", "static");
+  expect(() => state.moveStaticBookmarkBefore("static", "missing")).toThrow();
+  expect(() => state.setStaticTags("missing", ["work"])).toThrow();
+  expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["static", "next"]);
+  expect(state.dirty.settings).toBe(false);
+});
+
 it("removes URL rule references from the global selection, menus and dynamic bookmarks", () => {
   const state = createState();
   state.removeUrlRule("removed-rule");

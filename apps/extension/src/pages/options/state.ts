@@ -19,6 +19,7 @@ import type {
   StaticBookmark,
   TemporaryBookmark,
 } from "../../config";
+import { normalizeStaticBookmarkTags } from "../../config/static-bookmark-tags";
 
 export type ReadonlyData<T> = T extends string | number | boolean | null | undefined
   ? T
@@ -374,6 +375,24 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       if (!("url" in target)) throw new Error("Not a static bookmark");
       target.url = url;
       publish(["bookmarks"]);
+    },
+    setStaticTags(uid: string, tags: readonly string[]): void {
+      const target = requireTarget(settingsDraft.staticBookmarks.find(value => value.uid === uid), `static bookmark ${uid}`);
+      const next = normalizeStaticBookmarkTags(tags);
+      if (next.length === (target.tags?.length ?? 0) && next.every((tag, index) => tag === target.tags?.[index])) return;
+      setOptional(target, { tags: next.length ? next : undefined });
+      publish(["bookmarks"], true);
+    },
+    moveStaticBookmarkBefore(uid: string, targetUid: string): void {
+      const bookmarks = settingsDraft.staticBookmarks;
+      const source = requireTarget(bookmarks.find(value => value.uid === uid), `static bookmark ${uid}`);
+      const target = requireTarget(bookmarks.find(value => value.uid === targetUid), `static bookmark ${targetUid}`);
+      const sourceIndex = bookmarks.indexOf(source);
+      const targetIndex = bookmarks.indexOf(target);
+      if (source === target || sourceIndex + 1 === targetIndex) return;
+      bookmarks.splice(sourceIndex, 1);
+      bookmarks.splice(bookmarks.indexOf(target), 0, source);
+      publish(["bookmarks"], true);
     },
     setDynamicCode(uid: string, code: string): void {
       const target = definition("dynamic", uid);

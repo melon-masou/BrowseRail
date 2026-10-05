@@ -47,6 +47,28 @@ it("exports shared colors and bindings; optionally includes both modes without r
   persistence.destroy();
 });
 
+it("preserves static bookmark tags and order through save, reload, export and import", async () => {
+  const { state, persistence } = await fixture();
+  state.setStaticTags("link", [" work ", "reading", "work"]);
+  state.addBookmark("static", { uid: "another", name: "Another", url: "https://another.example" });
+  state.setStaticTags("another", ["reading"]);
+  state.moveStaticBookmarkBefore("another", "link");
+  await persistence.saveSettings();
+  const expected = [
+    { uid: "another", name: "Another", url: "https://another.example", tags: ["reading"] },
+    { uid: "link", name: "Example", url: "https://example.com", tags: ["work", "reading"] },
+  ];
+  expect((await loadConfig()).staticBookmarks).toEqual(expected);
+  const exported = await persistence.exportSettings();
+  expect(exported.staticBookmarks).toEqual(expected);
+  state.removeBookmark("static", "another");
+  state.setStaticTags("link", []);
+  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.saveSettings();
+  expect((await loadConfig()).staticBookmarks).toEqual(expected);
+  persistence.destroy();
+});
+
 it("drops menu and item open modes on import and save while preserving shortcut choices", async () => {
   const { persistence } = await fixture();
   const data = await persistence.exportSettings();

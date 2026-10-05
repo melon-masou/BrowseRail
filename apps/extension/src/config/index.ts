@@ -1,4 +1,5 @@
 import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
+import { normalizeStaticBookmarkTags } from "./static-bookmark-tags";
 import type {
   MenuAnchor,
   MenuFontSize,
@@ -377,7 +378,8 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
 export function normalizeStaticBookmarks(value: unknown): StaticBookmark[] {
   return (Array.isArray(value) ? value : []).flatMap((entry): StaticBookmark[] => {
     if (!isRecord(entry) || typeof entry.uid !== "string" || !entry.uid) return [];
-    return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "", url: typeof entry.url === "string" ? entry.url.trim() : "" }];
+    const tags = normalizeStaticBookmarkTags(entry.tags);
+    return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "", url: typeof entry.url === "string" ? entry.url.trim() : "", ...(tags.length ? { tags } : {}) }];
   });
 }
 

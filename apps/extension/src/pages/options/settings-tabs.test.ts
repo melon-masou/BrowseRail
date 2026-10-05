@@ -85,7 +85,7 @@ it("keeps externally added static bookmarks when saving drafts, without restorin
   await save();
   const previous = await savedConfig();
   button("add-static-btn").click();
-  const remove = document.querySelector("#static-list article button");
+  const remove = document.querySelector("#static-list article .menu-remove-btn");
   if (!(remove instanceof HTMLButtonElement)) throw new Error("Missing bookmark delete button");
   remove.click();
   const name = document.querySelector("#static-list .dynamic-name-input");
@@ -102,6 +102,46 @@ it("keeps externally added static bookmarks when saving drafts, without restorin
   expect(saved.staticBookmarks).toEqual([
     expect.objectContaining({ name: "Unsaved draft" }), external,
   ]);
+});
+
+it("filters static bookmarks by any selected tag and drags before the target in the complete saved order", async () => {
+  button("custom-bookmarks-tab").click();
+  button("static-tab").click();
+  function add(name: string, tags: string[]): void {
+    button("add-static-btn").click();
+    const card = document.querySelector("#static-list article:last-child")!;
+    const nameInput = card.querySelector<HTMLInputElement>(".dynamic-name-input")!;
+    nameInput.value = name;
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    for (const tag of tags) {
+      const tagInput = document.querySelector<HTMLInputElement>("#static-list article:last-child .static-tag-input")!;
+      tagInput.value = tag;
+      tagInput.dispatchEvent(new Event("input", { bubbles: true }));
+      tagInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    }
+  }
+  function filter(tag: string): void {
+    const control = [...document.querySelectorAll<HTMLButtonElement>("#static-tag-filters button")].find(value => value.textContent === tag)!;
+    control.click();
+  }
+  function visibleNames(): string[] {
+    return [...document.querySelectorAll<HTMLInputElement>("#static-list .dynamic-name-input")].map(value => value.value);
+  }
+  add("A", ["work"]);
+  add("Hidden", ["reading"]);
+  add("B", ["work", "personal"]);
+  add("C", ["personal"]);
+  filter("work");
+  expect(visibleNames()).toEqual(["A", "B"]);
+  const cards = [...document.querySelectorAll<HTMLElement>("#static-list article")];
+  cards[1]!.querySelector(".drag-handle-btn")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  cards[1]!.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true }));
+  cards[0]!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true }));
+  expect(visibleNames()).toEqual(["B", "A"]);
+  filter("personal");
+  expect(visibleNames()).toEqual(["B", "A", "C"]);
+  await save();
+  expect((await savedConfig()).staticBookmarks.map(value => value.name)).toEqual(["B", "A", "Hidden", "C"]);
 });
 
 it("refuses to save a dynamic bookmark without a URL rule", async () => {

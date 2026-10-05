@@ -13,6 +13,7 @@ import { addIcon, checkIcon, copyIcon, removeIcon, setIconContent } from "../com
 import { renderPreservingFocus } from "../components/render-focus";
 import { createDynamicTester } from "../components/dynamic-test";
 import { DEFAULT_REWRITE } from "../../../dynamic/rewrite";
+import { createStaticBookmarksList } from "../components/static-bookmarks";
 
 export function mountCustomBookmarksTab(
   state: OptionsState,
@@ -26,6 +27,14 @@ export function mountCustomBookmarksTab(
   scope.add(tester.destroy);
   const dynamicList = element<HTMLDivElement>("dynamic-list");
   const staticList = element<HTMLDivElement>("static-list");
+  const staticBookmarks = createStaticBookmarksList(
+    state,
+    staticList,
+    element("static-tag-filters"),
+    element<HTMLDataListElement>("static-tag-options"),
+    uid => removeCustomDefinition("static", uid),
+  );
+  scope.add(staticBookmarks.destroy);
   const temporaryList = element<HTMLDivElement>("temporary-list");
   const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
   const DEFAULT_DYNAMIC_CODE = `/**
@@ -74,57 +83,16 @@ function dynamicBookmark({ action, url, title, current }) {
   }
 
   function renderSimpleBookmarks(): void {
-    for (const type of ["static", "temporary"] as const) {
-      const list = type === "static" ? staticList : temporaryList;
-      list.replaceChildren();
-      const definitions = source.definitions(type);
-      if (!definitions.length) {
-        const empty = document.createElement("p");
-        empty.className = "url-rule-empty-hint";
-        empty.textContent = t("customBookmarks.empty");
-        list.append(empty);
-      }
-      for (const definition of definitions) {
-        if (type === "temporary") {
-          list.append(renderTemporaryCard(definition));
-          continue;
-        }
-        if (!("url" in definition)) continue;
-        const card = document.createElement("article");
-        card.className = "menu-card custom-bookmark-card";
-        card.dataset.recordId = definition.uid;
-        const header = document.createElement("header");
-        const name = document.createElement("input");
-        name.type = "text";
-        name.className = "dynamic-name-input";
-        name.value = definition.name;
-        name.placeholder = t("static.defaultName");
-        name.ariaLabel = t("toolkit.temporaryName");
-        name.addEventListener("input", () => {
-          state.renameBookmark(type, definition.uid, name.value);
-        });
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "remove-item-btn menu-remove-btn";
-        remove.textContent = t("common.delete");
-        remove.addEventListener("click", () => removeCustomDefinition("static", definition.uid));
-        header.append(name, remove);
-        const body = document.createElement("div");
-        body.className = "custom-bookmark-body";
-        const url = document.createElement("input");
-        url.type = "text";
-        url.inputMode = "url";
-        url.value = definition.url;
-        url.placeholder = "https://";
-        url.ariaLabel = t("customBookmarks.url");
-        url.addEventListener("input", () => {
-          state.setStaticUrl(definition.uid, url.value);
-        });
-        body.append(url);
-        card.append(header, body);
-        list.append(card);
-      }
+    staticBookmarks.render();
+    temporaryList.replaceChildren();
+    const definitions = source.definitions("temporary");
+    if (!definitions.length) {
+      const empty = document.createElement("p");
+      empty.className = "url-rule-empty-hint";
+      empty.textContent = t("customBookmarks.empty");
+      temporaryList.append(empty);
     }
+    for (const definition of definitions) temporaryList.append(renderTemporaryCard(definition));
   }
 
   function renderTemporaryCard(definition: TemporaryBookmark): HTMLElement {
@@ -219,13 +187,7 @@ function dynamicBookmark({ action, url, title, current }) {
       );
     element<HTMLButtonElement>("add-static-btn").addEventListener(
       "click",
-      () => {
-        state.addBookmark("static", {
-          uid: crypto.randomUUID(),
-          name: t("static.defaultName"),
-          url: "",
-        });
-      },
+      () => staticBookmarks.addBookmark(),
       { signal: scope.signal },
     );
     element<HTMLButtonElement>("add-temporary-btn").addEventListener(

@@ -1657,6 +1657,108 @@ output {
   padding: 0;
 }
 
+.static-tag-filters,
+.static-bookmark-tags,
+.static-tag-chips,
+.static-tag-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.static-tag-filters {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.static-bookmark-tags,
+.static-tag-chips {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.static-tag-chips:empty {
+  display: none;
+}
+
+.static-tag-filter,
+.static-tag-chip {
+  min-height: 28px;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.static-tag-filter[aria-pressed="true"] {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.static-tag-chip:hover {
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.static-tag-editor {
+  max-width: 100%;
+}
+
+.static-tag-input {
+  width: 140px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.static-tag-add {
+  min-height: 28px;
+  padding: 6px;
+}
+
+.static-bookmark-card.is-dragging {
+  opacity: 0.4;
+}
+
+.static-bookmark-card.drag-over-top {
+  box-shadow: 0 -2px 0 #2563eb;
+}
+
+.static-bookmark-card {
+  padding: 10px;
+}
+
+.static-bookmark-card > header {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.static-bookmark-card.is-collapsed {
+  gap: 0;
+  padding: 8px 10px;
+}
+
+.static-bookmark-card .dynamic-name-input {
+  min-height: 28px;
+}
+
+.static-tag-summary {
+  flex: 0 1 auto;
+  max-width: 40%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 12px;
+}
+
 .custom-bookmark-note {
   display: flex;
   align-items: baseline;
