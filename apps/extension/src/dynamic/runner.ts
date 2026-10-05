@@ -2,7 +2,7 @@ import browser from "webextension-polyfill";
 import { canUseSandbox } from "./capability";
 import { createSandboxHost, type SandboxHost, type DynamicRunResult, type SandboxStatus } from "../pages/sandbox/host";
 import { createRewriteHost } from "./rewrite-host";
-import type { RewriteResult } from "./rewrite";
+import { applyRewrite, type RewriteResult } from "./rewrite";
 export type { DynamicRunResult };
 
 interface ChromeHost {
@@ -51,6 +51,7 @@ export async function runRewrite(source: string, url: string): Promise<RewriteRe
       rewriteHost ??= createRewriteHost(browser.runtime.getURL("rewrite-worker.js"));
       return await rewriteHost.run(source, url);
     }
+    if (typeof chromeApi?.offscreen?.createDocument !== "function") return applyRewrite(source, url);
     await ensureOffscreen();
     const result = await browser.runtime.sendMessage({ __rewriteHost: true, source, url });
     if (result && typeof result === "object" && "ok" in result && typeof result.ok === "boolean") return result as RewriteResult;

@@ -54,3 +54,21 @@ it("executes fixed URL rewrites independently of sandbox support", async () => {
   expect(await runner.runRewrite('replace "/article/" "/reader/"', "https://example.com/article/123"))
     .toEqual({ ok: true, url: "https://example.com/reader/123" });
 });
+
+it.each([undefined, {}, { offscreen: {} }])("rewrites directly when offscreen is unavailable (%j)", async chrome => {
+  vi.stubGlobal("chrome", chrome);
+  const runner = await import("./runner");
+  expect(await runner.runRewrite('filter "example.com"\nreplace "/article/" "/reader/"', "https://example.com/article/123"))
+    .toEqual({ ok: true, url: "https://example.com/reader/123" });
+  expect(await runner.runRewrite('exclude "/private/"', "https://example.com/private/123"))
+    .toMatchObject({ ok: true, url: null });
+  expect(await runner.runRewrite('replace "[" ""', "https://example.com/"))
+    .toMatchObject({ ok: false });
+});
+
+it("preserves worker failures instead of retrying a timed-out rewrite synchronously", async () => {
+  api.message.mockResolvedValue({ ok: false, error: "Rewrite execution timeout" });
+  const runner = await import("./runner");
+  expect(await runner.runRewrite('replace "/article/" "/reader/"', "https://example.com/article/123"))
+    .toEqual({ ok: false, error: "Rewrite execution timeout" });
+});
