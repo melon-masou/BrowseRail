@@ -111,20 +111,6 @@
               </label>
             </div>
 
-            <div class="connection-mode-row">
-              <label id="embedding-mode-field">
-                <span class="label-row">
-                  <span data-i18n="form.displayMode">Embedding mode</span>
-                  <span id="site-authorization-warning" class="site-permission-warning" hidden></span>
-                </span>
-                <select id="display-mode">
-                  <option value="native" data-i18n="form.displayMode.native">Native mode</option>
-                  <option value="browser" data-i18n="form.displayMode.browser">Browser mode</option>
-                </select>
-              </label>
-              <div id="site-authorization-controls" class="site-authorization" hidden></div>
-            </div>
-
             <div class="fields-row connection-shared-row">
               <label id="bookmark-root-field">
                 <span class="label-row">
@@ -146,6 +132,35 @@
                   </label>
                   <span style="font-size: 12px; color: #8a99ad;" data-i18n="form.chromeSyncHint">Sync menus across devices</span>
                 </span>
+              </div>
+            </div>
+
+            <div class="instance-access-controls">
+              <div id="site-authorization-controls" class="site-authorization">
+                <span id="site-authorization-warning"></span>
+              </div>
+              <div class="instance-access-row">
+                <label for="display-mode" data-i18n="form.displayMode">Embedding mode</label>
+                <select id="display-mode">
+                  <option value="native" data-i18n="form.displayMode.native">Native mode</option>
+                  <option value="browser" data-i18n="form.displayMode.browser">Browser mode</option>
+                </select>
+              </div>
+              <div class="instance-access-row">
+                <span id="external-extensions-label" data-i18n="externalAuthorization.allowExtensions">Allow other extensions to update data</span>
+                <label class="switch-toggle">
+                  <input type="checkbox" id="external-extensions-enabled" aria-labelledby="external-extensions-label" />
+                  <span class="switch-slider"></span>
+                </label>
+                <button id="configure-external-extensions" type="button" class="action-btn" data-i18n="externalAuthorization.extensions">Extension allowlist</button>
+              </div>
+              <div class="instance-access-row">
+                <span id="external-userscript-label" data-i18n="externalAuthorization.userscript">Allow userscripts to update data</span>
+                <label class="switch-toggle">
+                  <input type="checkbox" id="external-userscript-enabled" aria-labelledby="external-userscript-label" />
+                  <span class="switch-slider"></span>
+                </label>
+                <button id="configure-external-token" type="button" class="action-btn">Token</button>
               </div>
             </div>
 
@@ -348,6 +363,30 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <input id="popover-color-transparency" type="range" min="0" max="100" step="1" value="0" />
         </label>
       </div>
+
+      <dialog id="external-extensions-dialog" class="space-bookmark-dialog external-authorization-dialog">
+        <div class="space-bookmark-dialog-header">
+          <span data-i18n="externalAuthorization.extensions">Extension allowlist</span>
+          <button type="button" class="dialog-close-btn" data-external-dialog-close data-i18n-aria="common.close" aria-label="Close">×</button>
+        </div>
+        <div class="space-bookmark-dialog-body">
+          <textarea id="external-extension-ids" rows="5" spellcheck="false" data-i18n-aria="externalAuthorization.extensions" aria-label="Extension allowlist" placeholder="One extension ID per line"></textarea>
+        </div>
+      </dialog>
+      <dialog id="external-token-dialog" class="space-bookmark-dialog external-authorization-dialog">
+        <div class="space-bookmark-dialog-header">
+          <span>Token</span>
+          <button type="button" class="dialog-close-btn" data-external-dialog-close data-i18n-aria="common.close" aria-label="Close">×</button>
+        </div>
+        <div class="space-bookmark-dialog-body">
+          <input id="external-token" type="text" readonly spellcheck="false" aria-label="Token" />
+          <div class="space-bookmark-dialog-actions">
+            <button id="copy-external-token" class="action-btn" type="button" data-i18n="externalAuthorization.copyToken">Copy</button>
+            <button id="regenerate-external-token" class="action-btn" type="button" data-i18n="externalAuthorization.regenerateToken">Regenerate</button>
+          </div>
+          <output id="external-authorization-status" aria-live="polite" hidden></output>
+        </div>
+      </dialog>
 
       <!-- Menu Settings Dialog -->
       <dialog id="menu-settings-dialog" class="menu-settings-dialog">

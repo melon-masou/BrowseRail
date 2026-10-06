@@ -8,7 +8,6 @@ import { createScope } from "../lifecycle";
 import { type CustomBookmarkSource } from "../custom-bookmark-source";
 import { type Overlays } from "../components/overlays";
 import { type BookmarkTools } from "../components/bookmark-tools";
-import { getSandboxStatus, type SandboxStatus } from "../../../dynamic/status";
 import { addIcon, checkIcon, copyIcon, removeIcon, setIconContent } from "../components/icons";
 import { renderPreservingFocus } from "../components/render-focus";
 import { createDynamicTester } from "../components/dynamic-test";
@@ -37,44 +36,6 @@ export function mountCustomBookmarksTab(
   scope.add(staticBookmarks.destroy);
   const temporaryList = element<HTMLDivElement>("temporary-list");
   const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
-  const DEFAULT_DYNAMIC_CODE = `/**
- * Dynamic Bookmark Handler
- *
- * Runs synchronously in an isolated browser sandbox worker.
- * URL and URLSearchParams are available; page DOM and extension APIs are not.
- * Network access is blocked by the sandbox CSP.
- *
- * @param {Object} context
- * @param {string} context.action  - Trigger event: "visit"
- * @param {string} context.url     - URL of the visited page
- * @param {string} context.title   - Title of the visited page
- * @param {Object} context.current - Current bookmark state: { url, title, note }
- * @param {string} context.current.note - Saved script context; empty string before the first save
- *
- * @returns {Object}
- *   - { newUrl: string, title?: string, note?: string } - Updates the URL; title defaults to the visited page's title
- *   - { newUrl: null, note?: string } - Keeps the URL and title unchanged; can still update note
- *   - note: a string saved for later calls, including after restart; omitted = keep, "" = clear
- */
-function dynamicBookmark({ action, url, title, current }) {
-  // Example 1: Track the last visited GitHub repository
-  // if (url.startsWith("https://github.com/")) {
-  //   return { newUrl: url, title };
-  // }
-
-  // Example 2: Track docs pages and customize bookmark title
-  // if (url.includes("/docs/")) {
-  //   return { newUrl: url, title: \`Doc: \${title}\` };
-  // }
-
-  // Example 3: Keep script context between visits without changing the URL
-  // const visits = Number(current.note || "0") + 1;
-  // return { newUrl: null, note: String(visits) };
-
-  return { newUrl: url, title };
-}
-`;
-
   function removeCustomDefinition(type: CustomBookmarkType, uid: string): void {
     state.removeBookmark(type, uid);
     collapsedDynamicUids.delete(uid);
@@ -211,19 +172,7 @@ function dynamicBookmark({ action, url, title, current }) {
   }
 
   function createDynamicBookmark(): DynamicBookmark {
-    return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), type: "rule", code: DEFAULT_DYNAMIC_CODE, rewrite: DEFAULT_REWRITE };
-  }
-
-  let sandboxStatus: SandboxStatus | undefined;
-  let sandboxChecking = false;
-  function checkSandbox(): void {
-    if (sandboxChecking) return;
-    sandboxChecking = true;
-    void getSandboxStatus().then(status => {
-      if (scope.signal.aborted) return;
-      sandboxStatus = status;
-      renderDynamic();
-    });
+    return { uid: crypto.randomUUID(), name: t("dynamic.defaultName"), type: "rule", rewrite: DEFAULT_REWRITE };
   }
 
   const collapsedDynamicUids = new Set<string>();
@@ -396,7 +345,7 @@ function dynamicBookmark({ action, url, title, current }) {
     modeLabel.className = "dynamic-field-label";
     modeLabel.textContent = t("dynamic.mode");
     modeField.append(modeLabel);
-    for (const type of ["rule", "rewrite", "code"] as const) {
+    for (const type of ["rule", "rewrite", "external"] as const) {
       const option = document.createElement("label");
       const radio = document.createElement("input");
       radio.type = "radio";
@@ -409,58 +358,61 @@ function dynamicBookmark({ action, url, title, current }) {
         }
       });
       const text = document.createElement("span");
-      text.textContent = t(type === "rule" ? "dynamic.updateAll" : type === "rewrite" ? "dynamic.rewriteMode" : "dynamic.codeMode");
+      text.textContent = t(type === "rule" ? "dynamic.updateAll" : type === "rewrite" ? "dynamic.rewriteMode" : "dynamic.externalMode");
       option.append(radio, text);
       modeField.append(option);
     }
     body.append(modeField);
-    if (db.type === "rule") {
+    if (db.type !== "rewrite") {
       const ruleHint = document.createElement("div");
       ruleHint.className = "hint";
-      ruleHint.textContent = t("dynamic.ruleHint");
+      ruleHint.textContent = t(db.type === "rule" ? "dynamic.ruleHint" : "dynamic.externalHint");
       body.append(ruleHint);
+      if (db.type === "external") {
+        const uidField = document.createElement("label");
+        uidField.className = "dynamic-field";
+        const label = document.createElement("span");
+        label.className = "dynamic-field-label";
+        label.textContent = "UID";
+        const uid = document.createElement("input");
+        uid.type = "text";
+        uid.readOnly = true;
+        uid.value = db.uid;
+        uidField.append(label, uid);
+        body.append(uidField);
+      }
       card.append(header, body);
       return card;
     }
     const risk = document.createElement("p");
-    risk.className = "dynamic-sandbox-warning";
-    risk.textContent = t("dynamic.transformWarning");
+    risk.className = "dynamic-rewrite-warning";
+    risk.textContent = t("dynamic.rewriteWarning");
     body.append(risk);
-    if (db.type === "code" && sandboxStatus === undefined) {
-      checkSandbox();
-    } else if (db.type === "code" && sandboxStatus !== "supported") {
-      const warning = document.createElement("p");
-      warning.className = "dynamic-sandbox-warning";
-      warning.textContent = t(sandboxStatus === "unsupported" ? "dynamic.sandboxUnsupported" : "dynamic.sandboxFailed");
-      body.append(warning);
-    }
-
-    const code = document.createElement("textarea");
-    code.className = "dynamic-code";
-    code.rows = 14;
-    code.spellcheck = false;
-    code.value = db.type === "rewrite" ? db.rewrite ?? "" : db.code;
-    code.ariaLabel = t(db.type === "rewrite" ? "dynamic.rewriteMode" : "dynamic.codeLabel");
-    const updateCode = () => {
+    const rewrite = document.createElement("textarea");
+    rewrite.className = "dynamic-rewrite";
+    rewrite.rows = 14;
+    rewrite.spellcheck = false;
+    rewrite.value = db.rewrite ?? "";
+    rewrite.ariaLabel = t("dynamic.rewriteMode");
+    const updateRewrite = () => {
       tester.reset(db.uid);
-      if (db.type === "rewrite") state.setDynamicRewrite(db.uid, code.value);
-      else state.setDynamicCode(db.uid, code.value);
+      state.setDynamicRewrite(db.uid, rewrite.value);
     };
-    code.addEventListener("input", () => {
-      updateCode();
+    rewrite.addEventListener("input", () => {
+      updateRewrite();
     });
-    code.addEventListener("keydown", (e) => {
+    rewrite.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
         e.preventDefault();
-        const start = code.selectionStart;
-        const end = code.selectionEnd;
-        code.value = code.value.substring(0, start) + "  " + code.value.substring(end);
-        code.selectionStart = code.selectionEnd = start + 2;
-        updateCode();
+        const start = rewrite.selectionStart;
+        const end = rewrite.selectionEnd;
+        rewrite.value = rewrite.value.substring(0, start) + "  " + rewrite.value.substring(end);
+        rewrite.selectionStart = rewrite.selectionEnd = start + 2;
+        updateRewrite();
       }
     });
 
-    body.append(code);
+    body.append(rewrite);
     body.append(tester.render(db.uid));
     card.append(header, body);
     return card;

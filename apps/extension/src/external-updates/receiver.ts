@@ -1,0 +1,50 @@
+import browser from "webextension-polyfill";
+import { EXTERNAL_AUTHORIZATION_STORAGE_KEY } from "../config/external-authorization";
+import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE, MAX_EXTERNAL_MESSAGE_BYTES } from "./protocol";
+
+export function createExternalReceiver(target: Document) {
+  let token = "";
+  let revision = 0;
+  let destroyed = false;
+
+  function receive(event: Event): void {
+    const detail: unknown = (event as CustomEvent<unknown>).detail;
+    if (typeof detail !== "string" || detail.length > MAX_EXTERNAL_MESSAGE_BYTES) return;
+    let message: unknown;
+    try { message = JSON.parse(detail); } catch { return; }
+    void browser.runtime.sendMessage({ type: EXTERNAL_RELAY_MESSAGE, token, message }).catch(() => {});
+  }
+
+  function setToken(next: string): void {
+    if (next === token) return;
+    if (token) target.removeEventListener(`browserail:${token}`, receive);
+    token = next;
+    if (token) target.addEventListener(`browserail:${token}`, receive);
+  }
+
+  async function refresh(): Promise<void> {
+    if (destroyed) return;
+    const current = ++revision;
+    // Drop the old listener while checking revocation or a changed token.
+    setToken("");
+    try {
+      const config: unknown = await browser.runtime.sendMessage({ type: EXTERNAL_RECEIVER_CONFIG });
+      if (destroyed || current !== revision) return;
+      if (config && typeof config === "object" && "token" in config && typeof config.token === "string") setToken(config.token);
+    } catch { /* Extension unload or revoked website access. */ }
+  }
+
+  const changed = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {
+    if (area === "local" && changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) void refresh();
+  };
+  browser.storage.onChanged.addListener(changed);
+  return {
+    refresh,
+    destroy(): void {
+      destroyed = true;
+      ++revision;
+      setToken("");
+      browser.storage.onChanged.removeListener(changed);
+    },
+  };
+}

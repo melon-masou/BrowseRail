@@ -15,6 +15,7 @@ export function createSiteAuthorization(options: {
   root: HTMLElement;
   warning: HTMLElement;
   getMode(): DisplayMode;
+  getUserscriptEnabled?(): boolean;
   getRules(): UrlRule[];
   hasUnsavedRules(): boolean;
 }) {
@@ -28,7 +29,7 @@ export function createSiteAuthorization(options: {
   const warning = options.warning;
   const status = document.createElement("output");
   status.setAttribute("aria-live", "polite");
-  options.root.append(authorize, revoke, status);
+  options.root.append(warning, authorize, revoke, status);
   const dialog = document.createElement("dialog");
   dialog.className = "space-bookmark-dialog site-authorization-dialog";
   document.body.append(dialog);
@@ -43,30 +44,32 @@ export function createSiteAuthorization(options: {
     status.textContent = `${t("siteAuthorization.failed")}: ${String(error)}`;
   };
 
+  const active = (): boolean => options.getMode() === "browser" || options.getUserscriptEnabled?.() === true;
+
   function render(): void {
     if (scope.signal.aborted) return;
-    const active = options.getMode() === "browser";
-    options.root.hidden = !active;
+    const visible = active();
     authorize.textContent = t("siteAuthorization.authorize");
     revoke.textContent = t("siteAuthorization.revoke");
-    warning.textContent = t("siteAuthorization.incomplete");
-    warning.hidden = !active || !checked || (hasOrigins && incomplete.size === 0);
-    authorize.disabled = busy;
+    const incompleteAccess = checked && (!hasOrigins || incomplete.size > 0);
+    warning.textContent = !visible ? t("siteAuthorization.notRequired")
+      : !checked ? t("siteAuthorization.required")
+      : !hasOrigins ? t("siteAuthorization.unauthorized")
+      : incomplete.size > 0 ? t("siteAuthorization.incompleteStatus")
+      : t("siteAuthorization.authorized");
+    warning.classList.toggle("site-permission-warning", visible && incompleteAccess);
+    warning.hidden = false;
+    authorize.disabled = busy || !visible;
     revoke.disabled = busy || !hasOrigins;
-    for (const node of document.querySelectorAll<HTMLElement>("[data-rule-permission]")) {
-      node.textContent = t("siteAuthorization.incomplete");
-      node.hidden = !active || !incomplete.has(node.dataset.rulePermission!);
-    }
-    if (!active && dialog.open && !busy) dialog.close();
+    if (!visible && dialog.open && !busy) dialog.close();
   }
   async function refresh(): Promise<void> {
     if (scope.signal.aborted) return;
     const current = ++revision;
     render();
-    if (options.getMode() !== "browser") return;
     const [origins, missing] = await Promise.all([
       loadWebsiteOrigins(),
-      incompleteRuleUids(savedRules),
+      active() ? incompleteRuleUids(savedRules) : new Set<string>(),
     ]);
     if (current !== revision || scope.signal.aborted) return;
     hasOrigins = origins.length > 0;
@@ -92,14 +95,14 @@ export function createSiteAuthorization(options: {
     parent.append(ul);
   }
   async function open(): Promise<void> {
-    if (options.getMode() !== "browser" || busy) return;
+    if (!active() || busy) return;
     const snapshot = options.getRules().map(ruleSites);
     const unsaved = options.hasUnsavedRules();
     const [origins, allGranted] = await Promise.all([
       loadWebsiteOrigins(),
       browser.permissions.contains({ origins: ALL_WEBSITE_ORIGINS }),
     ]);
-    if (scope.signal.aborted || options.getMode() !== "browser" || dialog.open) return;
+    if (scope.signal.aborted || !active() || dialog.open) return;
     dialogOrigins = origins;
     status.textContent = "";
     dialog.replaceChildren();
@@ -205,7 +208,7 @@ export function createSiteAuthorization(options: {
     confirm.addEventListener(
       "click",
       () => {
-        if (busy || options.getMode() !== "browser") return;
+        if (busy || !active()) return;
         const chosen = prepared ?? targets();
         if (!chosen.length) return;
         busy = true;
@@ -264,7 +267,7 @@ export function createSiteAuthorization(options: {
   revoke.addEventListener(
     "click",
     () => {
-      if (busy || options.getMode() !== "browser") return;
+      if (busy || !hasOrigins) return;
       busy = true;
       authorize.disabled = revoke.disabled = true;
       status.textContent = "";
@@ -305,8 +308,8 @@ export function createSiteAuthorization(options: {
       revoke.remove();
       status.remove();
     },
-    refresh(rules: UrlRule[]): void {
-      savedRules = rules.map(ruleSites);
+    refresh(rules?: UrlRule[]): void {
+      if (rules) savedRules = rules.map(ruleSites);
       refreshSafely();
     },
     render,

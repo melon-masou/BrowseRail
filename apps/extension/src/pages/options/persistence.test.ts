@@ -16,8 +16,51 @@ import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration,
 import { createOptionsState, settingsFromConfig } from "./state";
 import { createBookmarkLibrary } from "./bookmark-library";
 import { createPersistence, loadOptions } from "./persistence";
+import { loadExternalAuthorization } from "../../config/external-authorization-store";
 
 beforeEach(() => { local.values = {}; });
+
+it("removes legacy code bookmarks and their menu and shortcut references without converting them", async () => {
+  const config = await loadConfig();
+  const external = { uid: "external", name: "External", type: "external", urlRuleUid: "site" };
+  local.values.config = {
+    ...config,
+    dynamicBookmarks: [external, { uid: "old", name: "Old", type: "code", code: "function dynamicBookmark() {}" }],
+    panel: { menus: [{ uid: "bar", items: [
+      { uid: "external-item", type: "dynamic", dynamicUid: "external" },
+      { uid: "old-item", type: "dynamic", dynamicUid: "old" },
+    ] }] },
+    shortcuts: [{ slot: "slot_1", type: "dynamic", dynamicUid: "old" }],
+    nativeShortcuts: [{ id: "old-key", key: "F1", type: "dynamic", dynamicUid: "old" }],
+  };
+  const saved = await loadConfig();
+  expect(saved.dynamicBookmarks).toEqual([external]);
+  expect(saved.panel.menus[0]!.items.map(item => item.uid)).toEqual(["external-item"]);
+  expect(saved.shortcuts).toEqual([]);
+  expect(saved.nativeShortcuts).toEqual([]);
+});
+
+it("saves external grants only with the instance and excludes them from portable settings", async () => {
+  const { state, persistence } = await fixture();
+  state.setExternalExtensionsEnabled(true);
+  state.setExternalExtensionIds(" provider@example.com \nprovider@example.com\n");
+  state.setUserscriptEnabled(true);
+  const token = state.instance.externalAuthorization.token;
+  expect((await loadExternalAuthorization()).userscriptEnabled).toBe(false);
+  await persistence.saveSettings();
+  expect((await loadExternalAuthorization()).extensionIds).toEqual([]);
+  await persistence.saveInstance();
+  expect(await loadExternalAuthorization()).toEqual({ extensionsEnabled: true, extensionIds: ["provider@example.com"], userscriptEnabled: true, token });
+  const loaded = await loadOptions();
+  expect(loaded.instance.externalAuthorization).toEqual(await loadExternalAuthorization());
+  const exported = await persistence.exportSettings(true);
+  expect(JSON.stringify(exported)).not.toContain(token);
+  expect(JSON.stringify(exported)).not.toContain("provider@example.com");
+  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.saveSettings();
+  expect((await loadExternalAuthorization()).token).toBe(token);
+  persistence.destroy();
+});
 async function fixture() {
   const config = await loadConfig();
   config.instanceLabel = "Local instance";
@@ -25,7 +68,7 @@ async function fixture() {
   config.staticBookmarks = [{ uid: "link", name: "Example", url: "https://example.com" }];
   config.shortcuts = [{ slot: "1", type: "static", staticUid: "link" }];
   await saveConfig(config);
-  const state = createOptionsState({ label: config.instanceLabel, desktopUrl: config.desktopWidget.url, displayMode: "native", rootPrefix: [], syncEnabled: false }, settingsFromConfig(config));
+  const state = createOptionsState({ label: config.instanceLabel, desktopUrl: config.desktopWidget.url, displayMode: "native", rootPrefix: [], syncEnabled: false, externalAuthorization: { extensionsEnabled: false, extensionIds: [], userscriptEnabled: false, token: "" } }, settingsFromConfig(config));
   const persistence = createPersistence(state, createBookmarkLibrary(() => []));
   return { state, persistence };
 }
@@ -183,7 +226,7 @@ it("opens settings in a browser without a bookmarks API and saves without touchi
 it("does not let an imported dynamic bookmark borrow a local URL rule that only shares its uid", async () => {
   const { state, persistence } = await fixture();
   state.addUrlRule({ uid: "docs", name: "Local", patterns: ["*"] });
-  const script = { uid: "script", name: "Script", type: "code", code: "function dynamicBookmark() {}", urlRuleUid: "docs" };
+  const script = { uid: "external", name: "External", type: "external", urlRuleUid: "docs" };
   const withoutRules = { version: 2, exportedAt: "2026-10-04T00:00:00.000Z", menus: [], dynamicBookmarks: [script] };
   await persistence.importSettings(JSON.stringify(withoutRules), false, true);
   expect(state.settings.dynamicBookmarks[0]).not.toHaveProperty("urlRuleUid");
@@ -193,11 +236,11 @@ it("does not let an imported dynamic bookmark borrow a local URL rule that only 
   persistence.destroy();
 });
 
-it("round-trips both dynamic modes, code and commented exclusion rules without executing scripts", async () => {
+it("round-trips rule and external definitions with commented exclusion rules", async () => {
   const { state, persistence } = await fixture();
   state.addUrlRule({ uid: "docs", name: "Docs", patterns: ["# context", "example.com", "# excluded", "!https://example.com/private"] });
-  state.addBookmark("dynamic", { uid: "rule", name: "Rule", type: "rule", code: "preserved editor", urlRuleUid: "docs" });
-  state.addBookmark("dynamic", { uid: "code", name: "Code", type: "code", code: "function dynamicBookmark() { return { newUrl: null, note: 'saved' }; }", urlRuleUid: "docs" });
+  state.addBookmark("dynamic", { uid: "rule", name: "Rule", type: "rule", urlRuleUid: "docs" });
+  state.addBookmark("dynamic", { uid: "external", name: "External", type: "external", urlRuleUid: "docs" });
   const exported = await persistence.exportSettings();
   await persistence.importSettings(JSON.stringify(exported), false, true);
   await persistence.saveSettings();
@@ -207,13 +250,13 @@ it("round-trips both dynamic modes, code and commented exclusion rules without e
   persistence.destroy();
 });
 
-it.each([false, true])("imports script definitions and their references only with explicit consent (%s)", async (includeCode) => {
+it.each([false, true])("imports external definitions normally and rewrites only with explicit consent (%s)", async (includeRewrites) => {
   const { state, persistence } = await fixture();
   const data = await persistence.exportSettings();
   data.urlRules = [{ uid: "docs", name: "Docs", patterns: ["example.com"] }];
-  const rule = { uid: "rule", name: "Rule", type: "rule" as const, code: "hidden imported script", urlRuleUid: "docs" };
-  const script = { uid: "script", name: "Script", type: "code" as const, code: "function dynamicBookmark() {}", urlRuleUid: "docs" };
-  const rewrite = { uid: "rewrite", name: "Rewrite", type: "rewrite" as const, code: "", rewrite: 'replace "/article/" "/reader/"', urlRuleUid: "docs" };
+  const rule = { uid: "rule", name: "Rule", type: "rule" as const, urlRuleUid: "docs" };
+  const script = { uid: "script", name: "Script", type: "external" as const, urlRuleUid: "docs" };
+  const rewrite = { uid: "rewrite", name: "Rewrite", type: "rewrite" as const, rewrite: 'replace "/article/" "/reader/"', urlRuleUid: "docs" };
   data.dynamicBookmarks = [rule, script, rewrite];
   data.menus[0]!.items = [
     { uid: "rule-item", type: "dynamic", dynamicUid: rule.uid },
@@ -233,14 +276,14 @@ it.each([false, true])("imports script definitions and their references only wit
     { id: "static-key", key: "F3", type: "static", staticUid: "link" },
     { id: "rewrite-key", key: "F4", type: "dynamic", dynamicUid: rewrite.uid },
   ];
-  if (includeCode) await persistence.importSettings(JSON.stringify(data), false, true);
+  if (includeRewrites) await persistence.importSettings(JSON.stringify(data), false, true);
   else await persistence.importSettings(JSON.stringify(data));
-  expect(state.settings.dynamicBookmarks).toEqual(includeCode ? [rule, script, rewrite] : [{ ...rule, code: "" }]);
+  expect(state.settings.dynamicBookmarks).toEqual(includeRewrites ? [rule, script, rewrite] : [rule, script]);
   await persistence.saveSettings();
   const saved = await loadConfig();
-  expect(saved.dynamicBookmarks).toEqual(includeCode ? [rule, script, rewrite] : [{ ...rule, code: "" }]);
-  expect(saved.panel.menus[0]!.items.map(item => item.uid)).toEqual(includeCode ? ["rule-item", "script-item", "static-item", "rewrite-item"] : ["rule-item", "static-item"]);
-  expect(saved.shortcuts.map(shortcut => shortcut.slot)).toEqual(includeCode ? ["slot_1", "slot_2", "slot_3", "slot_4"] : ["slot_1", "slot_3"]);
-  expect(saved.nativeShortcuts.map(shortcut => shortcut.id)).toEqual(includeCode ? ["rule-key", "script-key", "static-key", "rewrite-key"] : ["rule-key", "static-key"]);
+  expect(saved.dynamicBookmarks).toEqual(includeRewrites ? [rule, script, rewrite] : [rule, script]);
+  expect(saved.panel.menus[0]!.items.map(item => item.uid)).toEqual(includeRewrites ? ["rule-item", "script-item", "static-item", "rewrite-item"] : ["rule-item", "script-item", "static-item"]);
+  expect(saved.shortcuts.map(shortcut => shortcut.slot)).toEqual(includeRewrites ? ["slot_1", "slot_2", "slot_3", "slot_4"] : ["slot_1", "slot_2", "slot_3"]);
+  expect(saved.nativeShortcuts.map(shortcut => shortcut.id)).toEqual(includeRewrites ? ["rule-key", "script-key", "static-key", "rewrite-key"] : ["rule-key", "script-key", "static-key"]);
   persistence.destroy();
 });

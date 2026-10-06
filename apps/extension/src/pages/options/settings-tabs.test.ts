@@ -169,7 +169,8 @@ it("refreshes a dynamic bookmark's current URL while retaining unsaved edits", a
   expect((await savedConfig()).dynamicBookmarks).toEqual([]);
 });
 
-it.each(["rewrite", "code"])("tests unsaved dynamic bookmark edits and shows the output without saving (%s)", async type => {
+it("tests unsaved rewrite edits and shows the output without saving", async () => {
+  const type = "rewrite";
   button("url-rules-tab").click(); button("add-url-rule-btn").click();
   const patterns = document.querySelector("#url-rules-list textarea");
   if (!(patterns instanceof HTMLTextAreaElement)) throw new Error("Missing URL pattern editor");
@@ -180,12 +181,12 @@ it.each(["rewrite", "code"])("tests unsaved dynamic bookmark edits and shows the
   if (!(ruleSelect instanceof HTMLSelectElement)) throw new Error("Missing URL rule selector");
   ruleSelect.value = ruleSelect.options[1]!.value;
   ruleSelect.dispatchEvent(new Event("change", { bubbles: true }));
-  const mode = Array.from(document.querySelectorAll("#dynamic-list label")).find(label => label.textContent === (type === "code" ? "Custom code" : "Regex rewrite"))?.querySelector("input");
+  const mode = Array.from(document.querySelectorAll("#dynamic-list label")).find(label => label.textContent === "Regex rewrite")?.querySelector("input");
   if (!(mode instanceof HTMLInputElement)) throw new Error("Missing update mode");
   mode.click();
   const editor = document.querySelector("#dynamic-list textarea");
   if (!(editor instanceof HTMLTextAreaElement)) throw new Error("Missing dynamic editor");
-  editor.value = type === "rewrite" ? 'replace "/old" "/new"' : 'function dynamicBookmark({ url }) { return { newUrl: url }; }';
+  editor.value = 'replace "/old" "/new"';
   editor.dispatchEvent(new Event("input", { bubbles: true }));
   const url = document.querySelector(".dynamic-test input");
   if (!(url instanceof HTMLInputElement)) throw new Error("Missing test URL");
@@ -200,9 +201,9 @@ it.each(["rewrite", "code"])("tests unsaved dynamic bookmark edits and shows the
   if (!(test instanceof HTMLButtonElement)) throw new Error("Missing test button");
   test.click();
   await vi.waitFor(() => expect(document.querySelector(".dynamic-test-result")?.textContent).toContain("https://example.com/new"));
-  expect(document.querySelector(".dynamic-test-result")?.textContent).toBe(type === "rewrite" ? "https://example.com/new" : JSON.stringify({ newUrl: "https://example.com/new" }, null, 2));
+  expect(document.querySelector(".dynamic-test-result")?.textContent).toBe("https://example.com/new");
   const request = mock.sendMessage.mock.calls.map(([message]) => message).find(message => typeof message === "object" && message !== null && "type" in message && message.type === "testDynamicBookmark");
-  expect(request).toMatchObject({ bookmark: { type, [type === "code" ? "code" : "rewrite"]: editor.value }, rule: { patterns: ["example.com"] }, url: "https://example.com/old" });
+  expect(request).toMatchObject({ bookmark: { type, rewrite: editor.value }, rule: { patterns: ["example.com"] }, url: "https://example.com/old" });
   expect((await savedConfig()).dynamicBookmarks).toEqual([]);
   const currentEditor = document.querySelector("#dynamic-list textarea");
   if (!(currentEditor instanceof HTMLTextAreaElement)) throw new Error("Missing editor after source refresh");
@@ -260,19 +261,19 @@ it("saves the instance separately, and freely switches other tabs before saving 
 afterEach(() => { window.dispatchEvent(new Event("pagehide")); });
 
 it.each([
-  { type: "rule", includeCode: false },
-  { type: "code", includeCode: false },
-  { type: "code", includeCode: true },
-  { type: "rewrite", includeCode: false },
-  { type: "rewrite", includeCode: true },
-])("offers script imports only when present and requires opt-in ($type, $includeCode)", async ({ type, includeCode }) => {
+  { type: "rule", includeRewrites: false },
+  { type: "external", includeRewrites: false },
+  { type: "code", includeRewrites: true },
+  { type: "rewrite", includeRewrites: false },
+  { type: "rewrite", includeRewrites: true },
+])("offers rewrite imports only when present and requires opt-in ($type, $includeRewrites)", async ({ type, includeRewrites }) => {
   button("custom-bookmarks-tab").click();
   const data = {
     version: 2,
     exportedAt: "2026-10-04T00:00:00.000Z",
     menus: [],
     urlRules: [{ uid: "docs", name: "Docs", patterns: ["example.com"] }],
-    dynamicBookmarks: [{ uid: "imported", name: "Imported", type, code: "function dynamicBookmark() {}", urlRuleUid: "docs", ...(type === "rewrite" ? { rewrite: 'replace "/article/" "/reader/"' } : {}) }],
+    dynamicBookmarks: [{ uid: "imported", name: "Imported", type, urlRuleUid: "docs", ...(type === "rewrite" ? { rewrite: 'replace "/article/" "/reader/"' } : {}) }],
   };
   const fileInput = input("import-file-input");
   Object.defineProperty(fileInput, "files", { configurable: true, value: [new File([JSON.stringify(data)], "settings.json")] });
@@ -280,21 +281,21 @@ it.each([
   await vi.waitFor(() => expect(document.querySelector("dialog[open]")).not.toBeNull());
   const dialog = document.querySelector("dialog[open]");
   if (!(dialog instanceof HTMLDialogElement)) throw new Error("Missing import dialog");
-  const scriptChoice = Array.from(dialog.querySelectorAll("label")).find(label => label.textContent === "Dynamic bookmarks with custom code or regex rewrites");
-  expect(Boolean(scriptChoice)).toBe(type !== "rule");
-  expect(dialog.textContent?.includes("Only import configurations you trust.")).toBe(type !== "rule");
-  if (scriptChoice) {
-    const checkbox = scriptChoice.querySelector("input");
-    if (!(checkbox instanceof HTMLInputElement)) throw new Error("Missing script checkbox");
+  const rewriteChoice = Array.from(dialog.querySelectorAll("label")).find(label => label.textContent === "Dynamic bookmarks with regex rewrites");
+  expect(Boolean(rewriteChoice)).toBe(type === "rewrite");
+  expect(dialog.textContent?.includes("Only import configurations you trust.")).toBe(type === "rewrite");
+  if (rewriteChoice) {
+    const checkbox = rewriteChoice.querySelector("input");
+    if (!(checkbox instanceof HTMLInputElement)) throw new Error("Missing rewrite checkbox");
     expect(checkbox.checked).toBe(false);
-    if (includeCode) checkbox.click();
+    if (includeRewrites) checkbox.click();
   }
   const confirm = Array.from(dialog.querySelectorAll("button")).find(button => button.textContent === "Import");
   if (!(confirm instanceof HTMLButtonElement)) throw new Error("Missing import button");
   confirm.click();
   await vi.waitFor(() => expect(button("save-btn").classList.contains("is-dirty")).toBe(true));
   await save();
-  expect((await savedConfig()).dynamicBookmarks).toEqual(includeCode ? data.dynamicBookmarks : type !== "rule" ? [] : [{ ...data.dynamicBookmarks[0], code: "" }]);
+  expect((await savedConfig()).dynamicBookmarks).toEqual(type === "code" || (type === "rewrite" && !includeRewrites) ? [] : data.dynamicBookmarks);
 });
 
 it("releases unsaved-page handlers on exit and mounts a fresh editor without duplicate actions", async () => {

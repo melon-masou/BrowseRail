@@ -18,8 +18,8 @@ vi.mock("webextension-polyfill", () => ({
         return true;
       },
       request: permission.request,
-      onAdded: { addListener: vi.fn() },
-      onRemoved: { addListener: vi.fn() },
+      onAdded: { addListener: vi.fn(), removeListener: vi.fn() },
+      onRemoved: { addListener: vi.fn(), removeListener: vi.fn() },
     },
   },
 }));
@@ -43,6 +43,42 @@ function click(button: HTMLButtonElement): void {
 function button(parent: ParentNode, title: string): HTMLButtonElement {
   return [...parent.querySelectorAll("button")].find((button) => button.textContent === title)!;
 }
+
+it("allows website grants for userscript access in native mode and reports when grants are unnecessary", async () => {
+  permission.origins = [];
+  permission.request.mockImplementation(async ({ origins }) => {
+    permission.origins = origins;
+    return true;
+  });
+  const root = document.createElement("div");
+  document.body.append(root);
+  let enabled = true;
+  const rules = [{ uid: "rule", name: "Rule", patterns: ["example.com"] }];
+  const controller = createSiteAuthorization({
+    root, warning: document.createElement("span"), getMode: () => "native",
+    getUserscriptEnabled: () => enabled, getRules: () => rules, hasUnsavedRules: () => false,
+  });
+  controller.refresh(rules);
+  expect(button(root, "Grant permission").hidden).toBe(false);
+  click(button(root, "Grant permission"));
+  const dialog = document.querySelector("dialog")!;
+  await vi.waitFor(() => expect(dialog.open).toBe(true));
+  click(button(dialog, "Confirm"));
+  await vi.waitFor(() => expect(dialog.open).toBe(false));
+  expect(permission.origins).toEqual(["http://*.example.com/*", "https://*.example.com/*"]);
+  enabled = false;
+  controller.render();
+  expect(button(root, "Grant permission").disabled).toBe(true);
+  expect(button(root, "Grant permission").hidden).toBe(false);
+  expect(button(root, "Revoke permission").hidden).toBe(false);
+  expect(root.textContent).toContain("Browser permission: not required");
+  await vi.waitFor(() => expect(button(root, "Revoke permission").disabled).toBe(false));
+  click(button(root, "Revoke permission"));
+  await vi.waitFor(() => expect(permission.origins).toEqual([]));
+  await vi.waitFor(() => expect(button(root, "Revoke permission").disabled).toBe(true));
+  expect(root.textContent).toContain("Browser permission: not required");
+  controller.destroy();
+});
 
 it("replaces old website access only after confirmation and requests the new scope from a fresh click", async () => {
   const root = document.createElement("div");
@@ -83,12 +119,9 @@ it("replaces old website access only after confirmation and requests the new sco
   expect(permission.origins).toEqual(["http://*.example.com/*", "https://*.example.com/*"]);
 });
 
-it("hides authorization controls and rule warnings in native and requests first-time access without an extra step", async () => {
+it("reports when browser permissions are needed and requests first-time access without an extra step", async () => {
   const root = document.createElement("div");
   document.body.append(root);
-  const ruleWarning = document.createElement("span");
-  ruleWarning.dataset.rulePermission = "rule";
-  document.body.append(ruleWarning);
   let mode: "native" | "browser" = "browser";
   permission.origins = [];
   permission.request.mockImplementation(async ({ origins }) => {
@@ -105,11 +138,13 @@ it("hides authorization controls and rule warnings in native and requests first-
     getRules: () => rules,
   });
   controller.refresh(rules);
-  await vi.waitFor(() => expect(ruleWarning.hidden).toBe(false));
+  await vi.waitFor(() => expect(root.textContent).toContain("Browser permission: not granted"));
   mode = "native";
   controller.refresh(rules);
-  expect(root.hidden).toBe(true);
-  expect(ruleWarning.hidden).toBe(true);
+  expect(button(root, "Grant permission").disabled).toBe(true);
+  expect(button(root, "Grant permission").hidden).toBe(false);
+  expect(button(root, "Revoke permission").hidden).toBe(false);
+  expect(root.textContent).toContain("Browser permission: not required");
   mode = "browser";
   controller.refresh(rules);
   click(button(root, "Grant permission"));
@@ -118,10 +153,10 @@ it("hides authorization controls and rule warnings in native and requests first-
   click(button(dialog, "Confirm"));
   await vi.waitFor(() => expect(dialog.open).toBe(false));
   expect(permission.origins).toEqual(["http://*.example.com/*", "https://*.example.com/*"]);
-  await vi.waitFor(() => expect(ruleWarning.hidden).toBe(true));
+  await vi.waitFor(() => expect(root.textContent).toContain("Browser permission: granted"));
   click(button(root, "Revoke permission"));
   await vi.waitFor(() => expect(permission.origins).toEqual([]));
-  await vi.waitFor(() => expect(ruleWarning.hidden).toBe(false));
+  await vi.waitFor(() => expect(root.textContent).toContain("Browser permission: not granted"));
 });
 
 it.each(["chrome", "edge", undefined])(
@@ -154,26 +189,24 @@ it.each(["chrome", "edge", undefined])(
 );
 
 it("keeps saved authorization warnings during editing and while the next saved check is pending", async () => {
-  permission.origins = [];
+  permission.origins = ["https://other.example/*"];
   const root = document.createElement("div");
   const warning = document.createElement("span");
-  warning.dataset.rulePermission = "rule";
-  warning.hidden = true;
-  document.body.append(root, warning);
+  document.body.append(root);
   const rules = [{ uid: "rule", name: "Rule", patterns: ["example.com"] }];
   const controller = createSiteAuthorization({
     root,
-    warning: document.createElement("span"),
+    warning,
     getMode: () => "browser",
     hasUnsavedRules: () => true,
     getRules: () => rules,
   });
   controller.refresh(rules);
-  await vi.waitFor(() => expect(warning.hidden).toBe(false));
+  await vi.waitFor(() => expect(warning.textContent).toBe("Browser permission: not fully granted"));
   const calls = permission.getAll.mock.calls.length;
   rules[0]!.patterns = ["/regex/"];
   controller.render();
-  expect(warning.hidden).toBe(false);
+  expect(warning.textContent).toBe("Browser permission: not fully granted");
   expect(permission.getAll.mock.calls.length).toBe(calls);
   let finish!: (value: { origins: string[] }) => void;
   permission.getAll.mockReturnValueOnce(
@@ -182,7 +215,7 @@ it("keeps saved authorization warnings during editing and while the next saved c
     }),
   );
   controller.refresh(rules);
-  expect(warning.hidden).toBe(false);
-  finish({ origins: [] });
-  await vi.waitFor(() => expect(warning.hidden).toBe(true));
+  expect(warning.textContent).toBe("Browser permission: not fully granted");
+  finish({ origins: permission.origins });
+  await vi.waitFor(() => expect(warning.textContent).toBe("Browser permission: granted"));
 });

@@ -257,18 +257,43 @@ form {
   align-items: start;
 }
 
-.connection-mode-row {
+.instance-access-controls {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap: 16px;
-  align-items: end;
+  gap: 12px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 16px;
+}
+
+.instance-access-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.instance-access-row select {
+  width: auto;
+}
+
+.external-authorization-dialog {
+  width: min(480px, 92vw);
+}
+
+.external-authorization-dialog textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+#external-token {
+  min-width: 0;
+  font-family: monospace;
 }
 
 @media (max-width: 640px) {
   .fields-row {
-    grid-template-columns: 1fr;
-  }
-  .connection-mode-row {
     grid-template-columns: 1fr;
   }
 }
@@ -2347,7 +2372,7 @@ output {
   user-select: text;
 }
 
-.transfer-code-warning {
+.transfer-rewrite-warning {
   color: #a55f0e;
 }
 
@@ -2852,7 +2877,7 @@ button.item-tag {
   gap: 8px;
 }
 
-.dynamic-code {
+.dynamic-rewrite {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
   line-height: 1.55;
@@ -2872,7 +2897,7 @@ button.item-tag {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.dynamic-code:focus {
+.dynamic-rewrite:focus {
   border-color: #2563eb;
   outline: none;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
@@ -3200,9 +3225,9 @@ button.item-tag {
   flex-wrap: wrap;
   gap: 10px;
   min-height: 36px;
-  font-size: 12px;
+  font-size: 14px;
 }
-.site-authorization[hidden], .site-permission-warning[hidden], .site-authorization-rule-list[hidden] {
+.site-authorization[hidden], .site-authorization button[hidden], .site-permission-warning[hidden], .site-authorization-rule-list[hidden] {
   display: none;
 }
 .site-permission-warning {
@@ -3271,7 +3296,7 @@ button.item-tag {
   color: #a55f0e;
   font-size: 12px;
 }
-.dynamic-sandbox-warning {
+.dynamic-rewrite-warning {
   color: #d98220;
   margin: 0 0 10px;
   font-size: 12px;

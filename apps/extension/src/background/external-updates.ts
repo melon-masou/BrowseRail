@@ -1,0 +1,68 @@
+import browser, { type Runtime } from "webextension-polyfill";
+import { matchesUrlRule } from "@browserail/protocol";
+import { loadConfig, loadDynamicValue, saveDynamicValue } from "../config";
+import { loadExternalAuthorization } from "../config/external-authorization-store";
+import { EXTERNAL_AUTHORIZATION_STORAGE_KEY } from "../config/external-authorization";
+import { saveExternalData } from "../config/external-data";
+import { hasWebsitePermission } from "../browser/site-permissions";
+import { createExternalUpdateHandler, type ExternalSource } from "../external-updates/handler";
+import { createExternalInjection } from "../external-updates/injection";
+import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE, type ExternalUpdateResult } from "../external-updates/protocol";
+
+function userscriptSource(sender: Runtime.MessageSender, token: string): ExternalSource | undefined {
+  if (sender.id !== browser.runtime.id || typeof sender.tab?.id !== "number" || sender.frameId !== 0 || typeof sender.url !== "string") return;
+  return { kind: "userscript", token, url: sender.url };
+}
+
+export function initExternalUpdates(requestSync: () => void): void {
+  const handler = createExternalUpdateHandler({
+    loadAuthorization: loadExternalAuthorization,
+    hasWebsitePermission,
+    saveData: saveExternalData,
+    async updateBookmark(uid, url): Promise<ExternalUpdateResult> {
+      const config = await loadConfig();
+      const bookmark = config.dynamicBookmarks.find(value => value.uid === uid);
+      if (!bookmark || bookmark.type !== "external") return { ok: false, error: "unknownBookmark" };
+      const rule = config.urlRules.find(value => value.uid === bookmark.urlRuleUid);
+      if (!rule || !matchesUrlRule(url, rule)) return { ok: false, error: "outsideUrlRule" };
+      const current = await loadDynamicValue(uid);
+      if (current?.url !== url) {
+        await saveDynamicValue(uid, { ...current, url, updatedAt: Date.now() });
+        requestSync();
+      }
+      return { ok: true };
+    },
+  });
+
+  browser.runtime.onMessageExternal.addListener((message: unknown, sender: Runtime.MessageSender) => {
+    if (!sender.id) return Promise.resolve({ ok: false, error: "unauthorized" } satisfies ExternalUpdateResult);
+    return handler({ kind: "extension", id: sender.id }, message);
+  });
+  browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
+    if (!message || typeof message !== "object" || !("type" in message)) return;
+    if (message.type === EXTERNAL_RECEIVER_CONFIG) {
+      const source = userscriptSource(sender, "");
+      return (async () => {
+        if (!source || source.kind !== "userscript" || !await hasWebsitePermission(source.url)) return { token: "" };
+        const authorization = await loadExternalAuthorization();
+        return { token: authorization.userscriptEnabled ? authorization.token : "" };
+      })();
+    }
+    if (message.type !== EXTERNAL_RELAY_MESSAGE) return;
+    const source = userscriptSource(sender, "token" in message && typeof message.token === "string" ? message.token : "");
+    if (!source) return Promise.resolve({ ok: false, error: "unauthorized" } satisfies ExternalUpdateResult);
+    return handler(source, "message" in message ? message.message : undefined);
+  });
+
+  const injection = createExternalInjection();
+  let reconciliation = Promise.resolve();
+  const reconcile = (): void => {
+    reconciliation = reconciliation.then(() => injection.reconcile()).catch(error => console.error("BrowseRail external updates:", error));
+  };
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) reconcile();
+  });
+  browser.permissions.onAdded.addListener(reconcile);
+  browser.permissions.onRemoved.addListener(reconcile);
+  reconcile();
+}

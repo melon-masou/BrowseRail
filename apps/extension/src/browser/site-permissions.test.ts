@@ -21,10 +21,20 @@ it("requests the domain and subdomains of bare domain rules, preserving an expli
   });
 });
 
-it("does not silently turn regex, ambiguous prefixes or unsupported URLs into a broader grant", () => {
+it("does not silently turn regex or unsupported URLs into a broader grant", () => {
   const result = ruleSites({ uid: "web", name: "Web", patterns: ["/^https:\\/\\/example/", "https://example.com", "https://foo*.com/*", "chrome://newtab/", "example.com/docs"] });
-  expect(result.origins).toEqual(["http://*.example.com/*", "https://*.example.com/*"]);
-  expect(result.unsupported.map(item => item.pattern)).toEqual(["/^https:\\/\\/example/", "https://example.com", "https://foo*.com/*", "chrome://newtab/"]);
+  expect(result.origins).toEqual(["https://example.com/*", "http://*.example.com/*", "https://*.example.com/*"]);
+  expect(result.unsupported.map(item => item.pattern)).toEqual(["/^https:\\/\\/example/", "https://foo*.com/*", "chrome://newtab/"]);
+});
+
+it("rejects suffix and interior host wildcards while retaining path and port wildcards", () => {
+  const invalid = ["example.com*", "example.*", "foo*.com", "*example.com", "*.*"];
+  const result = ruleSites({ uid: "web", name: "Web", patterns: [
+    ...invalid, ...invalid.map(host => `https://${host}/*`),
+    "https://*.example.com/docs/*", "https://other.com/docs/*?item=*", "*://localhost:*/*",
+  ] });
+  expect(result.unsupported.map(item => item.pattern)).toEqual([...invalid, ...invalid.map(host => `https://${host}/*`)]);
+  expect(result.origins).toEqual(["https://*.example.com/*", "https://other.com/*", "http://localhost/*", "https://localhost/*"]);
 });
 
 it("flags incomplete convertible rules while excluding unsupported and empty rules", async () => {

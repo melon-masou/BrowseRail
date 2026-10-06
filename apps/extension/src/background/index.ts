@@ -40,10 +40,12 @@ import {
   saveWidgetEnabled,
 } from "../config";
 import { loadInstanceUid } from "../config/instance-identity";
+import { EXTERNAL_DATA_STORAGE_PREFIX } from "../config/external-data";
 import { ExtensionStateMachine, type ExtensionConnectionState } from "../native/state-machine";
 import { navigateToUrl } from "../browser/navigation";
 import { canUseBookmarks } from "../browser/bookmarks-capability";
 import { initDynamicBookmarks } from "./dynamic";
+import { initExternalUpdates } from "./external-updates";
 import { executeMenuAction } from "./execute-menu-action";
 
 import { createBrowserMenus, menuVisibleForUrl as isMenuVisibleForUrl } from "./browser-menus";
@@ -263,6 +265,7 @@ browser.tabs?.onDetached?.addListener(() => {
   requestSync();
 });
 initDynamicBookmarks(requestSync);
+initExternalUpdates(requestSync);
 let reconcileTimer: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleReconcile(): void {
@@ -273,7 +276,7 @@ function scheduleReconcile(): void {
 }
 
 browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local") requestSync();
+  if (areaName === "local" && Object.keys(changes).some(key => !key.startsWith(EXTERNAL_DATA_STORAGE_PREFIX))) requestSync();
   if (areaName === "local" && (changes.config || changes.widget_enabled || changes.display_mode)) {
     scheduleReconcile();
   }

@@ -40,15 +40,17 @@ import { settingsFromConfig, type OptionsState, type SettingsDraft } from "./sta
 import type { BookmarkLibrary } from "./bookmark-library";
 import { createScope } from "./lifecycle";
 import { validateRewrite } from "../../dynamic/rewrite";
+import { loadExternalAuthorization, saveExternalAuthorization } from "../../config/external-authorization-store";
 export async function loadOptions() {
   const bookmarksAvailable = await canUseBookmarks();
-  const [config, enabled, tree, rootPrefix, displayMode, syncEnabled] = await Promise.all([
+  const [config, enabled, tree, rootPrefix, displayMode, syncEnabled, externalAuthorization] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
     bookmarksAvailable ? browser.bookmarks.getTree() : [],
     loadBookmarkRootPrefix(),
     loadDisplayMode(),
     loadSyncEnabled(),
+    loadExternalAuthorization(),
   ]);
   return {
     instance: {
@@ -57,6 +59,7 @@ export async function loadOptions() {
       displayMode,
       rootPrefix,
       syncEnabled,
+      externalAuthorization,
     },
     settings: settingsFromConfig(config),
     enabled,
@@ -81,6 +84,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       instanceLabel: savingSettings.label.trim(),
     });
     await saveDisplayMode(savingSettings.displayMode);
+    await saveExternalAuthorization(structuredClone(savingSettings.externalAuthorization));
     await browser.runtime.sendMessage({ type: "configSaved" });
     state.acceptInstanceSave(savingSettings);
     return currentConfig.urlRules;
@@ -254,7 +258,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
 
     return exportData;
   }
-  async function importSettings(text: string, includeBars = false, includeTransforms = false): Promise<void> {
+  async function importSettings(text: string, includeBars = false, includeRewrites = false): Promise<void> {
     const parsed = JSON.parse(text) as unknown;
     if (!isExportedSettingsData(parsed)) {
       throw new Error(t("import.invalidJson"));
@@ -377,20 +381,15 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       imported.defaultUrlRuleUid = parsed.defaultUrlRuleUid;
     else delete imported.defaultUrlRuleUid;
 
-    const skippedTransformUids = new Set<string>();
     if (Array.isArray(parsed.dynamicBookmarks)) {
       // A rule reference resolves only against rules in the same file: binding it to a
-      // local rule that happens to share the uid would widen where the script runs.
+      // local rule that happens to share the uid would widen the saved URL scope.
       const fileRuleUids = new Set(Array.isArray(parsed.urlRules) ? imported.urlRules.map((rule) => rule.uid) : []);
       imported.dynamicBookmarks = normalizeDynamicBookmarks(parsed.dynamicBookmarks).flatMap(({ urlRuleUid, ...db }) => {
-        if (!includeTransforms && (db.type === "code" || db.type === "rewrite")) {
-          skippedTransformUids.add(db.uid);
-          return [];
-        }
+        if (!includeRewrites && db.type === "rewrite") return [];
         return [{
           ...db,
-          code: includeTransforms ? db.code : "",
-          ...(!includeTransforms && db.rewrite !== undefined ? { rewrite: "" } : {}),
+          ...(!includeRewrites && db.rewrite !== undefined ? { rewrite: "" } : {}),
           ...(urlRuleUid && fileRuleUids.has(urlRuleUid) ? { urlRuleUid } : {}),
         }];
       });
@@ -448,8 +447,9 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         ];
       });
     }
+    const importedDynamicUids = new Set(imported.dynamicBookmarks.map(db => db.uid));
     const keepReference = (item: StoredMenuItem | StoredShortcut | StoredNativeShortcut): boolean =>
-      item.type !== "dynamic" || !item.dynamicUid || !skippedTransformUids.has(item.dynamicUid);
+      item.type !== "dynamic" || !!item.dynamicUid && importedDynamicUids.has(item.dynamicUid);
     for (const menu of imported.menus) menu.items = menu.items.filter(keepReference);
     imported.shortcuts = imported.shortcuts.filter(keepReference);
     imported.nativeShortcuts = imported.nativeShortcuts.filter(keepReference);

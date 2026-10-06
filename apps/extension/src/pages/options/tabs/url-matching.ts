@@ -7,7 +7,7 @@ import { type OptionsState } from "../state";
 import { renderPreservingFocus } from "../components/render-focus";
 import { removeIcon, setIconContent } from "../components/icons";
 
-export function mountUrlMatchingTab(state: OptionsState, renderPermissionWarnings: () => void) {
+export function mountUrlMatchingTab(state: OptionsState) {
   const scope = createScope();
   const addUrlRuleBtn = element<HTMLButtonElement>("add-url-rule-btn");
   const urlRulesList = element<HTMLDivElement>("url-rules-list");
@@ -78,11 +78,7 @@ export function mountUrlMatchingTab(state: OptionsState, renderPermissionWarning
       }
       updateCount();
 
-      const permissionWarning = document.createElement("span");
-      permissionWarning.className = "site-permission-warning";
-      permissionWarning.dataset.rulePermission = ws.uid;
-      permissionWarning.hidden = true;
-      titleGroup.append(nameInput, countPill, permissionWarning);
+      titleGroup.append(nameInput, countPill);
 
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
@@ -110,7 +106,6 @@ export function mountUrlMatchingTab(state: OptionsState, renderPermissionWarning
       card.append(header, patternsTextarea);
       urlRulesList.appendChild(card);
     });
-    renderPermissionWarnings();
   }
 
   addUrlRuleBtn.addEventListener(

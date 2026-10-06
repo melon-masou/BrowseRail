@@ -19,6 +19,7 @@ import { createColorPopover } from "./components/color-popover";
 import { createBookmarkTools } from "./components/bookmark-tools";
 import { createOverlays } from "./components/overlays";
 import { createSiteAuthorization } from "./components/site-authorization";
+import { mountExternalAuthorization } from "./components/external-authorization";
 import { mountStartTab } from "./tabs/start";
 import { mountInstanceTab } from "./tabs/instance";
 import { mountMenusTab } from "./tabs/menus";
@@ -82,13 +83,15 @@ export async function mountOptionsPage() {
   const authorization = createSiteAuthorization({
     root: element("site-authorization-controls"),
     warning: element("site-authorization-warning"),
-    getMode: () => state.savedDisplayMode,
+    getMode: () => state.instance.displayMode,
+    getUserscriptEnabled: () => state.instance.externalAuthorization.userscriptEnabled,
     getRules: () => structuredClone(state.settings.urlRules) as UrlRule[],
     hasUnsavedRules: () => state.dirty.settings,
   });
   scope.add(authorization.destroy);
   const start = mountStartTab();
   const instance = mountInstanceTab(state, library, bookmarkPicker, loaded.enabled);
+  const externalAuthorization = mountExternalAuthorization(state);
   const menus = mountMenusTab(
     state,
     library,
@@ -110,8 +113,8 @@ export async function mountOptionsPage() {
     overlays,
     showStatus,
   );
-  const rules = mountUrlMatchingTab(state, authorization.render);
-  const views = [start, instance, menus, custom, shortcuts, rules];
+  const rules = mountUrlMatchingTab(state);
+  const views = [start, instance, externalAuthorization, menus, custom, shortcuts, rules];
   for (const view of views) scope.add(view.destroy);
   function renderNativeHints(): void {
     for (const hint of document.querySelectorAll<HTMLElement>("[data-native-only]"))
@@ -255,10 +258,10 @@ export async function mountOptionsPage() {
           if (scope.signal.aborted) return;
           const parsed: unknown = JSON.parse(text);
           if (!isExportedSettingsData(parsed)) throw new Error(t("import.invalidJson"));
-          const hasTransforms = normalizeDynamicBookmarks(parsed.dynamicBookmarks).some(db => db.type === "code" || db.type === "rewrite");
-          const options = await chooseTransferOptions("import", parsed.barConfigurations !== undefined, hasTransforms);
+          const hasRewrites = normalizeDynamicBookmarks(parsed.dynamicBookmarks).some(db => db.type === "rewrite");
+          const options = await chooseTransferOptions("import", parsed.barConfigurations !== undefined, hasRewrites);
           if (!options || scope.signal.aborted) return;
-          await persistence.importSettings(text, options.includeBars, options.includeTransforms);
+          await persistence.importSettings(text, options.includeBars, options.includeRewrites);
           flash(t("import.savedOk"), 3000);
         })
         .catch((error) => showStatus(t("import.failed", { error: String(error) })));
@@ -292,10 +295,19 @@ export async function mountOptionsPage() {
     }),
   );
   scope.add(state.subscribe(["dirty"], updateSave));
+  const accessSettings = () => {
+    const { displayMode, externalAuthorization } = state.instance;
+    return `${displayMode}:${externalAuthorization.extensionsEnabled}:${externalAuthorization.userscriptEnabled}`;
+  };
+  let previousAccessSettings = accessSettings();
   scope.add(
     state.subscribe(["instance"], () => {
       renderNativeHints();
-      authorization.render();
+      const current = accessSettings();
+      if (current !== previousAccessSettings) {
+        previousAccessSettings = current;
+        authorization.refresh();
+      } else authorization.render();
     }),
   );
   renderLanguage();

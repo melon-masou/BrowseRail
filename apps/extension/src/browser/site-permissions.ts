@@ -26,9 +26,7 @@ export function ruleSites(rule: UrlRule): RuleSites {
     const scheme = schemeMatch?.[1]!.toLowerCase() ?? "*";
     const rest = schemeMatch ? pattern.slice(schemeMatch[0].length) : pattern;
     const slash = rest.indexOf("/");
-    // The existing URL matcher treats these as string prefixes, which may
-    // also match unrelated hosts such as example.com.evil.test.
-    if ((schemeMatch && slash < 0) || /[\s?#@\\]/.test(slash < 0 ? rest : rest.slice(0, slash))) {
+    if (/[\s?#@\\]/.test(slash < 0 ? rest : rest.slice(0, slash))) {
       unsupported.push({ pattern, reason: "pattern" }); continue;
     }
     let host = slash < 0 ? rest : rest.slice(0, slash);

@@ -64,12 +64,11 @@ export type DynamicBookmark = ExportedDynamicBookmark;
 export function normalizeDynamicBookmarks(value: unknown): DynamicBookmark[] {
   return (Array.isArray(value) ? value : []).flatMap((db): DynamicBookmark[] => {
     if (!isRecord(db) || typeof db.uid !== "string" || !db.uid) return [];
+    if (db.type !== "rule" && db.type !== "rewrite" && db.type !== "external") return [];
     return [{
       uid: db.uid,
       name: typeof db.name === "string" && db.name.trim() ? db.name.trim() : "Dynamic bookmark",
-      // Existing code definitions and imported scripts keep their execution mode.
-      type: db.type === "rule" || db.type === "rewrite" ? db.type : "code",
-      code: typeof db.code === "string" ? db.code : "",
+      type: db.type,
       ...(typeof db.rewrite === "string" ? { rewrite: db.rewrite } : {}),
       ...(typeof db.urlRuleUid === "string" && db.urlRuleUid ? { urlRuleUid: db.urlRuleUid } : {}),
     }];
@@ -294,6 +293,9 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
   const urlRules = normalizeUrlRules(value.urlRules);
 
   const dynamicBookmarks = normalizeDynamicBookmarks(value.dynamicBookmarks);
+  const dynamicUids = new Set(dynamicBookmarks.map(bookmark => bookmark.uid));
+  for (const menu of menus)
+    menu.items = menu.items.filter(item => item.type !== "dynamic" || !!item.dynamicUid && dynamicUids.has(item.dynamicUid));
 
   const rawShortcuts = Array.isArray(value.shortcuts) ? value.shortcuts : [];
   const shortcuts: StoredShortcut[] = rawShortcuts.flatMap((sc) => {
@@ -304,6 +306,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
     const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
     const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
+    if (type === "dynamic" && (!dynamicUid || !dynamicUids.has(dynamicUid))) return [];
     const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
     const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
     const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
@@ -332,6 +335,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
     const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
     const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
+    if (type === "dynamic" && (!dynamicUid || !dynamicUids.has(dynamicUid))) return [];
     const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
     const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
     const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;

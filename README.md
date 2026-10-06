@@ -12,7 +12,9 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
 - **Browser bookmarks:** use existing bookmarks and folders. Flatten a folder to place its bookmarks directly on the bar.
 - **Static bookmarks:** save names and URLs in the extension.
 - **Temporary bookmarks:** hold a button to save the current page.
-- **Dynamic bookmarks:** update the saved URL when a visited page matches a URL rule, or use custom code where sandbox execution is supported.
+- **Dynamic bookmarks:** update the saved URL through URL matching, regex rewrites, or external extensions and userscripts.
+
+[External bookmark update API](docs/external-bookmarks.md)
 
 ## Installation
 

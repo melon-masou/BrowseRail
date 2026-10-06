@@ -169,6 +169,51 @@ describe("URL pattern matching", () => {
     expect(matchUrlPattern("*://localhost:*/*", "https://remote.com/app")).toBe(false);
   });
 
+  it("keeps domain wildcards within the actual hostname", async () => {
+    const { matchUrlPattern } = await import("./index");
+    expect(matchUrlPattern("*.example.com", "https://evil.com/path.example.com")).toBe(false);
+    expect(matchUrlPattern("https://*.example.com/*", "https://evil.com/path.example.com/secret")).toBe(false);
+    expect(matchUrlPattern("*.example.com", "https://example.com.evil.com/")).toBe(false);
+    expect(matchUrlPattern("*.example.com", "https://example.com@evil.com/")).toBe(false);
+    for (const [pattern, url] of [
+      ["example.com*", "https://example.com.evil.com/"],
+      ["example.*", "https://example.evil.com/"],
+      ["foo*.com", "https://foo.evil.com/"],
+      ["*example.com", "https://notexample.com/"],
+      ["*.*", "https://evil.com/"],
+    ] as const) {
+      expect(matchUrlPattern(pattern, url)).toBe(false);
+      expect(matchUrlPattern(`https://${pattern}/*`, url)).toBe(false);
+    }
+    expect(matchUrlPattern("https://*.example.com/*", "https://example.com/docs")).toBe(true);
+    expect(matchUrlPattern("https://*.example.com/*", "https://nested.app.example.com/docs")).toBe(true);
+    expect(matchUrlPattern("https://*.example.com/*", "http://app.example.com/docs")).toBe(false);
+    expect(matchUrlPattern("https://*/*", "https://other.com/docs")).toBe(true);
+  });
+
+  it("preserves path, query and port wildcards independently of the hostname", async () => {
+    const { matchUrlPattern } = await import("./index");
+    const pattern = "https://example.com/docs/*/view?item=*";
+    expect(matchUrlPattern(pattern, "https://example.com/docs/chapter/view?item=42")).toBe(true);
+    expect(matchUrlPattern(pattern, "https://other.com/docs/chapter/view?item=42")).toBe(false);
+    expect(matchUrlPattern("*.example.com/docs/*", "https://app.example.com/docs/chapter")).toBe(true);
+    expect(matchUrlPattern("example.com/docs/*", "https://app.example.com/docs/chapter")).toBe(true);
+    expect(matchUrlPattern("localhost:*", "http://localhost:3000/app")).toBe(true);
+    expect(matchUrlPattern("https://example.com:443/*", "https://example.com/docs")).toBe(true);
+    expect(matchUrlPattern("https://example.com:8443/*", "https://example.com:8443/docs")).toBe(true);
+    expect(matchUrlPattern("https://example.com:8443/*", "https://example.com/docs")).toBe(false);
+  });
+
+  it("does not treat another hostname as a full URL prefix", async () => {
+    const { matchUrlPattern } = await import("./index");
+    expect(matchUrlPattern("https://example.com", "https://example.com/docs")).toBe(true);
+    expect(matchUrlPattern("https://example.com/docs", "https://example.com/docs/chapter")).toBe(true);
+    expect(matchUrlPattern("https://example.com", "https://example.com.evil.com/docs")).toBe(false);
+    expect(matchUrlPattern("https://example.com", "https://example.com@evil.com/docs")).toBe(false);
+    expect(matchUrlPattern("https://example.com", "http://example.com/docs")).toBe(false);
+    expect(matchUrlPattern("https://example.com", "https://example.com:8443/docs")).toBe(false);
+  });
+
   it("matches special browser pages by exact URL", async () => {
     const { matchUrlPattern, isUrlMatchingSet } = await import("./index");
     expect(matchUrlPattern("about:blank", "about:blank")).toBe(true);

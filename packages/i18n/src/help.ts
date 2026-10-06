@@ -17,7 +17,7 @@ export const helpDoc: Record<Lang, string> = {
   <ul>
     <li><strong>Browser bookmarks</strong>: use existing bookmarks and folders. Flatten a folder to show its bookmarks directly on the bar.</li>
     <li><strong>Static bookmarks</strong>: set a name and URL without adding them to browser bookmarks.</li>
-    <li><strong>Dynamic bookmarks</strong>: when you visit a page, a custom function runs to update the bookmark's saved URL.</li>
+    <li><strong>Dynamic bookmarks</strong>: update the saved URL through URL matching, regex rewrites, or the external API.</li>
     <li><strong>Temporary bookmarks</strong>: long-press to save the current page's URL.</li>
   </ul>
 
@@ -43,7 +43,7 @@ export const helpDoc: Record<Lang, string> = {
   <ul>
     <li><strong>浏览器收藏夹</strong>：使用浏览器已有的书签和文件夹。可摊平文件夹，把其中的书签直接放到栏上。</li>
     <li><strong>静态书签</strong>：直接配置名称和网址，无需加入浏览器收藏夹。</li>
-    <li><strong>动态书签</strong>：访问网页时运行自定义函数，更新书签保存的网址。</li>
+    <li><strong>动态书签</strong>：通过网址匹配、正则改写或外部接口更新保存的网址。</li>
     <li><strong>临时书签</strong>：长按记住当前页面的网址。</li>
   </ul>
 

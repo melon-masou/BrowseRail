@@ -20,6 +20,7 @@ import type {
   TemporaryBookmark,
 } from "../../config";
 import { normalizeStaticBookmarkTags } from "../../config/static-bookmark-tags";
+import { createExternalToken, type ExternalAuthorization } from "../../config/external-authorization";
 
 export type ReadonlyData<T> = T extends string | number | boolean | null | undefined
   ? T
@@ -34,6 +35,7 @@ export interface InstanceSettings {
   displayMode: DisplayMode;
   rootPrefix: string[];
   syncEnabled: boolean;
+  externalAuthorization: ExternalAuthorization;
 }
 export interface SettingsDraft {
   barConfigurations?: BarConfigurations;
@@ -189,6 +191,9 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     get savedDisplayMode() {
       return savedInstance.displayMode;
     },
+    get savedUserscriptEnabled() {
+      return savedInstance.externalAuthorization.userscriptEnabled;
+    },
     get dirty() {
       return Object.freeze({ instance: instanceDirty, settings: settingsDirty });
     },
@@ -205,6 +210,24 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       setOptional(instanceDraft, values);
       if (values.rootPrefix)
         instanceDraft.rootPrefix = values.rootPrefix.map((value) => value.trim()).filter(Boolean);
+      publish(["instance"]);
+    },
+    setExternalExtensionsEnabled(enabled: boolean): void {
+      instanceDraft.externalAuthorization.extensionsEnabled = enabled;
+      publish(["instance"]);
+    },
+    setExternalExtensionIds(text: string): void {
+      instanceDraft.externalAuthorization.extensionIds = text.split("\n");
+      publish(["instance"]);
+    },
+    setUserscriptEnabled(enabled: boolean): void {
+      const authorization = instanceDraft.externalAuthorization;
+      authorization.userscriptEnabled = enabled;
+      if (enabled && !authorization.token) authorization.token = createExternalToken();
+      publish(["instance"]);
+    },
+    regenerateExternalToken(): void {
+      instanceDraft.externalAuthorization.token = createExternalToken();
       publish(["instance"]);
     },
     discardInstance(): void {
@@ -361,7 +384,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     ): void {
       if (definitions(type).some((existing) => existing.uid === value.uid))
         throw new Error(`Duplicate bookmark ${value.uid}`);
-      if ((type === "static" && !("url" in value)) || (type === "dynamic" && !("code" in value)))
+      if ((type === "static" && !("url" in value)) || (type === "dynamic" && !("type" in value)))
         throw new Error("Invalid bookmark definition");
       definitions(type).push(structuredClone(value));
       publish(["bookmarks"], true);
@@ -393,12 +416,6 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       bookmarks.splice(sourceIndex, 1);
       bookmarks.splice(bookmarks.indexOf(target), 0, source);
       publish(["bookmarks"], true);
-    },
-    setDynamicCode(uid: string, code: string): void {
-      const target = definition("dynamic", uid);
-      if (!("code" in target)) throw new Error("Not a dynamic bookmark");
-      target.code = code;
-      publish(["bookmarks"]);
     },
     setDynamicType(uid: string, type: DynamicBookmark["type"]): void {
       requireTarget(settingsDraft.dynamicBookmarks.find(value => value.uid === uid), `dynamic bookmark ${uid}`).type = type;

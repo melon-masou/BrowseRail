@@ -76,9 +76,7 @@ export function createDynamicTester(state: OptionsState) {
           saved.error = !result?.ok;
           if (!result) saved.text = t("dynamic.testNoResponse");
           else if (!result.ok) saved.text = result.error;
-          else if ("value" in result) saved.text = draft.type === "rewrite"
-            ? (result.value as { newUrl: string }).newUrl
-            : JSON.stringify(result.value, null, 2) ?? "undefined";
+          else if ("value" in result) saved.text = (result.value as { newUrl: string }).newUrl;
           else saved.text = t(`dynamic.testSkipped.${result.skipped}`);
         } catch (error) {
           if (revision !== saved.revision) return;

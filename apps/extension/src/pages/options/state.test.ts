@@ -21,7 +21,7 @@ function initialSettings(): SettingsDraft {
     staticBookmarks: [{ uid: "static", name: "Static", url: "https://example.com" }],
     temporaryBookmarks: [{ uid: "temporary", name: "Temporary" }],
     dynamicBookmarks: [
-      { uid: "dynamic", name: "Dynamic", type: "code", code: "", urlRuleUid: "removed-rule" },
+      { uid: "dynamic", name: "Dynamic", type: "external", urlRuleUid: "removed-rule" },
     ],
     shortcuts: [{ slot: "slot_1", type: "static", staticUid: "static", tabMode: "newTab" }],
     nativeShortcuts: [
@@ -35,12 +35,33 @@ function createState(settings = initialSettings()) {
       label: "Instance",
       desktopUrl: "ws://127.0.0.1:17653",
       displayMode: "native",
+      externalAuthorization: { extensionsEnabled: false, extensionIds: [], userscriptEnabled: false, token: "" },
       rootPrefix: [],
       syncEnabled: false,
     },
     settings,
   );
 }
+
+it("discards draft external grants and token rotation without changing the saved userscript switch", () => {
+  const state = createState();
+  state.setUserscriptEnabled(true);
+  state.setExternalExtensionsEnabled(true);
+  state.setExternalExtensionIds("provider@example.com");
+  const token = state.instance.externalAuthorization.token;
+  expect(token).not.toBe("");
+  expect(state.savedUserscriptEnabled).toBe(false);
+  state.acceptInstanceSave(state.instance);
+  expect(state.savedUserscriptEnabled).toBe(true);
+  state.regenerateExternalToken();
+  expect(state.instance.externalAuthorization.token).not.toBe(token);
+  state.setUserscriptEnabled(false);
+  state.setExternalExtensionsEnabled(false);
+  state.discardInstance();
+  expect(state.instance.externalAuthorization).toEqual({ extensionsEnabled: true, extensionIds: ["provider@example.com"], userscriptEnabled: true, token });
+  expect(state.dirty.instance).toBe(false);
+  expect(state.dirty.settings).toBe(false);
+});
 
 it("removes a bookmark and its menu and shortcut references before notifying readers", () => {
   const state = createState();
@@ -146,14 +167,14 @@ it("resets a cleared menu color to the default instead of leaving the menu uncol
 });
 
 
-it("keeps code when switching update modes and clears a removed single-rule selection", () => {
+it("keeps rewrite rules when switching update modes and clears a removed single-rule selection", () => {
   const state = createState();
-  state.setDynamicCode("dynamic", "function dynamicBookmark() { return { newUrl: null }; }");
+  state.setDynamicRewrite("dynamic", 'replace "/article/" "/reader/"');
   state.setDynamicType("dynamic", "rule");
   state.setDynamicRule("dynamic", "removed-rule");
   state.removeUrlRule("removed-rule");
-  expect(state.settings.dynamicBookmarks[0]).toMatchObject({ type: "rule", code: "function dynamicBookmark() { return { newUrl: null }; }" });
+  expect(state.settings.dynamicBookmarks[0]).toMatchObject({ type: "rule", rewrite: 'replace "/article/" "/reader/"' });
   expect(state.settings.dynamicBookmarks[0]!.urlRuleUid).toBeUndefined();
-  state.setDynamicType("dynamic", "code");
-  expect(state.settings.dynamicBookmarks[0]!.code).toBe("function dynamicBookmark() { return { newUrl: null }; }");
+  state.setDynamicType("dynamic", "external");
+  expect(state.settings.dynamicBookmarks[0]!.rewrite).toBe('replace "/article/" "/reader/"');
 });

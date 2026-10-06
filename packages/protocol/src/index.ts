@@ -258,12 +258,11 @@ export interface ExportedMenuItem {
 }
 
 export interface ExportedDynamicBookmark {
-  type: "rule" | "rewrite" | "code";
-  // The one URL rule that both triggers the bookmark and bounds the URLs it may save.
+  type: "rule" | "rewrite" | "external";
+  // Bounds saved URLs; also triggers the automatic update methods.
   urlRuleUid?: string;
   uid: string;
   name: string;
-  code: string;
   rewrite?: string;
 }
 
@@ -317,7 +316,8 @@ export function isExportedSettingsData(value: unknown): value is ExportedSetting
  *
  * Supported pattern formats:
  * 1. Regular expression: starts and ends with '/' (e.g. `/^https:\/\/github\.com\//`)
- * 2. Wildcard: contains asterisk (e.g. `*.google.com`, `https://*.example.com/api`)
+ * 2. Wildcard: host accepts `*.` only as a prefix (or `*` for all hosts);
+ *    paths may contain asterisks (e.g. `https://*.example.com/api/*`).
  * 3. Domain or Domain/Path prefix: e.g. `github.com`, `bilibili.com/video`, `localhost:3000`
  *    - Matches the domain or any subdomain (`*.github.com`)
  *    - If path is present, verifies the pathname starts with that path
@@ -343,28 +343,32 @@ export function matchUrlPattern(pattern: string, url: string): boolean {
 
   // 2. Wildcard pattern containing '*'
   if (lowerPattern.includes("*")) {
-    const escaped = lowerPattern
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*/g, ".*");
+    if (lowerPattern === "*") return true;
     try {
-      if (new RegExp(`^${escaped}$`, "i").test(lowerUrl)) {
-        return true;
+      const parsed = new URL(url);
+      if (!parsed.hostname) return false;
+      const scheme = /^([^/]+):\/\//.exec(lowerPattern);
+      if (scheme && scheme[1] !== "*" && parsed.protocol !== `${scheme[1]}:`) return false;
+      const rest = scheme ? lowerPattern.slice(scheme[0].length) : lowerPattern;
+      const slash = rest.indexOf("/");
+      const authority = slash < 0 ? rest : rest.slice(0, slash);
+      if (/[\s?#@\\]/.test(authority)) return false;
+      const port = /:(\d+|\*)$/.exec(authority);
+      const hostPattern = port ? authority.slice(0, -port[0].length) : authority;
+      const subdomains = hostPattern.startsWith("*.");
+      const domain = subdomains ? hostPattern.slice(2) : hostPattern;
+      if (!domain || (domain.includes("*") && (domain !== "*" || subdomains))) return false;
+      if (domain !== "*") {
+        const target = new URL(`https://${domain}/`);
+        if (target.port || target.pathname !== "/") return false;
+        const host = target.hostname;
+        const allowSubdomains = subdomains || !scheme;
+        if (parsed.hostname !== host && !(allowSubdomains && parsed.hostname.endsWith(`.${host}`))) return false;
       }
-      try {
-        const parsed = new URL(url);
-        if (new RegExp(`^${escaped}$`, "i").test(parsed.hostname)) {
-          return true;
-        }
-        if (lowerPattern.startsWith("*.")) {
-          const apex = lowerPattern.slice(2);
-          if (parsed.hostname === apex || parsed.hostname.endsWith("." + apex)) {
-            return true;
-          }
-        }
-      } catch {
-        // An unparsable URL cannot match a host pattern.
-      }
-      return false;
+      if (port && port[1] !== "*" && parsed.port !== new URL(`${parsed.protocol}//${parsed.hostname}:${port[1]}/`).port) return false;
+      if (slash < 0) return true;
+      const path = rest.slice(slash).replace(/[.?+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      return new RegExp(`^${path}$`, "i").test(`${parsed.pathname}${parsed.search}${parsed.hash}`);
     } catch {
       return false;
     }
@@ -389,7 +393,9 @@ export function matchUrlPattern(pattern: string, url: string): boolean {
       if (parsed.protocol === "chrome:" || parsed.protocol === "about:") {
         return lowerUrl === lowerPattern || lowerUrl.startsWith(`${lowerPattern}/`);
       }
-      return lowerUrl.startsWith(lowerPattern);
+      const target = new URL(p);
+      return parsed.protocol === target.protocol && parsed.hostname === target.hostname && parsed.port === target.port
+        && parsed.href.toLowerCase().startsWith(target.href.toLowerCase());
     }
 
     const slashIdx = lowerPattern.indexOf("/");
