@@ -18,6 +18,11 @@ export async function resolveMenuBookmarkTarget(config: ExtensionConfig, menuUid
     if (!node?.url) throw new Error("The bookmark no longer exists");
     return node.id;
   }
+  if (type === "static" && (item.type === "staticTag" || item.type === "flattenStaticTag")) {
+    const definition = config.staticBookmarks.find(bookmark => bookmark.uid === bookmarkId && item.staticTag && bookmark.tags?.includes(item.staticTag));
+    if (!definition) throw new Error("The bookmark no longer belongs to this tag group");
+    return definition.uid;
+  }
   if (bookmarkId !== undefined) {
     if (item.type !== "flattenFolder") throw new Error("Invalid bookmark action");
     const [node] = await browser.bookmarks.get(bookmarkId);

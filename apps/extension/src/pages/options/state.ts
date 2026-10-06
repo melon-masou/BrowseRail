@@ -402,6 +402,11 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     setFolderFlattened(menuUid: string, uid: string, flattened: boolean): void {
       const target = item(menuUid, uid);
+      if (target.type === "staticTag" || target.type === "flattenStaticTag") {
+        target.type = flattened ? "flattenStaticTag" : "staticTag";
+        publish(["menus"]);
+        return;
+      }
       if (target.type !== undefined && target.type !== "folder" && target.type !== "flattenFolder")
         throw new Error("Menu item is not a folder");
       target.type = flattened ? "flattenFolder" : "folder";

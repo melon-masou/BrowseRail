@@ -447,6 +447,8 @@ export const en = {
   // Shared fallbacks
   "common.close": "Close",
   "common.search": "Search",
+  "static.noTags": "No tags",
+  "static.tagCount": "{count} bookmarks",
   "common.noMatches": "No matches",
   "common.bookmarks": "Bookmarks",
   "common.folder": "Folder",
@@ -902,6 +904,8 @@ export const zhCN: Record<MessageKey, string> = {
   // Shared fallbacks
   "common.close": "关闭",
   "common.search": "搜索",
+  "static.noTags": "暂无标签",
+  "static.tagCount": "{count} 个书签",
   "common.noMatches": "无匹配结果",
   "common.bookmarks": "书签",
   "common.folder": "文件夹",

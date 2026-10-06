@@ -30,6 +30,58 @@ beforeEach(() => {
   mocks.storage = {}; mocks.tree = []; mocks.update.mockClear(); mocks.create.mockClear();
 });
 
+it("opens current tagged static definitions with variables and rejects buttons whose tag was removed", async () => {
+  const config = await loadConfig();
+  config.userVariables = { owner: "alice" };
+  config.staticBookmarks = [{ uid: "link/#?", name: "Owner", url: "https://github.com/${user.owner}", tags: ["work"] }];
+  config.panel.menus = [{ uid: "menu", items: [{ uid: "group/#", type: "flattenStaticTag", staticTag: "work" }] }];
+  await saveConfig(config);
+  const entries = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, { staticBookmarks: config.staticBookmarks });
+  await executeMenuAction(entries[0]!.uid, "menu", "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://github.com/alice" });
+  config.panel.menus[0]!.items[0]!.type = "staticTag";
+  await saveConfig(config);
+  const [folder] = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, { staticBookmarks: config.staticBookmarks });
+  await executeMenuAction((folder as FolderEntry).children[0]!.uid, "menu", "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://github.com/alice" });
+  config.userVariables.owner = "bob";
+  await saveConfig(config);
+  await executeMenuAction(invertNavigationActionUid(entries[0]!.uid), "menu", "42", () => {});
+  expect(mocks.create).toHaveBeenLastCalledWith({ active: true, windowId: 42, url: "https://github.com/bob" });
+  config.staticBookmarks[0]!.tags = [];
+  await saveConfig(config);
+  mocks.update.mockClear();
+  await expect(executeMenuAction(entries[0]!.uid, "menu", "42", () => {})).rejects.toThrow("tag group");
+  expect(mocks.update).not.toHaveBeenCalled();
+});
+
+it("restores distinct tag-group gaps after reorder and import without reading the browser bookmark tree", async () => {
+  const config = await loadConfig();
+  config.staticBookmarks = [
+    { uid: "a", name: "A", url: "https://a.example", tags: ["work"] },
+    { uid: "b/#", name: "B", url: "https://b.example", tags: ["work"] },
+  ];
+  const items = [
+    { uid: "group-one", type: "flattenStaticTag", staticTag: "work" },
+    { uid: "group-two", type: "flattenStaticTag", staticTag: "work" },
+  ];
+  config.panel.menus = [{ uid: "menu", items }];
+  await saveConfig(config);
+  const entries = await resolveMenuItems(items, undefined, undefined, undefined, { staticBookmarks: config.staticBookmarks });
+  const spacing = { gapRatio: 0.1, extraGaps: { [entries[1]!.uid]: 0.2, [entries[3]!.uid]: 0.5 } };
+  const getTree = vi.spyOn((await import("webextension-polyfill")).default.bookmarks, "getTree").mockRejectedValue(new Error("Bookmarks unavailable"));
+  try {
+    await saveBarLayout("menu", "native", defaultMenuPlacement(), spacing, defaultNativeBarSettings());
+    const exported = JSON.parse(JSON.stringify(await loadBarConfigurations()));
+    await importBarConfigurations(exported, ["menu"]);
+    config.staticBookmarks.reverse();
+    const reordered = await resolveMenuItems(items, undefined, undefined, undefined, { staticBookmarks: config.staticBookmarks });
+    const imported = (await loadBarConfigurations()).native.menu!;
+    expect(projectMenuSpacing(imported, items, reordered, [], []).extraGaps).toEqual({ [reordered[0]!.uid]: 0.2, [reordered[2]!.uid]: 0.5 });
+    expect(getTree).not.toHaveBeenCalled();
+  } finally { getTree.mockRestore(); }
+});
+
 it("opens configured bookmarks and expanded children without a persisted target registry", async () => {
   mocks.tree = [{ id: "folder-id", title: "Tools", children: [{ id: "actual-id", title: "Docs", url: "https://docs.example" }] }];
   const config = await loadConfig();

@@ -8,6 +8,7 @@ function storedGapKey(uid: string, items: StoredMenuItem[], tree: BookmarkNode[]
   const { itemUid, bookmarkId } = menuEntryIdentity(uid);
   if (bookmarkId === undefined) return itemUid;
   const item = items.find(item => item.uid === itemUid);
+  if (item?.type === "staticTag" || item?.type === "flattenStaticTag") return `${itemUid}/static:${encodeURIComponent(bookmarkId)}`;
   if (item?.type !== "flattenFolder") throw new Error("Invalid flattened bookmark spacing");
   const folder = findBookmarkNodeByPath(tree, combineRootAndItemPath(rootPrefix, item.path), item.url);
   const children = folder?.children ?? [];

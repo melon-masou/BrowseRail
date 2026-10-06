@@ -90,6 +90,21 @@ it("exports shared colors and bindings; optionally includes both modes without r
   persistence.destroy();
 });
 
+it("preserves tag folder and flattened references through save and import even when the group is empty", async () => {
+  const { state, persistence } = await fixture();
+  const group = { uid: "group", type: "staticTag", staticTag: "work", color: "#123456ff", rename: "Work", expandOnHover: false };
+  state.addMenuItem("bar", group);
+  state.addMenuItem("bar", { ...group, uid: "flat", type: "flattenStaticTag" });
+  await persistence.saveSettings();
+  const exported = await persistence.exportSettings();
+  expect(exported.menus[0]!.items).toEqual([group, { ...group, uid: "flat", type: "flattenStaticTag" }]);
+  state.removeMenuItem("bar", "group");
+  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.saveSettings();
+  expect((await loadConfig()).panel.menus[0]!.items).toEqual([group, { ...group, uid: "flat", type: "flattenStaticTag" }]);
+  persistence.destroy();
+});
+
 it("preserves static bookmark tags and order through save, reload, export and import", async () => {
   const { state, persistence } = await fixture();
   state.setStaticTags("link", [" work ", "reading", "work"]);

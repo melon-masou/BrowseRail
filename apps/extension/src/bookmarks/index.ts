@@ -495,7 +495,7 @@ export async function resolveMenuItems(
     tree?: BookmarkNode[];
     dynamicResolve?: DynamicResolver;
     temporaryNotes?: Record<string, string>;
-    staticBookmarks?: Array<{ uid: string; name: string }>;
+    staticBookmarks?: Array<{ uid: string; name: string; tags?: string[] }>;
     temporaryBookmarks?: Array<{ uid: string; name: string }>;
     // False when the browser exposes no bookmarks API: items backed by the
     // bookmark tree are omitted from the layout but stay in the stored config.
@@ -507,7 +507,7 @@ export async function resolveMenuItems(
   const staticByUid = new Map(context.staticBookmarks?.map(entry => [entry.uid, entry]));
   const temporaryByUid = new Map(context.temporaryBookmarks?.map(entry => [entry.uid, entry]));
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, temporaryUid, expandOnHover, includeFolders, browserAction }): Promise<LayoutEntry[]> => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, staticTag, temporaryUid, expandOnHover, includeFolders, browserAction }): Promise<LayoutEntry[]> => {
       if (type === "menuFold") {
         const entry: LayoutEntry = {
           kind: "menuFold",
@@ -538,6 +538,26 @@ export async function resolveMenuItems(
         const info = dynamicResolve(dynamicUid);
         if (!info) return []; // orphan (definition removed): omit
         return [dynamicBookmarkEntry(menuItemIdentity(uid), info, color || menuColor, rename)];
+      }
+
+      if (type === "staticTag" || type === "flattenStaticTag") {
+        const children: BookmarkEntry[] = (context.staticBookmarks ?? []).filter(definition => staticTag && definition.tags?.includes(staticTag)).map(definition => ({
+          kind: "bookmark",
+          uid: actionUid("static", menuItemIdentity(uid, definition.uid)),
+          label: definition.name || t("static.defaultName"),
+          ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
+        }));
+        if (type === "flattenStaticTag") return children;
+        return [{
+          kind: "folder",
+          uid: actionUid("folder", menuItemIdentity(uid)),
+          label: staticTag ?? "",
+          children,
+          ...(rename ? { rename } : {}),
+          ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
+          ...(expandOnHover !== undefined ? { expandOnHover } : {}),
+          ...(menuExpandDirection !== undefined ? { expandDirection: menuExpandDirection } : {}),
+        }];
       }
 
       if (type === "static") {

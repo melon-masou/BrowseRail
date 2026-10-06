@@ -22,7 +22,11 @@ export async function saveBarLayout(uid: string, mode: DisplayMode, placement: M
   if (!isBarSettingsGroups(applyToAll)) throw new Error("Invalid bar settings groups");
   const config = await loadConfig();
   const items = config.panel.menus.find(menu => menu.uid === uid)?.items ?? [];
-  const hasSubitems = Object.keys(spacing.extraGaps).some(key => !items.some(item => item.uid === key) && menuEntryIdentity(key).bookmarkId !== undefined);
+  const hasSubitems = Object.keys(spacing.extraGaps).some(key => {
+    if (items.some(item => item.uid === key)) return false;
+    const { itemUid, bookmarkId } = menuEntryIdentity(key);
+    return bookmarkId !== undefined && items.some(item => item.uid === itemUid && item.type === "flattenFolder");
+  });
   const [tree, rootPrefix] = hasSubitems ? await Promise.all([browser.bookmarks.getTree(), loadBookmarkRootPrefix()]) : [[], []];
   const storedSpacing = storeMenuSpacing(spacing, items, tree, rootPrefix);
   const current = await loadBarConfigurations();

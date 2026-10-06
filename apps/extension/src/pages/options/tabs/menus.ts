@@ -59,6 +59,7 @@ export function mountMenusTab(
   const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
   const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
   const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
+  const itemSettingHoverExpandLabel = element<HTMLLabelElement>("item-setting-hover-expand-label");
   const itemSettingIncludeFoldersLabel = element<HTMLLabelElement>(
     "item-setting-include-folders-label",
   );
@@ -260,6 +261,13 @@ export function mountMenusTab(
         const item = menu?.items[activeItemSettings.itemIndex];
         if (!item) return;
 
+        if (item.type === "staticTag" || item.type === "flattenStaticTag") {
+          state.setFolderFlattened(menu!.uid, item.uid, itemSettingFlatten.checked);
+          itemSettingHoverExpandLabel.style.display = itemSettingFlatten.checked ? "none" : "inline-flex";
+          renderMenus();
+          return;
+        }
+
         // Flatten and expand-on-hover are independent: expand-on-hover applies to the
         // sub-folders emitted when "include folders" is on, so toggling flatten must
         // not change the hover checkbox.
@@ -384,8 +392,9 @@ export function mountMenusTab(
     const isDynamic = item.type === "dynamic";
     const changeActions = itemSettingChangeBtn.parentElement;
     if (changeActions)
-      changeActions.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
+      changeActions.style.display = isAction || isCustomBookmarkType(item.type) || item.type === "staticTag" || item.type === "flattenStaticTag" ? "none" : "";
     itemSettingsActionTargets.style.display = "none";
+    itemSettingHoverExpandLabel.style.display = "inline-flex";
 
     if (isMenuFold) {
       itemSettingsTitle.textContent = `⇕ ${item.rename || t("menu.foldButton")}`;
@@ -423,6 +432,20 @@ export function mountMenusTab(
       itemSettingsTitle.textContent = `🜂 ${db?.name || t("dynamic.defaultName")}`;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
+      positionPopover(itemSettingsPopover, rect, 250);
+      return;
+    }
+
+    if (item.type === "staticTag" || item.type === "flattenStaticTag") {
+      itemSettingsTitle.textContent = `# ${item.staticTag}`;
+      itemSettingRename.value = item.rename ?? "";
+      itemSettingsFolderControls.style.display = "flex";
+      itemSettingFlatten.checked = item.type === "flattenStaticTag";
+      itemSettingHoverExpandLabel.style.display = itemSettingFlatten.checked ? "none" : "inline-flex";
+      itemSettingHoverExpand.disabled = false;
+      itemSettingHoverExpand.checked = item.expandOnHover !== false;
+      itemSettingIncludeFoldersLabel.style.display = "none";
+      itemSettingIncludeFolders.checked = false;
       positionPopover(itemSettingsPopover, rect, 250);
       return;
     }
@@ -910,8 +933,10 @@ export function mountMenusTab(
               return row;
             }
 
-            if (isCustomBookmarkType(item.type)) {
-              const rawLabel = source.name(item);
+            if (isCustomBookmarkType(item.type) || item.type === "staticTag" || item.type === "flattenStaticTag") {
+              const isTagGroup = item.type === "staticTag" || item.type === "flattenStaticTag";
+              const bookmarkType = isCustomBookmarkType(item.type) ? item.type : "static";
+              const rawLabel = isTagGroup ? item.staticTag ?? "" : source.name(item);
               const customRename = item.rename;
               const label = document.createElement("span");
               label.className = "item-label";
@@ -921,22 +946,30 @@ export function mountMenusTab(
               if (customRename) {
                 titleSpan.textContent = `${customRename} (${rawLabel.trim()})`;
               } else {
-                titleSpan.textContent = `${source.icon(item.type)} ${rawLabel.trim()}`;
+                titleSpan.textContent = `${isTagGroup ? "#" : source.icon(bookmarkType)} ${rawLabel.trim()}`;
               }
               const targetUid = customBookmarkUid(item);
-              const liveUrl = targetUid ? source.url(item.type, targetUid) : undefined;
+              const liveUrl = targetUid ? source.url(bookmarkType, targetUid) : undefined;
               titleSpan.title = liveUrl ? `${rawLabel.trim()}\n${liveUrl}` : rawLabel.trim();
               label.appendChild(titleSpan);
 
               const dynamicTag = document.createElement("span");
-              dynamicTag.className = "item-tag item-tag-dynamic";
-              dynamicTag.textContent = t(
-                item.type === "static"
-                  ? "menu.addStatic"
-                  : item.type === "temporary"
-                    ? "menu.addTemporary"
-                    : "section.dynamic",
-              );
+              if (isTagGroup) {
+                const flattened = item.type === "flattenStaticTag";
+                dynamicTag.className = `item-tag ${flattened ? "item-tag-flatten" : "item-tag-folder"}`;
+                dynamicTag.textContent = flattened
+                  ? t("item.flattenBadge", { count: state.settings.staticBookmarks.filter(bookmark => bookmark.tags?.includes(rawLabel)).length })
+                  : t("item.folderBadge");
+              } else {
+                dynamicTag.className = "item-tag item-tag-dynamic";
+                dynamicTag.textContent = t(
+                  item.type === "static"
+                    ? "menu.addStatic"
+                    : item.type === "temporary"
+                      ? "menu.addTemporary"
+                      : "section.dynamic",
+                );
+              }
               label.appendChild(dynamicTag);
 
               const controls = document.createElement("div");
@@ -1364,18 +1397,18 @@ export function mountMenusTab(
       showStatus(t("customBookmarks.noneCreated"));
       return;
     }
-    const uid = await customBookmarkPicker.pick(
-      type,
-      definitions.map((value) => ({
-        uid: value.uid,
-        name: value.name,
-        ...(source.url(type, value.uid) ? { url: source.url(type, value.uid)! } : {}),
-      })),
-    );
-    if (uid) {
+    const choices = definitions.map((value) => ({
+      uid: value.uid,
+      name: value.name,
+      ...(source.url(type, value.uid) ? { url: source.url(type, value.uid)! } : {}),
+      ...(type === "static" && "tags" in value ? { tags: value.tags } : {}),
+    }));
+    const reference = type === "static" ? await customBookmarkPicker.pickStaticForMenu(choices) :
+      await customBookmarkPicker.pick(type, choices).then(uid => uid ? customBookmarkReference(type, uid) : null);
+    if (reference) {
       state.addMenuItem(menu.uid, {
         uid: crypto.randomUUID(),
-        ...customBookmarkReference(type, uid),
+        ...reference,
       });
       showStatus(t("dynamic.addedToMenu", { menu: t("menu.title", { n: menuIndex + 1 }) }));
     }

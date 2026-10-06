@@ -497,6 +497,15 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     };
   }
 
+  if (rawType === "staticTag" || rawType === "flattenStaticTag") {
+    const staticTag = typeof value.staticTag === "string" ? value.staticTag.trim() : "";
+    if (!staticTag) return undefined;
+    const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
+    const color = typeof value.color === "string" && value.color ? value.color : undefined;
+    const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
+    return { uid, type: rawType, staticTag, ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(expandOnHover !== undefined ? { expandOnHover } : {}) };
+  }
+
   if (rawType === "temporary" || rawType === "static") {
     const targetUid = rawType === "temporary" ? value.temporaryUid : value.staticUid;
     if (typeof targetUid !== "string" || !targetUid) return undefined;

@@ -3392,6 +3392,11 @@ button.item-tag {
   overscroll-behavior: contain;
 }
 
+.item-picker-tabs {
+  justify-self: start;
+  margin-bottom: 0;
+}
+
 .item-picker-dialog .pick-menu-item {
   flex-shrink: 0;
   gap: 12px;

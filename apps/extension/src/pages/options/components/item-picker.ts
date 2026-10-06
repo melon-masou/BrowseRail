@@ -7,12 +7,20 @@ export interface PickerItem {
   readonly meta?: string;
 }
 
+interface PickerTab {
+  readonly label: string;
+  readonly items: readonly PickerItem[];
+  readonly emptyText?: string;
+}
+
+type PickerContent = readonly PickerItem[] | { readonly tabs: readonly PickerTab[] };
+
 export function createItemPicker() {
   let dismiss: (() => void) | undefined;
   let destroyed = false;
 
   return {
-    pick(title: string, items: readonly PickerItem[], emptyText = t("common.noMatches")): Promise<string | null> {
+    pick(title: string, content: PickerContent, emptyText = t("common.noMatches")): Promise<string | null> {
       dismiss?.();
       if (destroyed) return Promise.resolve(null);
       return new Promise(resolve => {
@@ -31,6 +39,9 @@ export function createItemPicker() {
         header.append(heading, close);
         const body = document.createElement("div");
         body.className = "space-bookmark-dialog-body";
+        const tabs = "tabs" in content ? content.tabs : [];
+        let activeTab = 0;
+        let items = "tabs" in content ? tabs[0]?.items ?? [] : content;
         const search = document.createElement("input");
         search.type = "search";
         search.placeholder = t("common.search");
@@ -90,11 +101,36 @@ export function createItemPicker() {
           if (!matches.length) {
             const empty = document.createElement("p");
             empty.className = "url-rule-empty-hint";
-            empty.textContent = items.length ? t("common.noMatches") : emptyText;
+            empty.textContent = items.length ? t("common.noMatches") : tabs[activeTab]?.emptyText ?? emptyText;
             list.append(empty);
           }
         }
         search.addEventListener("input", render);
+        if (tabs.length) {
+          const navigation = document.createElement("div");
+          navigation.className = "shortcuts-subtabs item-picker-tabs";
+          tabs.forEach((tab, index) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "shortcuts-subtab-btn";
+            button.classList.toggle("is-active", index === activeTab);
+            button.setAttribute("aria-pressed", String(index === activeTab));
+            button.textContent = tab.label;
+            button.addEventListener("click", () => {
+              activeTab = index;
+              items = tab.items;
+              search.value = "";
+              for (const [position, control] of [...navigation.children].entries()) {
+                control.classList.toggle("is-active", position === index);
+                control.setAttribute("aria-pressed", String(position === index));
+              }
+              render();
+              search.focus();
+            });
+            navigation.append(button);
+          });
+          body.append(navigation);
+        }
         render();
         body.append(search, list);
         dialog.append(header, body);

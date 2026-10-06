@@ -1,23 +1,46 @@
 import { t } from "@browserail/i18n";
 import { type CustomBookmarkType } from "@browserail/protocol";
-import { createItemPicker } from "./item-picker";
+import { createItemPicker, type PickerItem } from "./item-picker";
 
 export interface CustomBookmarkChoice {
   readonly uid: string;
   readonly name: string;
   readonly url?: string;
+  readonly tags?: readonly string[];
+}
+
+type StaticMenuChoice = { type: "static"; staticUid: string } | { type: "staticTag"; staticTag: string };
+
+function bookmarkChoices(type: CustomBookmarkType, definitions: readonly CustomBookmarkChoice[]): PickerItem[] {
+  return definitions.map(bookmark => ({
+    id: bookmark.uid,
+    label: bookmark.name || t(`${type}.defaultName`),
+    icon: type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : "🔖",
+    ...(type !== "dynamic" ? { meta: bookmark.url || t("dynamic.noValueShort") } : {}),
+  }));
 }
 
 export function createCustomBookmarkPicker() {
   const picker = createItemPicker();
   return {
     pick(type: CustomBookmarkType, definitions: readonly CustomBookmarkChoice[]): Promise<string | null> {
-      return picker.pick(t("customBookmarks.pickTitle"), definitions.map(bookmark => ({
-        id: bookmark.uid,
-        label: bookmark.name || t(`${type}.defaultName`),
-        icon: type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : "🔖",
-        ...(type !== "dynamic" ? { meta: bookmark.url || t("dynamic.noValueShort") } : {}),
-      })));
+      return picker.pick(t("customBookmarks.pickTitle"), bookmarkChoices(type, definitions));
+    },
+    async pickStaticForMenu(definitions: readonly CustomBookmarkChoice[]): Promise<StaticMenuChoice | null> {
+      const tags = new Map<string, number>();
+      for (const bookmark of definitions) {
+        for (const tag of new Set(bookmark.tags ?? [])) tags.set(tag, (tags.get(tag) ?? 0) + 1);
+      }
+      const id = await picker.pick(t("customBookmarks.pickTitle"), { tabs: [
+        { label: t("common.bookmarks"), items: bookmarkChoices("static", definitions).map(item => ({ ...item, id: `bookmark:${item.id}` })) },
+        { label: t("static.tags"), emptyText: t("static.noTags"), items: [...tags].map(([tag, count]) => ({
+          id: `tag:${tag}`,
+          label: tag,
+          icon: "#",
+          meta: t("static.tagCount", { count }),
+        })) },
+      ] });
+      return id === null ? null : id.startsWith("tag:") ? { type: "staticTag", staticTag: id.slice(4) } : { type: "static", staticUid: id.slice(9) };
     },
     destroy(): void { picker.destroy(); },
   };

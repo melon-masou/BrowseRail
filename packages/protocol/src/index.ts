@@ -14,7 +14,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "menuFold", "menusToggle", "browserAction", "static", "dynamic", "temporary"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "staticTag", "flattenStaticTag", "menuFold", "menusToggle", "browserAction", "static", "dynamic", "temporary"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export const BROWSER_ACTION_KINDS = ["back", "forward", "reload"] as const;
 export type BrowserActionKind = (typeof BROWSER_ACTION_KINDS)[number];
@@ -43,6 +43,7 @@ export interface StoredMenuItem {
   // ExtensionConfig.dynamicBookmarks). Its live URL/title come from local state.
   dynamicUid?: string;
   staticUid?: string;
+  staticTag?: string;
   temporaryUid?: string;
   expandOnHover?: boolean;
   // For flattenFolder items: also emit the folder's sub-folders (as folders
@@ -254,6 +255,7 @@ export interface ExportedMenuItem {
   // against ExportedSettingsData.dynamicBookmarks on import).
   dynamicUid?: string;
   staticUid?: string;
+  staticTag?: string;
   temporaryUid?: string;
   browserAction?: BrowserActionKind;
   targetMenuUids?: string[];

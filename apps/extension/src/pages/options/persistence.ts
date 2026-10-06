@@ -227,6 +227,17 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             } satisfies ExportedMenuItem;
           }
 
+          if (item.type === "staticTag" || item.type === "flattenStaticTag") {
+            return {
+              uid: item.uid,
+              type: item.type,
+              ...(item.staticTag ? { staticTag: item.staticTag } : {}),
+              ...(item.rename ? { rename: item.rename } : {}),
+              ...(item.color ? { color: item.color } : {}),
+              ...(item.expandOnHover !== undefined ? { expandOnHover: item.expandOnHover } : {}),
+            } satisfies ExportedMenuItem;
+          }
+
           if (item.type === "temporary" || item.type === "static") {
             return {
               uid: item.uid,
@@ -313,6 +324,8 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           type === "menusToggle" ||
           type === "browserAction" ||
           type === "static" ||
+          type === "staticTag" ||
+          type === "flattenStaticTag" ||
           type === "temporary"
         ) {
           const action = normalizeStoredMenuItem(itemRecord);

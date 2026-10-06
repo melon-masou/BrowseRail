@@ -381,6 +381,50 @@ it("binds a picked bookmark, cancels without editing, and remembers the shared p
   await save(); expect((await savedConfig()).panel.menus[0]!.items).toHaveLength(1);
 });
 
+it("adds a tag folder and switches flattening both ways while preserving its reference and hover setting", async () => {
+  button("custom-bookmarks-tab").click();
+  button("add-static-btn").click();
+  const tagInput = document.querySelector<HTMLInputElement>("#static-list .static-tag-input")!;
+  tagInput.value = "work";
+  tagInput.dispatchEvent(new Event("input", { bubbles: true }));
+  tagInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await save();
+  button("menus-tab").click();
+  button("add-menu").click();
+  document.querySelector<HTMLButtonElement>(".menu-add-btn")!.click();
+  button("add-popover-static-btn").click();
+  await vi.waitFor(() => expect(document.querySelector<HTMLDialogElement>(".item-picker-dialog")?.open).toBe(true));
+  const dialog = document.querySelector<HTMLDialogElement>(".item-picker-dialog")!;
+  [...dialog.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Tags")!.click();
+  const search = dialog.querySelector<HTMLInputElement>('input[type="search"]')!;
+  search.value = "work";
+  search.dispatchEvent(new Event("input", { bubbles: true }));
+  [...dialog.querySelectorAll<HTMLButtonElement>(".pick-menu-item")].find(button => button.textContent?.includes("work"))!.click();
+  await vi.waitFor(() => expect(document.querySelectorAll("#menus .menu-item-row")).toHaveLength(1));
+  expect(document.querySelector("#menus .menu-item-row")!.textContent).toContain("work");
+  await save();
+  expect((await savedConfig()).panel.menus[0]!.items).toEqual([
+    expect.objectContaining({ type: "staticTag", staticTag: "work" }),
+  ]);
+  const uid = (await savedConfig()).panel.menus[0]!.items[0]!.uid;
+  document.querySelector<HTMLButtonElement>("#menus .item-settings-btn")!.click();
+  expect(input("item-setting-flatten").checked).toBe(false);
+  input("item-setting-hover-expand").checked = false;
+  input("item-setting-hover-expand").dispatchEvent(new Event("change", { bubbles: true }));
+  input("item-setting-flatten").checked = true;
+  input("item-setting-flatten").dispatchEvent(new Event("change", { bubbles: true }));
+  await save();
+  expect((await savedConfig()).panel.menus[0]!.items).toEqual([
+    expect.objectContaining({ uid, type: "flattenStaticTag", staticTag: "work", expandOnHover: false }),
+  ]);
+  input("item-setting-flatten").checked = false;
+  input("item-setting-flatten").dispatchEvent(new Event("change", { bubbles: true }));
+  await save();
+  expect((await savedConfig()).panel.menus[0]!.items).toEqual([
+    expect.objectContaining({ uid, type: "staticTag", staticTag: "work", expandOnHover: false }),
+  ]);
+});
+
 it("retains the instance draft when notifying the background after saving fails", async () => {
   button("instance-tab").click(); changeLabel("Retry this draft");
   mock.sendMessage.mockRejectedValueOnce(new Error("Background unavailable"));

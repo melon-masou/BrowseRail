@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
-import { customBookmarkReference, customBookmarkUid, formatActionUid, invertNavigationActionUid } from "@browserail/protocol";
+import { customBookmarkReference, customBookmarkUid, formatActionUid, invertNavigationActionUid, type FolderEntry } from "@browserail/protocol";
 import { loadConfig, saveConfig, saveSyncEnabled, saveTemporaryValue, SYNC_CONFIG_KEY } from "../config";
 import { resolveMenuItems } from "./index";
 import { executeMenuAction } from "../background/execute-menu-action";
@@ -28,6 +28,34 @@ vi.mock("webextension-polyfill", () => ({ default: {
 } }));
 
 beforeEach(() => { local = {}; sync = {}; vi.clearAllMocks(); });
+
+it("renders a tag as a folder with the same child actions as its flattened form", async () => {
+  const item = { uid: "group", type: "staticTag", staticTag: "work", rename: "Work links", color: "#123456ff", expandOnHover: false };
+  const context = { bookmarksAvailable: false, staticBookmarks: [{ uid: "docs", name: "Docs", tags: ["work"] }] };
+  const [entry] = await resolveMenuItems([item], undefined, "left", undefined, context);
+  expect(entry).toMatchObject({ kind: "folder", label: "work", rename: "Work links", color: "#123456ff", expandOnHover: false, expandDirection: "left" });
+  const flattened = await resolveMenuItems([{ ...item, type: "flattenStaticTag" }], undefined, "left", undefined, context);
+  expect((entry as FolderEntry).children).toEqual(flattened);
+  const [empty] = await resolveMenuItems([item], undefined, undefined, undefined, { bookmarksAvailable: false, staticBookmarks: [] });
+  expect(empty).toMatchObject({ kind: "folder", children: [] });
+});
+
+it("flattens a tag in static bookmark order and follows membership changes without browser bookmarks", async () => {
+  const items = [{ uid: "work/group", type: "flattenStaticTag", staticTag: "work" }];
+  const a = { uid: "a", name: "A", tags: ["work"] };
+  const b = { uid: "b", name: "B", tags: ["other"] };
+  const c = { uid: "c", name: "C", tags: ["work", "other"] };
+  const first = await resolveMenuItems(items, "#123456ff", undefined, undefined, { staticBookmarks: [a, b, c], bookmarksAvailable: false });
+  expect(first).toEqual([
+    expect.objectContaining({ kind: "bookmark", label: "A", color: "#123456ff" }),
+    expect.objectContaining({ kind: "bookmark", label: "C", color: "#123456ff" }),
+  ]);
+  const next = await resolveMenuItems(items, undefined, undefined, undefined, { staticBookmarks: [c, b, { ...a, tags: [] }], bookmarksAvailable: false });
+  expect(next.map(entry => entry.kind === "bookmark" ? entry.label : undefined)).toEqual(["C"]);
+  expect(next[0]!.uid).toBe(first[1]!.uid);
+  expect(await resolveMenuItems(items, undefined, undefined, undefined, { staticBookmarks: [], bookmarksAvailable: false })).toEqual([]);
+  expect(browser.bookmarks.getTree).not.toHaveBeenCalled();
+});
 
 it("opens a static definition's current URL in the source window, including alternate tab mode", async () => {
   const config = await loadConfig();
