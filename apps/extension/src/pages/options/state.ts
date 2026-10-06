@@ -6,6 +6,7 @@ import {
   type CustomBookmarkType,
   type BarConfigurations,
   type TabMode,
+  type JsonValue,
 } from "@browserail/protocol";
 import type {
   DisplayMode,
@@ -45,10 +46,16 @@ export interface SettingsDraft {
   dynamicBookmarks: DynamicBookmark[];
   staticBookmarks: StaticBookmark[];
   temporaryBookmarks: TemporaryBookmark[];
+  userVariables: Record<string, JsonValue>;
   shortcuts: StoredShortcut[];
   nativeShortcuts: StoredNativeShortcut[];
 }
-export type StateArea = "instance" | "menus" | "rules" | "bookmarks" | "shortcuts" | "dirty";
+export interface UserVariable {
+  uid: string;
+  key: string;
+  value: JsonValue;
+}
+export type StateArea = "instance" | "menus" | "rules" | "bookmarks" | "shortcuts" | "variables" | "dirty";
 export interface StateChange {
   readonly areas: readonly StateArea[];
   readonly structural: boolean;
@@ -101,6 +108,7 @@ export function settingsFromConfig(config: ExtensionConfig): SettingsDraft {
     dynamicBookmarks: config.dynamicBookmarks,
     staticBookmarks: config.staticBookmarks,
     temporaryBookmarks: config.temporaryBookmarks,
+    userVariables: config.userVariables,
     shortcuts: config.shortcuts,
     nativeShortcuts: config.nativeShortcuts,
   });
@@ -113,6 +121,21 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
   let savedSettings = structuredClone(settings);
   let instanceDirty = false;
   let settingsDirty = false;
+  function variableRows(values: Record<string, JsonValue>): UserVariable[] {
+    return Object.entries(values).map(([key, value]) => ({ uid: crypto.randomUUID(), key, value }));
+  }
+  let userVariableDrafts = variableRows(settingsDraft.userVariables);
+  let userVariableSnapshot = freeze(structuredClone(userVariableDrafts));
+  function userVariablesValid(): boolean {
+    const keys = userVariableDrafts.map(row => row.key);
+    return keys.every(key => key.trim().length > 0) && new Set(keys).size === keys.length;
+  }
+  function publishVariables(structural = false): void {
+    if (userVariablesValid())
+      settingsDraft.userVariables = Object.fromEntries(userVariableDrafts.map(row => [row.key, row.value]));
+    userVariableSnapshot = freeze(structuredClone(userVariableDrafts));
+    publish(["variables"], structural);
+  }
   let instanceSnapshot = freeze(structuredClone(instanceDraft));
   let settingsSnapshot = freeze(structuredClone(settingsDraft));
   const listeners = new Set<(change: StateChange) => void>();
@@ -188,6 +211,29 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     get settings() {
       return settingsSnapshot;
     },
+    get userVariables() {
+      return userVariableSnapshot;
+    },
+    get userVariablesValid() {
+      return userVariablesValid();
+    },
+    addUserVariable(): string {
+      const uid = crypto.randomUUID();
+      userVariableDrafts.push({ uid, key: "", value: "" });
+      publishVariables(true);
+      return uid;
+    },
+    editUserVariable(uid: string, values: Partial<Pick<UserVariable, "key" | "value">>): void {
+      const row = requireTarget(userVariableDrafts.find(row => row.uid === uid), `variable ${uid}`);
+      if (values.key !== undefined) row.key = values.key;
+      if (values.value !== undefined) row.value = structuredClone(values.value);
+      publishVariables();
+    },
+    removeUserVariable(uid: string): void {
+      requireTarget(userVariableDrafts.find(row => row.uid === uid), `variable ${uid}`);
+      userVariableDrafts = userVariableDrafts.filter(row => row.uid !== uid);
+      publishVariables(true);
+    },
     get savedDisplayMode() {
       return savedInstance.displayMode;
     },
@@ -245,12 +291,14 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       if (JSON.stringify(settingsDraft.barConfigurations) === JSON.stringify(savedSettings.barConfigurations)) delete settingsDraft.barConfigurations;
       delete savedSettings.barConfigurations;
       settingsSnapshot = freeze(structuredClone(settingsDraft));
-      settingsDirty = JSON.stringify(settingsDraft) !== JSON.stringify(savedSettings);
+      settingsDirty = !userVariablesValid() || JSON.stringify(settingsDraft) !== JSON.stringify(savedSettings);
       publish(["dirty"], false, false);
     },
     importSettings(imported: SettingsDraft): void {
       settingsDraft = structuredClone(imported);
-      publish(["menus", "rules", "bookmarks", "shortcuts"], true, true, true);
+      userVariableDrafts = variableRows(settingsDraft.userVariables);
+      userVariableSnapshot = freeze(structuredClone(userVariableDrafts));
+      publish(["menus", "rules", "bookmarks", "shortcuts", "variables"], true, true, true);
     },
     receiveStoredConfig(stored: ExtensionConfig, previous: ExtensionConfig): void {
       const areas: StateArea[] = [];

@@ -209,6 +209,7 @@
                 <button type="button" id="static-tab" class="shortcuts-subtab-btn is-active" role="tab" aria-selected="true" aria-controls="static-panel" data-custom-bookmark-panel="static-panel" data-i18n="section.static">Static bookmarks</button>
                 <button type="button" id="temporary-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="temporary-panel" data-custom-bookmark-panel="temporary-panel" data-i18n="section.temporary">Temporary bookmarks</button>
                 <button type="button" id="dynamic-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="dynamic-panel" data-custom-bookmark-panel="dynamic-panel" data-i18n="section.dynamic">Dynamic bookmarks</button>
+                <button type="button" id="variables-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="variables-panel" data-custom-bookmark-panel="variables-panel" data-i18n="variables.tab">Variables</button>
               </div>
               <section id="static-panel" role="tabpanel" aria-labelledby="static-tab">
                 <div class="dynamic-toolbar">
@@ -232,6 +233,19 @@
                   <button id="add-dynamic-btn" class="menu-action-btn add-dynamic-btn add-toolbar-action" type="button" data-i18n="dynamic.add">+ Add</button>
                 </div>
                 <div id="dynamic-list" class="dynamic-list"></div>
+              </section>
+              <section id="variables-panel" role="tabpanel" aria-labelledby="variables-tab" hidden>
+                <section class="variables-section">
+                  <div class="variables-heading">
+                    <h3 data-i18n="variables.user">User variables</h3>
+                    <button id="add-variable-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="customBookmarks.add">+ Add</button>
+                  </div>
+                  <div id="user-variables" class="variable-list"></div>
+                </section>
+                <section class="variables-section">
+                  <h3 data-i18n="variables.external">External variables</h3>
+                  <div id="external-variables" class="variable-list"></div>
+                </section>
               </section>
             </section>
 
@@ -275,17 +289,6 @@
           </div>
         </footer>
       </section>
-
-      <!-- Pick Dynamic Bookmark / Menu Dialog -->
-      <dialog id="pick-dynamic-dialog" class="menu-settings-dialog">
-        <div class="menu-settings-dialog-header">
-          <span id="pick-dynamic-title" data-i18n="dynamic.pickTitle">Select dynamic bookmark</span>
-          <button type="button" id="pick-dynamic-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
-        </div>
-        <div class="menu-settings-dialog-body" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
-          <div id="pick-dynamic-list" class="pick-menu-list"></div>
-        </div>
-      </dialog>
 
       <!-- Add Dynamic Marker Dialog -->
       <dialog id="dynamic-marker-dialog" class="space-bookmark-dialog">

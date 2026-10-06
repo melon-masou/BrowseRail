@@ -4,6 +4,7 @@ import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues } from ".
 import { navigateBookmark, navigateToUrl } from "../browser/navigation";
 import { captureTemporaryUrl } from "./temporary";
 import { runTabAction, toggleTargetMenus } from "./menu-actions";
+import { resolveStaticBookmarkUrl } from "../bookmarks/variables";
 import { resolveMenuBookmarkTarget } from "../bookmarks/menu-target";
 
 export async function executeMenuAction(actionUid: string, menuUid: string | undefined, targetWindowUid: string, changed: () => void): Promise<void> {
@@ -30,7 +31,7 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     const { uid, tabMode } = parseStaticAction(actionUid);
     const target = await targetUid(uid, "static");
     const definition = config.staticBookmarks.find(entry => entry.uid === target);
-    if (definition?.url) await navigateToUrl(browser, targetWindowUid, definition.url, tabMode);
+    if (definition?.url) await navigateToUrl(browser, targetWindowUid, await resolveStaticBookmarkUrl(definition.url, config.userVariables), tabMode);
   } else if (isDynamicAction(actionUid)) {
     const { dynamicUid, tabMode } = parseDynamicAction(actionUid);
     const live = await loadDynamicValue(await targetUid(dynamicUid, "dynamic"));

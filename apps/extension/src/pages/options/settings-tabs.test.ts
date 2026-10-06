@@ -14,8 +14,9 @@ const mock = vi.hoisted(() => ({
 vi.mock("webextension-polyfill", () => ({ default: {
   storage: {
     local: {
-      get: async (keys: string | string[]) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, mock.storage[key]])),
+      get: async (keys: string | string[] | null) => keys === null ? structuredClone(mock.storage) : Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, mock.storage[key]])),
       set: async (values: Record<string, unknown>) => { Object.assign(mock.storage, values); },
+      remove: async (keys: string | string[]) => { for (const key of Array.isArray(keys) ? keys : [keys]) delete mock.storage[key]; },
     },
     onChanged: {
       addListener: (listener: (changes: Record<string, Storage.StorageChange>, area: string) => void) => { mock.storageListeners.push(listener); },
@@ -166,6 +167,30 @@ it("refreshes a dynamic bookmark's current URL while retaining unsaved edits", a
   for (const listener of mock.storageListeners) listener({ [key]: { newValue: mock.storage[key] } }, "local");
   await vi.waitFor(() => expect(document.querySelector("#dynamic-list .dynamic-current-chip")?.textContent).toContain("https://example.com/updated"));
   expect(document.querySelector<HTMLInputElement>("#dynamic-list .dynamic-name-input")?.value).toBe("Unsaved name");
+  expect((await savedConfig()).dynamicBookmarks).toEqual([]);
+});
+
+it("shows an API bookmark's source and raw failure text, then clears the failure after success", async () => {
+  button("custom-bookmarks-tab").click();
+  button("add-dynamic-btn").click();
+  const mode = [...document.querySelectorAll("#dynamic-list label")].find(label => label.textContent === "API update")?.querySelector("input");
+  if (!(mode instanceof HTMLInputElement)) throw new Error("Missing API update mode");
+  mode.click();
+  const card = document.querySelector<HTMLElement>("#dynamic-list article");
+  if (!card?.dataset.recordId) throw new Error("Missing dynamic bookmark");
+  const { DYNAMIC_VALUE_STORAGE_PREFIX, saveDynamicValue } = await import("../../config");
+  const key = DYNAMIC_VALUE_STORAGE_PREFIX + card.dataset.recordId;
+  await saveDynamicValue(card.dataset.recordId, {
+    updatedAt: 0, source: "provider@example.com", error: "outsideUrlRule", errmsg: "URL does not match the selected rule.",
+  });
+  for (const listener of mock.storageListeners) listener({ [key]: { newValue: mock.storage[key] } }, "local");
+  await vi.waitFor(() => expect(document.querySelector("#dynamic-list article")?.textContent).toContain("outsideUrlRule: URL does not match the selected rule."));
+  expect(document.querySelector("#dynamic-list article")?.textContent).toContain("Source: provider@example.com");
+  await saveDynamicValue(card.dataset.recordId, { updatedAt: 1, url: "https://example.com/saved", source: "https://source.example/page" });
+  for (const listener of mock.storageListeners) listener({ [key]: { newValue: mock.storage[key] } }, "local");
+  await vi.waitFor(() => expect(document.querySelector("#dynamic-list article")?.textContent).toContain("Source: https://source.example/page"));
+  expect(document.querySelector("#dynamic-list article")?.textContent).not.toContain("outsideUrlRule");
+  expect(document.querySelector("#dynamic-list .dynamic-current-chip")?.textContent).toContain("https://example.com/saved");
   expect((await savedConfig()).dynamicBookmarks).toEqual([]);
 });
 
@@ -366,4 +391,78 @@ it("retains the instance draft when notifying the background after saving fails"
   button("menus-tab").click(); expect(confirm).toHaveBeenCalled();
   expect(button("save-btn").textContent).toBe("Save instance");
   confirm.mockRestore();
+});
+
+it("keeps user drafts separate from live external variables and immediate deletion", async () => {
+  mock.storage["external_data:shared"] = { value: "API value" };
+  button("custom-bookmarks-tab").click();
+  button("variables-tab").click();
+  button("add-variable-btn").click();
+  const fields = document.querySelectorAll<HTMLInputElement>("#user-variables input");
+  const key = fields[0]!;
+  const value = fields[1]!;
+  key.value = "shared";
+  key.dispatchEvent(new Event("input", { bubbles: true }));
+  value.value = "User value";
+  value.dispatchEvent(new Event("input", { bubbles: true }));
+  await vi.waitFor(() => expect(document.getElementById("external-variables")!.textContent).toContain("API value"));
+  expect((await savedConfig()).userVariables).toEqual({});
+  mock.storage["external_data:shared"] = "Updated API value";
+  for (const listener of mock.storageListeners) listener({ "external_data:shared": { newValue: "Updated API value" } }, "local");
+  await vi.waitFor(() => expect(document.getElementById("external-variables")!.textContent).toContain("Updated API value"));
+  expect(key.value).toBe("shared");
+  expect(value.value).toBe("User value");
+  const remove = document.querySelector("#external-variables button");
+  if (!(remove instanceof HTMLButtonElement)) throw new Error("Missing variable delete button");
+  remove.click();
+  await vi.waitFor(() => expect(mock.storage).not.toHaveProperty("external_data:shared"));
+  expect((await savedConfig()).userVariables).toEqual({});
+  await save();
+  expect((await savedConfig()).userVariables).toEqual({ shared: "User value" });
+});
+
+it("inserts source-qualified references at the URL selection and saves the template", async () => {
+  mock.storage["external_data:github.author"] = "external-owner";
+  mock.storage["external_data:external.only"] = "another value";
+  button("custom-bookmarks-tab").click();
+  button("variables-tab").click();
+  button("add-variable-btn").click();
+  const variableFields = document.querySelectorAll<HTMLInputElement>("#user-variables input");
+  variableFields[0]!.value = "github.author";
+  variableFields[0]!.dispatchEvent(new Event("input", { bubbles: true }));
+  variableFields[1]!.value = "user-owner";
+  variableFields[1]!.dispatchEvent(new Event("input", { bubbles: true }));
+  await save();
+  button("static-tab").click();
+  button("add-static-btn").click();
+  const url = [...document.querySelectorAll<HTMLInputElement>("#static-list input")].find(input => input.ariaLabel === "URL")!;
+  const addVariable = [...document.querySelectorAll<HTMLButtonElement>("#static-list button")].find(button => button.textContent === "Add variable")!;
+  async function pick(source: string): Promise<void> {
+    addVariable.click();
+    const sourceChoice = [...document.querySelectorAll<HTMLButtonElement>(".variable-source-popover button")].find(button => button.textContent === source)!;
+    sourceChoice.click();
+    await vi.waitFor(() => expect(document.querySelector<HTMLDialogElement>(".item-picker-dialog")?.open).toBe(true));
+    const dialog = document.querySelector<HTMLDialogElement>(".item-picker-dialog")!;
+    if (source === "User variables") expect(dialog.textContent).not.toContain("external.only");
+    const search = dialog.querySelector<HTMLInputElement>('input[type="search"]')!;
+    search.value = "github";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(dialog.textContent).not.toContain("external.only");
+    const choice = [...document.querySelectorAll<HTMLButtonElement>(".item-picker-dialog .pick-menu-item")].find(button => button.textContent === "github.author")!;
+    choice.click();
+  }
+  url.value = "https://github.com/REPLACE";
+  url.dispatchEvent(new Event("input", { bubbles: true }));
+  url.setSelectionRange(url.value.indexOf("REPLACE"), url.value.length);
+  await pick("User variables");
+  expect(url.value).toBe("https://github.com/${user.github.author}");
+  expect(document.activeElement).toBe(url);
+  url.value += "?from=";
+  url.dispatchEvent(new Event("input", { bubbles: true }));
+  url.setSelectionRange(url.value.length, url.value.length);
+  await pick("External variables");
+  const template = "https://github.com/${user.github.author}?from=${external.github.author}";
+  expect(url.value).toBe(template);
+  await save();
+  expect((await savedConfig()).staticBookmarks[0]!.url).toBe(template);
 });

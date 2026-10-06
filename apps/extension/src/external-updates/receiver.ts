@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import { EXTERNAL_AUTHORIZATION_STORAGE_KEY } from "../config/external-authorization";
-import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE, MAX_EXTERNAL_MESSAGE_BYTES } from "./protocol";
+import { MAX_EXTERNAL_MESSAGE_BYTES } from "@browserail/protocol/api";
+import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE } from "./messages";
 
 export function createExternalReceiver(target: Document) {
   let token = "";

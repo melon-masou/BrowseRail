@@ -287,3 +287,54 @@ it.each([false, true])("imports external definitions normally and rewrites only 
   expect(saved.nativeShortcuts.map(shortcut => shortcut.id)).toEqual(includeRewrites ? ["rule-key", "script-key", "static-key", "rewrite-key"] : ["rule-key", "script-key", "static-key"]);
   persistence.destroy();
 });
+
+it("saves and exports user variables without exporting or overwriting external KV", async () => {
+  const { state, persistence } = await fixture();
+  local.values["external_data:shared"] = "External value";
+  const variables = { shared: "User value", settings: { enabled: true }, list: [1, null] };
+  const template = "https://example.com/${user.shared}/${external.shared}";
+  state.setStaticUrl("link", template);
+  for (const [key, value] of Object.entries(variables)) state.editUserVariable(state.addUserVariable(), { key, value });
+  await persistence.saveSettings();
+  expect((await loadConfig()).userVariables).toEqual(variables);
+  expect(state.dirty.settings).toBe(false);
+  const exported = await persistence.exportSettings();
+  expect(exported.userVariables).toEqual(variables);
+  expect(exported.staticBookmarks![0]!.url).toBe(template);
+  expect(JSON.stringify(exported)).not.toContain("External value");
+  for (const row of state.userVariables) state.removeUserVariable(row.uid);
+  await persistence.importSettings(JSON.stringify(exported));
+  expect(state.settings.userVariables).toEqual(variables);
+  await persistence.saveSettings();
+  expect(local.values["external_data:shared"]).toBe("External value");
+  expect((await loadConfig()).staticBookmarks[0]!.url).toBe(template);
+  persistence.destroy();
+});
+
+it("rejects empty or duplicate keys without saving over existing variables", async () => {
+  const { state, persistence } = await fixture();
+  const uid = state.addUserVariable();
+  state.editUserVariable(uid, { key: "name", value: "saved" });
+  await persistence.saveSettings();
+  for (const key of ["", " "]) {
+    state.editUserVariable(uid, { key });
+    await expect(persistence.saveSettings()).rejects.toThrow();
+    await expect(persistence.exportSettings()).rejects.toThrow();
+    expect(state.dirty.settings).toBe(true);
+    expect((await loadConfig()).userVariables).toEqual({ name: "saved" });
+  }
+  state.editUserVariable(uid, { key: "name" });
+  const duplicate = state.addUserVariable();
+  state.editUserVariable(duplicate, { key: "name", value: "other" });
+  await expect(persistence.saveSettings()).rejects.toThrow();
+  expect((await loadConfig()).userVariables).toEqual({ name: "saved" });
+  state.removeUserVariable(duplicate);
+  state.editUserVariable(uid, { key: "renamed" });
+  await persistence.saveSettings();
+  expect((await loadConfig()).userVariables).toEqual({ renamed: "saved" });
+  state.removeUserVariable(uid);
+  await persistence.saveSettings();
+  expect((await loadConfig()).userVariables).toEqual({});
+  expect(state.dirty.settings).toBe(false);
+  persistence.destroy();
+});

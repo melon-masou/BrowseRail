@@ -7,7 +7,8 @@ import { saveExternalData } from "../config/external-data";
 import { hasWebsitePermission } from "../browser/site-permissions";
 import { createExternalUpdateHandler, type ExternalSource } from "../external-updates/handler";
 import { createExternalInjection } from "../external-updates/injection";
-import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE, type ExternalUpdateResult } from "../external-updates/protocol";
+import type { ExternalUpdateResult } from "@browserail/protocol/api";
+import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE } from "../external-updates/messages";
 
 function userscriptSource(sender: Runtime.MessageSender, token: string): ExternalSource | undefined {
   if (sender.id !== browser.runtime.id || typeof sender.tab?.id !== "number" || sender.frameId !== 0 || typeof sender.url !== "string") return;
@@ -19,12 +20,30 @@ export function initExternalUpdates(requestSync: () => void): void {
     loadAuthorization: loadExternalAuthorization,
     hasWebsitePermission,
     saveData: saveExternalData,
+    async recordBookmarkUpdate(uid, source, result): Promise<void> {
+      const config = await loadConfig();
+      if (!config.dynamicBookmarks.some(bookmark => bookmark.uid === uid && bookmark.type === "external")) return;
+      const current = await loadDynamicValue(uid);
+      const value = {
+        ...current,
+        updatedAt: current?.updatedAt ?? 0,
+        source: source.kind === "extension" ? source.id : source.url,
+      };
+      if (result.ok) {
+        delete value.error;
+        delete value.errmsg;
+      } else {
+        value.error = result.error;
+        value.errmsg = result.errmsg;
+      }
+      await saveDynamicValue(uid, value);
+    },
     async updateBookmark(uid, url): Promise<ExternalUpdateResult> {
       const config = await loadConfig();
       const bookmark = config.dynamicBookmarks.find(value => value.uid === uid);
-      if (!bookmark || bookmark.type !== "external") return { ok: false, error: "unknownBookmark" };
+      if (!bookmark || bookmark.type !== "external") return { ok: false, error: "unknownBookmark", errmsg: "Bookmark is missing or does not use API update." };
       const rule = config.urlRules.find(value => value.uid === bookmark.urlRuleUid);
-      if (!rule || !matchesUrlRule(url, rule)) return { ok: false, error: "outsideUrlRule" };
+      if (!rule || !matchesUrlRule(url, rule)) return { ok: false, error: "outsideUrlRule", errmsg: "URL does not match the selected rule." };
       const current = await loadDynamicValue(uid);
       if (current?.url !== url) {
         await saveDynamicValue(uid, { ...current, url, updatedAt: Date.now() });
@@ -35,7 +54,7 @@ export function initExternalUpdates(requestSync: () => void): void {
   });
 
   browser.runtime.onMessageExternal.addListener((message: unknown, sender: Runtime.MessageSender) => {
-    if (!sender.id) return Promise.resolve({ ok: false, error: "unauthorized" } satisfies ExternalUpdateResult);
+    if (!sender.id) return Promise.resolve({ ok: false, error: "unauthorized", errmsg: "API access is not authorized." } satisfies ExternalUpdateResult);
     return handler({ kind: "extension", id: sender.id }, message);
   });
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
@@ -50,7 +69,7 @@ export function initExternalUpdates(requestSync: () => void): void {
     }
     if (message.type !== EXTERNAL_RELAY_MESSAGE) return;
     const source = userscriptSource(sender, "token" in message && typeof message.token === "string" ? message.token : "");
-    if (!source) return Promise.resolve({ ok: false, error: "unauthorized" } satisfies ExternalUpdateResult);
+    if (!source) return Promise.resolve({ ok: false, error: "unauthorized", errmsg: "API access is not authorized." } satisfies ExternalUpdateResult);
     return handler(source, "message" in message ? message.message : undefined);
   });
 

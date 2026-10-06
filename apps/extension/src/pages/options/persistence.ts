@@ -26,6 +26,7 @@ import {
   normalizeDynamicBookmarks,
   normalizeStaticBookmarks,
   normalizeTemporaryBookmarks,
+  normalizeUserVariables,
   normalizeMenu,
   normalizeStoredMenuItem,
   type StoredMenu,
@@ -90,6 +91,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     return currentConfig.urlRules;
   }
   async function saveSettings(): Promise<UrlRule[]> {
+    if (!state.userVariablesValid) throw new Error(t("variables.invalidKeys"));
     const submitted = state.settings;
     const saving = structuredClone(submitted) as SettingsDraft;
     const {
@@ -99,6 +101,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
+      userVariables,
       shortcuts,
       nativeShortcuts,
     } = saving;
@@ -124,6 +127,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
+      userVariables,
       shortcuts,
       nativeShortcuts,
     });
@@ -151,6 +155,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     return true;
   }
   async function exportSettings(includeBars = false): Promise<ExportedSettingsData> {
+    if (!state.userVariablesValid) throw new Error(t("variables.invalidKeys"));
     const {
       menus,
       urlRules,
@@ -158,6 +163,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
+      userVariables,
       shortcuts,
       nativeShortcuts,
     } = structuredClone(state.settings) as SettingsDraft;
@@ -176,6 +182,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       version: EXPORT_SCHEMA_VERSION,
       ...(barConfigurations ? { barConfigurations } : {}),
       exportedAt: new Date().toISOString(),
+      ...(Object.keys(userVariables).length ? { userVariables } : {}),
       ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
       ...(defaultUrlRuleUid ? { defaultUrlRuleUid } : {}),
       ...(dynamicBookmarks.length > 0
@@ -370,6 +377,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     imported.menus = importedMenus;
     imported.staticBookmarks = normalizeStaticBookmarks(parsed.staticBookmarks);
     imported.temporaryBookmarks = normalizeTemporaryBookmarks(parsed.temporaryBookmarks);
+    imported.userVariables = normalizeUserVariables(parsed.userVariables);
 
     if (Array.isArray(parsed.urlRules)) {
       imported.urlRules = normalizeUrlRules(parsed.urlRules);

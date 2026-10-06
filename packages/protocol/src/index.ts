@@ -1,9 +1,11 @@
 import type { MenuColor } from "./menu";
+import type { JsonValue } from "./api";
 
 export * from "./menu";
 export * from "./native";
 
 export * from "./bar";
+export * from "./api";
 
 export const EXPORT_SCHEMA_VERSION = 2 as const;
 
@@ -296,6 +298,7 @@ export interface ExportedSettingsData {
   dynamicBookmarks?: ExportedDynamicBookmark[];
   staticBookmarks?: StaticBookmark[];
   temporaryBookmarks?: TemporaryBookmark[];
+  userVariables?: Record<string, JsonValue>;
   shortcuts?: StoredShortcut[];
   nativeShortcuts?: StoredNativeShortcut[];
 }

@@ -6,17 +6,15 @@ export type ExternalUpdate =
 
 export type ExternalUpdateResult =
   | { ok: true }
-  | { ok: false; error: "unauthorized" | "invalidMessage" | "unknownBookmark" | "outsideUrlRule" | "storageFailed" };
+  | { ok: false; error: string; errmsg: string };
 
-export const EXTERNAL_RELAY_MESSAGE = "externalUpdate";
-export const EXTERNAL_RECEIVER_CONFIG = "externalReceiverConfig";
 export const MAX_EXTERNAL_MESSAGE_BYTES = 64 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isJsonValue(value: unknown): value is JsonValue {
+export function isJsonValue(value: unknown): value is JsonValue {
   const pending = [value];
   while (pending.length) {
     const entry = pending.pop();

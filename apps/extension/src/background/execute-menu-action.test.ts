@@ -23,6 +23,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
 import { loadConfig, saveConfig, saveDynamicValue, loadTemporaryValues, loadTemporaryNotes, saveBarLayout, loadBarConfigurations, importBarConfigurations, defaultMenuPlacement, type StoredMenuItem } from "../config";
 import { buildTemporaryDirectiveUrl, resolveMenuItems } from "../bookmarks";
 import { projectMenuSpacing } from "../bookmarks/spacing";
+import { saveExternalData } from "../config/external-data";
 import { executeMenuAction } from "./execute-menu-action";
 
 beforeEach(() => {
@@ -114,4 +115,46 @@ it("restores independent gaps after layout import into a browser with different 
   const view = { ...imported, ...projectMenuSpacing(imported, items, rendered, mocks.tree, []), uid: "menu", items: rendered };
   expect(view.extraGaps).toEqual({ [rendered[0]!.uid]: 0.2, [rendered[1]!.uid]: 0.4, [rendered[3]!.uid]: 0.6 });
   expect(barDimensions({ ...view, orientation: "column" }, { width: 80, height: 40 }).height).toBeCloseTo(308);
+});
+
+it("resolves both variable sources from current values for rendered buttons and shortcuts", async () => {
+  const config = await loadConfig();
+  config.userVariables = { "github.author": "user-owner", enabled: false };
+  const template = "https://example.com/${user.github.author}/${external.github.author}?enabled=${user.enabled}";
+  config.staticBookmarks = [{ uid: "definition", name: "Owner", url: template }];
+  config.panel.menus = [{ uid: "menu", items: [{ uid: "button", type: "static", staticUid: "definition" }] }];
+  await saveConfig(config);
+  await saveExternalData("github.author", "external-owner");
+  const entries = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, { staticBookmarks: config.staticBookmarks });
+  await executeMenuAction(entries[0]!.uid, "menu", "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://example.com/user-owner/external-owner?enabled=false" });
+  config.userVariables["github.author"] = "new-user";
+  await saveConfig(config);
+  await saveExternalData("github.author", "new-external");
+  await executeMenuAction(invertNavigationActionUid(entries[0]!.uid), "menu", "42", () => {});
+  expect(mocks.create).toHaveBeenLastCalledWith({ active: true, windowId: 42, url: "https://example.com/new-user/new-external?enabled=false" });
+  await executeMenuAction("static:definition", undefined, "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://example.com/new-user/new-external?enabled=false" });
+  expect((await loadConfig()).staticBookmarks[0]!.url).toBe(template);
+});
+
+it("stops navigation for missing variables, inherited names, and invalid references", async () => {
+  const config = await loadConfig();
+  config.staticBookmarks = [{ uid: "definition", name: "Owner", url: "" }];
+  for (const reference of ["${user.missing}", "${external.missing}", "${user.constructor}", "${other.key}", "${user.unclosed"]) {
+    config.staticBookmarks[0]!.url = "https://example.com/" + reference;
+    await saveConfig(config);
+    await expect(executeMenuAction("static:definition", undefined, "42", () => {})).rejects.toThrow(reference);
+  }
+  expect(mocks.update).not.toHaveBeenCalled();
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it("uses replacement values literally without expanding further references", async () => {
+  const config = await loadConfig();
+  config.userVariables = { value: "${external.secret}$&" };
+  config.staticBookmarks = [{ uid: "definition", name: "Literal", url: "https://example.com/?q=${user.value}" }];
+  await saveConfig(config);
+  await executeMenuAction("static:definition", undefined, "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://example.com/?q=${external.secret}$&" });
 });

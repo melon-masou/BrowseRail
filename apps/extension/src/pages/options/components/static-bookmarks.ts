@@ -1,8 +1,10 @@
+import { variableReference } from "../../../bookmarks/variables";
 import { t } from "@browserail/i18n";
 import type { StaticBookmark } from "../../../config";
 import type { OptionsState, ReadonlyData } from "../state";
 import { renderPreservingFocus } from "./render-focus";
 import { addIcon, setIconContent } from "./icons";
+import { createVariablePicker } from "./variable-picker";
 
 export function createStaticBookmarksList(
   state: OptionsState,
@@ -10,7 +12,9 @@ export function createStaticBookmarksList(
   filters: HTMLElement,
   suggestions: HTMLDataListElement,
   removeBookmark: (uid: string) => void,
+  showStatus: (message: string) => void,
 ) {
+  const variablePicker = createVariablePicker(state, showStatus);
   const selectedTags = new Set<string>();
   const tagDrafts = new Map<string, string>();
   const expandedUids = new Set<string>();
@@ -183,7 +187,27 @@ export function createStaticBookmarksList(
     editor.className = "static-tag-editor";
     editor.append(input, add);
     tags.append(chips, editor);
-    body.append(url, tags);
+    const urlEditor = document.createElement("div");
+    urlEditor.className = "static-url-editor";
+    urlEditor.append(url);
+    const addVariable = document.createElement("button");
+    addVariable.type = "button";
+    addVariable.className = "action-btn";
+    addVariable.textContent = t("variables.add");
+    addVariable.addEventListener("click", () => {
+      const start = url.selectionStart ?? url.value.length;
+      const end = url.selectionEnd ?? url.value.length;
+      variablePicker.open(addVariable, (source, key) => {
+        const currentUrl = [...list.querySelectorAll<HTMLElement>("[data-record-id]")]
+          .find(card => card.dataset.recordId === bookmark.uid)?.querySelector<HTMLInputElement>(".static-url-editor input");
+        if (!currentUrl) return;
+        currentUrl.setRangeText(variableReference(source, key), Math.min(start, currentUrl.value.length), Math.min(end, currentUrl.value.length), "end");
+        state.setStaticUrl(bookmark.uid, currentUrl.value);
+        currentUrl.focus();
+      });
+    });
+    urlEditor.append(addVariable);
+    body.append(urlEditor, tags);
     card.append(header, body);
     return card;
   }
@@ -218,6 +242,7 @@ export function createStaticBookmarksList(
       state.addBookmark("static", { uid, name: t("static.defaultName"), url: "" });
     },
     destroy(): void {
+      variablePicker.destroy();
       clearDrag();
       tagDrafts.clear();
       expandedUids.clear();

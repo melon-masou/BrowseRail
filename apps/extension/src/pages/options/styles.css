@@ -1793,6 +1793,19 @@ output {
   overflow-wrap: anywhere;
 }
 
+.dynamic-api-status {
+  display: grid;
+  gap: 8px;
+  padding-left: 32px;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dynamic-api-error {
+  color: #b91c1c;
+}
+
 .temporary-bookmark-card .dynamic-subtitle-row {
   padding-left: 0;
 }
@@ -3300,4 +3313,93 @@ button.item-tag {
   color: #d98220;
   margin: 0 0 10px;
   font-size: 12px;
+}
+
+.variables-section + .variables-section {
+  border-top: 1px solid #e2e8f0;
+  margin-top: 24px;
+  padding-top: 16px;
+}
+
+.variables-section h3 {
+  font-size: 14px;
+  margin: 16px 0 8px;
+}
+
+.variables-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.variables-heading h3 {
+  margin: 0;
+}
+
+.variable-list {
+  display: grid;
+  gap: 8px;
+}
+
+.variable-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.variable-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+}
+
+.variable-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.variable-value {
+  min-width: 0;
+  max-height: 120px;
+  overflow: auto;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.static-url-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.static-url-editor > input {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.item-picker-dialog .pick-menu-list {
+  height: min(360px, 50vh);
+  overscroll-behavior: contain;
+}
+
+.item-picker-dialog .pick-menu-item {
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.item-picker-dialog .pick-menu-item-meta {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

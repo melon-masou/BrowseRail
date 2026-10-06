@@ -12,6 +12,7 @@ import { addIcon, checkIcon, copyIcon, removeIcon, setIconContent } from "../com
 import { renderPreservingFocus } from "../components/render-focus";
 import { createDynamicTester } from "../components/dynamic-test";
 import { DEFAULT_REWRITE } from "../../../dynamic/rewrite";
+import { mountVariables } from "../components/variables";
 import { createStaticBookmarksList } from "../components/static-bookmarks";
 
 export function mountCustomBookmarksTab(
@@ -22,6 +23,8 @@ export function mountCustomBookmarksTab(
   showStatus: (message: string) => void,
 ) {
   const scope = createScope();
+  const variables = mountVariables(state, showStatus);
+  scope.add(variables.destroy);
   const tester = createDynamicTester(state);
   scope.add(tester.destroy);
   const dynamicList = element<HTMLDivElement>("dynamic-list");
@@ -32,6 +35,7 @@ export function mountCustomBookmarksTab(
     element("static-tag-filters"),
     element<HTMLDataListElement>("static-tag-options"),
     uid => removeCustomDefinition("static", uid),
+    showStatus,
   );
   scope.add(staticBookmarks.destroy);
   const temporaryList = element<HTMLDivElement>("temporary-list");
@@ -315,6 +319,21 @@ export function mountCustomBookmarksTab(
     const body = document.createElement("div");
     body.className = "dynamic-card-body";
 
+    if (db.type === "external" && live?.source) {
+      const status = document.createElement("div");
+      status.className = "dynamic-api-status";
+      const origin = document.createElement("div");
+      origin.textContent = t("dynamic.apiSource", { source: live.source });
+      status.append(origin);
+      if (live.error) {
+        const error = document.createElement("div");
+        error.className = "dynamic-api-error";
+        error.textContent = [live.error, live.errmsg].filter(Boolean).join(": ");
+        status.append(error);
+      }
+      body.append(status);
+    }
+
     const ruleField = document.createElement("label");
     ruleField.className = "dynamic-field";
     const ruleLabel = document.createElement("span");
@@ -442,6 +461,7 @@ export function mountCustomBookmarksTab(
     renderPreservingFocus(element("custom-bookmarks-panel"), renderSimpleBookmarks);
   const renderDynamic = () => renderPreservingFocus(dynamicList, renderDynamicList);
   const render = () => {
+    variables.render();
     renderSimple();
     renderDynamic();
   };

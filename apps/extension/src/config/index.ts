@@ -1,4 +1,7 @@
 import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
+import type { JsonValue } from "@browserail/protocol/api";
+import { normalizeUserVariables } from "./user-variables";
+export { normalizeUserVariables } from "./user-variables";
 import { normalizeStaticBookmarkTags } from "./static-bookmark-tags";
 import type {
   MenuAnchor,
@@ -88,6 +91,7 @@ export interface ExtensionConfig {
   dynamicBookmarks: DynamicBookmark[];
   staticBookmarks: StaticBookmark[];
   temporaryBookmarks: TemporaryBookmark[];
+  userVariables: Record<string, JsonValue>;
   shortcuts: StoredShortcut[];
   nativeShortcuts: StoredNativeShortcut[];
 }
@@ -125,6 +129,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   dynamicBookmarks: [],
   staticBookmarks: [],
   temporaryBookmarks: [],
+  userVariables: {},
   shortcuts: [],
   nativeShortcuts: [],
 };
@@ -225,7 +230,7 @@ export async function loadConfig(): Promise<ExtensionConfig> {
       } else if (isRecord(syncData)) {
         config = normalizeConfig(
           { ...config, panel: { ...config.panel, ...syncData }, urlRules: syncData.urlRules, defaultUrlRuleUid: syncData.defaultUrlRuleUid,
-            dynamicBookmarks: syncData.dynamicBookmarks, staticBookmarks: syncData.staticBookmarks, temporaryBookmarks: syncData.temporaryBookmarks },
+            dynamicBookmarks: syncData.dynamicBookmarks, staticBookmarks: syncData.staticBookmarks, temporaryBookmarks: syncData.temporaryBookmarks, userVariables: syncData.userVariables },
           instanceLabelFromUid(instanceUid),
         );
       }
@@ -255,6 +260,7 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
           dynamicBookmarks: normalized.dynamicBookmarks,
           staticBookmarks: normalized.staticBookmarks,
           temporaryBookmarks: normalized.temporaryBookmarks,
+          userVariables: normalized.userVariables,
         },
       });
     } catch (e) {
@@ -374,6 +380,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     dynamicBookmarks,
     staticBookmarks: normalizeStaticBookmarks(value.staticBookmarks),
     temporaryBookmarks: normalizeTemporaryBookmarks(value.temporaryBookmarks),
+    userVariables: normalizeUserVariables(value.userVariables),
     shortcuts,
     nativeShortcuts,
   };
@@ -643,17 +650,23 @@ export interface DynamicValue {
   title?: string;
   note?: string;
   updatedAt: number;
+  source?: string;
+  error?: string;
+  errmsg?: string;
 }
 
 export type DynamicValuesMap = Record<string, DynamicValue>;
 
 function normalizeDynamicValue(value: unknown): DynamicValue | undefined {
-  if (!isRecord(value) || (typeof value.url !== "string" && typeof value.note !== "string")) return;
+  if (!isRecord(value) || (typeof value.url !== "string" && typeof value.note !== "string" && typeof value.source !== "string")) return;
   return {
     ...(typeof value.url === "string" ? { url: value.url } : {}),
     ...(typeof value.title === "string" ? { title: value.title } : {}),
     ...(typeof value.note === "string" ? { note: value.note } : {}),
     updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : 0,
+    ...(typeof value.source === "string" ? { source: value.source } : {}),
+    ...(typeof value.error === "string" ? { error: value.error } : {}),
+    ...(typeof value.errmsg === "string" ? { errmsg: value.errmsg } : {}),
   };
 }
 
