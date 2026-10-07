@@ -373,3 +373,18 @@
     outline-offset: -2px;
   }
 }
+
+.browserail-menu-ui .menu-action-error {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #a42525;
+  stroke: white;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  pointer-events: none;
+  z-index: 2;
+}

@@ -50,3 +50,21 @@ it("does not save when prompt fallback is cancelled", async () => {
   expect(prompt).toHaveBeenCalledOnce();
   expect(send.mock.calls.map(([command]) => command.type)).not.toContain("temporarySave");
 });
+
+it("shows command failures on the clicked button and clears them only when a later command succeeds", async () => {
+  const root = document.createElement("div"); document.body.append(root);
+  const menu: BrowserMenu = {
+    view: { uid: "menu", orientation: "row", items: [{ kind: "bookmark", uid: "static:link", label: "Owner" }] },
+    placement: { anchor: "topLeft", offsetX: 0, offsetY: 0, itemWidth: 84, itemHeight: 36 },
+    collapsed: false, editingLocked: true,
+  };
+  const send = vi.fn().mockRejectedValueOnce(new Error("Missing author")).mockResolvedValue(undefined);
+  mounted = mountBrowserMenu(root, menu, send);
+  const button = root.querySelector("button")!;
+  button.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true }));
+  await vi.waitFor(() => expect(button.title).toContain("Missing author"));
+  expect(button.querySelector(".menu-action-error")).not.toBeNull();
+  button.dispatchEvent(new PointerEvent("pointerdown", { button: 2, bubbles: true }));
+  await vi.waitFor(() => expect(button.title).toBe("Owner"));
+  expect(button.querySelector(".menu-action-error")).toBeNull();
+});

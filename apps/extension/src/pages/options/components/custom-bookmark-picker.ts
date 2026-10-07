@@ -20,6 +20,14 @@ function bookmarkChoices(type: CustomBookmarkType, definitions: readonly CustomB
   }));
 }
 
+function tagChoices(definitions: readonly CustomBookmarkChoice[]): PickerItem[] {
+  const tags = new Map<string, number>();
+  for (const bookmark of definitions) {
+    for (const tag of new Set(bookmark.tags ?? [])) tags.set(tag, (tags.get(tag) ?? 0) + 1);
+  }
+  return [...tags].map(([tag, count]) => ({ id: tag, label: tag, icon: "#", meta: t("static.tagCount", { count }) }));
+}
+
 export function createCustomBookmarkPicker() {
   const picker = createItemPicker();
   return {
@@ -27,20 +35,14 @@ export function createCustomBookmarkPicker() {
       return picker.pick(t("customBookmarks.pickTitle"), bookmarkChoices(type, definitions));
     },
     async pickStaticForMenu(definitions: readonly CustomBookmarkChoice[]): Promise<StaticMenuChoice | null> {
-      const tags = new Map<string, number>();
-      for (const bookmark of definitions) {
-        for (const tag of new Set(bookmark.tags ?? [])) tags.set(tag, (tags.get(tag) ?? 0) + 1);
-      }
       const id = await picker.pick(t("customBookmarks.pickTitle"), { tabs: [
         { label: t("common.bookmarks"), items: bookmarkChoices("static", definitions).map(item => ({ ...item, id: `bookmark:${item.id}` })) },
-        { label: t("static.tags"), emptyText: t("static.noTags"), items: [...tags].map(([tag, count]) => ({
-          id: `tag:${tag}`,
-          label: tag,
-          icon: "#",
-          meta: t("static.tagCount", { count }),
-        })) },
+        { label: t("static.tags"), emptyText: t("static.noTags"), items: tagChoices(definitions).map(item => ({ ...item, id: `tag:${item.id}` })) },
       ] });
       return id === null ? null : id.startsWith("tag:") ? { type: "staticTag", staticTag: id.slice(4) } : { type: "static", staticUid: id.slice(9) };
+    },
+    pickStaticTag(definitions: readonly CustomBookmarkChoice[]): Promise<string | null> {
+      return picker.pick(t("static.tags"), tagChoices(definitions), t("static.noTags"));
     },
     destroy(): void { picker.destroy(); },
   };

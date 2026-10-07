@@ -44,6 +44,39 @@ function mount(root: HTMLElement, state: BarState, adapter: BarHost): Controller
 }
 
 describe("shared menu mounting", () => {
+  it("keeps a failure visible until the host reports success, including an alternate click", async () => {
+    const root = container(); const adapter = host();
+    vi.mocked(adapter.invokeAction).mockRejectedValueOnce(new Error("Missing variable"));
+    const controller = mountBar(root, barState(), adapter); controllers.push(controller);
+    await controller.ready;
+    const button = root.querySelector<HTMLButtonElement>("button")!;
+    press(button);
+    await vi.waitFor(() => expect(button.title).toContain("Missing variable"));
+    expect(button.querySelector(".menu-action-error")).not.toBeNull();
+    press(button, 2);
+    await Promise.resolve();
+    expect(button.title).toContain("Missing variable");
+    controller.setActionError("bookmark:one?tab=newTab");
+    expect(button.title).toBe("One");
+    expect(button.querySelector(".menu-action-error")).toBeNull();
+  });
+
+  it("shows a popup action failure on its owning bar folder, preserves it across updates, and isolates other menus", async () => {
+    const root = container(); const other = container(); const state = barState();
+    state.menu.items = [{ kind: "folder", uid: "folder", label: "Folder", children: [
+      { kind: "folder", uid: "nested", label: "Nested", children: [{ kind: "bookmark", uid: "static:child", label: "Child" }] },
+    ] }];
+    const controller = mountBar(root, state, host()); controllers.push(controller);
+    await Promise.all([controller.ready, mount(other, state, host()).ready]);
+    controller.setActionError("static:child?tab=newTab", "Missing author");
+    expect(root.querySelector("button")!.title).toContain("Missing author");
+    expect(other.querySelector("button")!.title).toBe("Folder");
+    await controller.update({ ...state, itemSize: { width: 90, height: 40 } });
+    expect(root.querySelector("button")!.title).toContain("Missing author");
+    controller.setActionError("static:child");
+    expect(root.querySelector("button")!.title).toBe("Folder");
+  });
+
   it("renders when its own fonts are ready even if the host page fonts are still loading", async () => {
     Object.defineProperty(document, "fonts", { configurable: true, value: { ready: new Promise<void>(() => {}) } });
     const root = container(); const adapter = host();

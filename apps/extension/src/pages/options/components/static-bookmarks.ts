@@ -1,9 +1,12 @@
-import { variableReference } from "../../../bookmarks/variables";
+import browser from "webextension-polyfill";
+import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData } from "../../../config/external-data";
+import { createScope } from "../lifecycle";
+import { staticBookmarkReferenceErrors, variableReference } from "../../../bookmarks/variables";
 import { t } from "@browserail/i18n";
 import type { StaticBookmark } from "../../../config";
 import type { OptionsState, ReadonlyData } from "../state";
 import { renderPreservingFocus } from "./render-focus";
-import { addIcon, setIconContent } from "./icons";
+import { addIcon, removeIcon, setIconContent } from "./icons";
 import { createVariablePicker } from "./variable-picker";
 
 export function createStaticBookmarksList(
@@ -14,11 +17,47 @@ export function createStaticBookmarksList(
   removeBookmark: (uid: string) => void,
   showStatus: (message: string) => void,
 ) {
+  const scope = createScope();
+  let externalKeys: ReadonlySet<string> | undefined;
+  let referenceRevision = 0;
   const variablePicker = createVariablePicker(state, showStatus);
   const selectedTags = new Set<string>();
   const tagDrafts = new Map<string, string>();
   const expandedUids = new Set<string>();
   let draggingUid: string | undefined;
+
+  function refreshReferenceWarnings(): void {
+    const bookmarks = new Map(state.settings.staticBookmarks.map(bookmark => [bookmark.uid, bookmark]));
+    for (const card of list.querySelectorAll<HTMLElement>("[data-record-id]")) {
+      const bookmark = bookmarks.get(card.dataset.recordId!);
+      if (!bookmark) continue;
+      const errors = staticBookmarkReferenceErrors(bookmark.url, state.settings.userVariables, externalKeys);
+      const warning = card.querySelector<HTMLElement>(".reference-warning")!;
+      warning.textContent = errors.length ? "!" : "";
+      warning.title = warning.ariaLabel = errors.join("\n");
+      card.querySelector(".static-url-editor input")?.setAttribute("aria-invalid", String(errors.length > 0));
+    }
+  }
+
+  async function refreshExternalKeys(): Promise<void> {
+    const revision = ++referenceRevision;
+    try {
+      const entries = await listExternalData();
+      if (scope.signal.aborted || revision !== referenceRevision) return;
+      externalKeys = new Set(entries.map(([key]) => key));
+      refreshReferenceWarnings();
+    } catch (error) {
+      if (!scope.signal.aborted && revision === referenceRevision) showStatus(String(error));
+    }
+  }
+  const externalChanged = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {
+    if (area === "local" && Object.keys(changes).some(key => key.startsWith(EXTERNAL_DATA_STORAGE_PREFIX)))
+      void refreshExternalKeys();
+  };
+  browser.storage.onChanged.addListener(externalChanged);
+  scope.add(() => browser.storage.onChanged.removeListener(externalChanged));
+  scope.add(state.subscribe(["variables", "bookmarks"], refreshReferenceWarnings));
+  void refreshExternalKeys();
 
   function clearDrag(): void {
     draggingUid = undefined;
@@ -122,15 +161,18 @@ export function createStaticBookmarksList(
     name.addEventListener("input", () => state.renameBookmark("static", bookmark.uid, name.value));
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = "remove-item-btn menu-remove-btn";
-    remove.textContent = t("common.delete");
+    remove.className = "remove-item-btn";
+    remove.title = remove.ariaLabel = t("common.delete");
+    setIconContent(remove, removeIcon());
     remove.addEventListener("click", () => removeBookmark(bookmark.uid));
     const summary = document.createElement("span");
     summary.className = "static-tag-summary";
     summary.textContent = (bookmark.tags ?? []).join(" · ");
     summary.title = summary.textContent;
     summary.hidden = expanded || !bookmark.tags?.length;
-    header.append(handle, collapse, name, summary, remove);
+    const warning = document.createElement("span");
+    warning.className = "reference-warning";
+    header.append(collapse, name, warning, summary, handle, remove);
 
     const body = document.createElement("div");
     body.className = "custom-bookmark-body";
@@ -231,6 +273,7 @@ export function createStaticBookmarksList(
       }
       for (const bookmark of visible) list.append(renderCard(bookmark));
     });
+    refreshReferenceWarnings();
   }
 
   return {
@@ -242,6 +285,7 @@ export function createStaticBookmarksList(
       state.addBookmark("static", { uid, name: t("static.defaultName"), url: "" });
     },
     destroy(): void {
+      scope.destroy();
       variablePicker.destroy();
       clearDrag();
       tagDrafts.clear();

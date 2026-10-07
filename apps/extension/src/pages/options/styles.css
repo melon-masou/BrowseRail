@@ -1761,6 +1761,7 @@ output {
 
 .static-bookmark-card > header {
   flex-wrap: nowrap;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -1770,18 +1771,31 @@ output {
 }
 
 .static-bookmark-card .dynamic-name-input {
+  flex: 0 0 220px;
+  width: 220px;
+  max-width: min(220px, calc(100% - 140px));
   min-height: 28px;
+}
+
+.static-bookmark-card > header > .drag-handle-btn {
+  margin-left: auto;
 }
 
 .static-tag-summary {
   flex: 0 1 auto;
-  max-width: 40%;
+  max-width: max(0px, calc((100% - 360px) / 2));
   min-width: 0;
+  margin-left: auto;
+  text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #64748b;
   font-size: 12px;
+}
+
+.static-tag-summary:not([hidden]) + .drag-handle-btn {
+  margin-left: 0;
 }
 
 .custom-bookmark-note {
@@ -3407,4 +3421,22 @@ button.item-tag {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reference-warning {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: #c5791b;
+  font-size: 11px;
+  font-weight: 700;
+}
+.reference-warning:empty {
+  visibility: hidden;
 }

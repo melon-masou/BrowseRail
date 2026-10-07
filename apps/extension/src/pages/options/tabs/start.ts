@@ -7,9 +7,25 @@ export function mountStartTab() {
   const startPanel = element<HTMLElement>("start-panel");
 
   function renderStartPanel(): void {
-    // Trusted static help markup shipped in the i18n package.
-    // eslint-disable-next-line no-unsanitized/property
-    startPanel.innerHTML = helpDoc[getLanguage()];
+    const content = document.createElement("div");
+    content.className = "help-doc";
+    for (const section of helpDoc[getLanguage()]) {
+      const title = document.createElement("h2");
+      title.textContent = section.title;
+      const list = document.createElement("ul");
+      for (const item of section.items) {
+        const row = document.createElement("li");
+        if (typeof item === "string") row.textContent = item;
+        else {
+          const label = document.createElement("strong");
+          label.textContent = item.label;
+          row.append(label, item.text);
+        }
+        list.append(row);
+      }
+      content.append(title, list);
+    }
+    startPanel.replaceChildren(content);
   }
   renderStartPanel();
   return { render: renderStartPanel, destroy: scope.destroy };

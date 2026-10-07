@@ -23,6 +23,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
 import { loadConfig, saveConfig, saveDynamicValue, loadTemporaryValues, loadTemporaryNotes, saveBarLayout, loadBarConfigurations, importBarConfigurations, defaultMenuPlacement, type StoredMenuItem } from "../config";
 import { buildTemporaryDirectiveUrl, resolveMenuItems } from "../bookmarks";
 import { projectMenuSpacing } from "../bookmarks/spacing";
+import { staticBookmarkReferenceErrors } from "../bookmarks/variables";
 import { saveExternalData } from "../config/external-data";
 import { executeMenuAction } from "./execute-menu-action";
 
@@ -209,4 +210,18 @@ it("uses replacement values literally without expanding further references", asy
   await saveConfig(config);
   await executeMenuAction("static:definition", undefined, "42", () => {});
   expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://example.com/?q=${external.secret}$&" });
+});
+
+it("flags absent references without flagging empty values or confusing variable sources", () => {
+  const template = "https://example.com/${user.owner}/${external.owner}/${user.empty}";
+  expect(staticBookmarkReferenceErrors(template, { owner: "alice", empty: "" }, new Set())).toEqual([
+    expect.stringContaining("${external.owner}"),
+  ]);
+  expect(staticBookmarkReferenceErrors(template, { owner: "alice", empty: "" }, new Set(["owner"]))).toEqual([]);
+  expect(staticBookmarkReferenceErrors(template, { empty: "" }, new Set(["owner"]))).toEqual([
+    expect.stringContaining("${user.owner}"),
+  ]);
+  expect(staticBookmarkReferenceErrors("https://example.com/${user.unclosed", {}, new Set())).toEqual([
+    expect.stringContaining("${user.unclosed"),
+  ]);
 });

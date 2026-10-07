@@ -150,6 +150,13 @@ export interface SyncedMenu {
   target: MenuTarget;
 }
 
+export interface MenuActionResult {
+  menuUid: string;
+  windowUid?: string | null;
+  actionUid: string;
+  error?: string;
+}
+
 export type ExtensionMessage =
   | {
       type: "hello";
@@ -168,6 +175,7 @@ export type ExtensionMessage =
       resetMenuUids?: string[];
       nativeShortcuts?: SyncedNativeShortcut[];
     }
+  | ({ type: "actionResult" } & MenuActionResult)
   | { type: "pairWindow"; requestUid: string; windowUid: string }
   | { type: "confirmWindowPairing"; requestUid: string; windowUid: string }
   | {

@@ -20,6 +20,16 @@ pub enum ExtensionMessage {
         #[serde(default, rename = "nativeShortcuts")]
         native_shortcuts: Vec<SyncedNativeShortcut>,
     },
+    #[serde(rename = "actionResult")]
+    ActionResult {
+        #[serde(rename = "menuUid")]
+        menu_uid: String,
+        #[serde(rename = "windowUid")]
+        window_uid: Option<String>,
+        #[serde(rename = "actionUid")]
+        action_uid: String,
+        error: Option<String>,
+    },
     #[serde(rename = "pairWindow")]
     PairWindow {
         #[serde(rename = "requestUid")]

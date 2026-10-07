@@ -324,8 +324,16 @@ export function mountMenusTab(
       () => {
         if (!activeItemSettings) return;
         const { menuIndex, itemIndex } = activeItemSettings;
+        const menu = state.settings.menus[menuIndex];
+        const item = menu?.items[itemIndex];
         closeItemSettingsPopover();
-        void pickMenuBookmark(menuIndex, itemIndex);
+        if (menu && item && (item.type === "staticTag" || item.type === "flattenStaticTag")) {
+          void customBookmarkPicker.pickStaticTag(state.settings.staticBookmarks).then(tag => {
+            if (tag !== null && !scope.signal.aborted
+              && state.settings.menus.some(value => value.uid === menu.uid && value.items.some(value => value.uid === item.uid)))
+              state.setStaticTagSource(menu.uid, item.uid, tag);
+          }).catch(error => { if (!scope.signal.aborted) showStatus(String(error)); });
+        } else void pickMenuBookmark(menuIndex, itemIndex);
       },
       { signal: scope.signal },
     );
@@ -392,7 +400,12 @@ export function mountMenusTab(
     const isDynamic = item.type === "dynamic";
     const changeActions = itemSettingChangeBtn.parentElement;
     if (changeActions)
-      changeActions.style.display = isAction || isCustomBookmarkType(item.type) || item.type === "staticTag" || item.type === "flattenStaticTag" ? "none" : "";
+      changeActions.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
+    const isTagGroup = item.type === "staticTag" || item.type === "flattenStaticTag";
+    itemSettingChangeBtn.disabled = !isTagGroup && !library.available;
+    const changeLabel = isTagGroup ? "itemSettings.changeTag" : "itemSettings.change";
+    itemSettingChangeBtn.dataset.i18n = changeLabel;
+    itemSettingChangeBtn.textContent = t(changeLabel);
     itemSettingsActionTargets.style.display = "none";
     itemSettingHoverExpandLabel.style.display = "inline-flex";
 
@@ -971,6 +984,15 @@ export function mountMenusTab(
                 );
               }
               label.appendChild(dynamicTag);
+              if (isTagGroup) {
+                const warning = document.createElement("span");
+                warning.className = "reference-warning";
+                if (!state.settings.staticBookmarks.some(bookmark => bookmark.tags?.includes(rawLabel))) {
+                  warning.textContent = "!";
+                  warning.title = warning.ariaLabel = t("static.tagMissing", { tag: rawLabel });
+                }
+                label.append(warning);
+              }
 
               const controls = document.createElement("div");
               controls.className = "item-color-controls";

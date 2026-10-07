@@ -99,6 +99,13 @@ pub enum NativeCommand {
         reset_menu_uids: Vec<String>,
         native_shortcuts: Vec<SyncedNativeShortcut>,
     },
+    ActionResult {
+        instance_uid: String,
+        menu_uid: String,
+        window_uid: Option<String>,
+        action_uid: String,
+        error: Option<String>,
+    },
     NativeShortcutTriggered {
         key: String,
         foreground_hwnd: isize,
@@ -828,6 +835,20 @@ impl NativeReactor {
                         editing: !self.lock_editing.load(Ordering::Relaxed),
                     });
                     self.check_update_tray();
+                }
+                NativeCommand::ActionResult { instance_uid, menu_uid, window_uid, action_uid, error } => {
+                    let label = if let Some(ref window_uid) = window_uid {
+                        if self.registry.menu(&instance_uid, window_uid, &menu_uid).is_none() { continue; }
+                        menu_label(&instance_uid, window_uid, &menu_uid)
+                    } else {
+                        if self.registry.free_menu(&instance_uid, &menu_uid).is_none() { continue; }
+                        free_label(&instance_uid, &menu_uid)
+                    };
+                    let mut payload = serde_json::json!({
+                        "menuUid": menu_uid, "windowUid": window_uid, "actionUid": action_uid,
+                    });
+                    if let Some(error) = error { payload["error"] = error.into(); }
+                    let _ = self.app.emit_to(&label, "menu-action-result", payload);
                 }
                 NativeCommand::ClientDisconnected { connection_uid } => {
                     self.pending_window_pairings

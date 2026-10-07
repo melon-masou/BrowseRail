@@ -1,13 +1,13 @@
 import { DEFAULT_DOCK_COLOR, invertNavigationActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
-import { applyBarTheme, applyFolderPin, menuButton } from "../appearance";
+import { applyActionError, applyBarTheme, applyFolderPin, menuButton } from "../appearance";
 import { applyBarLayout } from "../layout";
 import { createLifetime, showMenuError } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
-import type { BarHost, BarState, Controller, PopupSession, PopupPin, FolderPin } from "../types";
+import type { BarHost, BarState, BarController, PopupSession, PopupPin, FolderPin } from "../types";
 import { createBarAutoHide } from "./auto-hide";
 
-export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): Controller<BarState> {
+export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): BarController {
   const doc = root.ownerDocument;
   const lifetime = createLifetime(root, host.waitForFonts);
   let renderLifetime = createLifetime(root);
@@ -23,6 +23,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   let popupOpening = false;
   let popupInside = false;
   let popupPin: PopupPin = "none";
+  const actionErrors = new Map<string, string>();
   const pendingPins: FolderPin[] = [];
   const waiting: Array<{ resolve(): void; reject(error: unknown): void }> = [];
   const run = (action: Promise<void>): void => {
@@ -65,11 +66,28 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     await closing?.close();
     await flush();
   }
+  const actionKey = (uid: string): string => uid.split("?")[0]!;
+  function containsAction(entry: LayoutEntry, key: string): boolean {
+    return actionKey(entry.uid) === key || (entry.kind === "folder" && entry.children.some(child => containsAction(child, key)));
+  }
+  function entryError(entry: LayoutEntry): string | undefined {
+    return [...actionErrors].find(([key]) => containsAction(entry, key))?.[1];
+  }
+  function setActionError(uid: string, error?: string): void {
+    if (!lifetime.alive) return;
+    const key = actionKey(uid);
+    if (error === undefined) actionErrors.delete(key);
+    else actionErrors.set(key, error);
+    for (const button of root.querySelectorAll<HTMLElement>(".menu-button[data-action-uid]")) {
+      const entry = state.menu.items.find(entry => entry.uid === button.dataset.actionUid);
+      if (entry) applyActionError(button, entryError(entry));
+    }
+  }
   const dispatch = (uid: string): void => {
     if (uid.startsWith("noop") || autoHide.hidden) return;
     if (popupPin === "locked") run(session?.dismiss() ?? Promise.resolve());
     else run(closePopup());
-    run(host.invokeAction(uid));
+    void host.invokeAction(uid).catch(error => setActionError(uid, String(error)));
   };
   function scheduleHover(button: HTMLElement, open: () => void): void {
     const schedule = (): void => {
@@ -184,6 +202,8 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   function renderEntry(entry: LayoutEntry): HTMLElement {
     const options = { signal: renderLifetime.signal };
     const button = menuButton(doc, entry, false);
+    button.dataset.actionUid = entry.uid;
+    applyActionError(button, entryError(entry));
     if (entry.kind !== "folder" || entry.expandOnHover === false || !entry.children.length) {
       button.addEventListener("pointerenter", () => {
         if (popupPin === "none" && activeFolder && activeFolder !== entry.uid) run(closePopup());
@@ -242,6 +262,9 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
     return button;
   }
   function render(): void {
+    for (const key of actionErrors.keys()) {
+      if (!state.menu.items.some(entry => containsAction(entry, key))) actionErrors.delete(key);
+    }
     renderLifetime.destroy();
     renderLifetime = createLifetime(root);
     hoverTimer = undefined;
@@ -302,6 +325,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): C
   }, { capture: true, signal: lifetime.signal });
   render();
   return {
+    setActionError,
     ready: lifetime.settle().then(() => autoHide.ready),
     async update(next): Promise<void> {
       if (!lifetime.alive) return;

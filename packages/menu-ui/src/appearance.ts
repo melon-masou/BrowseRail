@@ -153,3 +153,26 @@ export function applyFolderPin(button: HTMLElement, pin: PopupPin): void {
   if (pin === "none") delete button.dataset.pin;
   else button.dataset.pin = pin;
 }
+
+const actionTitles = new WeakMap<HTMLElement, string>();
+
+export function applyActionError(button: HTMLElement, error?: string): void {
+  button.querySelector(".menu-action-error")?.remove();
+  if (error === undefined) {
+    const title = actionTitles.get(button);
+    if (title !== undefined) button.title = title;
+    actionTitles.delete(button);
+    return;
+  }
+  if (!actionTitles.has(button)) actionTitles.set(button, button.title);
+  button.title = `${actionTitles.get(button)}\n${error}`;
+  const marker = button.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
+  marker.classList.add("menu-action-error");
+  marker.setAttribute("viewBox", "0 0 12 12");
+  marker.setAttribute("aria-hidden", "true");
+  marker.setAttribute("focusable", "false");
+  const cross = button.ownerDocument.createElementNS(marker.namespaceURI!, "path");
+  cross.setAttribute("d", "M3 3L9 9M9 3L3 9");
+  marker.append(cross);
+  button.append(marker);
+}

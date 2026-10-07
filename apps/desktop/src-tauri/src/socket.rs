@@ -306,6 +306,12 @@ async fn handle_connection(
                                         Some("Sync applied"),
                                     );
                                 }
+                                ExtensionMessage::ActionResult { menu_uid, window_uid, action_uid, error } => {
+                                    let Some(ref instance_uid) = registered_instance else { continue; };
+                                    let _ = native_sender.send(NativeCommand::ActionResult {
+                                        instance_uid: instance_uid.clone(), menu_uid, window_uid, action_uid, error,
+                                    });
+                                }
                                 ExtensionMessage::PairWindow { request_uid, window_uid } => {
                                     let Some(ref instance_uid) = registered_instance else {
                                         crate::debug::log("Socket", "Ignored PairWindow received before Hello");

@@ -66,6 +66,10 @@ export interface PopupSession {
   setBarPointerInside(inside: boolean): void;
   readonly closed: Promise<void>;
 }
+export interface BarController extends Controller<BarState> {
+  /** Report execution results; accepting a Native dispatch alone does not mean it succeeded. */
+  setActionError(actionUid: string, error?: string): void;
+}
 export interface PopupController extends Controller<PopupState> {
   toggleRootPin(pin: FolderPin): void;
   dismiss(): void;

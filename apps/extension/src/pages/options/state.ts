@@ -386,6 +386,16 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       setOptional(target, source);
       publish(["menus"], true);
     },
+    setStaticTagSource(menuUid: string, uid: string, tag: string): void {
+      const target = item(menuUid, uid);
+      if (target.type !== "staticTag" && target.type !== "flattenStaticTag")
+        throw new Error("The item is not a static tag group");
+      if (!settingsDraft.staticBookmarks.some(bookmark => bookmark.tags?.includes(tag)))
+        throw new Error("The static tag is unavailable");
+      if (target.staticTag === tag) return;
+      target.staticTag = tag;
+      publish(["menus"], true);
+    },
     editItemBehavior(menuUid: string, uid: string, values: ItemBehavior): void {
       const target = item(menuUid, uid);
       const copy = structuredClone(values);

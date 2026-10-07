@@ -24,7 +24,16 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
   };
   const closePopup = async (): Promise<void> => { const previous = popup; popup = undefined; await previous?.close(); };
   const actions: MenuActions = {
-    async invokeAction(actionUid) { await closePopup(); await send({ type: "invoke", menuUid: state.view.uid, actionUid }); },
+    async invokeAction(actionUid) {
+      try {
+        await closePopup();
+        await send({ type: "invoke", menuUid: state.view.uid, actionUid });
+        renderer?.setActionError(actionUid);
+      } catch (error) {
+        renderer?.setActionError(actionUid, String(error));
+        throw error;
+      }
+    },
     async requestToggleFold() { await closePopup(); await send({ type: "fold", menuUid: state.view.uid }); },
     async requestTemporarySave({ uid }) {
       await closePopup();

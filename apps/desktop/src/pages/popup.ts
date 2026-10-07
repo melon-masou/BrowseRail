@@ -40,9 +40,18 @@ export async function initializePopupSurface(): Promise<void> {
       pin = next;
       await invoke("set_popup_pin", { instanceUid, menuUid, windowUid, requestUid: currentPayload.requestUid, pin, rootPin });
     },
-    invokeAction: actionUid => currentPayload?.isFree
-      ? invoke("invoke_free_action", { actionUid, instanceUid, menuUid })
-      : invoke("invoke_action", { actionUid, instanceUid, windowUid, menuUid }),
+    async invokeAction(actionUid) {
+      const payload = currentPayload;
+      try {
+        if (payload?.isFree) await invoke("invoke_free_action", { actionUid, instanceUid, menuUid });
+        else await invoke("invoke_action", { actionUid, instanceUid, windowUid, menuUid });
+      } catch (error) {
+        if (payload && !destroyed) await emitTo(payload.parentLabel, "menu-action-result", {
+          menuUid, windowUid: payload.isFree ? null : windowUid, actionUid, error: String(error),
+        });
+        throw error;
+      }
+    },
     requestToggleFold: () => invoke("toggle_menu_collapsed", { instanceUid, menuUid }),
     requestTemporarySave: input => invoke("open_temporary_confirmation", {
       instanceUid, menuUid, windowUid: currentPayload?.isFree ? null : windowUid, ...input,

@@ -81,8 +81,9 @@ export function mountCustomBookmarksTab(
     headerActions.className = "dynamic-header-actions";
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = "remove-item-btn menu-remove-btn";
-    setIconContent(remove, removeIcon(), t("common.delete"));
+    remove.className = "remove-item-btn";
+    remove.title = remove.ariaLabel = t("common.delete");
+    setIconContent(remove, removeIcon());
     remove.addEventListener("click", () => removeCustomDefinition("temporary", definition.uid));
     headerActions.append(remove);
 
@@ -273,10 +274,10 @@ export function mountCustomBookmarksTab(
 
     const del = document.createElement("button");
     del.type = "button";
-    del.className = "remove-item-btn menu-remove-btn";
+    del.className = "remove-item-btn";
     del.title = t("common.delete");
     del.setAttribute("aria-label", t("common.delete"));
-    setIconContent(del, removeIcon(), t("common.delete"));
+    setIconContent(del, removeIcon());
     del.addEventListener("click", () => {
       removeCustomDefinition("dynamic", db.uid);
     });

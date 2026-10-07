@@ -179,3 +179,15 @@ it("keeps rewrite rules when switching update modes and clears a removed single-
   state.setDynamicType("dynamic", "external");
   expect(state.settings.dynamicBookmarks[0]!.rewrite).toBe('replace "/article/" "/reader/"');
 });
+
+it.each(["staticTag", "flattenStaticTag"])("changes the tag source of %s without resetting its identity or settings", type => {
+  const input = initialSettings();
+  input.staticBookmarks[0]!.tags = ["new"];
+  input.menus[0]!.items = [{ uid: "group", type, staticTag: "old", rename: "Links", color: "#123456ff", expandOnHover: false }];
+  const state = createState(input);
+  state.setStaticTagSource("menu", "group", "new");
+  expect(state.settings.menus[0]!.items[0]).toEqual({ uid: "group", type, staticTag: "new", rename: "Links", color: "#123456ff", expandOnHover: false });
+  expect(() => state.setStaticTagSource("menu", "group", "absent")).toThrow("unavailable");
+  expect(state.settings.menus[0]!.items[0]!.staticTag).toBe("new");
+  expect(state.dirty.settings).toBe(true);
+});

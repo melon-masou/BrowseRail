@@ -510,6 +510,7 @@ async function handleMessage(raw: unknown): Promise<void> {
     if (!targetWindowUid) {
       return;
     }
+    let error: string | undefined;
     try {
       if (value.actionUid.startsWith("shortcut:")) {
         const shortcutId = value.actionUid.slice("shortcut:".length);
@@ -517,9 +518,14 @@ async function handleMessage(raw: unknown): Promise<void> {
       } else {
         await executeMenuAction(value.actionUid, value.menuUid, targetWindowUid, requestSync);
       }
-    } catch {
+    } catch (cause) {
+      error = String(cause);
       requestSync();
     }
+    if (value.menuUid) send({
+      type: "actionResult", menuUid: value.menuUid, windowUid: value.windowUid ?? null,
+      actionUid: value.actionUid, ...(error !== undefined ? { error } : {}),
+    });
     return;
   }
 

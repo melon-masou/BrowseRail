@@ -1,9 +1,9 @@
-import { barSettingsFromView, isNativeBarSettings, isBarSettingsGroups, type BarSettingsGroup, type NativeBarSettings, type MenuPlacement, type MenuView } from "@browserail/protocol";
+import { barSettingsFromView, isNativeBarSettings, isBarSettingsGroups, type BarSettingsGroup, type NativeBarSettings, type MenuPlacement, type MenuView, type MenuActionResult } from "@browserail/protocol";
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { createSettingsIcon, resolveFontFamily, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type Controller, type Rect, layoutCustomization, type ToolbarSide } from "@browserail/menu-ui";
+import { createSettingsIcon, resolveFontFamily, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type BarController, type Rect, layoutCustomization, type ToolbarSide } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -43,7 +43,7 @@ export async function initializeSurface(
   let currentMenu = initial.menu;
   let customizationStartPosition: SurfacePoint | null = null;
   let menuCollapsed = initial.collapsed ?? false;
-  let bar: Controller<BarState> | undefined;
+  let bar: BarController | undefined;
   let cancelActiveCustomization: (() => Promise<void>) | null = null;
   let teardownCustomize: (() => void) | undefined;
   const disposers: Array<() => void> = [];
@@ -105,6 +105,10 @@ export async function initializeSurface(
     currentMenu = payload.menu;
     menuCollapsed = payload.collapsed ?? menuCollapsed;
     report(renderSurface(payload.menu));
+  }, { target: surfaceLabel }));
+  disposers.push(await listen<MenuActionResult>("menu-action-result", ({ payload }) => {
+    if (payload.menuUid !== menuUid || (payload.windowUid ?? null) !== (isFree ? null : windowUid)) return;
+    bar?.setActionError(payload.actionUid, payload.error);
   }, { target: surfaceLabel }));
   disposers.push(await listen<boolean>("editing-lock-changed", ({ payload }) => {
     editingLocked = payload;
