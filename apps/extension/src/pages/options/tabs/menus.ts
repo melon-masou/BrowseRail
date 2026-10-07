@@ -25,6 +25,8 @@ import { type CustomBookmarkSource } from "../custom-bookmark-source";
 import { type Persistence } from "../persistence";
 import { type BookmarkPicker } from "../components/bookmark-picker";
 import { type CustomBookmarkPicker } from "../components/custom-bookmark-picker";
+import { createItemPicker } from "../components/item-picker";
+import { actionChoices } from "../components/action-picker";
 
 import { type Overlays } from "../components/overlays";
 import { removeIcon, setIconContent, settingsIcon } from "../components/icons";
@@ -71,10 +73,10 @@ export function mountMenusTab(
   const addPopoverActionBtn = element<HTMLButtonElement>("add-popover-action-btn");
   const addActionDialog = element<HTMLDialogElement>("add-action-dialog");
   const addActionForm = element<HTMLFormElement>("add-action-form");
-  const addActionKind = element<HTMLSelectElement>("add-action-kind");
+  const actionPicker = createItemPicker();
+  scope.add(() => actionPicker.destroy());
   const addActionTargets = element<HTMLDivElement>("add-action-targets");
   const addActionClose = element<HTMLButtonElement>("add-action-close");
-  const addActionError = element<HTMLOutputElement>("add-action-error");
   const itemSettingsActionTargets = element<HTMLDivElement>("item-settings-action-targets");
   const addPopoverDynamicBtn = element<HTMLButtonElement>("add-popover-dynamic-btn");
   const addPopoverStaticBtn = element<HTMLButtonElement>("add-popover-static-btn");
@@ -396,7 +398,8 @@ export function mountMenusTab(
     itemSettingsBookmarkControls.style.display = "block";
 
     const isMenuFold = item.type === "menuFold";
-    const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction";
+    const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction" || item.type === "shortcutsToggle";
+    itemSettingRename.placeholder = t(item.type === "shortcutsToggle" ? "menuAction.shortcutsToggleLabel" : "itemSettings.renamePlaceholder");
     const isDynamic = item.type === "dynamic";
     const changeActions = itemSettingChangeBtn.parentElement;
     if (changeActions)
@@ -417,11 +420,13 @@ export function mountMenusTab(
       return;
     }
 
-    if (item.type === "menusToggle" || item.type === "browserAction") {
+    if (item.type === "menusToggle" || item.type === "browserAction" || item.type === "shortcutsToggle") {
       const actionLabel =
         item.type === "menusToggle"
           ? t("menuAction.menusToggle")
-          : browserActionLabel(item.browserAction);
+          : item.type === "shortcutsToggle"
+            ? t("menuAction.shortcutsToggle")
+            : browserActionLabel(item.browserAction);
       itemSettingsTitle.textContent = item.rename || actionLabel;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
@@ -550,45 +555,20 @@ export function mountMenusTab(
   }
 
   function initAddItemPopover(): void {
-    let actionMenuIndex = -1;
+    let actionMenuUid: string | undefined;
     const selectedTargets = new Set<string>();
     addActionClose.addEventListener("click", () => addActionDialog.close(), {
       signal: scope.signal,
     });
-    addActionKind.addEventListener(
-      "change",
-      () => {
-        addActionTargets.style.display = addActionKind.value === "menusToggle" ? "flex" : "none";
-        addActionError.value = "";
-      },
-      { signal: scope.signal },
-    );
     addActionForm.addEventListener(
       "submit",
       (event) => {
         event.preventDefault();
-        const menu = state.settings.menus[actionMenuIndex];
+        const menu = state.settings.menus.find(menu => menu.uid === actionMenuUid);
         if (!menu) return;
-        const kind = addActionKind.value;
-        if (kind === "menuFold" && menu.items.some((item) => item.type === "menuFold")) {
-          addActionError.value = t("menu.menuFoldAlreadyExists");
-          return;
-        }
-        const item: StoredMenuItem =
-          kind === "menuFold"
-            ? { uid: crypto.randomUUID(), type: "menuFold" }
-            : kind === "menusToggle"
-              ? {
-                  uid: crypto.randomUUID(),
-                  type: "menusToggle",
-                  targetMenuUids: [...selectedTargets],
-                }
-              : {
-                  uid: crypto.randomUUID(),
-                  type: "browserAction",
-                  browserAction: kind as BrowserActionKind,
-                };
-        state.addMenuItem(menu.uid, item);
+        state.addMenuItem(menu.uid, {
+          uid: crypto.randomUUID(), type: "menusToggle", targetMenuUids: [...selectedTargets],
+        });
         addActionDialog.close();
         renderMenus();
       },
@@ -608,18 +588,31 @@ export function mountMenusTab(
 
     addPopoverActionBtn.addEventListener(
       "click",
-      () => {
-        actionMenuIndex = activeAddMenuIndex;
+      async () => {
+        const sourceMenuUid = state.settings.menus[activeAddMenuIndex]?.uid;
         closeAddItemDropdown();
-        if (actionMenuIndex < 0 || actionMenuIndex >= state.settings.menus.length) return;
-        selectedTargets.clear();
-        addActionError.value = "";
-        addActionKind.value = "back";
-        addActionTargets.style.display = "none";
-        renderActionTargetChoices(addActionTargets, actionMenuIndex, selectedTargets, () => {
-          addActionError.value = "";
+        if (!sourceMenuUid) return;
+        const kind = await actionPicker.pick(t("menu.addAction"), actionChoices());
+        if (!kind) return;
+        const menuIndex = state.settings.menus.findIndex(menu => menu.uid === sourceMenuUid);
+        const menu = state.settings.menus[menuIndex];
+        if (!menu) return;
+        if (kind === "menusToggle") {
+          actionMenuUid = menu.uid;
+          selectedTargets.clear();
+          renderActionTargetChoices(addActionTargets, menuIndex, selectedTargets, () => {});
+          addActionDialog.showModal();
+          return;
+        }
+        if (kind === "menuFold" && menu.items.some(item => item.type === "menuFold")) {
+          showStatus(t("menu.menuFoldAlreadyExists"));
+          return;
+        }
+        state.addMenuItem(menu.uid, kind === "menuFold" || kind === "shortcutsToggle" ? {
+          uid: crypto.randomUUID(), type: kind,
+        } : {
+          uid: crypto.randomUUID(), type: "browserAction", browserAction: kind as BrowserActionKind,
         });
-        addActionDialog.showModal();
       },
       { signal: scope.signal },
     );
@@ -832,7 +825,8 @@ export function mountMenusTab(
             if (
               item.type === "menuFold" ||
               item.type === "menusToggle" ||
-              item.type === "browserAction"
+              item.type === "browserAction" ||
+              item.type === "shortcutsToggle"
             ) {
               const label = document.createElement("span");
               label.className = "item-label";
@@ -844,7 +838,9 @@ export function mountMenusTab(
                   ? t("menu.addMenuFold")
                   : item.type === "menusToggle"
                     ? t("menuAction.menusToggle")
-                    : browserActionLabel(item.browserAction);
+                    : item.type === "shortcutsToggle"
+                      ? t("menuAction.shortcutsToggle")
+                      : browserActionLabel(item.browserAction);
               titleSpan.textContent = item.rename ? `${item.rename} (${actionLabel})` : actionLabel;
               titleSpan.title = actionLabel;
               label.appendChild(titleSpan);

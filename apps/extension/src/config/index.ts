@@ -1,4 +1,4 @@
-import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference, isShortcutActionType, type ShortcutAction } from "@browserail/protocol";
 import type { JsonValue } from "@browserail/protocol/api";
 import { normalizeUserVariables } from "./user-variables";
 export { normalizeUserVariables } from "./user-variables";
@@ -27,6 +27,18 @@ import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
 
 const STORAGE_KEY = "config";
+
+export function normalizeShortcutAction(value: unknown): ShortcutAction | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.type === "shortcutsToggle") return { type: "shortcutsToggle" };
+  if (value.type === "browserAction" && BROWSER_ACTION_KINDS.includes(value.browserAction as (typeof BROWSER_ACTION_KINDS)[number]))
+    return { type: "browserAction", browserAction: value.browserAction as (typeof BROWSER_ACTION_KINDS)[number] };
+  if (value.type === "menuFold" && typeof value.menuUid === "string" && value.menuUid)
+    return { type: "menuFold", menuUid: value.menuUid };
+  if (value.type === "menusToggle" && Array.isArray(value.targetMenuUids))
+    return { type: "menusToggle", targetMenuUids: [...new Set(value.targetMenuUids.filter((uid): uid is string => typeof uid === "string" && !!uid))] };
+  return undefined;
+}
 
 export function normalizeUrlRules(value: unknown): UrlRule[] {
   return (Array.isArray(value) ? value : []).flatMap((rule): UrlRule[] => {
@@ -304,9 +316,13 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     menu.items = menu.items.filter(item => item.type !== "dynamic" || !!item.dynamicUid && dynamicUids.has(item.dynamicUid));
 
   const rawShortcuts = Array.isArray(value.shortcuts) ? value.shortcuts : [];
-  const shortcuts: StoredShortcut[] = rawShortcuts.flatMap((sc) => {
+  const shortcuts: StoredShortcut[] = rawShortcuts.flatMap((sc): StoredShortcut[] => {
     if (!isRecord(sc)) return [];
     if (typeof sc.slot !== "string" || !sc.slot.startsWith("slot_")) return [];
+    if (isShortcutActionType(sc.type)) {
+      const action = normalizeShortcutAction(sc);
+      return action ? [{ slot: sc.slot, ...action }] : [];
+    }
     const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" ? sc.type : "bookmark";
     const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
@@ -332,10 +348,14 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
   });
 
   const rawNativeShortcuts = Array.isArray(value.nativeShortcuts) ? value.nativeShortcuts : [];
-  const nativeShortcuts: StoredNativeShortcut[] = rawNativeShortcuts.flatMap((sc) => {
+  const nativeShortcuts: StoredNativeShortcut[] = rawNativeShortcuts.flatMap((sc): StoredNativeShortcut[] => {
     if (!isRecord(sc)) return [];
     if (typeof sc.id !== "string" || !sc.id) return [];
     const key = typeof sc.key === "string" ? sc.key.trim() : "";
+    if (isShortcutActionType(sc.type)) {
+      const action = normalizeShortcutAction(sc);
+      return action ? [{ id: sc.id, key, ...action }] : [];
+    }
     const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" ? sc.type : "bookmark";
     const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
@@ -456,12 +476,12 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   const uid = typeof value.uid === "string" && value.uid ? value.uid : crypto.randomUUID();
   if (rawType === "menuToggle" || rawType === "space") return undefined;
 
-  if (rawType === "menuFold") {
+  if (rawType === "menuFold" || rawType === "shortcutsToggle") {
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     return {
       uid,
-      type: "menuFold",
+      type: rawType,
       ...(rename ? { rename } : {}),
       ...(color ? { color } : {}),
     };
@@ -604,6 +624,17 @@ export async function toggleBrowserCollapsed(uid: string): Promise<void> {
 export * from "./bar-configurations";
 
 export const WIDGET_ENABLED_STORAGE_KEY = "widget_enabled";
+
+export const SHORTCUTS_ENABLED_STORAGE_KEY = "shortcuts_enabled";
+
+export async function loadShortcutsEnabled(): Promise<boolean> {
+  const stored = await browser.storage.local.get(SHORTCUTS_ENABLED_STORAGE_KEY);
+  return stored[SHORTCUTS_ENABLED_STORAGE_KEY] !== false;
+}
+
+export async function saveShortcutsEnabled(enabled: boolean): Promise<void> {
+  await browser.storage.local.set({ [SHORTCUTS_ENABLED_STORAGE_KEY]: enabled });
+}
 
 export async function loadWidgetEnabled(): Promise<boolean> {
   const stored = await browser.storage.local.get([WIDGET_ENABLED_STORAGE_KEY, "config"]);

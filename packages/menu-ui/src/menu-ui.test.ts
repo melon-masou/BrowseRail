@@ -44,6 +44,26 @@ function mount(root: HTMLElement, state: BarState, adapter: BarHost): Controller
 }
 
 describe("shared menu mounting", () => {
+  it("renders the shortcut status placeholder and dispatches its action even while off", async () => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu.items = [{ kind: "shortcutsToggle", uid: "shortcutsToggle:keys", label: "Keys {on}", on: true }];
+    const controller = mount(root, state, adapter);
+    await controller.ready;
+    let button = root.querySelector<HTMLButtonElement>("button")!;
+    expect(button.title).not.toContain("{on}");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.textContent).not.toContain("{on}");
+    const onTitle = button.title;
+    await controller.update({ ...state, menu: { ...state.menu, items: [{ kind: "shortcutsToggle", uid: "shortcutsToggle:keys", label: "Keys {on}", on: false }] } });
+    button = root.querySelector<HTMLButtonElement>("button")!;
+    expect(button.title).not.toBe(onTitle);
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    press(button, 2);
+    expect(adapter.invokeAction).not.toHaveBeenCalled();
+    press(button);
+    expect(adapter.invokeAction).toHaveBeenCalledWith("shortcutsToggle:keys");
+  });
+
   it("keeps a failure visible until the host reports success, including an alternate click", async () => {
     const root = container(); const adapter = host();
     vi.mocked(adapter.invokeAction).mockRejectedValueOnce(new Error("Missing variable"));

@@ -20,7 +20,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
   windows: { get: async () => ({}) },
 } }));
 
-import { loadConfig, saveConfig, saveDynamicValue, loadTemporaryValues, loadTemporaryNotes, saveBarLayout, loadBarConfigurations, importBarConfigurations, defaultMenuPlacement, type StoredMenuItem } from "../config";
+import { loadConfig, saveConfig, saveDynamicValue, loadTemporaryValues, loadTemporaryNotes, saveBarLayout, loadBarConfigurations, importBarConfigurations, defaultMenuPlacement, loadShortcutsEnabled, type StoredMenuItem } from "../config";
 import { buildTemporaryDirectiveUrl, resolveMenuItems } from "../bookmarks";
 import { projectMenuSpacing } from "../bookmarks/spacing";
 import { staticBookmarkReferenceErrors } from "../bookmarks/variables";
@@ -29,6 +29,32 @@ import { executeMenuAction } from "./execute-menu-action";
 
 beforeEach(() => {
   mocks.storage = {}; mocks.tree = []; mocks.update.mockClear(); mocks.create.mockClear();
+});
+
+it("toggles only the instance shortcut switch, keeps bindings and ordinary clicks, and can turn itself back on", async () => {
+  const config = await loadConfig();
+  config.staticBookmarks = [{ uid: "docs", name: "Docs", url: "https://docs.example" }];
+  config.shortcuts = [{ slot: "slot_1", type: "static", staticUid: "docs" }];
+  config.nativeShortcuts = [{ id: "docs-key", key: "F1", type: "static", staticUid: "docs" }];
+  config.panel.menus = [{ uid: "menu", items: [{ uid: "keys/#", type: "shortcutsToggle" }] }];
+  await saveConfig(config);
+  const saved = await loadConfig();
+  expect(await loadShortcutsEnabled()).toBe(true);
+  const [entry] = await resolveMenuItems(config.panel.menus[0]!.items);
+  const changed = vi.fn();
+  await executeMenuAction("shortcutsToggle:missing", "menu", "42", changed);
+  await executeMenuAction(entry!.uid, "other-menu", "42", changed);
+  expect(await loadShortcutsEnabled()).toBe(true);
+  await executeMenuAction(entry!.uid, "menu", "42", changed);
+  expect(await loadShortcutsEnabled()).toBe(false);
+  expect(await loadConfig()).toEqual(saved);
+  const off = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, { shortcutsEnabled: await loadShortcutsEnabled() });
+  expect(off[0]).toMatchObject({ kind: "shortcutsToggle", on: false });
+  await executeMenuAction("static:docs", undefined, "42", changed);
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://docs.example" });
+  await executeMenuAction(entry!.uid, "menu", "42", changed);
+  expect(await loadShortcutsEnabled()).toBe(true);
+  expect(changed).toHaveBeenCalledTimes(2);
 });
 
 it("opens current tagged static definitions with variables and rejects buttons whose tag was removed", async () => {

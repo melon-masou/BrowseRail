@@ -4,6 +4,8 @@ import {
   normalizeMenuSpacing,
   actionUid,
   customBookmarkUid,
+  isShortcutActionType,
+  isCustomBookmarkType,
   PROTOCOL_VERSION,
   type BrowserInstance,
   type ExtensionMessage,
@@ -31,6 +33,9 @@ import {
   loadBrowserCollapsed,
   removeBrowserPlacement,
   loadWidgetEnabled,
+  loadShortcutsEnabled,
+  normalizeShortcutAction,
+  toggleBrowserCollapsed,
   loadDynamicValues,
   loadTemporaryNotes,
   loadBarConfigurations,
@@ -47,6 +52,7 @@ import { canUseBookmarks } from "../browser/bookmarks-capability";
 import { initDynamicBookmarks } from "./dynamic";
 import { initExternalUpdates } from "./external-updates";
 import { executeMenuAction } from "./execute-menu-action";
+import { canExecuteShortcut, executeShortcutAction } from "./shortcut-actions";
 
 import { createBrowserMenus, menuVisibleForUrl as isMenuVisibleForUrl } from "./browser-menus";
 import { createBrowserEditingMenu } from "./browser-editing";
@@ -619,7 +625,7 @@ async function drainSync(): Promise<void> {
 async function syncOnce(): Promise<void> {
   const bookmarksAvailable = await canUseBookmarks();
   const configTask = loadConfig();
-  const [config, windows, rootPrefix, bookmarkTree, dynamicValues, temporaryNotes, mode, enabled, browserPlacements, browserCollapsed, browserEditing, barConfigs] = await Promise.all([
+  const [config, windows, rootPrefix, bookmarkTree, dynamicValues, temporaryNotes, mode, enabled, browserPlacements, browserCollapsed, browserEditing, barConfigs, shortcutsEnabled] = await Promise.all([
     configTask,
     listBrowserWindows(),
     loadBookmarkRootPrefix(),
@@ -632,6 +638,7 @@ async function syncOnce(): Promise<void> {
     loadBrowserCollapsed(),
     loadBrowserEditing(),
     loadBarConfigurations(),
+    loadShortcutsEnabled(),
   ]);
   const dynamicByUid = new Map((config.dynamicBookmarks ?? []).map((db) => [db.uid, db]));
   const dynamicResolve = (dynamicUid: string) => {
@@ -652,7 +659,7 @@ async function syncOnce(): Promise<void> {
         const items = await resolveMenuItems(menu.items, menu.color, settings.expandDirection, rootPrefix, {
           tree: bookmarkTree as BookmarkNode[],
           dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks,
-          bookmarksAvailable,
+          bookmarksAvailable, shortcutsEnabled,
         });
         return { uid: menu.uid, items, ...barSettingsFromView(settings), ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),
           ...(menu.color ? { color: menu.color } : {}),
@@ -747,7 +754,7 @@ async function syncOnce(): Promise<void> {
       (s) =>
         s.key &&
         s.key.trim().length > 0 &&
-        (s.type && s.type !== "bookmark" ? Boolean(customBookmarkUid(s)) : bookmarksAvailable && Boolean(s.path || s.url)),
+        (isShortcutActionType(s.type) || (s.type && s.type !== "bookmark" ? Boolean(customBookmarkUid(s)) : bookmarksAvailable && Boolean(s.path || s.url))),
     )
     .map((s) => ({
       id: s.id,
@@ -926,17 +933,20 @@ function isSetWidgetEnabledMessage(
 }
 
 browser.commands.onCommand.addListener(async (command) => {
+  const config = await loadConfig();
+  const target = config.shortcuts.find((s) => s.slot === command);
+  if (!target || !await canExecuteShortcut(target.type)) return;
   const currentWindow = await browser.windows.getCurrent();
   if (!currentWindow?.id) return;
   const windowId = currentWindow.id;
-  const config = await loadConfig();
-
-  const target = config.shortcuts.find((s) => s.slot === command);
-  if (!target) return;
+  if (isShortcutActionType(target.type)) {
+    await runShortcutAction(target, config, String(windowId));
+    return;
+  }
 
   const tabMode = target.tabMode || "replace";
 
-  if (target.type && target.type !== "bookmark") {
+  if (isCustomBookmarkType(target.type)) {
     const uid = customBookmarkUid(target);
     if (uid) await executeMenuAction(actionUid(target.type, uid, tabMode), undefined, String(windowId), requestSync);
     return;
@@ -959,11 +969,15 @@ browser.commands.onCommand.addListener(async (command) => {
 async function executeNativeShortcut(shortcutId: string, targetWindowUid?: string): Promise<void> {
   const config = await loadConfig();
   const target = config.nativeShortcuts?.find((s) => s.id === shortcutId);
-  if (!target) return;
+  if (!target || !await canExecuteShortcut(target.type)) return;
   const targetWindow = targetWindowUid ?? lastFocusedWindowUid ?? (await browser.windows.getLastFocused())?.id;
   if (!targetWindow) return;
+  if (isShortcutActionType(target.type)) {
+    await runShortcutAction(target, config, String(targetWindow));
+    return;
+  }
   const tabMode = target.tabMode || "replace";
-  if (target.type && target.type !== "bookmark") {
+  if (isCustomBookmarkType(target.type)) {
     const uid = customBookmarkUid(target);
     if (uid) await executeMenuAction(actionUid(target.type, uid, tabMode), undefined, String(targetWindow), requestSync);
     return;
@@ -979,5 +993,25 @@ async function executeNativeShortcut(shortcutId: string, targetWindowUid?: strin
     }
   } else if (target.url) {
     await navigateToUrl(browser, targetWindow, target.url, tabMode);
+  }
+}
+
+async function runShortcutAction(target: unknown, config: Awaited<ReturnType<typeof loadConfig>>, windowUid: string): Promise<void> {
+  const action = normalizeShortcutAction(target);
+  if (!action) throw new Error("Action is unavailable");
+  const mode = await loadDisplayMode();
+  await executeShortcutAction(action, config, windowUid, {
+    changed: requestSync,
+    async toggleFold(menuUid) {
+      if (mode === "browser") await toggleBrowserCollapsed(menuUid);
+      else {
+        if (socket?.readyState !== WebSocket.OPEN) throw new Error("Desktop is disconnected");
+        send({ type: "toggleMenuFold", menuUid });
+      }
+    },
+  });
+  if (mode === "browser") {
+    const [tab] = await browser.tabs.query({ active: true, windowId: Number(windowUid) });
+    if (tab?.id !== undefined) await requestBrowserMenuRefresh(tab.id);
   }
 }

@@ -3,6 +3,7 @@ import {
   type CustomBookmarkType,
   customBookmarkUid,
   isCustomBookmarkType,
+  isShortcutActionType,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 import { type StoredShortcut, type StoredNativeShortcut } from "../../../config";
@@ -16,6 +17,7 @@ import { type BookmarkLibrary } from "../bookmark-library";
 import { type CustomBookmarkSource } from "../custom-bookmark-source";
 import { type BookmarkPicker } from "../components/bookmark-picker";
 import { type CustomBookmarkPicker } from "../components/custom-bookmark-picker";
+import { createShortcutActionPicker, shortcutActionLabel } from "../components/action-picker";
 import { type Overlays } from "../components/overlays";
 import { removeIcon, setIconContent, settingsIcon } from "../components/icons";
 import { browserActions } from "../browser";
@@ -30,6 +32,8 @@ export function mountShortcutsTab(
   showStatus: (message: string) => void,
 ) {
   const scope = createScope();
+  const actionPicker = createShortcutActionPicker();
+  scope.add(() => actionPicker.destroy());
   const shortcutsList = element<HTMLDivElement>("shortcuts-list");
   const configureBrowserShortcutsBtn = element<HTMLButtonElement>(
     "configure-browser-shortcuts-btn",
@@ -50,6 +54,7 @@ export function mountShortcutsTab(
   const shortcutPickDynamicBtn = element<HTMLButtonElement>("shortcut-pick-dynamic-btn");
   const shortcutPickStaticBtn = element<HTMLButtonElement>("shortcut-pick-static-btn");
   const shortcutPickTemporaryBtn = element<HTMLButtonElement>("shortcut-pick-temporary-btn");
+  const shortcutPickActionBtn = element<HTMLButtonElement>("shortcut-pick-action-btn");
   let activeRecordingKeyId: string | null = null;
   let activeShortcutSettingsTarget: ReadonlyData<StoredShortcut | StoredNativeShortcut> | null =
     null;
@@ -138,11 +143,11 @@ export function mountShortcutsTab(
     activeShortcutPickBtn = null;
   }
 
-  function buildChangeBookmarkButton(target: ShortcutPickTarget): HTMLButtonElement {
+  function buildChangeButton(target: ShortcutPickTarget): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "action-btn shortcut-change-btn";
-    btn.textContent = t("shortcuts.changeBookmark");
+    btn.textContent = t("shortcuts.changeTarget");
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       openShortcutPickPopover(target, btn);
@@ -287,6 +292,14 @@ export function mountShortcutsTab(
       { signal: scope.signal },
     );
 
+    shortcutPickActionBtn.addEventListener("click", async () => {
+      const target = activeShortcutPickTarget;
+      closeShortcutPickPopover();
+      if (!target) return;
+      const action = await actionPicker.pick(state.settings.menus.map(menu => menu.uid));
+      if (action && !scope.signal.aborted) state.setShortcutTarget(target, action);
+    }, { signal: scope.signal });
+
     for (const [button, type] of [
       [shortcutPickStaticBtn, "static"],
       [shortcutPickTemporaryBtn, "temporary"],
@@ -391,9 +404,9 @@ export function mountShortcutsTab(
       const actionsCol = document.createElement("div");
       actionsCol.className = "shortcut-actions-col";
 
-      const hasTarget = isCustomBookmarkType(item.type)
+      const hasTarget = isShortcutActionType(item.type) || (isCustomBookmarkType(item.type)
         ? Boolean(customBookmarkUid(item))
-        : Boolean(item.path || item.url);
+        : Boolean(item.path || item.url));
 
       if (hasTarget) {
         const icon = document.createElement("span");
@@ -402,7 +415,11 @@ export function mountShortcutsTab(
         const title = document.createElement("span");
         title.className = "shortcut-target-title";
 
-        if (isCustomBookmarkType(item.type)) {
+        if (isShortcutActionType(item.type)) {
+          icon.textContent = "⚡";
+          title.textContent = shortcutActionLabel(item, state.settings.menus.map(menu => menu.uid));
+          title.title = title.textContent;
+        } else if (isCustomBookmarkType(item.type)) {
           icon.textContent = source.icon(item.type);
           title.textContent = source.name(item);
         } else {
@@ -447,9 +464,9 @@ export function mountShortcutsTab(
         }
       });
 
-      // Actions left→right: delete, settings (only when a target is set), change bookmark (always rightmost).
+      // Actions left→right: delete, settings (only when a target is set), change (always rightmost).
       actionsCol.append(deleteBtn);
-      if (hasTarget) {
+      if (hasTarget && !isShortcutActionType(item.type)) {
         const settingsBtn = document.createElement("button");
         settingsBtn.type = "button";
         settingsBtn.className = "item-settings-btn";
@@ -461,7 +478,7 @@ export function mountShortcutsTab(
         });
         actionsCol.append(settingsBtn);
       }
-      actionsCol.append(buildChangeBookmarkButton({ kind: "native", id: item.id }));
+      actionsCol.append(buildChangeButton({ kind: "native", id: item.id }));
 
       row.append(keyCol, targetCol, actionsCol);
       nativeShortcutsList.append(row);
@@ -507,9 +524,9 @@ export function mountShortcutsTab(
 
       if (
         target &&
-        (isCustomBookmarkType(target.type)
+        (isShortcutActionType(target.type) || (isCustomBookmarkType(target.type)
           ? Boolean(customBookmarkUid(target))
-          : Boolean(target.path || target.url))
+          : Boolean(target.path || target.url)))
       ) {
         const icon = document.createElement("span");
         icon.className = "shortcut-target-icon";
@@ -517,7 +534,11 @@ export function mountShortcutsTab(
         const title = document.createElement("span");
         title.className = "shortcut-target-title";
 
-        if (isCustomBookmarkType(target.type)) {
+        if (isShortcutActionType(target.type)) {
+          icon.textContent = "⚡";
+          title.textContent = shortcutActionLabel(target, state.settings.menus.map(menu => menu.uid));
+          title.title = title.textContent;
+        } else if (isCustomBookmarkType(target.type)) {
           icon.textContent = source.icon(target.type);
           title.textContent = source.name(target);
         } else {
@@ -571,16 +592,17 @@ export function mountShortcutsTab(
           }
         });
 
-        // Actions left→right: clear, settings, change bookmark.
-        actionsCol.append(clearBtn, settingsBtn);
+        // Actions left→right: clear, settings, change.
+        actionsCol.append(clearBtn);
+        if (!isShortcutActionType(target.type)) actionsCol.append(settingsBtn);
       } else {
         const emptyLabel = document.createElement("span");
         emptyLabel.className = "shortcut-empty-label";
         emptyLabel.textContent = t("shortcuts.emptyTarget");
         targetCol.append(emptyLabel);
       }
-      // "Change bookmark" is always present and stays rightmost.
-      actionsCol.append(buildChangeBookmarkButton({ kind: "slot", slot: slotKey }));
+      // "Change" is always present and stays rightmost.
+      actionsCol.append(buildChangeButton({ kind: "slot", slot: slotKey }));
 
       row.append(slotCol, targetCol, actionsCol);
       shortcutsList.append(row);
@@ -646,7 +668,7 @@ export function mountShortcutsTab(
   scope.add(overlays.register("shortcutSettings", closeShortcutSettingsPopover));
   scope.add(overlays.register("shortcutPick", closeShortcutPickPopover));
   scope.add(
-    state.subscribe(["shortcuts", "bookmarks", "instance"], (change) => {
+    state.subscribe(["shortcuts", "bookmarks", "instance", "menus"], (change) => {
       if (change.structural) {
         closeShortcutSettingsPopover();
         closeShortcutPickPopover();

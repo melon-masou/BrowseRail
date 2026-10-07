@@ -187,6 +187,7 @@ export type ExtensionMessage =
     }
   | { type: "resync"; requestUid: string }
   | { type: "setEditing"; editing: boolean }
+  | { type: "toggleMenuFold"; menuUid: string }
   | { type: "detach" }
   | { type: "heartbeat" };
 

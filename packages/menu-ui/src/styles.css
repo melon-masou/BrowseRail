@@ -110,6 +110,20 @@
     text-align: center;
   }
 
+  .shortcut-status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    vertical-align: middle;
+    background: #757b85;
+    pointer-events: none;
+  }
+
+  .shortcut-status-dot[data-on="true"] {
+    background: #389b62;
+  }
+
   .menu-button[data-folder]::after {
     background: transparent;
     border: 0 solid transparent;

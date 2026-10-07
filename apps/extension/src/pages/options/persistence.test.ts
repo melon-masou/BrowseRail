@@ -12,7 +12,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
   },
   runtime: { sendMessage: async () => {} },
 } }));
-import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu } from "../../config";
+import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu, saveShortcutsEnabled, loadShortcutsEnabled } from "../../config";
 import { createOptionsState, settingsFromConfig } from "./state";
 import { createBookmarkLibrary } from "./bookmark-library";
 import { createPersistence, loadOptions } from "./persistence";
@@ -102,6 +102,45 @@ it("preserves tag folder and flattened references through save and import even w
   await persistence.importSettings(JSON.stringify(exported));
   await persistence.saveSettings();
   expect((await loadConfig()).panel.menus[0]!.items).toEqual([group, { ...group, uid: "flat", type: "flattenStaticTag" }]);
+  persistence.destroy();
+});
+
+it("exports the shortcut toggle definition without the instance switch and preserves that switch on import", async () => {
+  const { state, persistence } = await fixture();
+  const action = { uid: "keys", type: "shortcutsToggle", rename: "Keys {on}", color: "#123456ff" };
+  state.addMenuItem("bar", action);
+  await persistence.saveSettings();
+  const enabledExport = await persistence.exportSettings();
+  await saveShortcutsEnabled(false);
+  const disabledExport = await persistence.exportSettings();
+  expect({ ...disabledExport, exportedAt: enabledExport.exportedAt }).toEqual(enabledExport);
+  expect(disabledExport.menus[0]!.items).toEqual([action]);
+  state.removeMenuItem("bar", "keys");
+  await persistence.importSettings(JSON.stringify(disabledExport));
+  await persistence.saveSettings();
+  expect((await loadConfig()).panel.menus[0]!.items).toEqual([action]);
+  expect(await loadShortcutsEnabled()).toBe(false);
+  persistence.destroy();
+});
+
+it("saves and imports independent shortcut actions without a bar action button", async () => {
+  const { state, persistence } = await fixture();
+  state.removeShortcut({ kind: "slot", slot: "1" });
+  state.setShortcutTarget({ kind: "slot", slot: "slot_1" }, { type: "menuFold", menuUid: "bar" });
+  state.setShortcutTarget({ kind: "slot", slot: "slot_2" }, { type: "menusToggle", targetMenuUids: ["bar"] });
+  state.setShortcutTarget({ kind: "slot", slot: "slot_3" }, { type: "shortcutsToggle" });
+  state.addNativeShortcut({ id: "reload", key: "F1" });
+  state.setShortcutTarget({ kind: "native", id: "reload" }, { type: "browserAction", browserAction: "reload" });
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  const file = await persistence.exportSettings();
+  expect(file.shortcuts).toEqual(saved.shortcuts);
+  expect(file.nativeShortcuts).toEqual(saved.nativeShortcuts);
+  await persistence.importSettings(JSON.stringify(file));
+  await persistence.saveSettings();
+  expect((await loadConfig()).shortcuts).toEqual(saved.shortcuts);
+  expect((await loadConfig()).nativeShortcuts).toEqual(saved.nativeShortcuts);
+  expect((await loadConfig()).panel.menus[0]!.items).toEqual([]);
   persistence.destroy();
 });
 

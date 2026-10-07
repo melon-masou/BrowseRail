@@ -14,7 +14,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "staticTag", "flattenStaticTag", "menuFold", "menusToggle", "browserAction", "static", "dynamic", "temporary"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "staticTag", "flattenStaticTag", "menuFold", "menusToggle", "browserAction", "shortcutsToggle", "static", "dynamic", "temporary"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export const BROWSER_ACTION_KINDS = ["back", "forward", "reload"] as const;
 export type BrowserActionKind = (typeof BROWSER_ACTION_KINDS)[number];
@@ -78,11 +78,28 @@ export function customBookmarkReference(type: CustomBookmarkType, uid: string) {
   return { type, ...(type === "static" ? { staticUid: uid } : type === "temporary" ? { temporaryUid: uid } : { dynamicUid: uid }) };
 }
 
-export interface StoredShortcut extends BookmarkTarget {
+export type ShortcutAction =
+  | { type: "browserAction"; browserAction: BrowserActionKind }
+  | { type: "menusToggle"; targetMenuUids: string[] }
+  | { type: "menuFold"; menuUid: string }
+  | { type: "shortcutsToggle" };
+
+export function isShortcutActionType(type: unknown): type is ShortcutAction["type"] {
+  return type === "browserAction" || type === "menusToggle" || type === "menuFold" || type === "shortcutsToggle";
+}
+
+export interface ShortcutTarget extends Omit<BookmarkTarget, "type"> {
+  type?: NonNullable<BookmarkTarget["type"]> | ShortcutAction["type"];
+  browserAction?: BrowserActionKind;
+  targetMenuUids?: string[];
+  menuUid?: string;
+}
+
+export interface StoredShortcut extends ShortcutTarget {
   slot: string;
 }
 
-export interface StoredNativeShortcut extends BookmarkTarget {
+export interface StoredNativeShortcut extends ShortcutTarget {
   id: string;
   key: string;
 }

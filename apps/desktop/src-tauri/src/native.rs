@@ -106,6 +106,10 @@ pub enum NativeCommand {
         action_uid: String,
         error: Option<String>,
     },
+    ToggleMenuFold {
+        instance_uid: String,
+        menu_uid: String,
+    },
     NativeShortcutTriggered {
         key: String,
         foreground_hwnd: isize,
@@ -684,6 +688,10 @@ fn window_contains(
     }
 }
 
+fn menu_content_visible(view: &crate::protocol::MenuView, collapsed: bool) -> bool {
+    !collapsed || view.items.iter().any(|item| matches!(item, crate::protocol::LayoutEntry::MenuFold { .. }))
+}
+
 fn is_menu_collapsed(
     collapsed_menus: &Arc<Mutex<Vec<CollapsedMenu>>>,
     instance_uid: &str,
@@ -818,6 +826,7 @@ impl NativeReactor {
                 NativeCommand::OpenPopup { .. } | NativeCommand::SetPopupPin { .. } | NativeCommand::DismissPopup { .. } | NativeCommand::PopupPointerDown { .. }
                 | NativeCommand::ClosePopup { .. } | NativeCommand::BeginPopupClose { .. } | NativeCommand::ClosePopupIfGeneration { .. }
                 | NativeCommand::ClientDisconnected { .. } | NativeCommand::ClientDetached { .. } | NativeCommand::SyncMenus { .. }
+                | NativeCommand::ToggleMenuFold { .. }
                 | NativeCommand::RebuildInstanceSurfaces { .. } | NativeCommand::ToggleDisplayPanels
                 | NativeCommand::RefreshWindowLevels | NativeCommand::SetEditing { .. });
             match cmd {
@@ -835,6 +844,23 @@ impl NativeReactor {
                         editing: !self.lock_editing.load(Ordering::Relaxed),
                     });
                     self.check_update_tray();
+                }
+                NativeCommand::ToggleMenuFold { instance_uid, menu_uid } => {
+                    let Some((_, menus)) = self.registry.menu_snapshots().into_iter()
+                        .find(|(uid, _)| uid == &instance_uid) else { continue; };
+                    if !menus.iter().any(|menu| menu.view.uid == menu_uid) { continue; }
+                    let next = !is_menu_collapsed(&self.collapsed_menus, &instance_uid, &menu_uid);
+                    if let Err(error) = crate::set_menu_collapsed(&self.app, &self.collapsed_menus, &instance_uid, &menu_uid, next) {
+                        crate::debug::log("Native:CollapsedMenus", error);
+                        continue;
+                    }
+                    if next {
+                        for menu in menus.iter().filter(|menu| menu.view.uid == menu_uid) {
+                            let window_uid = menu.bound_window().map(|window| window.uid.as_str()).unwrap_or("");
+                            self.popups.remove(&instance_uid, window_uid, &menu_uid);
+                            self.hide_popup_window(&instance_uid, window_uid, &menu_uid);
+                        }
+                    }
                 }
                 NativeCommand::ActionResult { instance_uid, menu_uid, window_uid, action_uid, error } => {
                     let label = if let Some(ref window_uid) = window_uid {
@@ -1765,7 +1791,7 @@ impl NativeReactor {
                     reset_position: reset_menu_uids.contains(&menu_uid),
                     // URL-driven visibility: kept alive but hidden when the URL
                     // does not match, mirroring bound menus (no destroy/recreate).
-                    should_be_visible: synced.native.visible,
+                    should_be_visible: synced.native.visible && menu_content_visible(&synced.view, collapsed),
                     menu: crate::protocol::SurfaceMenu::from_synced(synced),
                     collapsed,
                 });
@@ -2141,7 +2167,7 @@ impl NativeReactor {
                     AttachmentMode::LastFocused => window.focused,
                     AttachmentMode::Free => false,
                 };
-                let should_be_visible = display && menu.native.visible && is_focused;
+                let should_be_visible = display && menu.native.visible && is_focused && menu_content_visible(&menu.view, collapsed);
 
                 sync_items.push(MenuSyncItem {
                     label,
@@ -2353,15 +2379,9 @@ impl NativeReactor {
     }
 
     fn prune_collapsed_menus(&self, instance_uid: &str, synced_menus: &[SyncedMenu]) {
-        let has_toggle = |view: &crate::protocol::MenuView| {
-            view.items
-                .iter()
-                .any(|item| matches!(item, crate::protocol::LayoutEntry::MenuFold { .. }))
-        };
         let valid_menu_uids: HashSet<&str> = synced_menus
             .iter()
             .map(|synced| &synced.view)
-            .filter(|view| has_toggle(view))
             .map(|view| view.uid.as_str())
             .collect();
 
@@ -2491,7 +2511,8 @@ impl NativeReactor {
                     AttachmentMode::Free => false,
                 };
                 let should_be_visible =
-                    display && owner_hwnd.is_some() && synced.native.visible && is_focused;
+                    display && owner_hwnd.is_some() && synced.native.visible && is_focused
+                        && menu_content_visible(&synced.view, is_menu_collapsed(&self.collapsed_menus, &snapshot.instance_uid, &synced.view.uid));
                 let menu_label = menu_label(&snapshot.instance_uid, &window.uid, &synced.view.uid);
                 let popup_label = popup_label(&snapshot.instance_uid, &window.uid, &synced.view.uid);
                 desired_levels.insert(menu_label.clone(), always_on_top);

@@ -1,6 +1,20 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it } from "vitest";
 import { createCustomBookmarkPicker } from "./custom-bookmark-picker";
+import { createItemPicker } from "./item-picker";
+
+it("keeps multiple selected menu targets while searching and applies the complete selection", async () => {
+  const control = createItemPicker();
+  try {
+    const pending = control.pickMany("Menus", [{ id: "one", label: "One" }, { id: "two", label: "Two" }]);
+    const choose = (label: string) => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === label)!.click();
+    choose("One");
+    search("Two");
+    choose("Two");
+    dialog().querySelector<HTMLButtonElement>(".space-bookmark-dialog-actions button")!.click();
+    await expect(pending).resolves.toEqual(["one", "two"]);
+  } finally { control.destroy(); }
+});
 
 const pickers: ReturnType<typeof createCustomBookmarkPicker>[] = [];
 function picker() {

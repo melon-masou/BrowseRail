@@ -2,7 +2,7 @@ import type { BrowserActionKind, StoredMenu } from "@browserail/protocol";
 
 export function toggleTargetMenus(
   menus: StoredMenu[],
-  sourceMenuUid: string,
+  sourceMenuUid: string | undefined,
   targetMenuUids: string[],
 ): StoredMenu[] | undefined {
   const targets = new Set(targetMenuUids.filter((uid) => uid !== sourceMenuUid));

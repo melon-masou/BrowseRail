@@ -49,7 +49,10 @@ import {
   saveBrowserEditing,
   saveSyncEnabled,
   saveBarLayout, loadBarConfigurations, resolveBarConfiguration, defaultMenuPlacement,
+  loadShortcutsEnabled,
+  toggleBrowserCollapsed,
 } from "../config";
+import { resolveMenuItems } from "../bookmarks";
 
 beforeEach(() => {
   mocks.storage = {};
@@ -214,6 +217,35 @@ it("executes a webpage's browser action on its own window and rejects it after s
   await page.request({ type: "invoke", menuUid: "source", actionUid: "browserAction:reload" });
   expect(mocks.reload).toHaveBeenCalledTimes(1);
   expect(page.posted.at(-1)).toMatchObject({ error: expect.any(String) });
+});
+
+it("toggles shortcuts through a webpage action and returns the updated indicator in the same reply", async () => {
+  const config = await fixture();
+  config.panel.menus[0]!.items.push({ uid: "keys", type: "shortcutsToggle" });
+  await saveConfig(config);
+  const service = createBrowserMenus(async () => {
+    const items = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, { shortcutsEnabled: await loadShortcutsEnabled() });
+    await service.publish(config, [{ ...view, items }], {}, {}, true);
+  });
+  const page = client();
+  const reply = await page.request({ type: "invoke", menuUid: "source", actionUid: "shortcutsToggle:keys" });
+  expect(reply).not.toHaveProperty("error");
+  expect(await loadShortcutsEnabled()).toBe(false);
+  expect(reply.state!.menus[0]!.view.items).toContainEqual(expect.objectContaining({ kind: "shortcutsToggle", on: false }));
+  const next = await page.request({ type: "invoke", menuUid: "source", actionUid: "shortcutsToggle:keys" });
+  expect(await loadShortcutsEnabled()).toBe(true);
+  expect(next.state!.menus[0]!.view.items).toContainEqual(expect.objectContaining({ kind: "shortcutsToggle", on: true }));
+});
+
+it("can fold and restore a bar using runtime state without a fold button on the bar", async () => {
+  const config = await fixture();
+  const service = createBrowserMenus(() => {});
+  await service.publish(config, [view], {}, {}, true);
+  expect(await service.forTab(17)).toHaveLength(1);
+  await toggleBrowserCollapsed("source");
+  expect(await service.forTab(17)).toEqual([]);
+  await toggleBrowserCollapsed("source");
+  expect(await service.forTab(17)).toHaveLength(1);
 });
 
 it("saves a confirmed temporary URL with its note and rejects unlisted actions", async () => {

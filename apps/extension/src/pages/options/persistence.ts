@@ -4,6 +4,7 @@ import {
   EXPORT_SCHEMA_VERSION,
   isExportedSettingsData,
   isCustomBookmarkType,
+  isShortcutActionType,
   normalizeBarConfigurations,
   type ExportedSettingsData,
   type ExportedMenuItem,
@@ -29,6 +30,7 @@ import {
   normalizeUserVariables,
   normalizeMenu,
   normalizeStoredMenuItem,
+  normalizeShortcutAction,
   type StoredMenu,
   type StoredMenuItem,
   type StoredMenuItemType,
@@ -205,7 +207,8 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           if (
             item.type === "menuFold" ||
             item.type === "menusToggle" ||
-            item.type === "browserAction"
+            item.type === "browserAction" ||
+            item.type === "shortcutsToggle"
           ) {
             return {
               uid: item.uid,
@@ -323,6 +326,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         if (
           type === "menusToggle" ||
           type === "browserAction" ||
+          type === "shortcutsToggle" ||
           type === "static" ||
           type === "staticTag" ||
           type === "flattenStaticTag" ||
@@ -420,6 +424,10 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         if (typeof sc !== "object" || sc === null) return [];
         const record = sc as unknown as Record<string, unknown>;
         if (typeof record.slot !== "string") return [];
+        if (isShortcutActionType(record.type)) {
+          const action = normalizeShortcutAction(record);
+          return action ? [{ slot: record.slot, ...action }] : [];
+        }
         return [
           {
             slot: record.slot,
@@ -446,6 +454,10 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         if (typeof sc !== "object" || sc === null) return [];
         const record = sc as unknown as Record<string, unknown>;
         if (typeof record.id !== "string" || !record.id) return [];
+        if (isShortcutActionType(record.type)) {
+          const action = normalizeShortcutAction(record);
+          return action ? [{ id: record.id, key: typeof record.key === "string" ? record.key : "", ...action }] : [];
+        }
         return [
           {
             id: record.id,

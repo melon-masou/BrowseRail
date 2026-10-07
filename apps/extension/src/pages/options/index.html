@@ -466,7 +466,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
         </div>
       </div>
 
-      <!-- Shortcut "Change bookmark" pop-down (Bookmark or Dynamic) -->
+      <!-- Shortcut target picker -->
       <div id="shortcut-pick-popover" class="add-item-popover" style="display: none;">
         <button type="button" id="shortcut-pick-bookmark-btn" class="add-popover-item">
           <span class="add-popover-icon">🔖</span>
@@ -483,6 +483,10 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
         <button type="button" id="shortcut-pick-dynamic-btn" class="add-popover-item">
           <span class="add-popover-icon">🜂</span>
           <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
+        </button>
+        <button type="button" id="shortcut-pick-action-btn" class="add-popover-item">
+          <span class="add-popover-icon">⚡</span>
+          <span class="add-popover-text" data-i18n="menu.action">Action</span>
         </button>
       </div>
 
@@ -514,20 +518,10 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
       <dialog id="add-action-dialog" class="picker-modal action-modal">
         <form method="dialog" class="picker-modal-inner" id="add-action-form">
           <div class="picker-header">
-            <h3 data-i18n="menu.addAction">Action</h3>
+            <h3 data-i18n="menuAction.menusToggle">Menu Toggle</h3>
             <button type="button" id="add-action-close" class="picker-close-btn" data-i18n-aria="common.close" aria-label="Close">✕</button>
           </div>
-          <div class="item-setting-field">
-            <select id="add-action-kind" class="item-setting-select">
-              <option value="back" data-i18n="menuAction.back">Back</option>
-              <option value="forward" data-i18n="menuAction.forward">Forward</option>
-              <option value="reload" data-i18n="menuAction.reload">Reload</option>
-              <option value="menusToggle" data-i18n="menuAction.menusToggle">Menu Toggle</option>
-              <option value="menuFold" data-i18n="menu.addMenuFold">Fold Toggle</option>
-            </select>
-          </div>
-          <div id="add-action-targets" class="item-settings-folder-controls" style="display: none;"></div>
-          <output id="add-action-error" class="status"></output>
+          <div id="add-action-targets" class="item-settings-folder-controls"></div>
           <button type="submit" id="add-action-submit" class="action-btn" data-i18n="menu.addAction">Action</button>
         </form>
       </dialog>

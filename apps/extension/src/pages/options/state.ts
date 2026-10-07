@@ -7,6 +7,7 @@ import {
   type BarConfigurations,
   type TabMode,
   type JsonValue,
+  type ShortcutAction,
 } from "@browserail/protocol";
 import type {
   DisplayMode,
@@ -64,7 +65,8 @@ export interface StateChange {
 export type ShortcutId = { kind: "slot"; slot: string } | { kind: "native"; id: string };
 export type ShortcutTarget =
   | { type: "bookmark"; path?: readonly string[]; url: string; title: string }
-  | { type: CustomBookmarkType; uid: string };
+  | { type: CustomBookmarkType; uid: string }
+  | ReadonlyData<ShortcutAction>;
 type Editable<T> = { [K in keyof T]?: T[K] | undefined };
 export type MenuAppearance = Editable<Pick<StoredMenu, "color" | "dockColor">>;
 export type ItemBehavior = Editable<
@@ -594,7 +596,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       publish(["shortcuts"], true);
     },
     setShortcutTarget(id: ShortcutId, selection: ShortcutTarget): void {
-      if (selection.type !== "bookmark") definition(selection.type, selection.uid);
+      if ("uid" in selection) definition(selection.type, selection.uid);
       if (id.kind === "slot" && !settingsDraft.shortcuts.some((value) => value.slot === id.slot))
         settingsDraft.shortcuts.push({ slot: id.slot, tabMode: "replace" });
       const target = shortcut(id);
@@ -605,6 +607,9 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       delete target.dynamicUid;
       delete target.staticUid;
       delete target.temporaryUid;
+      delete target.browserAction;
+      delete target.targetMenuUids;
+      delete target.menuUid;
       if (selection.type === "bookmark")
         setOptional(target, {
           type: "bookmark",
@@ -612,7 +617,11 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
           url: selection.url,
           title: selection.title,
         });
-      else Object.assign(target, customBookmarkReference(selection.type, selection.uid));
+      else if ("uid" in selection) Object.assign(target, customBookmarkReference(selection.type, selection.uid));
+      else {
+        delete target.tabMode;
+        Object.assign(target, structuredClone(selection));
+      }
       publish(["shortcuts"], true);
     },
   };

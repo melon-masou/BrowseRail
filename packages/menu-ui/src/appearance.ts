@@ -1,4 +1,5 @@
 import { isAutoFontSize, type LayoutEntry } from "@browserail/protocol";
+import { t } from "@browserail/i18n";
 import { barFrameInsets } from "./layout";
 import type { BarState, PopupPin } from "./types";
 
@@ -107,7 +108,24 @@ export function menuButton(
   const labelSpan = doc.createElement("span");
   labelSpan.className = "menu-button-label";
   const displayText = entry.kind === "bookmark" || entry.kind === "folder" ? entry.rename : undefined;
-  if (displayText) {
+  if (entry.kind === "shortcutsToggle") {
+    const status = t(entry.on ? "menuAction.shortcutsOn" : "menuAction.shortcutsOff");
+    const parts = entry.label.split("{on}");
+    parts.forEach((part, index) => {
+      if (index > 0) {
+        const indicator = doc.createElement("span");
+        indicator.className = "shortcut-status-dot";
+        indicator.dataset.on = String(entry.on);
+        indicator.setAttribute("aria-hidden", "true");
+        labelSpan.append(indicator);
+      }
+      labelSpan.append(doc.createTextNode(part));
+    });
+    const title = parts.join(status);
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    button.setAttribute("aria-pressed", String(entry.on));
+  } else if (displayText) {
     if (popup) {
       labelSpan.textContent =
         displayText === entry.label || entry.label.startsWith(displayText)

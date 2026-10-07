@@ -60,6 +60,11 @@ pub enum ExtensionMessage {
     Heartbeat,
     #[serde(rename = "setEditing")]
     SetEditing { editing: bool },
+    #[serde(rename = "toggleMenuFold")]
+    ToggleMenuFold {
+        #[serde(rename = "menuUid")]
+        menu_uid: String,
+    },
     #[serde(rename = "detach")]
     Detach,
     #[serde(other)]
@@ -560,6 +565,13 @@ pub enum LayoutEntry {
         #[serde(default)]
         color: Option<String>,
     },
+    ShortcutsToggle {
+        uid: String,
+        label: String,
+        #[serde(default)]
+        color: Option<String>,
+        on: bool,
+    },
     Folder {
         uid: String,
         label: String,
@@ -584,6 +596,7 @@ fn menu_gap_ratio_after(view: &MenuView, index: usize) -> f64 {
         | LayoutEntry::Folder { uid, .. }
         | LayoutEntry::MenuFold { uid, .. }
         | LayoutEntry::MenusToggle { uid, .. }
+        | LayoutEntry::ShortcutsToggle { uid, .. }
         | LayoutEntry::BrowserAction { uid, .. } => Some(uid),
         LayoutEntry::Unknown => None,
     };

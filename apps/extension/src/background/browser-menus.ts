@@ -39,9 +39,10 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
       browser.tabs.get(tabId), loadDisplayMode(), loadWidgetEnabled(), loadBrowserPlacements(), loadBrowserCollapsed(), loadBrowserEditing(),
     ]);
     if (!snapshot.active || mode !== "browser" || !enabled || !await hasWebsitePermission(tab.url)) return [];
-    return snapshot.menus.filter(menu => menuVisibleForUrl(snapshot.config, menu.view.uid, tab.url)).map(menu => ({
+    return snapshot.menus.filter(menu => menuVisibleForUrl(snapshot.config, menu.view.uid, tab.url)
+      && (collapsed[menu.view.uid] !== true || menu.view.items.some(entry => entry.kind === "menuFold"))).map(menu => ({
       ...menu, placement: placements[menu.view.uid] ?? menu.placement,
-      collapsed: collapsed[menu.view.uid] === true && menu.view.items.some(entry => entry.kind === "menuFold"),
+      collapsed: collapsed[menu.view.uid] === true,
       editingLocked: !editing,
     }));
   }
@@ -99,7 +100,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
         if (!await loadBrowserEditing() || typeof request.token !== "string" || !request.token) throw new Error("Menu editing is disabled");
         return editSession.begin(tabId, request.menuUid, request.token);
       case "invoke":
-        if (!entries.some(entry => (entry.kind === "bookmark" || entry.kind === "browserAction" || entry.kind === "menusToggle") && (entry.uid === request.actionUid || (entry.kind === "bookmark" && !entry.uid.startsWith("noop") && invertNavigationActionUid(entry.uid) === request.actionUid)))) throw new Error("Action is unavailable");
+        if (!entries.some(entry => (entry.kind === "bookmark" || entry.kind === "browserAction" || entry.kind === "menusToggle" || entry.kind === "shortcutsToggle") && (entry.uid === request.actionUid || (entry.kind === "bookmark" && !entry.uid.startsWith("noop") && invertNavigationActionUid(entry.uid) === request.actionUid)))) throw new Error("Action is unavailable");
         await executeMenuAction(request.actionUid, request.menuUid, String(tab.windowId), changed);
         break;
       case "fold":
@@ -135,7 +136,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
         return {
           view,
           placement: placements[view.uid] ?? { ...initial.boundPosition, itemWidth: initial.itemWidth, itemHeight: initial.itemHeight },
-          collapsed: collapsed[view.uid] === true && view.items.some(entry => entry.kind === "menuFold"),
+          collapsed: collapsed[view.uid] === true,
           editingLocked: !editing,
         };
       });

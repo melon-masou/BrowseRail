@@ -19,8 +19,7 @@ export function createItemPicker() {
   let dismiss: (() => void) | undefined;
   let destroyed = false;
 
-  return {
-    pick(title: string, content: PickerContent, emptyText = t("common.noMatches")): Promise<string | null> {
+  function open(title: string, content: PickerContent, emptyText: string, multiple = false): Promise<string | string[] | null> {
       dismiss?.();
       if (destroyed) return Promise.resolve(null);
       return new Promise(resolve => {
@@ -48,8 +47,9 @@ export function createItemPicker() {
         search.setAttribute("aria-label", t("common.search"));
         const list = document.createElement("div");
         list.className = "pick-menu-list";
+        const selected = new Set<string>();
         let settled = false;
-        function finish(id: string | null): void {
+        function finish(id: string | string[] | null): void {
           if (settled) return;
           settled = true;
           if (dismiss === cancel) dismiss = undefined;
@@ -95,7 +95,13 @@ export function createItemPicker() {
               meta.title = item.meta;
               button.append(meta);
             }
-            button.addEventListener("click", () => finish(item.id));
+            if (multiple) button.setAttribute("aria-pressed", String(selected.has(item.id)));
+            button.addEventListener("click", () => {
+              if (!multiple) { finish(item.id); return; }
+              if (selected.has(item.id)) selected.delete(item.id);
+              else selected.add(item.id);
+              button.setAttribute("aria-pressed", String(selected.has(item.id)));
+            });
             list.append(button);
           }
           if (!matches.length) {
@@ -134,10 +140,30 @@ export function createItemPicker() {
         render();
         body.append(search, list);
         dialog.append(header, body);
+        if (multiple) {
+          const actions = document.createElement("div");
+          actions.className = "space-bookmark-dialog-actions";
+          const apply = document.createElement("button");
+          apply.type = "button";
+          apply.className = "action-btn";
+          apply.textContent = t("picker.apply");
+          apply.addEventListener("click", () => finish([...selected]));
+          actions.append(apply);
+          dialog.append(actions);
+        }
         document.body.append(dialog);
         dialog.showModal();
         search.focus();
       });
+  }
+  return {
+    async pick(title: string, content: PickerContent, emptyText = t("common.noMatches")): Promise<string | null> {
+      const result = await open(title, content, emptyText);
+      return typeof result === "string" ? result : null;
+    },
+    async pickMany(title: string, items: readonly PickerItem[], emptyText = t("common.noMatches")): Promise<string[] | null> {
+      const result = await open(title, items, emptyText, true);
+      return Array.isArray(result) ? result : null;
     },
     close(): void { dismiss?.(); },
     destroy(): void {

@@ -235,7 +235,7 @@ fn is_menu_collapsed(
 }
 
 #[cfg(target_os = "windows")]
-fn set_menu_collapsed(
+pub(crate) fn set_menu_collapsed(
     app: &tauri::AppHandle,
     collapsed_menus: &Arc<Mutex<Vec<settings::CollapsedMenu>>>,
     instance_uid: &str,

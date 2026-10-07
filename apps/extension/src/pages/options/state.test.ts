@@ -1,6 +1,16 @@
 import { expect, it } from "vitest";
 import { createOptionsState, type SettingsDraft } from "./state";
 
+it("replaces bookmark and action targets without leaving old payloads or losing the Native key", () => {
+  const state = createState();
+  state.setShortcutTarget({ kind: "native", id: "native" }, { type: "menusToggle", targetMenuUids: ["menu"] });
+  expect(state.settings.nativeShortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "menusToggle", targetMenuUids: ["menu"] });
+  state.setShortcutTarget({ kind: "native", id: "native" }, { type: "browserAction", browserAction: "reload" });
+  expect(state.settings.nativeShortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "browserAction", browserAction: "reload" });
+  state.setShortcutTarget({ kind: "native", id: "native" }, { type: "static", uid: "static" });
+  expect(state.settings.nativeShortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "static", staticUid: "static" });
+});
+
 function initialSettings(): SettingsDraft {
   return {
     menus: [

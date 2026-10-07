@@ -1,7 +1,7 @@
 import browser from "webextension-polyfill";
 import { t } from "@browserail/i18n";
 import { actionUid as formatActionUid, isDynamicAction, parseBookmarkAction, parseDynamicAction, parseTemporaryAction, parseStaticAction, type CustomBookmarkType } from "@browserail/protocol";
-import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues } from "../config";
+import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues, loadShortcutsEnabled, saveShortcutsEnabled } from "../config";
 import { navigateBookmark, navigateToUrl } from "../browser/navigation";
 import { captureTemporaryUrl } from "./temporary";
 import { runTabAction, toggleTargetMenus } from "./menu-actions";
@@ -13,13 +13,16 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
   const config = await loadConfig();
   const targetUid = (identity: string, type: "bookmark" | CustomBookmarkType): Promise<string> =>
     menuUid === undefined ? Promise.resolve(identity) : resolveMenuBookmarkTarget(config, menuUid, identity, type);
-  if (actionUid.startsWith("browserAction:") || actionUid.startsWith("menusToggle:")) {
+  if (actionUid.startsWith("browserAction:") || actionUid.startsWith("menusToggle:") || actionUid.startsWith("shortcutsToggle:")) {
     const separator = actionUid.indexOf(":");
     const type = actionUid.slice(0, separator);
     const uid = decodeURIComponent(actionUid.slice(separator + 1));
     const sourceMenu = config.panel.menus.find((menu) => menu.uid === menuUid);
     const action = sourceMenu?.items.find((item) => item.uid === uid && item.type === type);
-    if (sourceMenu && action?.type === "menusToggle") {
+    if (action?.type === "shortcutsToggle") {
+      await saveShortcutsEnabled(!await loadShortcutsEnabled());
+      changed();
+    } else if (sourceMenu && action?.type === "menusToggle") {
       const menus = toggleTargetMenus(config.panel.menus, sourceMenu.uid, action.targetMenuUids ?? []);
       if (menus) {
         await saveConfig({ ...config, panel: { menus } });

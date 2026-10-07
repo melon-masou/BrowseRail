@@ -70,6 +70,14 @@ export interface BrowserActionEntry {
   color?: MenuColor;
 }
 
+export interface ShortcutsToggleEntry {
+  kind: "shortcutsToggle";
+  uid: string;
+  label: string;
+  color?: MenuColor;
+  on: boolean;
+}
+
 export interface FolderEntry {
   kind: "folder";
   uid: string;
@@ -108,7 +116,7 @@ export function isMenuSpacing(value: unknown): value is MenuSpacing {
     && Object.values(raw.extraGaps as object).every(value => typeof value === "number" && Number.isFinite(value) && value >= 0);
 }
 
-export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry;
+export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry | ShortcutsToggleEntry;
 
 /**
  * Render content for one menu: the item tree plus its appearance. Everything
