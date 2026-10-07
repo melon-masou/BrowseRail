@@ -594,7 +594,7 @@ async function handleMessage(raw: unknown): Promise<void> {
   }
 
   if (value.type === "updateMenuLayout") {
-    await saveBarLayout(value.menuUid, "native", value.placement, value.spacing, value.settings, value.applyToAll);
+    await saveBarLayout(value.menuUid, "native", value.placement, value.spacing, value.settings);
     requestSync();
   }
 

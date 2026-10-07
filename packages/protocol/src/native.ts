@@ -16,7 +16,7 @@
 // (hidden-but-kept), so switching URLs never destroys and recreates a surface.
 // =============================================================================
 
-import { isNativeBarSettings, isBarSettingsGroups, type NativeBarSettings } from "./bar";
+import { isNativeBarSettings, type NativeBarSettings } from "./bar";
 import { isMenuSpacing, type MenuSpacing } from "./menu";
 import type { MenuView } from "./menu";
 import type { SyncedNativeShortcut } from "./index";
@@ -206,7 +206,6 @@ export type NativeMessage =
       // An edit commits settings, spacing and complete placement together.
       type: "updateMenuLayout";
       settings: NativeBarSettings;
-      applyToAll?: import("./bar").BarSettingsGroup[];
       menuUid: string;
       placement: MenuPlacement;
       spacing: MenuSpacing;
@@ -234,7 +233,7 @@ export function isNativeMessage(value: unknown): value is NativeMessage {
           typeof value.windowUid === "string")
       );
     case "updateMenuLayout":
-      return typeof value.menuUid === "string" && isMenuPlacement(value.placement) && isMenuSpacing(value.spacing) && isNativeBarSettings(value.settings) && (value.applyToAll === undefined || isBarSettingsGroups(value.applyToAll));
+      return typeof value.menuUid === "string" && isMenuPlacement(value.placement) && isMenuSpacing(value.spacing) && isNativeBarSettings(value.settings);
     case "verifyWindowPairing":
       return typeof value.requestUid === "string" && typeof value.windowUid === "string";
     case "pairWindowResult":

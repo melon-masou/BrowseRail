@@ -1,5 +1,5 @@
 import browser, { type Runtime } from "webextension-polyfill";
-import { isBarSettings, isBarSettingsGroups, isMenuSpacing, matchesUrlRule, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
+import { isBarSettings, isMenuSpacing, matchesUrlRule, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
   defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBarLayout, toggleBrowserCollapsed, menuUrlRules,
   type BrowserMenuPlacement, type ExtensionConfig,
@@ -112,8 +112,8 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
         if (!await loadBrowserEditing()) throw new Error("Menu editing is disabled");
         if (!isMenuSpacing(request.spacing)) throw new Error("Invalid menu spacing");
         if (!isBarSettings(request.settings)) throw new Error("Invalid bar settings");
-        if (!isBarSettingsGroups(request.applyToAll) || !await editSession.owns(tabId, request.menuUid, request.token)) throw new Error("Bar editing is unavailable");
-        await saveBarLayout(request.menuUid, "browser", { boundPosition: { anchor: request.placement.anchor, offsetX: request.placement.offsetX, offsetY: request.placement.offsetY }, itemWidth: request.placement.itemWidth, itemHeight: request.placement.itemHeight }, request.spacing, request.settings, request.applyToAll);
+        if (!await editSession.owns(tabId, request.menuUid, request.token)) throw new Error("Bar editing is unavailable");
+        await saveBarLayout(request.menuUid, "browser", { boundPosition: { anchor: request.placement.anchor, offsetX: request.placement.offsetX, offsetY: request.placement.offsetY }, itemWidth: request.placement.itemWidth, itemHeight: request.placement.itemHeight }, request.spacing, request.settings);
         changed();
         break;
       case "temporaryConfirm":

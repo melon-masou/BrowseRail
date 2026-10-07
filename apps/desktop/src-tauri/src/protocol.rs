@@ -99,8 +99,6 @@ pub enum NativeMessage {
         placement: MenuPlacement,
         spacing: MenuSpacing,
         settings: NativeBarSettings,
-        #[serde(rename = "applyToAll")]
-        apply_to_all: Vec<BarSettingsGroup>,
     },
     #[serde(rename = "verifyWindowPairing")]
     VerifyWindowPairing {
@@ -254,6 +252,8 @@ pub struct MenuView {
     pub auto_hide: BarAutoHide,
     #[serde(default = "default_auto_hide_padding")]
     pub auto_hide_padding: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_hide_range: Option<BarAutoHideRange>,
     #[serde(default)]
     pub font_family: Option<String>,
     #[serde(default)]
@@ -288,9 +288,17 @@ impl MenuSpacing {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum BarSettingsGroup { Orientation, Font, Expand, AutoHide, Attachment, OnTop }
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct BarAutoHideRange {
+    pub start: f64,
+    pub end: f64,
+}
+impl BarAutoHideRange {
+    fn is_valid(&self) -> bool {
+        self.start.is_finite() && self.end.is_finite()
+            && self.start >= 0.0 && self.end <= 1.0 && self.start < self.end
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -302,6 +310,8 @@ pub struct NativeBarSettings {
     pub auto_hide: BarAutoHide,
     #[serde(default = "default_auto_hide_padding")]
     pub auto_hide_padding: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_hide_range: Option<BarAutoHideRange>,
     pub button_font_size: f64,
     pub popup_font_size: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -313,6 +323,7 @@ pub struct NativeBarSettings {
 impl NativeBarSettings {
     pub fn is_valid(&self) -> bool {
         self.auto_hide_padding.is_finite() && self.auto_hide_padding >= 0.0
+            && self.auto_hide_range.as_ref().is_none_or(BarAutoHideRange::is_valid)
             && self.button_font_size.is_finite() && (self.button_font_size == -1.0 || self.button_font_size >= 1.0)
             && self.popup_font_size.is_finite() && (self.popup_font_size == -1.0 || self.popup_font_size >= 1.0)
             && (self.attachment_mode != AttachmentMode::Free || self.on_top_mode == OnTopMode::AlwaysOnTop)
@@ -322,6 +333,7 @@ impl NativeBarSettings {
         view.font_family = Some(self.font_family.trim().to_string());
         view.auto_hide = self.auto_hide;
         view.auto_hide_padding = self.auto_hide_padding;
+        view.auto_hide_range = self.auto_hide_range;
         view.button_font_size = Some(self.button_font_size);
         view.popup_font_size = Some(self.popup_font_size);
         view.expand_direction = self.expand_direction;

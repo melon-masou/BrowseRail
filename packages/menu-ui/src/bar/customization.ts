@@ -6,7 +6,8 @@ import type { BarState, Rect } from "../types";
 import { placeCustomizationToolbar, type ToolbarSide } from "./customization-position";
 
 export function layoutCustomization(content: HTMLElement, rail: HTMLElement, toolbar: HTMLElement, anchor: Rect, bounds: Rect, current?: ToolbarSide) {
-  const position = placeCustomizationToolbar(anchor, toolbar.getBoundingClientRect(), bounds, current);
+  const position = placeCustomizationToolbar(anchor, toolbar.getBoundingClientRect(), bounds, current, 4,
+    rail.dataset.orientation === "column" ? "left" : "center");
   const envelope = position.bounds;
   content.style.width = `${envelope.right - envelope.left}px`;
   content.style.height = `${envelope.bottom - envelope.top}px`;

@@ -322,7 +322,6 @@ impl SessionRegistry {
         placement: MenuPlacement,
         spacing: MenuSpacing,
         settings: crate::protocol::NativeBarSettings,
-        apply_to_all: Vec<crate::protocol::BarSettingsGroup>,
     ) -> Result<(), String> {
         let mut sessions = self.sessions.write().map_err(|_| "Session lock failed")?;
         let session = sessions
@@ -348,7 +347,6 @@ impl SessionRegistry {
                 placement,
                 spacing,
                 settings,
-                apply_to_all,
             })
             .map_err(|_| "The browser instance is disconnected".into())
     }
@@ -736,6 +734,7 @@ mod tests {
                 orientation: MenuOrientation::Row,
                 auto_hide: Default::default(),
                 auto_hide_padding: 6.0,
+                auto_hide_range: None,
                 font_family: None,
                 color: None,
                 expand_direction: None,

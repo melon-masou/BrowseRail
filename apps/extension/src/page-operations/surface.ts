@@ -61,8 +61,8 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
       if (lifetime.signal.aborted || state.editingLocked) { releaseEdit(); return; }
       renderer?.destroy(); renderer = undefined;
       editor = mountBrowserCustomization(wrapper, root, barState(), state.placement,
-        async (placement, spacing, settings, applyToAll) => {
-          await send({ type: "layout", token, applyToAll, settings, menuUid: state.view.uid, placement, spacing });
+        async (placement, spacing, settings) => {
+          await send({ type: "layout", token, settings, menuUid: state.view.uid, placement, spacing });
           if (lifetime.signal.aborted) return;
           state = { ...state, placement, view: { ...state.view, ...settings, ...spacing } };
           finishCustomization();

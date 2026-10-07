@@ -332,7 +332,7 @@ it("only saves browser layout while editing is enabled and keeps Native settings
   const placement = { anchor: "bottomRight" as const, offsetX: 30, offsetY: 40, itemWidth: 120, itemHeight: 50 };
   const settings = { ...defaultBarSettings(), fontFamily: "Arial", orientation: "row" as const, expandAlignment: "center" as const, buttonFontSize: 20 };
   const spacing = { gapRatio: 0.2, extraGaps: { "item-1": 0.5 } };
-  const command = { type: "layout" as const, menuUid: "source", token: "edit", applyToAll: [], placement, settings, spacing };
+  const command = { type: "layout" as const, menuUid: "source", token: "edit", placement, settings, spacing };
   expect(await page.request(command)).toHaveProperty("error");
   expect((await loadBrowserPlacements()).source).toBeUndefined();
   await saveBrowserEditing(true);
@@ -360,37 +360,23 @@ it("does not offer empty menus or menus on websites whose permission was revoked
   expect(await service.forTab(17)).toEqual([]);
 });
 
-it("applies selected settings to all configured bars without changing geometry or the other mode", async () => {
+it.each(["browser", "native"] as const)("saving one bar preserves other bars and the other mode (%s)", async mode => {
   const config = await fixture();
   config.panel.menus.push({ uid: "target", items: [] });
   await saveConfig(config);
   const placement = { ...defaultMenuPlacement(), itemWidth: 140, itemHeight: 45 };
   const spacing = { gapRatio: 0.6, extraGaps: { a: 0.3 } };
-  const target = { ...defaultBarSettings(), expandDirection: "left" as const, fontFamily: "Arial" };
-  await saveBarLayout("target", "browser", placement, spacing, target);
-  const native = { ...defaultNativeBarSettings(), fontFamily: "Segoe UI" };
-  await saveBarLayout("target", "native", placement, spacing, native);
-  const source = { ...defaultBarSettings(), orientation: "row" as const, autoHide: "end" as const, autoHidePadding: 20, expandAlignment: "center" as const };
-  await saveBarLayout("source", "browser", defaultMenuPlacement(), { gapRatio: 0, extraGaps: {} }, source, ["autoHide", "expand"]);
+  await saveBarLayout("target", "browser", placement, spacing, { ...defaultBarSettings(), expandDirection: "left", fontFamily: "Arial" });
+  await saveBarLayout("target", "native", placement, spacing, { ...defaultNativeBarSettings(), attachmentMode: "free", onTopMode: "alwaysOnTop", fontFamily: "Segoe UI" });
+  const before = await loadBarConfigurations();
+  const source = { ...(mode === "native" ? defaultNativeBarSettings() : defaultBarSettings()), orientation: "row" as const, autoHide: "end" as const, autoHidePadding: 20, autoHideRange: { start: .2, end: .4 }, expandAlignment: "center" as const };
+  const sourceSpacing = { gapRatio: 0.2, extraGaps: {} };
+  await saveBarLayout("source", mode, defaultMenuPlacement(), sourceSpacing, source);
   const bars = await loadBarConfigurations();
-  expect(bars.browser.target).toMatchObject({ ...spacing, placement, orientation: target.orientation, fontFamily: "Arial", autoHide: "end", autoHidePadding: 20, expandAlignment: "center" });
-  expect(bars.browser.target).not.toHaveProperty("expandDirection");
-  expect(bars.native.target).toMatchObject({ ...native, ...spacing, placement });
-});
-
-it("does not apply bulk on-top preferences to free bars", async () => {
-  const config = await fixture();
-  config.panel.menus.push({ uid: "free", items: [] }, { uid: "bound", items: [] });
-  await saveConfig(config);
-  const spacing = { gapRatio: 0, extraGaps: {} };
-  await saveBarLayout("free", "native", defaultMenuPlacement(), spacing, { ...defaultNativeBarSettings(), attachmentMode: "free", onTopMode: "alwaysOnTop" });
-  await saveBarLayout("bound", "native", defaultMenuPlacement(), spacing, { ...defaultNativeBarSettings(), onTopMode: "alwaysOnTop" });
-  await saveBarLayout("source", "native", defaultMenuPlacement(), spacing, defaultNativeBarSettings(), ["onTop"]);
-  const bars = await loadBarConfigurations();
-  expect(bars.native.free).toMatchObject({ attachmentMode: "free", onTopMode: "alwaysOnTop" });
-  expect(bars.native.bound).toMatchObject({ onTopMode: "aboveBrowser" });
-  await saveBarLayout("free", "native", defaultMenuPlacement(), spacing, { ...defaultNativeBarSettings(), attachmentMode: "free", onTopMode: "alwaysOnTop" }, ["onTop"]);
-  expect((await loadBarConfigurations()).native.bound).toMatchObject({ onTopMode: "aboveBrowser" });
+  expect(bars[mode].source).toMatchObject({ ...source, ...sourceSpacing, placement: defaultMenuPlacement() });
+  expect(bars[mode].target).toEqual(before[mode].target);
+  const otherMode = mode === "native" ? "browser" : "native";
+  expect(bars[otherMode]).toEqual(before[otherMode]);
 });
 
 it("rejects a second editor across tabs and releases ownership on cancel or navigation", async () => {

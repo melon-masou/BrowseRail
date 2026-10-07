@@ -619,7 +619,6 @@ fn save_menu_placement(
     item_height: f64,
     spacing: protocol::MenuSpacing,
     settings: protocol::NativeBarSettings,
-    apply_to_all: Vec<protocol::BarSettingsGroup>,
     anchor_offset_x: f64,
     anchor_offset_y: f64,
 ) -> Result<MenuPlacement, String> {
@@ -728,7 +727,6 @@ fn save_menu_placement(
             placement,
             spacing,
             settings,
-            apply_to_all,
         });
     Ok(placement)
 }
@@ -903,7 +901,6 @@ async fn open_bar_settings(
     window: tauri::WebviewWindow,
     instance_uid: String,
     settings: protocol::NativeBarSettings,
-    apply_to_all: Vec<protocol::BarSettingsGroup>,
     item_height: f64,
     title: String,
 ) -> Result<String, String> {
@@ -916,7 +913,6 @@ async fn open_bar_settings(
         return Ok(label);
     }
     let data = serde_json::to_string(&settings).map_err(|error| error.to_string())?;
-    let groups = serde_json::to_string(&apply_to_all).map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
     let size = window.outer_size().map_err(|error| error.to_string())?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
@@ -934,8 +930,8 @@ async fn open_bar_settings(
             "bottom": f64::from(area.position.y) + f64::from(area.size.height),
         },
     }).to_string();
-    let url = format!("index.html?view=barSettings&parent={}&settings={}&itemHeight={item_height}&positioning={}&applyToAll={}",
-        urlencoding::encode(window.label()), urlencoding::encode(&data), urlencoding::encode(&positioning), urlencoding::encode(&groups));
+    let url = format!("index.html?view=barSettings&parent={}&settings={}&itemHeight={item_height}&positioning={}",
+        urlencoding::encode(window.label()), urlencoding::encode(&data), urlencoding::encode(&positioning));
     let created = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
         .title(title)
         .owner(&window).map_err(|error| error.to_string())?

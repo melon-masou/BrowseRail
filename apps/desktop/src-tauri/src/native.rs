@@ -195,7 +195,6 @@ pub enum NativeCommand {
         placement: MenuPlacement,
         spacing: MenuSpacing,
         settings: crate::protocol::NativeBarSettings,
-        apply_to_all: Vec<crate::protocol::BarSettingsGroup>,
     },
     CancelCustomization {
         instance_uid: String,
@@ -1215,11 +1214,10 @@ impl NativeReactor {
                     placement,
                     spacing,
                     settings,
-                    apply_to_all,
                 } => {
                     let _ = self
                         .registry
-                        .update_menu_layout(&instance_uid, menu_uid, placement, spacing, settings, apply_to_all);
+                        .update_menu_layout(&instance_uid, menu_uid, placement, spacing, settings);
                     self.check_update_tray();
                 }
                 NativeCommand::CancelCustomization {

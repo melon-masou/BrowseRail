@@ -2,14 +2,14 @@ import type { Rect, Size } from "../types";
 
 export type ToolbarSide = "top" | "bottom" | "left" | "right";
 
-export function placeCustomizationToolbar(anchor: Rect, size: Size, bounds: Rect, current?: ToolbarSide, gap = 4) {
+export function placeCustomizationToolbar(anchor: Rect, size: Size, bounds: Rect, current?: ToolbarSide, gap = 4, horizontalAlignment: "center" | "left" = "center") {
   const clampX = (x: number): number => Math.max(bounds.left, Math.min(x, bounds.right - size.width));
   const clampY = (y: number): number => Math.max(bounds.top, Math.min(y, bounds.bottom - size.height));
-  const centerX = clampX((anchor.left + anchor.right - size.width) / 2);
+  const toolbarX = clampX(horizontalAlignment === "left" ? anchor.left : (anchor.left + anchor.right - size.width) / 2);
   const centerY = clampY((anchor.top + anchor.bottom - size.height) / 2);
   const candidates = [
-    { side: "bottom", x: centerX, y: anchor.bottom + gap },
-    { side: "top", x: centerX, y: anchor.top - gap - size.height },
+    { side: "bottom", x: toolbarX, y: anchor.bottom + gap },
+    { side: "top", x: toolbarX, y: anchor.top - gap - size.height },
     { side: "right", x: anchor.right + gap, y: centerY },
     { side: "left", x: anchor.left - gap - size.width, y: centerY },
   ] satisfies { side: ToolbarSide; x: number; y: number }[];

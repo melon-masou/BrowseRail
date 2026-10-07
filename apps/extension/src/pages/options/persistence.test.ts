@@ -73,8 +73,8 @@ async function fixture() {
   return { state, persistence };
 }
 async function saveLayouts() {
-  await saveBarLayout("bar", "native", { ...defaultMenuPlacement(), freePosition: { x: 300, y: 400 } }, { gapRatio: 0.2, extraGaps: { a: 0.4 } }, { ...defaultNativeBarSettings(), orientation: "row", attachmentMode: "free", onTopMode: "alwaysOnTop" });
-  await saveBarLayout("bar", "browser", { ...defaultMenuPlacement(), boundPosition: { anchor: "bottomRight", offsetX: 40, offsetY: 50 } }, { gapRatio: 0.3, extraGaps: {} }, { ...defaultBarSettings(), expandDirection: "left", expandAlignment: "center", popupFontSize: 18 });
+  await saveBarLayout("bar", "native", { ...defaultMenuPlacement(), freePosition: { x: 300, y: 400 } }, { gapRatio: 0.2, extraGaps: { a: 0.4 } }, { ...defaultNativeBarSettings(), orientation: "row", attachmentMode: "free", onTopMode: "alwaysOnTop", autoHideRange: { start: .1, end: .3 } });
+  await saveBarLayout("bar", "browser", { ...defaultMenuPlacement(), boundPosition: { anchor: "bottomRight", offsetX: 40, offsetY: 50 } }, { gapRatio: 0.3, extraGaps: {} }, { ...defaultBarSettings(), expandDirection: "left", expandAlignment: "center", popupFontSize: 18, autoHideRange: { start: .7, end: 1 } });
 }
 
 it("exports shared colors and bindings; optionally includes both modes without runtime or instance data", async () => {
@@ -87,6 +87,8 @@ it("exports shared colors and bindings; optionally includes both modes without r
   expect(portable).not.toHaveProperty("barConfigurations");
   const complete = await persistence.exportSettings(true);
   expect(complete.barConfigurations).toEqual(await loadBarConfigurations());
+  expect(complete.barConfigurations!.native.bar!.autoHideRange).toEqual({ start: .1, end: .3 });
+  expect(complete.barConfigurations!.browser.bar!.autoHideRange).toEqual({ start: .7, end: 1 });
   persistence.destroy();
 });
 
@@ -225,6 +227,8 @@ it("stages both modes until Save, then consumes the import so future saves prese
   expect((await loadBarConfigurations()).native.bar!.buttonFontSize).toBe(21);
   expect((await loadBarConfigurations()).browser.bar!.fontFamily).toBe("Arial");
   expect((await loadBarConfigurations()).native.bar!.fontFamily).toBe("Microsoft YaHei");
+  expect((await loadBarConfigurations()).native.bar!.autoHideRange).toEqual({ start: .1, end: .3 });
+  expect((await loadBarConfigurations()).browser.bar!.autoHideRange).toEqual({ start: .7, end: 1 });
   expect(state.settings.barConfigurations).toBeUndefined();
   const bars = await loadBarConfigurations();
   const browser = bars.browser.bar!;

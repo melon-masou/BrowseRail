@@ -299,6 +299,52 @@ it("lets a click-only bar folder replace a temporary pin using its normal left c
 });
 
 describe("bar auto-hide", () => {
+  it.each([
+    ["column", "start"], ["column", "end"], ["row", "start"], ["row", "end"],
+  ] as const)("moves the chosen band to the hiding edge and restores the full bar on hover (%s/%s)", async (orientation, autoHide) => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu = { ...state.menu, orientation, autoHide, autoHideRange: { start: .25, end: .5 }, autoHidePadding: 3 };
+    const regions: Array<Rect | null> = [];
+    adapter.commitHitRegion = async region => { regions.push(region); };
+    const controller = mount(root, state, adapter); await controller.ready;
+    const extent = orientation === "column" ? 86 : 38;
+    const hit = regions.at(-1)!;
+    const start = autoHide === "start" ? 0 : extent * .75;
+    const end = start + extent * .25;
+    expect(orientation === "column" ? hit!.left : hit!.top).toBeCloseTo(Math.max(0, start - 3));
+    expect(orientation === "column" ? hit!.right : hit!.bottom).toBeCloseTo(Math.min(extent, end + 3));
+    const content = root.querySelector<HTMLElement>(".bar-content")!;
+    const offset = start - extent * .25;
+    expect(content.style.transform).toBe(orientation === "column" ? `translate(${offset}px, 0px)` : `translate(0px, ${offset}px)`);
+    // Clipping before translation keeps exactly the user's selected source band.
+    const clipped = content.style.clipPath.match(/-?[\d.]+/g)!.map(Number);
+    expect(orientation === "column" ? clipped[3] : clipped[0]).toBeCloseTo(extent * .25);
+    expect(orientation === "column" ? clipped[1] : clipped[2]).toBeCloseTo(extent * .5);
+    press(root.querySelector("button")!); expect(adapter.invokeAction).not.toHaveBeenCalled();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const viewport = root.querySelector<HTMLElement>(".bar-viewport")!;
+    viewport.dispatchEvent(new Event("pointerenter")); await vi.advanceTimersByTimeAsync(200);
+    expect(regions.at(-1)).toBeNull(); expect(content.style.clipPath).toBe(""); expect(content.style.transform).toBe("");
+    press(root.querySelector("button")!); expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
+    viewport.dispatchEvent(new Event("pointerleave")); await vi.advanceTimersByTimeAsync(200);
+    expect(regions.at(-1)).toEqual(hit);
+    await controller.update({ ...state, itemSize: { width: 168, height: 72 } });
+    const resized = orientation === "column" ? 170 : 74;
+    const nextHit = regions.at(-1)!;
+    expect(orientation === "column" ? nextHit!.left : nextHit!.top).toBeCloseTo(autoHide === "start" ? 0 : resized * .75 - 3);
+    expect(orientation === "column" ? nextHit!.right : nextHit!.bottom).toBeCloseTo(autoHide === "start" ? resized * .25 + 3 : resized);
+    await controller.update({ ...state, editingLocked: false });
+    expect(regions.at(-1)).toBeNull(); expect(root.querySelector<HTMLElement>(".bar-content")!.style.clipPath).toBe("");
+  });
+
+  it("limits the wake area to the full bar even when the chosen band touches an edge", async () => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu = { ...state.menu, orientation: "column", autoHide: "end", autoHideRange: { start: .9, end: 1 }, autoHidePadding: 1000 };
+    adapter.commitHitRegion = vi.fn(async () => {});
+    await mount(root, state, adapter).ready;
+    expect(adapter.commitHitRegion).toHaveBeenLastCalledWith({ left: 0, top: 0, right: 86, bottom: 46 });
+  });
+
   it.each(["column", "row"] as const)("expands the wake area by the configured amount and can restore its original size (%s)", async orientation => {
     const root = container(); const adapter = host(); const state = barState();
     state.menu = { ...state.menu, orientation, autoHide: "start", autoHidePadding: 0 };

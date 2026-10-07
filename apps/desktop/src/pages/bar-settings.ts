@@ -1,5 +1,5 @@
 import { mountBarSettings, placeBarSettings, type Rect } from "@browserail/menu-ui";
-import { isNativeBarSettings, isBarSettingsGroups } from "@browserail/protocol";
+import { isNativeBarSettings } from "@browserail/protocol";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { showWindowWhenReady } from "../window-ready";
 import { invoke } from "@tauri-apps/api/core";
@@ -12,9 +12,8 @@ export function initializeBarSettings(root: HTMLElement, query: URLSearchParams)
   const settings: unknown = JSON.parse(query.get("settings") ?? "null");
   const itemHeight = Number(query.get("itemHeight"));
   const positioning: { anchor: Rect; bounds: Rect } = JSON.parse(query.get("positioning") ?? "null");
-  const applyToAll: unknown = JSON.parse(query.get("applyToAll") ?? "null");
-  if (!parent || !isNativeBarSettings(settings) || !isBarSettingsGroups(applyToAll) || !Number.isFinite(itemHeight) || itemHeight <= 0 || !positioning) throw new Error("Bar settings are unavailable");
-  const controller = mountBarSettings(root, settings, (draft, groups) => { void emitTo(parent, "bar-settings-draft", { settings: draft, applyToAll: groups }); }, itemHeight, invoke<string[]>("installed_fonts"), applyToAll);
+  if (!parent || !isNativeBarSettings(settings) || !Number.isFinite(itemHeight) || itemHeight <= 0 || !positioning) throw new Error("Bar settings are unavailable");
+  const controller = mountBarSettings(root, settings, draft => { void emitTo(parent, "bar-settings-draft", { settings: draft }); }, itemHeight, invoke<string[]>("installed_fonts"));
   void Promise.all([listen<number>("bar-settings-item-height", ({ payload }) => {
     if (Number.isFinite(payload) && payload > 0) controller.updateItemHeight(payload);
   }, { target: getCurrentWindow().label }), listen<"row" | "column">("bar-settings-orientation", ({ payload }) => {

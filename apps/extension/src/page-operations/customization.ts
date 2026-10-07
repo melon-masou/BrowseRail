@@ -1,23 +1,22 @@
 import { t } from "@browserail/i18n";
 import {
   applyBarTheme, resolveFontFamily, mountBarSettings, placeBarSettings, createSettingsIcon, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon,
-  createCancelIcon, createSaveIcon, createOrientationControl, nextAnchor, anchorLabel, type BarState,
+  createCancelIcon, createSaveIcon, createOrientationControl, mountHideRangeEditor, createHideRangeIcon, nextAnchor, anchorLabel, type BarState,
   layoutCustomization, type ToolbarSide,
 } from "@browserail/menu-ui";
-import { barSettingsFromView, type BarSettings, type BarSettingsGroup, type MenuSpacing } from "@browserail/protocol";
+import { barSettingsFromView, type BarSettings, type MenuSpacing } from "@browserail/protocol";
 import type { BrowserMenuPlacement } from "../config";
 import { placementAtPoint, placementPoint } from "./placement";
 
 export function mountBrowserCustomization(
   wrapper: HTMLElement, root: HTMLElement, state: BarState, placement: BrowserMenuPlacement,
-  save: (placement: BrowserMenuPlacement, spacing: MenuSpacing, settings: BarSettings, applyToAll: BarSettingsGroup[]) => Promise<void>, cancel: () => void,
+  save: (placement: BrowserMenuPlacement, spacing: MenuSpacing, settings: BarSettings) => Promise<void>, cancel: () => void,
 ) {
   const doc = root.ownerDocument;
   const viewport = doc.defaultView!;
   const lifetime = new AbortController();
   const options = { signal: lifetime.signal };
   let settings: BarSettings = barSettingsFromView(state.menu);
-  let applyToAll: BarSettingsGroup[] = [];
   let anchor = placement.anchor;
   let size = barDimensions(state.menu, state.itemSize);
   const initialSurface = barSurfaceDimensions(state.menu, state.itemSize);
@@ -36,13 +35,16 @@ export function mountBrowserCustomization(
   const spacingButton = controlButton(doc, createSpacingIcon(doc));
   spacingButton.title = t("customize.adjustSpacing");
   spacingButton.setAttribute("aria-pressed", "false");
+  const hideRangeButton = controlButton(doc, createHideRangeIcon(doc));
+  hideRangeButton.title = t("customize.hideRange");
+  hideRangeButton.setAttribute("aria-pressed", "false");
   const settingsButton = controlButton(doc, createSettingsIcon(doc)); settingsButton.title = t("bar.settings");
   const orientationControl = createOrientationControl(doc, settings.orientation, orientation => {
     stopGesture?.(); settings = { ...settings, orientation }; spacingEditor.setSettings(settings);
   });
   const toolsRow = doc.createElement("div"); toolsRow.className = "customize-toolbar-row";
   const actionsRow = doc.createElement("div"); actionsRow.className = "customize-toolbar-row";
-  toolsRow.append(anchorButton, orientationControl.button, spacingButton, settingsButton);
+  toolsRow.append(anchorButton, orientationControl.button, spacingButton, hideRangeButton, settingsButton);
   actionsRow.append(cancelButton, saveButton);
   toolbar.append(toolsRow, actionsRow);
   content.append(rail, toolbar);
@@ -52,10 +54,20 @@ export function mountBrowserCustomization(
     size = barDimensions(menu, itemSize);
     layout();
   });
+  const hideRangeEditor = mountHideRangeEditor(rail, state.menu, state.itemSize, hideRangeButton, patch => {
+    settings = { ...settings, ...patch };
+    settingsController.updateHideSettings(patch);
+  });
   spacingButton.addEventListener("click", () => {
     stopGesture?.();
+    hideRangeEditor.close();
     spacingEditor.setEnabled(!spacingEditor.enabled);
     spacingButton.setAttribute("aria-pressed", String(spacingEditor.enabled));
+  }, options);
+  hideRangeButton.addEventListener("click", () => {
+    stopGesture?.();
+    spacingEditor.setEnabled(false); spacingButton.setAttribute("aria-pressed", "false");
+    hideRangeEditor.cycle();
   }, options);
   const settingsPopup = doc.createElement("div"); settingsPopup.className = "bar-settings-popup"; settingsPopup.hidden = true;
   const header = doc.createElement("header");
@@ -64,8 +76,8 @@ export function mountBrowserCustomization(
   header.append(title, close);
   const settingsForm = doc.createElement("div");
   settingsPopup.append(header, settingsForm); wrapper.append(settingsPopup);
-  const settingsController = mountBarSettings(settingsForm, settings, (next, groups) => {
-    stopGesture?.(); settings = next; applyToAll = groups;
+  const settingsController = mountBarSettings(settingsForm, settings, next => {
+    stopGesture?.(); settings = next;
     spacingEditor.setSettings(next);
   }, spacingEditor.itemSize.height);
   settingsPopup.classList.add("bar-settings");
@@ -84,6 +96,7 @@ export function mountBrowserCustomization(
     point.y = Math.max(0, Math.min(viewport.innerHeight - surfaceHeight, point.y));
     rail.style.setProperty("--config-bar-width", `${size.width}px`);
     rail.style.setProperty("--config-bar-height", `${size.height}px`);
+    hideRangeEditor.update({ ...spacingEditor.menu, ...settings }, spacingEditor.itemSize);
     const position = layoutCustomization(content, rail, toolbar,
       { left: point.x, top: point.y, right: point.x + surfaceWidth, bottom: point.y + surfaceHeight },
       { left: 0, top: 0, right: viewport.innerWidth, bottom: viewport.innerHeight }, toolbarSide);
@@ -122,7 +135,7 @@ export function mountBrowserCustomization(
     element.addEventListener("lostpointercapture", stop, options);
   }
   rail.addEventListener("pointerdown", event => {
-    if (spacingEditor.enabled) return;
+    if (spacingEditor.enabled || hideRangeEditor.enabled) return;
     const start = { ...point };
     const startX = event.clientX, startY = event.clientY;
     beginGesture(rail, event, next => {
@@ -134,7 +147,7 @@ export function mountBrowserCustomization(
   for (const direction of ["north", "east", "south", "west", "southEast"] as const) {
     const handle = doc.createElement("div"); handle.className = `resize-handle resize-${direction}`;
     handle.addEventListener("pointerdown", event => {
-      if (spacingEditor.enabled) return;
+      if (spacingEditor.enabled || hideRangeEditor.enabled) return;
       const row = spacingEditor.menu.orientation === "row";
       const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 });
       const max = barDimensions(spacingEditor.menu, { width: row ? 400 : 220, height: row ? 64 : 200 });
@@ -161,24 +174,24 @@ export function mountBrowserCustomization(
   cancelButton.addEventListener("click", cancel, options);
   saveButton.addEventListener("click", () => {
     if (saving) return;
-    saving = true; stopGesture?.(); spacingEditor.stopGesture(); rail.inert = true;
-    for (const button of [anchorButton, orientationControl.button, spacingButton, settingsButton, cancelButton, saveButton]) button.disabled = true;
+    saving = true; stopGesture?.(); spacingEditor.stopGesture(); hideRangeEditor.stopGesture(); rail.inert = true;
+    for (const button of [anchorButton, orientationControl.button, spacingButton, hideRangeButton, settingsButton, cancelButton, saveButton]) button.disabled = true;
     const frame = barFrameInsets(spacingEditor.menu);
     const draft = placementAtPoint({ ...placement, anchor,
       itemWidth: spacingEditor.itemSize.width,
       itemHeight: spacingEditor.itemSize.height,
     }, point.x, point.y, size.width + 2 * frame.x, size.height + 2 * frame.y, viewport.innerWidth, viewport.innerHeight);
     settingsPopup.hidden = true;
-    void save(draft, spacingEditor.spacing, settings, applyToAll).catch(error => {
+    void save(draft, spacingEditor.spacing, settings).catch(error => {
       if (lifetime.signal.aborted) return;
       root.dataset.error = ""; root.title = String(error); saving = false; rail.inert = false;
-      for (const button of [anchorButton, orientationControl.button, spacingButton, settingsButton, cancelButton, saveButton]) button.disabled = false;
+      for (const button of [anchorButton, orientationControl.button, spacingButton, hideRangeButton, settingsButton, cancelButton, saveButton]) button.disabled = false;
     });
   }, options);
   rail.addEventListener("contextmenu", event => event.preventDefault(), options);
   layout();
   return {
     resize: layout,
-    destroy(): void { stopGesture?.(); settingsController.destroy(); settingsPopup.remove(); spacingEditor.destroy(); lifetime.abort(); root.classList.remove("customize-mode"); },
+    destroy(): void { stopGesture?.(); settingsController.destroy(); settingsPopup.remove(); hideRangeEditor.destroy(); spacingEditor.destroy(); lifetime.abort(); root.classList.remove("customize-mode"); },
   };
 }

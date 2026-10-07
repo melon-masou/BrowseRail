@@ -24,6 +24,7 @@ export const DEFAULT_MENU_COLOR = "#3a465cff";
 
 export type MenuOrientation = "row" | "column";
 export type BarAutoHide = "off" | "start" | "end";
+export interface BarAutoHideRange { start: number; end: number }
 export const DEFAULT_AUTO_HIDE_PADDING = 6;
 
 /**
@@ -136,6 +137,7 @@ export interface MenuView {
   orientation: MenuOrientation;
   autoHide?: BarAutoHide;
   autoHidePadding?: number;
+  autoHideRange?: BarAutoHideRange;
   fontFamily?: string;
   color?: MenuColor;
   expandDirection?: ExpandDirection;
