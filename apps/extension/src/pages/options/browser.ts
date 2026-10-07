@@ -1,9 +1,30 @@
 import browser from "webextension-polyfill";
 import { probeDesktopConnection } from "../../native/connection";
-import { saveWidgetEnabled } from "../../config";
+import {
+  loadWidgetEnabled, saveWidgetEnabled, loadShortcutsEnabled, saveShortcutsEnabled,
+  WIDGET_ENABLED_STORAGE_KEY, SHORTCUTS_ENABLED_STORAGE_KEY,
+} from "../../config";
 import { browserKind } from "../../browser/windows";
 
+type RuntimeState = { enabled: boolean; shortcutsEnabled: boolean };
+
+async function runtimeState(): Promise<RuntimeState> {
+  const [enabled, shortcutsEnabled] = await Promise.all([loadWidgetEnabled(), loadShortcutsEnabled()]);
+  return { enabled, shortcutsEnabled };
+}
+
 export const browserActions = {
+  runtimeState,
+  setShortcutsEnabled: saveShortcutsEnabled,
+  onRuntimeState(listener: (state: RuntimeState) => void): () => void {
+    const receive: Parameters<typeof browser.storage.onChanged.addListener>[0] = (changes, area) => {
+      if (area === "local" && (changes[WIDGET_ENABLED_STORAGE_KEY] || changes[SHORTCUTS_ENABLED_STORAGE_KEY])) {
+        void runtimeState().then(listener).catch(error => console.error("BrowseRail runtime state:", error));
+      }
+    };
+    browser.storage.onChanged.addListener(receive);
+    return () => browser.storage.onChanged.removeListener(receive);
+  },
   async setWidgetEnabled(enabled: boolean): Promise<void> {
     await saveWidgetEnabled(enabled);
     await browser.runtime.sendMessage({ type: "setWidgetEnabled", enabled });
@@ -14,6 +35,22 @@ export const browserActions = {
     browser.runtime.sendMessage({ type: "getDesktopState" }) as Promise<
       { state?: string; detail?: string } | undefined
     >,
+  menuEditingState: () => browser.runtime.sendMessage({ type: "getMenuEditingState" }) as Promise<
+    { enabled: boolean; editing: boolean }
+  >,
+  setMenuEditing: (editing: boolean) => browser.runtime.sendMessage({ type: "setMenuEditing", editing }) as Promise<
+    { enabled: boolean; editing: boolean }
+  >,
+  onMenuEditingState(listener: (state: { enabled: boolean; editing: boolean }) => void): () => void {
+    const receive = (message: unknown): void => {
+      const value = message as { type?: string; enabled?: unknown; editing?: unknown } | null;
+      if (value?.type === "menuEditingStateChanged" && typeof value.enabled === "boolean" && typeof value.editing === "boolean") {
+        listener({ enabled: value.enabled, editing: value.editing });
+      }
+    };
+    browser.runtime.onMessage.addListener(receive);
+    return () => browser.runtime.onMessage.removeListener(receive);
+  },
   commands: () => browser.commands.getAll(),
   probeDesktop: probeDesktopConnection,
   resetMenuPosition: (menuUid: string) =>

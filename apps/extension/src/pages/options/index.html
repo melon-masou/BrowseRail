@@ -8,38 +8,35 @@
   <body>
     <main>
       <header class="page-header">
-        <img class="page-logo" src="/icons/48.png" alt="BrowseRail" width="32" height="32" />
-        <h1>BrowseRail</h1>
-        <div class="header-links">
-          <a
-            id="download-desktop-link"
-            class="header-link header-link-download"
-            href="https://github.com/melon-masou/BrowseRail/releases"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor">
-              <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
-            </svg>
-            <span data-i18n="header.downloadDesktop">Download Desktop</span>
+        <div class="page-brand">
+          <a id="github-link" href="https://github.com/melon-masou/BrowseRail" target="_blank" rel="noopener noreferrer" title="GitHub">
+            <img class="page-logo" src="/icons/48.png" alt="BrowseRail" width="24" height="24" />
           </a>
-          <a
-            id="github-link"
-            class="header-link header-link-github"
-            href="https://github.com/melon-masou/BrowseRail"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-              <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
-            </svg>
-            <span data-i18n="header.github">GitHub</span>
-          </a>
+          <h1>BrowseRail</h1>
         </div>
-        <label class="language-picker">
-          <span data-i18n="language.label">Language</span>
-          <select id="language-select"></select>
-        </label>
+        <div class="runtime-controls">
+          <div class="runtime-switch-control">
+            <span id="widget-enabled-label">ON/OFF</span>
+            <label class="switch-toggle">
+              <input type="checkbox" id="widget-enabled-toggle" aria-labelledby="widget-enabled-label" disabled />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <div class="runtime-switch-control">
+            <span id="edit-menus-label" data-i18n="injection.editMenus">Edit mode</span>
+            <label class="switch-toggle">
+              <input type="checkbox" id="edit-menus-toggle" aria-labelledby="edit-menus-label" disabled />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <div class="runtime-switch-control">
+            <span id="shortcuts-enabled-label" data-i18n="section.shortcuts">Shortcuts</span>
+            <label class="switch-toggle">
+              <input type="checkbox" id="shortcuts-enabled-toggle" aria-labelledby="shortcuts-enabled-label" disabled />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
       </header>
 
       <section class="settings-shell">
@@ -80,7 +77,6 @@
               <div class="state-actions">
                 <button id="resync-button" class="action-btn" type="button" data-i18n="btn.resync" disabled>Resync</button>
                 <button id="reconnect-button" class="action-btn reconnect-btn" type="button" data-i18n="btn.reconnect">Reconnect</button>
-                <button id="toggle-enabled-button" class="action-btn toggle-enabled-btn" type="button" data-i18n="btn.disable">Disable</button>
               </div>
             </div>
 
@@ -111,7 +107,7 @@
               </label>
             </div>
 
-            <div class="fields-row connection-shared-row">
+            <div class="fields-row connection-preferences-row">
               <label id="bookmark-root-field">
                 <span class="label-row">
                   <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
@@ -121,11 +117,15 @@
                   <button id="pick-bookmark-root-btn" type="button" data-i18n="btn.browse">Browse</button>
                 </span>
               </label>
+              <label class="language-picker">
+                <span data-i18n="language.label">Language</span>
+                <select id="language-select"></select>
+              </label>
               <div id="sync-enabled-field">
                 <span class="label-row">
                   <span data-i18n="form.chromeSync">Chrome Sync</span>
                 </span>
-                <span class="input-row" style="display: flex; align-items: center; gap: 8px; height: 38px;">
+                <span class="input-row" style="height: 36px;">
                   <label class="switch-toggle" data-i18n-title="form.chromeSyncTitle" title="Sync menus and bookmarks across devices via Chrome Sync">
                     <input type="checkbox" id="sync-enabled-toggle" />
                     <span class="switch-slider"></span>

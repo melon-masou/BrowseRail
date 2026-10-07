@@ -1,4 +1,3 @@
-import browser from "webextension-polyfill";
 import { type DisplayMode } from "../../../config";
 import { isLocalDesktopUrl } from "../../../native/connection";
 import { createRandomInstanceLabel } from "../../../config/instance-label";
@@ -20,7 +19,6 @@ export function mountInstanceTab(
   const displayMode = element<HTMLSelectElement>("display-mode");
   const instanceLabel = element<HTMLInputElement>("instance-label");
   const randomInstanceLabel = element<HTMLButtonElement>("random-instance-label");
-  const toggleEnabledButton = element<HTMLButtonElement>("toggle-enabled-button");
   const desktopUrl = element<HTMLInputElement>("desktop-url");
   const stateCard = element<HTMLDivElement>("state-card");
   const stateBadge = element<HTMLSpanElement>("state-badge");
@@ -44,6 +42,12 @@ export function mountInstanceTab(
   let desktopTestGeneration = 0;
 
   scope.add(browserActions.onDesktopState(renderDesktopState));
+  scope.add(browserActions.onRuntimeState((runtime) => {
+    if (scope.signal.aborted || widgetEnabled === runtime.enabled) return;
+    widgetEnabled = runtime.enabled;
+    if (!widgetEnabled || state.savedDisplayMode === "browser") renderDesktopState("disabled");
+    else void refreshDesktopState();
+  }));
 
   instanceLabel.addEventListener(
     "input",
@@ -63,22 +67,6 @@ export function mountInstanceTab(
       desktopUrl.setCustomValidity("");
       clearDesktopTestStatus();
       state.editInstance({ desktopUrl: desktopUrl.value });
-    },
-    { signal: scope.signal },
-  );
-
-  toggleEnabledButton.addEventListener(
-    "click",
-    () => {
-      clearResyncStatus();
-      widgetEnabled = !widgetEnabled;
-      updateDesktopControls();
-      if (!widgetEnabled || state.savedDisplayMode === "browser") {
-        renderDesktopState("disabled");
-      } else {
-        renderDesktopState("connecting", t("state.detail.connectingToWidget"));
-      }
-      void browserActions.setWidgetEnabled(widgetEnabled);
     },
     { signal: scope.signal },
   );
@@ -239,34 +227,7 @@ export function mountInstanceTab(
     }
   }
 
-  function initHeaderLinks(): void {
-    const downloadLink = document.getElementById(
-      "download-desktop-link",
-    ) as HTMLAnchorElement | null;
-    if (!downloadLink) return;
-
-    const isReleaseBuild =
-      typeof __BROWSERAIL_IS_RELEASE__ !== "undefined" && __BROWSERAIL_IS_RELEASE__;
-    const buildReleaseTag =
-      typeof __BROWSERAIL_RELEASE_TAG__ !== "undefined" ? __BROWSERAIL_RELEASE_TAG__ : "";
-    const manifestVersion = browser.runtime?.getManifest?.()?.version;
-    const hasCustomManifestVersion = Boolean(manifestVersion && manifestVersion !== "0.1.0");
-    const isRelease = isReleaseBuild || hasCustomManifestVersion;
-    const effectiveTag = buildReleaseTag || (hasCustomManifestVersion ? `v${manifestVersion}` : "");
-
-    if (isRelease) {
-      downloadLink.href = effectiveTag
-        ? `https://github.com/melon-masou/BrowseRail/releases/tag/${effectiveTag}`
-        : "https://github.com/melon-masou/BrowseRail/releases";
-      downloadLink.style.display = "";
-    } else {
-      downloadLink.style.display = "none";
-    }
-  }
-
   function updateDesktopControls(): void {
-    toggleEnabledButton.textContent = widgetEnabled ? t("btn.disable") : t("btn.enable");
-    toggleEnabledButton.dataset.action = widgetEnabled ? "disable" : "enable";
     desktopUrl.disabled = state.savedDisplayMode === "browser";
     testDesktop.disabled = state.savedDisplayMode === "browser";
   }
@@ -447,7 +408,6 @@ export function mountInstanceTab(
   }
   pickBookmarkRootBtn?.addEventListener("click", () => void pickRoot(), { signal: scope.signal });
   scope.add(state.subscribe(["instance"], render));
-  initHeaderLinks();
   render();
   void refreshDesktopState();
   return {

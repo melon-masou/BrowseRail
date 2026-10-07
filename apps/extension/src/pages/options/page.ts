@@ -20,6 +20,7 @@ import { createBookmarkTools } from "./components/bookmark-tools";
 import { createOverlays } from "./components/overlays";
 import { createSiteAuthorization } from "./components/site-authorization";
 import { mountExternalAuthorization } from "./components/external-authorization";
+import { mountRuntimeControls } from "./components/runtime-controls";
 import { mountStartTab } from "./tabs/start";
 import { mountInstanceTab } from "./tabs/instance";
 import { mountMenusTab } from "./tabs/menus";
@@ -89,6 +90,7 @@ export async function mountOptionsPage() {
     hasUnsavedRules: () => state.dirty.settings,
   });
   scope.add(authorization.destroy);
+  const runtime = mountRuntimeControls(loaded.enabled);
   const start = mountStartTab();
   const instance = mountInstanceTab(state, library, bookmarkPicker, loaded.enabled);
   const externalAuthorization = mountExternalAuthorization(state);
@@ -114,7 +116,7 @@ export async function mountOptionsPage() {
     showStatus,
   );
   const rules = mountUrlMatchingTab(state);
-  const views = [start, instance, externalAuthorization, menus, custom, shortcuts, rules];
+  const views = [runtime, start, instance, externalAuthorization, menus, custom, shortcuts, rules];
   for (const view of views) scope.add(view.destroy);
   function renderNativeHints(): void {
     for (const hint of document.querySelectorAll<HTMLElement>("[data-native-only]"))

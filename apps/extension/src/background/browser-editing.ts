@@ -13,7 +13,8 @@ const OPTIONS_MENU_ID = "browserail-open-options";
 
 export function createBrowserEditingMenu(host: { setNativeEditing(editing: boolean): void }) {
   let nativeEditing: boolean | undefined;
-  const ready = browser.contextMenus.removeAll().then(() => new Promise<void>((resolve, reject) => {
+  let contextMenuAvailable = true;
+  const ready = Promise.resolve().then(() => browser.contextMenus.removeAll()).then(() => new Promise<void>((resolve, reject) => {
     browser.contextMenus.create({
       id: EDIT_MENU_ID, type: "checkbox", title: t("injection.editMenus"), contexts: ["action"],
       checked: false, enabled: false,
@@ -35,13 +36,26 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
       const error = browser.runtime.lastError;
       if (error) reject(new Error(error.message)); else resolve();
     });
-  }));
-  async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
+  })).catch(error => {
+    contextMenuAvailable = false;
+    console.error("BrowseRail context menu:", error);
+  });
+  async function getState() {
+    const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
+    return stateFor(mode, enabled);
+  }
+  async function stateFor(mode: DisplayMode, enabled: boolean) {
     const editing = mode === "browser" ? await loadBrowserEditing() : nativeEditing;
-    await ready;
     const available = enabled && editing !== undefined;
+    return { enabled: available, editing: available && editing === true };
+  }
+  async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
+    const state = await stateFor(mode, enabled);
+    await browser.runtime.sendMessage({ type: "menuEditingStateChanged", ...state }).catch(() => {});
+    await ready;
+    if (!contextMenuAvailable) return;
     await browser.contextMenus.update(EDIT_MENU_ID, {
-      title: t("injection.editMenus"), enabled: available, checked: available && editing === true,
+      title: t("injection.editMenus"), enabled: state.enabled, checked: state.editing,
     });
     await browser.contextMenus.update(ADD_STATIC_MENU_ID, { title: t("static.addCurrentPage") });
     await browser.contextMenus.update(OPTIONS_MENU_ID, { title: t("action.openOptions") });
@@ -50,7 +64,19 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
     const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
     await update(mode, enabled);
   };
-  browser.contextMenus.onClicked.addListener((info, tab) => {
+  async function setEditing(editing: boolean, tabId?: number): Promise<void> {
+    const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
+    if (!enabled) return;
+    if (mode === "native") {
+      if (nativeEditing !== undefined) host.setNativeEditing(editing);
+      return;
+    }
+    await saveBrowserEditing(editing);
+    await refresh();
+    const tabs = tabId === undefined ? await browser.tabs.query({}) : [{ id: tabId }];
+    await Promise.all(tabs.map(tab => tab.id === undefined ? undefined : requestBrowserMenuRefresh(tab.id)));
+  }
+  browser.contextMenus?.onClicked?.addListener((info, tab) => {
     if (info.menuItemId === OPTIONS_MENU_ID) {
       void browser.runtime.openOptionsPage().catch(error => console.error("BrowseRail options:", error));
       return;
@@ -63,22 +89,20 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
       return;
     }
     if (info.menuItemId !== EDIT_MENU_ID) return;
-    void (async () => {
-      const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
-      if (enabled && mode === "native" && nativeEditing !== undefined) {
-        host.setNativeEditing(info.checked === true);
-        return;
-      }
-      if (mode === "browser" && enabled) await saveBrowserEditing(info.checked === true);
-      await refresh();
-      if (tab?.id !== undefined) await requestBrowserMenuRefresh(tab.id);
-    })().catch(async error => {
+    void setEditing(info.checked === true, tab?.id).catch(async error => {
       console.error("BrowseRail editing:", error);
       await refresh();
     });
   });
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
-    if ((message as { type?: string } | null)?.type !== "staticSaveConfirmed") return undefined;
+    const value = message as { type?: string; editing?: unknown } | null;
+    if (value?.type === "getMenuEditingState" || value?.type === "setMenuEditing") {
+      if (sender.id !== browser.runtime.id || sender.url?.split(/[?#]/)[0] !== browser.runtime.getURL("options.html")) return undefined;
+      if (value.type === "getMenuEditingState") return getState();
+      if (typeof value.editing !== "boolean") return Promise.reject(new Error("Invalid editing state"));
+      return setEditing(value.editing).then(getState);
+    }
+    if (value?.type !== "staticSaveConfirmed") return undefined;
     return saveStaticConfirmed(message, sender).then(() => ({ saved: true }), error => ({ error: String(error) }));
   });
   browser.storage.onChanged.addListener((changes, area) => {

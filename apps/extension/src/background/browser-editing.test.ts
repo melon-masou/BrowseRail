@@ -12,16 +12,20 @@ const mocks = vi.hoisted(() => ({
   getTab: vi.fn(async (_id: number) => ({ id: 7, windowId: 1 })),
   sendToTab: vi.fn(async () => ({ updated: true })),
   setNativeEditing: vi.fn((_editing: boolean) => {}),
+  broadcast: vi.fn(async (_message: unknown) => {}),
+  queryTabs: vi.fn(async () => [{ id: 7 }, { id: 8 }]),
+  removeMenus: vi.fn(async () => {}),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
   runtime: {
     id: "browserail", getURL: (path: string) => `chrome-extension://browserail/${path}`,
+    sendMessage: mocks.broadcast,
     onMessage: { addListener: (listener: (message: unknown, sender: Runtime.MessageSender) => unknown) => { mocks.message = listener; } },
   },
   action: { setPopup: mocks.setPopup, openPopup: mocks.openPopup },
-  tabs: { get: mocks.getTab, sendMessage: mocks.sendToTab },
+  tabs: { get: mocks.getTab, query: mocks.queryTabs, sendMessage: mocks.sendToTab },
   contextMenus: {
-    removeAll: async () => {},
+    removeAll: mocks.removeMenus,
     create: (menu: Menus.CreateCreatePropertiesType, done: () => void) => {
       mocks.menus.set(String(menu.id), menu);
       if (menu.type === "checkbox") mocks.menu = menu;
@@ -47,6 +51,7 @@ beforeEach(() => {
   mocks.setPopup.mockClear(); mocks.openPopup.mockReset().mockResolvedValue(); mocks.sendToTab.mockClear();
   mocks.getTab.mockResolvedValue({ id: 7, windowId: 1 });
   mocks.setNativeEditing.mockClear();
+  mocks.broadcast.mockClear(); mocks.queryTabs.mockClear(); mocks.removeMenus.mockReset().mockResolvedValue();
 });
 
 it("provides a checked editing switch on the extension icon in browser mode", async () => {
@@ -95,6 +100,62 @@ it("uses browser editing state in browser mode even when Native editing was enab
   mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] });
   await vi.waitFor(async () => expect(await loadBrowserEditing()).toBe(true));
   expect(mocks.setNativeEditing).not.toHaveBeenCalled();
+});
+
+const optionsSender = { id: "browserail", url: "chrome-extension://browserail/options.html" };
+
+it("enables editing from options and refreshes open page menus using the same state as the context menu", async () => {
+  await saveDisplayMode("browser");
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing });
+  await menu.update("browser", true);
+  expect(await mocks.message!({ type: "getMenuEditingState" }, optionsSender)).toEqual({ enabled: true, editing: false });
+  expect(await mocks.message!({ type: "setMenuEditing", editing: true }, optionsSender)).toEqual({ enabled: true, editing: true });
+  expect(await loadBrowserEditing()).toBe(true);
+  expect(mocks.menu.checked).toBe(true);
+  expect(mocks.sendToTab).toHaveBeenCalledWith(7, { type: "browserMenusRefresh" }, { frameId: 0 });
+  expect(mocks.sendToTab).toHaveBeenCalledWith(8, { type: "browserMenusRefresh" }, { frameId: 0 });
+  mocks.broadcast.mockClear();
+  mocks.clicked!({ menuItemId: mocks.menu.id!, checked: false, editable: false, modifiers: [] }, {
+    id: 7, windowId: 1, index: 0, active: true, pinned: false, highlighted: false, incognito: false,
+  });
+  await vi.waitFor(() => expect(mocks.broadcast).toHaveBeenCalledWith({ type: "menuEditingStateChanged", enabled: true, editing: false }));
+  expect(await mocks.message!({ type: "getMenuEditingState" }, optionsSender)).toEqual({ enabled: true, editing: false });
+});
+
+it("reflects Native editing acknowledgements in options and refuses editing when disconnected", async () => {
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing });
+  expect(await mocks.message!({ type: "setMenuEditing", editing: true }, optionsSender)).toEqual({ enabled: false, editing: false });
+  expect(mocks.setNativeEditing).not.toHaveBeenCalled();
+  await menu.updateNativeEditing(false);
+  await mocks.message!({ type: "setMenuEditing", editing: true }, optionsSender);
+  expect(mocks.setNativeEditing).toHaveBeenCalledWith(true);
+  await menu.updateNativeEditing(true);
+  expect(mocks.broadcast).toHaveBeenLastCalledWith({ type: "menuEditingStateChanged", enabled: true, editing: true });
+  expect(await mocks.message!({ type: "getMenuEditingState" }, optionsSender)).toEqual({ enabled: true, editing: true });
+  expect(await loadBrowserEditing()).toBe(false);
+  await menu.updateNativeEditing(undefined);
+  expect(await mocks.message!({ type: "getMenuEditingState" }, optionsSender)).toEqual({ enabled: false, editing: false });
+});
+
+it("keeps options editing usable when context menus are unsupported", async () => {
+  await saveDisplayMode("browser");
+  mocks.removeMenus.mockRejectedValue(new Error("Context menus unavailable"));
+  const report = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing });
+    await menu.update("browser", true);
+    expect(await mocks.message!({ type: "setMenuEditing", editing: true }, optionsSender)).toEqual({ enabled: true, editing: true });
+    expect(await loadBrowserEditing()).toBe(true);
+    expect(mocks.sendToTab).toHaveBeenCalledWith(7, { type: "browserMenusRefresh" }, { frameId: 0 });
+  } finally { report.mockRestore(); }
+});
+
+it("rejects editing commands from web pages", async () => {
+  await saveDisplayMode("browser");
+  const menu = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing });
+  await menu.update("browser", true);
+  expect(mocks.message!({ type: "setMenuEditing", editing: true }, { id: "browserail", url: "https://example.com" })).toBeUndefined();
+  expect(await loadBrowserEditing()).toBe(false);
 });
 
 it("confirms edited name and URL before adding a persistent static bookmark in native mode with the widget disabled", async () => {
