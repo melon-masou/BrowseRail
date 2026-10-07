@@ -49,7 +49,7 @@ export const helpDoc: Record<Lang, readonly HelpSection[]> = {
         "Left-click a bookmark to open it in the current tab; right-click to open it in a new tab.",
         "Hover over a folder to expand it. Left-click to pin it temporarily; left-click again or click a bookmark or outside to release it. Right-click to lock it; click the same folder again with either button to unlock.",
         "Long-press a temporary bookmark to save the current page's URL.",
-        "Check “Edit menus” in the extension icon's context menu, then left-click the bar to adjust its size and position."
+        "Check “Edit mode” in the extension icon's context menu, then left-click the bar to adjust its size and position."
       ]
     }
   ],
@@ -95,7 +95,7 @@ export const helpDoc: Record<Lang, readonly HelpSection[]> = {
         "左键点击书签在当前标签打开，右键在新标签打开。",
         "悬停文件夹展开，左键点击可临时固定，再次左键点击、点击书签或外部解除。右键点击锁定，再用左键或右键点击同一文件夹解除。",
         "长按临时书签保存当前页面的网址。",
-        "在扩展图标的右键菜单中勾选「编辑菜单」，再左键点击栏调整大小和位置。"
+        "在扩展图标的右键菜单中勾选「编辑模式」，再左键点击栏调整大小和位置。"
       ]
     }
   ]

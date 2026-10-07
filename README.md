@@ -2,6 +2,8 @@
 
 BrowseRail puts your bookmarks in customizable bars, with configurable colors, layout, folder menus, and shortcuts.
 
+**This project is heavily vibe-coded. Things may break in unexpected ways.**
+
 ## Modes
 
 - **Native mode:** displays bars in separate desktop windows, attached to a browser window or floating freely. Requires the desktop app. Currently supports Windows only.
@@ -27,7 +29,7 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
 - Left-click a bookmark to open it in the current tab; right-click to open it in a new tab.
 - Hover over a folder to expand it.
 - Hold a temporary bookmark button to save the current page.
-- Enable **Edit menus** from the extension icon’s context menu to adjust bar positions, sizes, spacing, and settings.
+- Enable **Edit mode** in the extension settings or from the extension icon’s context menu to adjust bar positions, sizes, spacing, and settings.
 
 ## Development
 
