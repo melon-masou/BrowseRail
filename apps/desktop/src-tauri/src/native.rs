@@ -7,11 +7,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use uuid::Uuid;
-use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{CreateRectRgn, DeleteObject, GetWindowRgn, HGDIOBJ, PtInRegion};
-use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
-};
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_OEM_1, VK_OEM_2, VK_OEM_3, VK_OEM_4,
@@ -25,7 +22,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_KEYDOWN, WM_SYSKEYDOWN,
     MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_XBUTTONDOWN, WindowFromPoint,
 };
-use windows::core::PWSTR;
 
 use crate::panel::{
     PopupPin, PopupPointerAction, PopupPointerSource, PopupRegistry, PopupRequest, SurfaceRegistry,
@@ -589,58 +585,12 @@ fn resolve_free_position(
     if on_screen { (x, y) } else { center() }
 }
 
-fn foreground_browser_window() -> Option<(isize, &'static str)> {
+fn foreground_window_handle() -> Option<isize> {
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.0.is_null() {
         return None;
     }
-    let browser = foreground_browser_kind(hwnd)?;
-    Some((hwnd.0 as isize, browser))
-}
-
-fn foreground_browser_kind(hwnd: HWND) -> Option<&'static str> {
-    let mut process_id = 0;
-    if unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) } == 0 {
-        return None;
-    }
-
-    let process =
-        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) }.ok()?;
-    let mut path = [0_u16; 1024];
-    let mut length = path.len() as u32;
-    let query_result = unsafe {
-        QueryFullProcessImageNameW(
-            process,
-            PROCESS_NAME_WIN32,
-            PWSTR(path.as_mut_ptr()),
-            &mut length,
-        )
-    };
-    let _ = unsafe { CloseHandle(process) };
-    query_result.ok()?;
-
-    let executable = String::from_utf16_lossy(&path[..length as usize])
-        .rsplit(['\\', '/'])
-        .next()?
-        .to_ascii_lowercase();
-    let kind = match executable.as_str() {
-        "brave.exe" => Some("brave"),
-        "chrome.exe" | "chromium.exe" | "thorium.exe" => Some("chrome"),
-        "msedge.exe" => Some("edge"),
-        "firefox.exe" | "floorp.exe" | "librewolf.exe" | "waterfox.exe" => Some("firefox"),
-        "opera.exe" | "opera_gx.exe" => Some("opera"),
-        "vivaldi.exe" => Some("vivaldi"),
-        _ => None,
-    };
-    if kind.is_none() {
-        crate::debug::log(
-            "Native:FG",
-            format!(
-                "Foreground exe '{executable}' not matched to known browser (PID {process_id}, HWND {hwnd:?})"
-            ),
-        );
-    }
-    kind
+    Some(hwnd.0 as isize)
 }
 
 fn is_valid_window(hwnd: isize) -> bool {
@@ -1421,20 +1371,18 @@ impl NativeReactor {
         window_uid: String,
         outgoing: UnboundedSender<NativeMessage>,
     ) {
-        let fg_opt = foreground_browser_window();
+        let fg_opt = foreground_window_handle();
         crate::debug::log(
             "Pairing:Begin",
             format!("inst={instance_uid}, req={request_uid}, win={window_uid}, fg={fg_opt:?}"),
         );
-        // The foreground window must be a browser (so we have a real HWND to bind);
-        // the identity match is windowUid-based (has_window) plus the extension's
-        // focus confirmation in the VerifyWindowPairing round-trip below. The
-        // instance already scopes the connection, so no browser-kind comparison is
-        // needed.
-        let Some((foreground_hwnd, _foreground_browser)) = fg_opt else {
+        // The extension confirms its registered window is focused, and the HWND
+        // must stay foreground throughout that round trip. Custom WebView hosts
+        // have their own executable names, so process names do not identify them.
+        let Some(foreground_hwnd) = fg_opt else {
             crate::debug::log(
                 "Pairing:Begin",
-                "Failed: foreground_browser_window() is None",
+                "Failed: foreground_window_handle() is None",
             );
             let _ = outgoing.send(NativeMessage::PairWindowResult {
                 request_uid,
@@ -1506,8 +1454,8 @@ impl NativeReactor {
             });
             return;
         };
-        let fg_current = foreground_browser_window();
-        let foreground_matches = fg_current.is_some_and(|(hwnd, _)| hwnd == pairing.hwnd);
+        let fg_current = foreground_window_handle();
+        let foreground_matches = fg_current == Some(pairing.hwnd);
         let request_matches = pairing.connection_uid == connection_uid
             && pairing.instance_uid == instance_uid
             && pairing.window_uid == window_uid;
