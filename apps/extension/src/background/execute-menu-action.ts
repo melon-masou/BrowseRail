@@ -1,4 +1,5 @@
 import browser from "webextension-polyfill";
+import { t } from "@browserail/i18n";
 import { actionUid as formatActionUid, isDynamicAction, parseBookmarkAction, parseDynamicAction, parseTemporaryAction, parseStaticAction, type CustomBookmarkType } from "@browserail/protocol";
 import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues } from "../config";
 import { navigateBookmark, navigateToUrl } from "../browser/navigation";
@@ -35,9 +36,8 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
   } else if (isDynamicAction(actionUid)) {
     const { dynamicUid, tabMode } = parseDynamicAction(actionUid);
     const live = await loadDynamicValue(await targetUid(dynamicUid, "dynamic"));
-    if (live?.url) {
-      await navigateToUrl(browser, targetWindowUid, live.url, tabMode);
-    }
+    if (!live?.url) throw new Error(t("customBookmarks.noSavedUrl"));
+    await navigateToUrl(browser, targetWindowUid, live.url, tabMode);
   } else if (actionUid.startsWith("temporarySave:")) {
     const raw = actionUid.slice("temporarySave:".length);
     const queryIndex = raw.indexOf("?");
@@ -57,7 +57,8 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     const target = await targetUid(uid, "temporary");
     if (!config.temporaryBookmarks.some(entry => entry.uid === target)) return;
     const url = (await loadTemporaryValues())[target];
-    if (url) await navigateToUrl(browser, targetWindowUid, url, tabMode);
+    if (!url) throw new Error(t("customBookmarks.noSavedUrl"));
+    await navigateToUrl(browser, targetWindowUid, url, tabMode);
   } else {
     const { uid, tabMode } = parseBookmarkAction(actionUid);
     await navigateBookmark(browser, targetWindowUid, formatActionUid("bookmark", await targetUid(uid, "bookmark"), tabMode));
