@@ -7,6 +7,7 @@ import { mountBrowserMenu, type MenuCommand } from "./surface";
 function createPageController() {
   let checking: Promise<void> | undefined;
   let rootWait: AbortController | undefined;
+  // let surfaceObserver: MutationObserver | undefined;
   let host: HTMLElement | undefined;
   let container: HTMLElement | undefined;
   let initialized = false;
@@ -16,9 +17,31 @@ function createPageController() {
   let stateRevision = 0;
 
   function clearSurface(): void {
+    // surfaceObserver?.disconnect(); surfaceObserver = undefined;
     for (const menu of menus.values()) menu.destroy();
     menus.clear(); host?.remove(); host = undefined; container = undefined;
   }
+
+  /*
+  function maintainSurface(element: HTMLElement, initialBody: HTMLElement): void {
+    let observedBody = initialBody;
+    const observer = new MutationObserver(() => {
+      if (suspended || host !== element || !document.body) return;
+      if (observedBody !== document.body) watch(document.body);
+      if (element.parentNode !== document.body) document.body.append(element);
+    });
+    function watch(body: HTMLElement): void {
+      observedBody = body;
+      observer.disconnect();
+      // Document-level renderers can remove foreign body children during startup.
+      // Observe only the mounting parents, leaving the site's inner UI unwatched.
+      observer.observe(document.documentElement, { childList: true });
+      observer.observe(body, { childList: true });
+    }
+    surfaceObserver = observer;
+    watch(initialBody);
+  }
+  */
 
   function waitForBody(): Promise<HTMLElement | null> {
     if (document.body) return Promise.resolve(document.body);
@@ -89,6 +112,9 @@ function createPageController() {
         shadow.adoptedStyleSheets.push(sheet);
         container = document.createElement("div"); container.className = "browser-menus"; shadow.append(container);
         body.append(host);
+        // Some React-based sites (e.g. GitHub repository pages) remove injected
+        // nodes during document initialization. Mount recovery is disabled for now.
+        // maintainSurface(host, body);
       }
       for (const menu of message.menus) {
         if (suspended || revision !== stateRevision) return;

@@ -74,6 +74,31 @@ it("executes a fold click with one message and applies its returned state", asyn
   expect(mock.connect).not.toHaveBeenCalled();
 });
 
+/* Enable together with mount recovery.
+it("restores the existing bars after page rendering removes them, without reading new state", async () => {
+  const { host, shadow } = await mount();
+  const button = shadow.querySelector("button");
+  mock.send.mockClear();
+  document.body.replaceChildren();
+  await vi.advanceTimersByTimeAsync(60);
+  expect(document.body.querySelector("browserail-menus")).toBe(host);
+  expect(shadow.querySelector("button")).toBe(button);
+  const replacement = document.createElement("body");
+  document.body.replaceWith(replacement);
+  await vi.advanceTimersByTimeAsync(60);
+  expect(replacement.querySelector("browserail-menus")).toBe(host);
+  expect(shadow.querySelector("button")).toBe(button);
+  expect(mock.send).not.toHaveBeenCalled();
+  expect(mock.connect).not.toHaveBeenCalled();
+  mock.send.mockResolvedValue({ state: { type: "state", menus: [{ ...menu, collapsed: true }] } });
+  const fold = Array.from(shadow.querySelectorAll("button")).find(button => button.textContent === "Fold")!;
+  fold.dispatchEvent(new PointerEvent("pointerdown", { button: 0, bubbles: true }));
+  await vi.advanceTimersByTimeAsync(60);
+  expect(mock.send).toHaveBeenCalledOnce();
+  expect(shadow.querySelectorAll(".menu-button")).toHaveLength(1);
+});
+*/
+
 it("does not create an overlay or keep checking when no menus are available", async () => {
   mock.send.mockResolvedValue({ type: "state", menus: [] });
   await import("./index");
