@@ -728,7 +728,10 @@ export async function resolveMenuItems(
     }),
   );
 
-  return entryGroups.flat();
+  return entryGroups.flatMap((entries, index) => {
+    const cssClass = items[index]?.cssClass;
+    return cssClass ? entries.map(entry => ({ ...entry, cssClass })) : entries;
+  });
 }
 
 function toLayoutEntry(

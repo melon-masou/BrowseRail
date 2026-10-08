@@ -177,7 +177,10 @@
             <section id="menus-panel" class="menus-section" role="tabpanel" aria-labelledby="menus-tab">
               <div class="menus-toolbar menus-add-toolbar">
                 <span class="url-rules-hint" data-i18n="menus.hint">Combine bookmarks and actions, and configure menu style and behavior.</span>
-                <button id="add-menu" class="menu-action-btn add-menu-btn add-toolbar-action" type="button" data-i18n="btn.addMenu">+ Add menu</button>
+                <div class="menus-toolbar-actions">
+                  <button id="global-css-button" class="menu-action-btn" type="button" data-i18n="css.global">Global CSS</button>
+                  <button id="add-menu" class="menu-action-btn add-menu-btn" type="button" data-i18n="btn.addMenu">+ Add menu</button>
+                </div>
               </div>
               <div id="menus"></div>
 
@@ -398,6 +401,10 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <span class="menu-setting-label" data-i18n="menuSettings.dockColor">Bar background color</span>
               <button type="button" id="menu-setting-dock-color" class="item-color-swatch menu-setting-color-swatch"></button>
             </div>
+            <label class="menu-setting-field">
+              <span class="menu-setting-label">CSS class</span>
+              <input type="text" id="menu-setting-css-class" data-i18n-ph="css.classHint" placeholder="Separate multiple classes with spaces" spellcheck="false" />
+            </label>
           </div>
           <section class="menu-setting-url-rules-section" aria-labelledby="menu-setting-url-rules-title">
             <h3 id="menu-setting-url-rules-title" data-i18n="section.urlRules">URL matching</h3>
@@ -422,6 +429,10 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
                 <button type="button" id="item-setting-clear-rename" class="action-btn item-setting-clear-btn" data-i18n-title="itemSettings.clearRename" title="Clear rename">✕</button>
               </div>
             </div>
+            <label class="item-setting-field">
+              <span class="item-setting-field-title">CSS class</span>
+              <input type="text" id="item-setting-css-class" class="item-setting-rename-input" data-i18n-ph="css.classHint" placeholder="Separate multiple classes with spaces" spellcheck="false" />
+            </label>
             <div id="item-settings-folder-controls" class="item-settings-folder-controls">
               <label class="item-setting-check-label">
                 <input type="checkbox" id="item-setting-flatten" />

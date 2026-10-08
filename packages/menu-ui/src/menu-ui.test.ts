@@ -44,6 +44,24 @@ function mount(root: HTMLElement, state: BarState, adapter: BarHost): Controller
 }
 
 describe("shared menu mounting", () => {
+  it("exposes bar and item CSS classes in bars and editing previews and removes replaced classes", async () => {
+    const state = barState();
+    state.menu.cssClass = " icon-bar compact-rail ";
+    state.menu.items[0]!.cssClass = " icon-home compact ";
+    const root = container();
+    const controller = mount(root, state, host());
+    await controller.ready;
+    expect(root.querySelector(".menu-bar.icon-bar.compact-rail")?.textContent).toBe("One");
+    expect(root.querySelector(".menu-button.icon-home.compact")?.textContent).toBe("One");
+    const preview = createCustomizationRail(container(), state);
+    expect(preview.matches(".icon-bar.compact-rail")).toBe(true);
+    expect(preview.querySelector(".menu-button.icon-home.compact")?.textContent).toBe("One");
+    await controller.update({ ...state, menu: { ...state.menu, cssClass: "other-bar", items: [{ ...state.menu.items[0]!, cssClass: "icon-folder" }] } });
+    expect(root.querySelector(".menu-button.icon-folder")?.textContent).toBe("One");
+    expect(root.querySelector(".menu-bar.other-bar")?.textContent).toBe("One");
+    expect(root.querySelector(".icon-home, .compact, .icon-bar, .compact-rail")).toBeNull();
+  });
+
   it("renders the shortcut status placeholder and dispatches its action even while off", async () => {
     const root = container(); const adapter = host(); const state = barState();
     state.menu.items = [{ kind: "shortcutsToggle", uid: "shortcutsToggle:keys", label: "Keys {on}", on: true }];

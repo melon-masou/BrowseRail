@@ -90,7 +90,14 @@ export function normalizeDynamicBookmarks(value: unknown): DynamicBookmark[] {
   });
 }
 
+export function normalizeGlobalCss(value: unknown): Record<string, string> {
+  return Object.fromEntries(isRecord(value)
+    ? Object.entries(value).flatMap(([key, css]): [string, string][] => key.trim().length > 0 && typeof css === "string" ? [[key, css]] : [])
+    : []);
+}
+
 export interface ExtensionConfig {
+  globalCss?: Record<string, string>;
   desktopWidget: {
     url: string;
   };
@@ -250,6 +257,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
   });
 
   const urlRules = normalizeUrlRules(value.urlRules);
+  const globalCss = normalizeGlobalCss(value.globalCss);
 
   const dynamicBookmarks = normalizeDynamicBookmarks(value.dynamicBookmarks);
   const dynamicUids = new Set(dynamicBookmarks.map(bookmark => bookmark.uid));
@@ -342,6 +350,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     staticBookmarks: normalizeStaticBookmarks(value.staticBookmarks),
     temporaryBookmarks: normalizeTemporaryBookmarks(value.temporaryBookmarks),
     userVariables: normalizeUserVariables(value.userVariables),
+    ...(Object.keys(globalCss).length ? { globalCss } : {}),
     shortcuts,
     nativeShortcuts,
   };
@@ -390,6 +399,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ...(dockColor !== undefined ? { dockColor } : {}),
     enabled, items,
     uid,
+    ...(typeof value.cssClass === "string" && value.cssClass.trim() ? { cssClass: value.cssClass.trim() } : {}),
     ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
   };
 }
@@ -411,6 +421,8 @@ function isAnchor(value: unknown): value is MenuAnchor {
 
 export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefined {
   if (!isRecord(value)) return undefined;
+  const cssClass = typeof value.cssClass === "string" ? value.cssClass.trim() : "";
+  const classes = cssClass ? { cssClass } : {};
   const rawType = typeof value.type === "string" && value.type
     ? (value.type as StoredMenuItemType)
     : undefined;
@@ -421,6 +433,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     return {
+      ...classes,
       uid,
       type: rawType,
       ...(rename ? { rename } : {}),
@@ -436,6 +449,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
       ? [...new Set(value.targetMenuUids.filter((target): target is string => typeof target === "string" && target.length > 0))]
       : [];
     return {
+      ...classes,
       uid,
       type: rawType,
       ...(rawType === "browserAction" ? { browserAction: value.browserAction as (typeof BROWSER_ACTION_KINDS)[number] } : { targetMenuUids }),
@@ -450,6 +464,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     return {
+      ...classes,
       uid,
       type: "dynamic",
       dynamicUid,
@@ -464,7 +479,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
-    return { uid, type: rawType, staticTag, ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(expandOnHover !== undefined ? { expandOnHover } : {}) };
+    return { ...classes, uid, type: rawType, staticTag, ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(expandOnHover !== undefined ? { expandOnHover } : {}) };
   }
 
   if (rawType === "temporary" || rawType === "static") {
@@ -472,7 +487,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     if (typeof targetUid !== "string" || !targetUid) return undefined;
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
-    return { uid, ...customBookmarkReference(rawType === "static" ? "static" : "temporary", targetUid), ...(rename ? { rename } : {}), ...(color ? { color } : {}) };
+    return { ...classes, uid, ...customBookmarkReference(rawType === "static" ? "static" : "temporary", targetUid), ...(rename ? { rename } : {}), ...(color ? { color } : {}) };
   }
 
   const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")
@@ -490,6 +505,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   const expandOnHover = typeof value.expandOnHover === "boolean" ? value.expandOnHover : undefined;
   const includeFolders = value.includeFolders === true ? true : undefined;
   return {
+    ...classes,
     uid,
     path,
     ...(url ? { url } : {}),

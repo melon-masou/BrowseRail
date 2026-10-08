@@ -1,3 +1,4 @@
+import "@browserail/menu-ui/bar-settings.css";
 import { mountBarSettings, placeBarSettings, type Rect } from "@browserail/menu-ui";
 import { isNativeBarSettings } from "@browserail/protocol";
 import { emitTo, listen } from "@tauri-apps/api/event";

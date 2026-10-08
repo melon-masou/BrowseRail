@@ -29,6 +29,25 @@ vi.mock("webextension-polyfill", () => ({ default: {
 
 beforeEach(() => { local = {}; sync = {}; vi.clearAllMocks(); });
 
+it("applies an item's CSS classes to its generated bar buttons without passing them into folder children", async () => {
+  const tree = [{ id: "folder", title: "Folder", children: [
+    { id: "docs", title: "Docs", url: "https://example.com" },
+    { id: "sub", title: "Sub", children: [{ id: "child", title: "Child", url: "https://example.com/child" }] },
+  ] }];
+  const items = [
+    { uid: "group", type: "folder", path: ["Folder"], cssClass: "folder-style" },
+    { uid: "flat", type: "flattenFolder", path: ["Folder"], includeFolders: true, cssClass: "icon-home compact" },
+    { uid: "tags", type: "flattenStaticTag", staticTag: "work", cssClass: "tag-style" },
+    { uid: "reload", type: "browserAction", browserAction: "reload" as const, cssClass: "action-style" },
+  ];
+  const entries = await resolveMenuItems(items, undefined, undefined, undefined, {
+    tree, staticBookmarks: [{ uid: "static", name: "Static", tags: ["work"] }],
+  });
+  expect(entries.map(entry => entry.cssClass)).toEqual(["folder-style", "icon-home compact", "icon-home compact", "tag-style", "action-style"]);
+  const folders = entries.filter(entry => entry.kind === "folder");
+  expect(folders.flatMap(folder => folder.children).every(child => child.cssClass === undefined)).toBe(true);
+});
+
 it("renders a tag as a folder with the same child actions as its flattened form", async () => {
   const item = { uid: "group", type: "staticTag", staticTag: "work", rename: "Work links", color: "#123456ff", expandOnHover: false };
   const context = { bookmarksAvailable: false, staticBookmarks: [{ uid: "docs", name: "Docs", tags: ["work"] }] };

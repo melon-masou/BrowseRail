@@ -4,19 +4,6 @@
   font-family: var(--desktop-font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --menu-font-size: 13px;
-  --menu-item-height: 36px;
-  --min-column-width: 84px;
-  /* Theme tokens: unified dock surface base, faint hairline, and nested radius */
-  --surface-base: #1f2531;
-  --dock-surface: rgba(22, 27, 36, 0.88);
-  --dock-border: rgba(255, 255, 255, 0.08);
-  --dock-radius: 7px;
-  --hairline: rgb(255 255 255 / 7%);
-  --button-radius: 5px;
-  --label-color: rgb(255 255 255 / 90%);
-  --color-intensity: 90%;
-  --accent-blue: #7aa2ff;
 }
 
 html,
@@ -286,6 +273,14 @@ body[data-view="settings"] {
 #app.popup-surface {
   width: 100vw;
   height: 100vh;
+}
+
+#app.menu-surface {
+  position: relative;
+  box-sizing: border-box;
+  overflow: visible;
+  background: transparent;
+  pointer-events: none;
 }
 
 body[data-view="bar-settings"] { color-scheme: light; background: #f4f6fb; overflow-y: auto; }

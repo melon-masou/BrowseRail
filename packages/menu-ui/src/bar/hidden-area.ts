@@ -1,5 +1,5 @@
 import { DEFAULT_AUTO_HIDE_PADDING, type BarAutoHideRange, type MenuView } from "@browserail/protocol";
-import { barSurfaceDimensions } from "../layout";
+import { barFrameInsets, barSurfaceDimensions } from "../layout";
 import type { Rect, Size } from "../types";
 
 const PEEK_SIZE = 6;
@@ -30,4 +30,18 @@ export function barHiddenArea(menu: MenuView, itemSize: Size) {
     ? { ...visible, left: Math.max(0, start - padding), right: Math.min(extent, end + padding) }
     : { ...visible, top: Math.max(0, start - padding), bottom: Math.min(extent, end + padding) };
   return { surface, visible, hit, offset: { x: horizontal ? distance : 0, y: horizontal ? 0 : distance } };
+}
+
+export function applyBarHiddenAppearance(rail: HTMLElement, menu: MenuView, itemSize: Size, hidden: boolean): void {
+  const { visible, offset } = barHiddenArea(menu, itemSize);
+  const frame = barFrameInsets(menu);
+  const column = menu.orientation === "column";
+  const start = column ? visible.left - offset.x : visible.top - offset.y;
+  const size = column ? visible.right - visible.left : visible.bottom - visible.top;
+  rail.toggleAttribute("data-auto-hidden", hidden);
+  rail.dataset.autoHide = menu.autoHide ?? "off";
+  rail.style.setProperty("--bar-hidden-start", `${start}px`);
+  rail.style.setProperty("--bar-hidden-size", `${size}px`);
+  rail.style.setProperty("--bar-hidden-center-x", column ? `${start + size / 2 - frame.x}px` : "50%");
+  rail.style.setProperty("--bar-hidden-center-y", column ? "50%" : `${start + size / 2 - frame.y}px`);
 }

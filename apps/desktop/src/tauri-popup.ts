@@ -82,7 +82,7 @@ export async function createTauriPopupLink(root: HTMLElement, context: Context) 
       const nativeOpen = invoke("open_popup", {
         request: {
           anchor: { x: surface.left, y: surface.top },
-          barPointerInside: root.querySelector(".menu-bar")?.matches(":hover") === true,
+          barPointerInside: root.querySelector(".menu-bar:not(.is-editing)")?.matches(":hover") === true,
           height: surface.bottom - surface.top, instanceUid, menuUid, parentLabel,
           payload: { state, isFree, requestUid, parentLabel, pin: request.pin },
           requestUid, width: surface.right - surface.left, windowUid,

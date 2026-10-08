@@ -4,6 +4,7 @@ import { applyBarTheme, menuButton } from "../appearance";
 import { applyBarLayout } from "../layout";
 import type { BarState, Rect } from "../types";
 import { placeCustomizationToolbar, type ToolbarSide } from "./customization-position";
+import { applyBarHiddenAppearance } from "./hidden-area";
 
 export function layoutCustomization(content: HTMLElement, rail: HTMLElement, toolbar: HTMLElement, anchor: Rect, bounds: Rect, current?: ToolbarSide) {
   const position = placeCustomizationToolbar(anchor, toolbar.getBoundingClientRect(), bounds, current, 4,
@@ -24,7 +25,8 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
   const menu = state.menu;
   const theme = applyBarTheme(root, state);
   const railContainer = doc.createElement("div");
-  railContainer.className = "customize-rail";
+  railContainer.className = "menu-bar is-editing";
+  if (menu.cssClass?.trim()) railContainer.classList.add(...menu.cssClass.trim().split(/\s+/));
   railContainer.dataset.orientation = menu.orientation;
   railContainer.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
   railContainer.style.setProperty("--config-bar-background", menu.dockColor || DEFAULT_DOCK_COLOR);
@@ -39,6 +41,7 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
   }
 
   applyBarLayout(railContainer, menu, state.itemSize);
+  applyBarHiddenAppearance(railContainer, menu, state.itemSize, false);
   return railContainer;
 }
 

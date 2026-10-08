@@ -39,6 +39,7 @@ export interface InstanceSettings {
   externalAuthorization: ExternalAuthorization;
 }
 export interface SettingsDraft {
+  globalCss?: Record<string, string>;
   barConfigurations?: BarConfigurations;
   menus: StoredMenu[];
   urlRules: UrlRule[];
@@ -104,6 +105,7 @@ function setOptional<T extends object>(target: T, values: Editable<T>): void {
 export function settingsFromConfig(config: ExtensionConfig): SettingsDraft {
   return structuredClone({
     menus: config.panel.menus,
+    ...(config.globalCss ? { globalCss: config.globalCss } : {}),
     urlRules: config.urlRules,
     ...(config.defaultUrlRuleUid ? { defaultUrlRuleUid: config.defaultUrlRuleUid } : {}),
     dynamicBookmarks: config.dynamicBookmarks,
@@ -339,6 +341,32 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     setMenuEnabled(uid: string, enabled: boolean, saveMode: "immediate" | "withSettings"): void {
       menu(uid).enabled = enabled;
       publish(["menus"], false, saveMode === "withSettings");
+    },
+    addGlobalCss(name: string): string | undefined {
+      const styles = settingsDraft.globalCss ?? {};
+      const key = name.trim();
+      if (!key || Object.hasOwn(styles, key)) return undefined;
+      settingsDraft.globalCss = { ...styles, [key]: "" };
+      publish(["menus"]);
+      return key;
+    },
+    setGlobalCss(key: string, css: string): void {
+      if (!settingsDraft.globalCss || !Object.hasOwn(settingsDraft.globalCss, key)) throw new Error(`Unknown CSS key: ${key}`);
+      settingsDraft.globalCss = { ...settingsDraft.globalCss, [key]: css };
+      publish(["menus"]);
+    },
+    removeGlobalCss(key: string): void {
+      const entries = Object.entries(settingsDraft.globalCss ?? {}).filter(([entry]) => entry !== key);
+      setOptional(settingsDraft, { globalCss: entries.length ? Object.fromEntries(entries) : undefined });
+      publish(["menus"]);
+    },
+    setMenuCssClass(uid: string, cssClass: string): void {
+      setOptional(menu(uid), { cssClass: cssClass.trim() || undefined });
+      publish(["menus"]);
+    },
+    setItemCssClass(menuUid: string, uid: string, cssClass: string): void {
+      setOptional(item(menuUid, uid), { cssClass: cssClass.trim() || undefined });
+      publish(["menus"]);
     },
     editMenuAppearance(uid: string, values: MenuAppearance): void {
       setOptional(menu(uid), values);

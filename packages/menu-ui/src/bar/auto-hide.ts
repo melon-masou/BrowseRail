@@ -1,4 +1,4 @@
-import { barHiddenArea } from "./hidden-area";
+import { applyBarHiddenAppearance, barHiddenArea } from "./hidden-area";
 import { createLifetime } from "../lifetime";
 import type { BarHost, BarState, Rect } from "../types";
 
@@ -31,6 +31,8 @@ export function createBarAutoHide(root: HTMLElement, host: BarHost, canReveal: (
     content.style.clipPath = hidden
       ? `inset(${visible.top - offset.y}px ${width - visible.right + offset.x}px ${height - visible.bottom + offset.y}px ${visible.left - offset.x}px round var(--bar-radius, var(--dock-radius, 7px)))`
       : "";
+    const bar = content.firstElementChild as HTMLElement;
+    applyBarHiddenAppearance(bar, state.menu, state.itemSize, hidden);
     content.inert = hidden;
     viewport.toggleAttribute("data-auto-hidden", hidden);
     const signature = region ? `${root.ownerDocument.defaultView!.devicePixelRatio}:${JSON.stringify(region)}` : "null";

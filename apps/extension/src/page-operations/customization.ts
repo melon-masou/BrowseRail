@@ -1,6 +1,6 @@
 import { t } from "@browserail/i18n";
 import {
-  applyBarTheme, resolveFontFamily, mountBarSettings, placeBarSettings, createSettingsIcon, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon,
+  applyBarTheme, createBarCss, resolveFontFamily, mountBarSettings, placeBarSettings, createSettingsIcon, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createAnchorIcon,
   createCancelIcon, createSaveIcon, createOrientationControl, mountHideRangeEditor, createHideRangeIcon, nextAnchor, anchorLabel, type BarState,
   layoutCustomization, type ToolbarSide,
 } from "@browserail/menu-ui";
@@ -27,6 +27,7 @@ export function mountBrowserCustomization(
   root.className = "browserail-menu-ui customize-mode";
   root.style.flex = "0 0 auto";
   const rail = createCustomizationRail(root, state);
+  const barCss = createBarCss(root); barCss.update(rail, state.menu);
   const content = doc.createElement("div"); content.className = "customize-content";
   const toolbar = doc.createElement("div"); toolbar.className = "customize-toolbar";
   const anchorButton = controlButton(doc, createAnchorIcon(doc, anchor));
@@ -192,6 +193,6 @@ export function mountBrowserCustomization(
   layout();
   return {
     resize: layout,
-    destroy(): void { stopGesture?.(); settingsController.destroy(); settingsPopup.remove(); hideRangeEditor.destroy(); spacingEditor.destroy(); lifetime.abort(); root.classList.remove("customize-mode"); },
+    destroy(): void { barCss.destroy(); stopGesture?.(); settingsController.destroy(); settingsPopup.remove(); hideRangeEditor.destroy(); spacingEditor.destroy(); lifetime.abort(); root.classList.remove("customize-mode"); },
   };
 }

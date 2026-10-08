@@ -1,9 +1,11 @@
+import "@browserail/menu-ui/bar.css";
+import "@browserail/menu-ui/customization.css";
 import { barSettingsFromView, isNativeBarSettings, type NativeBarSettings, type MenuPlacement, type MenuView, type MenuActionResult } from "@browserail/protocol";
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "@browserail/i18n";
-import { createSettingsIcon, resolveFontFamily, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, mountHideRangeEditor, createHideRangeIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type BarController, type Rect, layoutCustomization, type ToolbarSide } from "@browserail/menu-ui";
+import { createSettingsIcon, createBarCss, resolveFontFamily, applyBarTheme, mountBar, barDimensions, barItemSize, mountSpacingEditor, createSpacingIcon, mountHideRangeEditor, createHideRangeIcon, barFrameInsets, barSurfaceDimensions, createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel, type BarState, type BarController, type Rect, layoutCustomization, type ToolbarSide } from "@browserail/menu-ui";
 import { createTauriPopupLink } from "../tauri-popup";
 
 // Desktop→webview projection (see Rust `SurfaceMenu`): render content plus the
@@ -180,7 +182,7 @@ export async function initializeSurface(
         left: bounds.left - fromAnchor.x, top: bounds.top - fromAnchor.y,
         right: bounds.right - fromAnchor.x, bottom: bounds.bottom - fromAnchor.y,
       });
-      const rail = root.querySelector<HTMLElement>(".customize-rail");
+      const rail = root.querySelector<HTMLElement>(".menu-bar.is-editing");
       const content = root.querySelector<HTMLElement>(".customize-content");
       if (!rail || !content) throw new Error("Bar editor is unavailable");
       const contentRect = content.getBoundingClientRect();
@@ -213,6 +215,7 @@ export async function initializeSurface(
     root.onpointerdown = null;
 
     const railContainer = createCustomizationRail(root, stateFor(menu));
+    const barCss = createBarCss(root); barCss.update(railContainer, menu);
 
     railContainer.addEventListener("pointerdown", (event) => {
       if (event.button === 0 && !spacingEditor.enabled && !hideRangeEditor.enabled) {
@@ -469,6 +472,7 @@ export async function initializeSurface(
     let unlistenMoved: (() => void) | undefined;
     let customizeAlive = true;
     teardownCustomize = () => {
+      barCss.destroy();
       customizeAlive = false;
       settingsWindowLabel = undefined;
       unlistenSettings?.();

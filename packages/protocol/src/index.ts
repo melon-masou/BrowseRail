@@ -33,6 +33,7 @@ export const MENU_ANCHORS = ["topLeft", "topRight", "bottomLeft", "bottomRight"]
 
 export interface StoredMenuItem {
   uid: string;
+  cssClass?: string;
   path?: string[];
   url?: string;
   color?: MenuColor;
@@ -116,6 +117,7 @@ export interface UrlRule {
 }
 
 export interface StoredMenu {
+  cssClass?: string;
   color?: MenuColor;
   dockColor?: MenuColor;
   enabled?: boolean;
@@ -261,6 +263,7 @@ export function invertBookmarkActionUid(actionUid: string): string {
 export interface ExportedMenuItem {
   type: MenuItemType;
   uid: string;
+  cssClass?: string;
   path?: string[];
   url?: string;
   rename?: string;
@@ -300,6 +303,7 @@ export interface TemporaryBookmark {
 }
 
 export interface ExportedMenu {
+  cssClass?: string;
   uid: string;
   color?: MenuColor;
   dockColor?: MenuColor;
@@ -308,6 +312,7 @@ export interface ExportedMenu {
 }
 
 export interface ExportedSettingsData {
+  globalCss?: Record<string, string>;
   version: typeof EXPORT_SCHEMA_VERSION;
   exportedAt: string;
   barConfigurations?: import("./bar").BarConfigurations;

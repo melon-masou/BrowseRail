@@ -16,7 +16,11 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
 - **Temporary bookmarks:** hold a button to save the current page.
 - **Dynamic bookmarks:** update the saved URL through URL matching, regex rewrites, or external extensions and userscripts.
 
-[External bookmark update API](docs/external-bookmarks.md)
+## Advanced usage
+
+- [Update bookmarks via External API](docs/external-bookmarks.md)
+- [Custom bar CSS](docs/custom-css.md)
+- [Bar stylesheet](packages/menu-ui/src/css/bar.css)
 
 ## Installation
 

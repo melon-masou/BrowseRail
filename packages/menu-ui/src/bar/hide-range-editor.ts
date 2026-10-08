@@ -2,7 +2,7 @@ import { t } from "@browserail/i18n";
 import type { BarSettings, MenuView } from "@browserail/protocol";
 import { barFrameInsets, barSurfaceDimensions } from "../layout";
 import type { Rect, Size } from "../types";
-import { barHiddenArea, barHiddenRange } from "./hidden-area";
+import { applyBarHiddenAppearance, barHiddenArea, barHiddenRange } from "./hidden-area";
 
 export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, initialSize: Size, button: HTMLButtonElement, changed: (patch: Pick<BarSettings, "autoHideRange" | "autoHidePadding">) => void) {
   let menu = initialMenu;
@@ -113,6 +113,7 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
   }
 
   function render(): void {
+    applyBarHiddenAppearance(rail, menu, itemSize, false);
     overlay.hidden = mode === "off";
     if (mode === "off") rail.removeAttribute("data-hide-range"); else rail.dataset.hideRange = mode;
     const sensing = mode === "sense";
@@ -138,6 +139,7 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
     after.style.inset = horizontal ? `0 0 0 ${range.end * 100}%` : `${range.end * 100}% 0 0 0`;
     band.style.inset = horizontal ? `0 ${100 - range.end * 100}% 0 ${range.start * 100}%` : `${range.start * 100}% 0 ${100 - range.end * 100}% 0`;
     if (sensing) {
+      applyBarHiddenAppearance(preview.firstElementChild as HTMLElement, menu, itemSize, true);
       band.style.inset = rectInset(visible, surface);
       sensor.style.inset = rectInset(hit, surface);
       preview.style.transform = `translate(${offset.x}px, ${offset.y}px)`;

@@ -26,6 +26,7 @@ import {
   normalizeStaticBookmarks,
   normalizeTemporaryBookmarks,
   normalizeUserVariables,
+  normalizeGlobalCss,
   normalizeMenu,
   normalizeStoredMenuItem,
   normalizeShortcutAction,
@@ -92,6 +93,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     const saving = structuredClone(submitted) as SettingsDraft;
     const {
       menus,
+      globalCss,
       urlRules,
       defaultUrlRuleUid,
       dynamicBookmarks,
@@ -113,6 +115,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     const currentConfig = await loadConfig();
     if (defaultUrlRuleUid) currentConfig.defaultUrlRuleUid = defaultUrlRuleUid;
     else delete currentConfig.defaultUrlRuleUid;
+    delete currentConfig.globalCss;
     const savedRules = structuredClone(urlRules);
     await saveConfig({
       ...currentConfig,
@@ -120,6 +123,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         menus,
       },
       urlRules: savedRules,
+      ...(globalCss ? { globalCss } : {}),
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
@@ -154,6 +158,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     if (!state.userVariablesValid) throw new Error(t("variables.invalidKeys"));
     const {
       menus,
+      globalCss,
       urlRules,
       defaultUrlRuleUid,
       dynamicBookmarks,
@@ -178,6 +183,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       version: EXPORT_SCHEMA_VERSION,
       ...(barConfigurations ? { barConfigurations } : {}),
       exportedAt: new Date().toISOString(),
+      ...(globalCss ? { globalCss } : {}),
       ...(Object.keys(userVariables).length ? { userVariables } : {}),
       ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
       ...(defaultUrlRuleUid ? { defaultUrlRuleUid } : {}),
@@ -197,6 +203,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           : {}),
         ...(menu.color ? { color: menu.color } : {}),
         ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
+        ...(menu.cssClass ? { cssClass: menu.cssClass } : {}),
         items: menu.items.map((item) => {
           if (
             item.type === "menuFold" ||
@@ -206,6 +213,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           ) {
             return {
               uid: item.uid,
+              ...(item.cssClass ? { cssClass: item.cssClass } : {}),
               type: item.type,
               ...(item.type === "browserAction" ? { browserAction: item.browserAction } : {}),
               ...(item.type === "menusToggle" ? { targetMenuUids: item.targetMenuUids ?? [] } : {}),
@@ -217,6 +225,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           if (item.type === "dynamic") {
             return {
               uid: item.uid,
+              ...(item.cssClass ? { cssClass: item.cssClass } : {}),
               type: "dynamic",
               ...(item.dynamicUid ? { dynamicUid: item.dynamicUid } : {}),
               ...(item.rename ? { rename: item.rename } : {}),
@@ -227,6 +236,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           if (item.type === "staticTag" || item.type === "flattenStaticTag") {
             return {
               uid: item.uid,
+              ...(item.cssClass ? { cssClass: item.cssClass } : {}),
               type: item.type,
               ...(item.staticTag ? { staticTag: item.staticTag } : {}),
               ...(item.rename ? { rename: item.rename } : {}),
@@ -238,6 +248,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           if (item.type === "temporary" || item.type === "static") {
             return {
               uid: item.uid,
+              ...(item.cssClass ? { cssClass: item.cssClass } : {}),
               type: item.type,
               ...(item.staticUid ? { staticUid: item.staticUid } : {}),
               ...(item.temporaryUid ? { temporaryUid: item.temporaryUid } : {}),
@@ -252,6 +263,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
 
           const exportedItem: ExportedMenuItem = {
             uid: item.uid,
+            ...(item.cssClass ? { cssClass: item.cssClass } : {}),
             type: itemType,
             ...(path !== undefined ? { path } : {}),
             ...(item.url ? { url: item.url } : {}),
@@ -313,6 +325,8 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             ? itemRecord.rename
             : undefined;
 
+        const cssClass = typeof itemRecord.cssClass === "string" ? itemRecord.cssClass.trim() : "";
+
         const cycleColors = Array.isArray(itemRecord.cycleColors)
           ? itemRecord.cycleColors.filter((c): c is string => typeof c === "string" && Boolean(c))
           : undefined;
@@ -337,6 +351,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           items.push({
             uid,
             type: "menuFold",
+            ...(cssClass ? { cssClass } : {}),
             ...(rename ? { rename } : {}),
             ...(typeof itemRecord.color === "string" && itemRecord.color
               ? { color: itemRecord.color }
@@ -348,6 +363,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         items.push({
           uid,
           type,
+          ...(cssClass ? { cssClass } : {}),
           ...(path !== undefined ? { path } : {}),
           ...(typeof itemRecord.url === "string" && itemRecord.url ? { url: itemRecord.url } : {}),
           ...(rename ? { rename } : {}),
@@ -386,6 +402,9 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
 
     // Installation settings stay local when importing portable bookmark definitions.
     imported.menus = importedMenus;
+    const globalCss = { ...imported.globalCss, ...normalizeGlobalCss(parsed.globalCss) };
+    if (Object.keys(globalCss).length) imported.globalCss = globalCss;
+    else delete imported.globalCss;
     imported.staticBookmarks = normalizeStaticBookmarks(parsed.staticBookmarks);
     imported.temporaryBookmarks = normalizeTemporaryBookmarks(parsed.temporaryBookmarks);
     imported.userVariables = normalizeUserVariables(parsed.userVariables);

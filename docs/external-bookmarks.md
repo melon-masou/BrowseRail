@@ -1,14 +1,11 @@
-# Bookmark updates via API
-
-Create a dynamic bookmark, select **API update**, assign a URL matching rule, and copy its UID.
-Updates save an HTTP(S) URL matching that rule without opening it.
+# Update bookmarks via External API
 
 ## Extensions
 
-In **Instance**, enable **Allow extensions to access the API**, add the sender's extension ID to the allowlist, and save.
-Send from the calling extension's background script (Chrome example; use `browser` in Firefox):
+In **Instance** tab, enable **Allow extensions to access the API** and add the calling extension's ID to the allowlist.
 
 ```js
+// For Firefox, use browser.runtime.sendMessage(...) instead
 const result = await chrome.runtime.sendMessage("BROWSERAIL_EXTENSION_ID", {
   type: "bookmark.update",
   payload: { uid: "BOOKMARK_UID", url: "https://example.com/page" }
@@ -18,8 +15,8 @@ if (!result.ok) console.error(result.error, result.errmsg);
 
 ## Userscripts
 
-In **Instance**, enable **Allow userscripts to access the API**, copy the token, save, and grant access to the source website. Refresh the page. Native mode also works.
-This Tampermonkey script saves the GitHub repository owner's profile URL and writes the owner name to external KV under `github.author`. Set the bookmark's URL rule to `github.com` and fill in `TOKEN` and `UID`:
+In **Instance** tab, enable **Allow userscripts to access the API**. Access to the source website should also be granted.
+This example updates the bookmark with GitHub repository owner's URL and stores id as `github.author` external variable:
 
 ```js
 // ==UserScript==
@@ -35,8 +32,8 @@ This Tampermonkey script saves the GitHub repository owner's profile URL and wri
 (() => {
   "use strict";
 
-  const TOKEN = "INSTANCE_TOKEN";
-  const UID = "BOOKMARK_UID";
+  const TOKEN = "INSTANCE_TOKEN";  // Replace with the token from: Instance tab -> Allow userscripts to access the API -> Allowlist
+  const UID = "BOOKMARK_UID";      // Replace with the UID from: dynamic bookmark -> API update -> UID
 
   function send(type, payload) {
     document.dispatchEvent(new CustomEvent(`browserail:${TOKEN}`, {
@@ -59,5 +56,3 @@ This Tampermonkey script saves the GitHub repository owner's profile URL and wri
   update();
 })();
 ```
-
-No acknowledgment or retry. Keep the token in the isolated script, outside the page DOM and localStorage.

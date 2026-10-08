@@ -3399,3 +3399,62 @@ button.item-tag {
 .reference-warning:empty {
   visibility: hidden;
 }
+
+.menus-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.css-editor-dialog {
+  width: min(720px, 92vw);
+}
+
+.css-editor-dialog .menu-settings-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.css-editor-dialog p { margin: 0; }
+
+.css-editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.css-editor-toolbar[hidden] { display: none; }
+.css-editor-toolbar select {
+  flex: 1;
+  min-width: 120px;
+  width: auto;
+}
+
+.css-editor-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.css-editor-input {
+  width: 100%;
+  height: min(420px, 55vh);
+  min-height: 160px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: 13px/1.5 Consolas, monospace;
+  background: #f8fafc;
+  color: #172033;
+}

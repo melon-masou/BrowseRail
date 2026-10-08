@@ -661,6 +661,8 @@ async function syncOnce(): Promise<void> {
         return { uid: menu.uid, items, ...barSettingsFromView(settings), ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),
           ...(menu.color ? { color: menu.color } : {}),
           ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
+          ...(config.globalCss ? { globalCss: config.globalCss } : {}),
+          ...(menu.cssClass ? { cssClass: menu.cssClass } : {}),
         };
       }
       const settings = resolveBarConfiguration(barConfigs, "native", menu.uid, index);

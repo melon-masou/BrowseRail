@@ -27,6 +27,7 @@ import { type BookmarkPicker } from "../components/bookmark-picker";
 import { type CustomBookmarkPicker } from "../components/custom-bookmark-picker";
 import { createItemPicker } from "../components/item-picker";
 import { actionChoices } from "../components/action-picker";
+import { createCssEditor } from "../components/css-editor";
 
 import { type Overlays } from "../components/overlays";
 import { removeIcon, setIconContent, settingsIcon } from "../components/icons";
@@ -48,16 +49,33 @@ export function mountMenusTab(
   let colorOpen = false;
   const menusContainer = element<HTMLDivElement>("menus");
   const addMenu = element<HTMLButtonElement>("add-menu");
+  const cssEditor = createCssEditor(() => renderMenus());
+  scope.add(() => cssEditor.destroy());
+  element<HTMLButtonElement>("global-css-button").addEventListener("click", () => {
+    closeMenuSettingsDialog(); closeItemSettingsPopover(); closeAddItemDropdown(); colorPopoverController.close();
+    cssEditor.openGlobal({
+      read: () => state.settings.globalCss ?? {},
+      add: name => state.addGlobalCss(name),
+      update: (key, css) => state.setGlobalCss(key, css),
+      remove: key => state.removeGlobalCss(key),
+    });
+  }, { signal: scope.signal });
   const menuSettingsDialog = element<HTMLDialogElement>("menu-settings-dialog");
   const menuSettingsDialogTitle = element<HTMLSpanElement>("menu-settings-dialog-title");
   const menuSettingsClose = element<HTMLButtonElement>("menu-settings-close");
   const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
+  const menuSettingCssClass = element<HTMLInputElement>("menu-setting-css-class");
+  menuSettingCssClass.addEventListener("input", () => {
+    const menu = state.settings.menus[activeMenuSettingsIndex];
+    if (menu) state.setMenuCssClass(menu.uid, menuSettingCssClass.value);
+  }, { signal: scope.signal });
   const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
   const itemSettingsTitle = element<HTMLSpanElement>("item-settings-title");
   const itemSettingsClose = element<HTMLButtonElement>("item-settings-close");
   const itemSettingsFolderControls = element<HTMLDivElement>("item-settings-folder-controls");
   const itemSettingsBookmarkControls = element<HTMLDivElement>("item-settings-bookmark-controls");
   const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
+  const itemSettingCssClass = element<HTMLInputElement>("item-setting-css-class");
   const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
   const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
   const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
@@ -139,6 +157,7 @@ export function mountMenusTab(
 
     menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
     updateMenuColorSwatch(menuSettingDockColor, menu, "dockColor");
+    menuSettingCssClass.value = menu.cssClass ?? "";
     renderMenuUrlRulesContent(menu);
 
     menuSettingsDialog.style.marginTop = "";
@@ -221,6 +240,12 @@ export function mountMenusTab(
     itemSettingsClose.addEventListener("click", () => closeItemSettingsPopover(), {
       signal: scope.signal,
     });
+    itemSettingCssClass.addEventListener("input", () => {
+      if (!activeItemSettings) return;
+      const menu = state.settings.menus[activeItemSettings.menuIndex];
+      const item = menu?.items[activeItemSettings.itemIndex];
+      if (menu && item) state.setItemCssClass(menu.uid, item.uid, itemSettingCssClass.value);
+    }, { signal: scope.signal });
 
     itemSettingRename.addEventListener(
       "input",
@@ -394,6 +419,7 @@ export function mountMenusTab(
 
     activeItemSettings = { menuIndex, itemIndex };
     activeItemSettingsBtn = anchorEl;
+    itemSettingCssClass.value = item.cssClass ?? "";
 
     itemSettingsBookmarkControls.style.display = "block";
 
@@ -1437,7 +1463,7 @@ export function mountMenusTab(
   const render = () => renderPreservingFocus(menusContainer, renderMenus);
   scope.add(
     state.subscribe(["menus", "rules", "bookmarks", "instance"], (change) => {
-      if (!colorOpen && !menuSettingsDialog.open) render();
+      if (!colorOpen && !menuSettingsDialog.open && !cssEditor.isOpen) render();
       if (change.structural) {
         closeItemSettingsPopover();
         closeAddItemDropdown();

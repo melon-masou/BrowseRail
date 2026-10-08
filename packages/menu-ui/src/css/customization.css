@@ -1,54 +1,18 @@
 /* Editing controls, drag affordances and resize handles.
-   The rail previews the bar appearance and shares its configuration variables. */
+   Editing changes interaction and placement; the bar keeps its normal appearance. */
 
-.browserail-menu-ui {
+.customize-mode {
   .customize-content {
     position: relative;
   }
 
-  .customize-rail {
-    display: grid;
-    flex: 0 0 auto;
-    width: var(--bar-width, var(--config-bar-width, 100%));
-    min-height: 0;
-    min-width: 0;
-    box-sizing: border-box;
-    padding: 0;
-    margin: var(--config-bar-frame-y) var(--config-bar-frame-x);
-    gap: 0;
-    position: absolute;
-    overflow: visible;
-    --button-font-size: var(--bar-font-size, var(--config-bar-font-size));
-    height: var(--bar-height, var(--config-bar-height, auto));
-  }
-
-  .customize-rail::before {
-    content: "";
-    position: absolute;
-    inset: calc(-1 * var(--config-bar-frame-y)) calc(-1 * var(--config-bar-frame-x));
-    z-index: 0;
-    pointer-events: none;
-  }
-
-  .customize-rail > * {
-    position: relative;
-    z-index: 1;
-  }
-
-  .customize-rail[data-orientation="row"] {
-    grid-template-columns: var(--bar-tracks, var(--config-bar-tracks));
-  }
-
-  .customize-rail[data-orientation="column"] {
-    grid-template-rows: var(--bar-tracks, var(--config-bar-tracks));
-  }
-
-  .customize-rail .menu-button {
-    min-width: 0;
-    pointer-events: none;
-  }
+  .menu-bar.is-editing .menu-button { pointer-events: none; }
 
   .customize-toolbar {
+    font-family: var(--desktop-font-family, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif);
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     position: absolute;
     z-index: 4;
     flex: 0 0 auto;
@@ -74,6 +38,7 @@
   }
 
   .customize-control {
+    font: inherit;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -130,11 +95,18 @@
     height: 12px;
   }
 
-  .customize-rail {
-    background: transparent;
-    outline: 2px dashed var(--accent-blue);
+  .menu-bar.is-editing {
+    top: 0;
+    left: 0;
+    margin: var(--config-bar-frame-y) var(--config-bar-frame-x);
+    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: visible;
+    pointer-events: auto;
+    outline: 2px dashed #7aa2ff;
     outline-offset: -1px;
-    border-radius: var(--bar-radius, var(--dock-radius, 7px));
+    border-radius: var(--bar-radius, 7px);
     cursor: move;
   }
 
@@ -182,13 +154,13 @@
   }
 }
 
-.browserail-menu-ui {
+.customize-mode {
   .customize-control[aria-pressed="true"] { background: #445574; border-color: #7aa2ff; }
-  .customize-rail[data-spacing] { cursor: default; }
-  .customize-rail[data-spacing] .resize-handle { display: none; }
-  .customize-rail[data-hide-range] { cursor: default; }
-  .customize-rail[data-hide-range] .resize-handle { display: none; }
-  .customize-rail[data-hide-range="sense"] {
+  .menu-bar.is-editing[data-spacing] { cursor: default; }
+  .menu-bar.is-editing[data-spacing] .resize-handle { display: none; }
+  .menu-bar.is-editing[data-hide-range] { cursor: default; }
+  .menu-bar.is-editing[data-hide-range] .resize-handle { display: none; }
+  .menu-bar.is-editing[data-hide-range="sense"] {
     outline: none;
     &::before, & > .menu-button, & > .empty-menu { visibility: hidden; }
   }
@@ -227,47 +199,12 @@
     background: #7aa2ff;
     border-radius: 2px;
   }
-  .customize-rail[data-orientation="row"] .gap-handle {
+  .menu-bar.is-editing[data-orientation="row"] .gap-handle {
     top: 0; bottom: 0; width: 12px; transform: translateX(-50%); cursor: ew-resize;
     &::after { top: 20%; bottom: 20%; left: 5px; width: 2px; }
   }
-  .customize-rail[data-orientation="column"] .gap-handle {
+  .menu-bar.is-editing[data-orientation="column"] .gap-handle {
     left: 0; right: 0; height: 12px; transform: translateY(-50%); cursor: ns-resize;
     &::after { left: 20%; right: 20%; top: 5px; height: 2px; }
   }
 }
-
-.bar-settings {
-  color-scheme: light;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 155px;
-  gap: 12px;
-  font: 13px/1.5 system-ui, sans-serif;
-  color: #263347;
-  background: #f4f6fb;
-  padding: 16px;
-  box-sizing: border-box;
-  border-radius: 8px;
-}
-.bar-settings-section { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; row-gap: 10px; border-top: 1px solid #d8deea; padding-top: 12px; }
-.bar-settings-section:first-child { border-top: 0; padding-top: 0; }
-.bar-settings-section > header { grid-column: 1 / -1; }
-.bar-settings-field { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
-.bar-settings-field > :last-child { grid-column: 2 / -1; }
-.bar-settings select, .bar-settings input[type="number"], .bar-settings input[type="text"] {
-  box-sizing: border-box;
-  height: 30px;
-  border: 1px solid #c8d0dc;
-  border-radius: 5px;
-  background: #fff;
-  color: #263347;
-  font: inherit;
-  padding: 3px 6px;
-}
-.bar-settings select { width: 155px; }
-.bar-settings input[type="number"] { width: 76px; }
-.bar-settings input:disabled, .bar-settings select:disabled { opacity: .55; }
-.bar-settings-font { display: flex; align-items: center; gap: 8px; }
-.bar-settings-family { display: flex; flex-direction: column; gap: 6px; }
-.bar-settings-family input[type="text"] { width: 155px; }
-.bar-settings-font label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }

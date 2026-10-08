@@ -5,8 +5,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./styles.css": "./src/styles.css",
-    "./temporary-confirm.css": "./src/confirmation/styles.css"
+    "./styles.css": "./src/css/index.css",
+    "./temporary-confirm.css": "./src/css/temporary-confirm.css",
+    "./bar.css": "./src/css/bar.css",
+    "./bar-popup.css": "./src/css/bar-popup.css",
+    "./customization.css": "./src/css/customization.css",
+    "./bar-settings.css": "./src/css/bar-settings.css"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json",

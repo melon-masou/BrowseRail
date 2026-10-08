@@ -44,6 +44,7 @@ export type ExpandAlignment = "edge" | "center";
 
 export interface BookmarkEntry {
   kind: "bookmark";
+  cssClass?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -52,6 +53,7 @@ export interface BookmarkEntry {
 
 export interface MenuFoldEntry {
   kind: "menuFold";
+  cssClass?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -59,6 +61,7 @@ export interface MenuFoldEntry {
 
 export interface MenusToggleEntry {
   kind: "menusToggle";
+  cssClass?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -66,6 +69,7 @@ export interface MenusToggleEntry {
 
 export interface BrowserActionEntry {
   kind: "browserAction";
+  cssClass?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -73,6 +77,7 @@ export interface BrowserActionEntry {
 
 export interface ShortcutsToggleEntry {
   kind: "shortcutsToggle";
+  cssClass?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -81,6 +86,7 @@ export interface ShortcutsToggleEntry {
 
 export interface FolderEntry {
   kind: "folder";
+  cssClass?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -132,6 +138,8 @@ export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusTog
  * onTopMode/visible (MenuNativeProps — native behavior), and the target window.
  */
 export interface MenuView {
+  globalCss?: Record<string, string>;
+  cssClass?: string;
   uid: string;
   items: LayoutEntry[];
   orientation: MenuOrientation;

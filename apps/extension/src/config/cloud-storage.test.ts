@@ -38,50 +38,50 @@ beforeEach(() => {
 function snapshot(): ExportedSettingsData {
   return {
     version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(),
-    menus: [{ uid: "bar", items: [{ uid: "link", type: "static", staticUid: "docs" }] }],
+    menus: [{ uid: "bar", items: [{ uid: "link", type: "static", staticUid: "docs" }], cssClass: "transparent" }],
     staticBookmarks: [{ uid: "docs", name: "Docs", url: "https://example.com" }],
-    userVariables: { icons: "& { --icon: none; }" },
+    globalCss: { icons: "& { --icon: none; }" },
     shortcuts: [{ slot: "slot_1", type: "static", staticUid: "docs" }],
   };
 }
 
-it("reads and saves local configuration without consulting stale cloud data or the removed sync switch", async () => {
+it("reads and saves local CSS without consulting stale cloud data or the removed sync switch", async () => {
   mocks.local.sync_enabled = true;
-  mocks.cloud.sync_menus = { menus: [], userVariables: "old" };
+  mocks.cloud.sync_menus = { menus: [], globalCss: "old" };
   const config = await loadConfig();
-  config.userVariables = { theme: "new" };
-  config.panel.menus = [{ uid: "bar", items: [] }];
+  config.globalCss = { theme: "new" };
+  config.panel.menus = [{ uid: "bar", items: [], cssClass: "local" }];
   await saveConfig(config);
-  expect(await loadConfig()).toMatchObject({ userVariables: { theme: "new" }, panel: { menus: [{ uid: "bar" }] } });
+  expect(await loadConfig()).toMatchObject({ globalCss: { theme: "new" }, panel: { menus: [{ cssClass: "local" }] } });
   expect(mocks.readCloud).not.toHaveBeenCalled();
   expect(mocks.writeCloud).not.toHaveBeenCalled();
 });
 
-it("round trips large configuration, Unicode, references and bindings under the browser's per-item quota", async () => {
+it("round trips large CSS, Unicode, references and bindings under the browser's per-item quota", async () => {
   const data = snapshot();
-  data.userVariables = { icons: '/* 中文 😀 \\" */\n'.repeat(1500) };
-  data.userVariables.theme = "& { --bar-background: transparent; }\n".repeat(1000);
+  data.globalCss = { icons: '/* 中文 😀 \\" */\n'.repeat(1500) };
+  data.globalCss.theme = "& { --bar-background: transparent; }\n".repeat(1000);
   await uploadCloudSettings(data);
   expect(await downloadCloudSettings()).toMatchObject(data);
-  expect((await loadConfig()).userVariables).toEqual({});
+  expect(await loadConfig()).not.toHaveProperty("globalCss");
 });
 
 it("an empty downloaded collection replaces the previous collection instead of retaining it", async () => {
   const data = snapshot();
   await uploadCloudSettings(data);
   await uploadCloudSettings({ version: data.version, exportedAt: data.exportedAt, menus: [] });
-  expect(await downloadCloudSettings()).toMatchObject({ menus: [], staticBookmarks: [], dynamicBookmarks: [], temporaryBookmarks: [], urlRules: [], shortcuts: [], nativeShortcuts: [], userVariables: {} });
+  expect(await downloadCloudSettings()).toMatchObject({ menus: [], staticBookmarks: [], dynamicBookmarks: [], temporaryBookmarks: [], urlRules: [], shortcuts: [], nativeShortcuts: [], userVariables: {}, globalCss: {} });
 });
 
 it("failed uploads preserve both the previous cloud snapshot and local settings", async () => {
   const data = snapshot();
   await uploadCloudSettings(data);
-  const config = await loadConfig(); config.userVariables = { theme: "local edit" };
+  const config = await loadConfig(); config.globalCss = { theme: "local edit" };
   await saveConfig(config);
   mocks.failUpload = true;
-  await expect(uploadCloudSettings({ ...data, userVariables: { theme: "replacement" } })).rejects.toThrow("Upload unavailable");
+  await expect(uploadCloudSettings({ ...data, globalCss: { theme: "replacement" } })).rejects.toThrow("Upload unavailable");
   expect(await downloadCloudSettings()).toMatchObject(data);
-  expect((await loadConfig()).userVariables).toEqual({ theme: "local edit" });
+  expect((await loadConfig()).globalCss).toEqual({ theme: "local edit" });
 });
 
 it("rejects missing chunks without changing local configuration", async () => {

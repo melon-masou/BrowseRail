@@ -1,3 +1,4 @@
+import "@browserail/menu-ui/bar-popup.css";
 import { mountFolderPopup, type PopupController, type PopupState, type PopupHost, type PopupPin, type FolderPin } from "@browserail/menu-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emitTo } from "@tauri-apps/api/event";

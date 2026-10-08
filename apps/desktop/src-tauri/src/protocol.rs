@@ -243,6 +243,10 @@ pub struct SyncedNativeShortcut {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_css: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub css_class: Option<String>,
     pub uid: String,
     #[serde(default)]
     pub items: Vec<LayoutEntry>,
@@ -554,6 +558,8 @@ pub enum LayoutEntry {
     Bookmark {
         uid: String,
         label: String,
+        #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+        css_class: Option<String>,
         #[serde(default)]
         color: Option<String>,
         #[serde(default)]
@@ -562,24 +568,32 @@ pub enum LayoutEntry {
     MenuFold {
         uid: String,
         label: String,
+        #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+        css_class: Option<String>,
         #[serde(default)]
         color: Option<String>,
     },
     MenusToggle {
         uid: String,
         label: String,
+        #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+        css_class: Option<String>,
         #[serde(default)]
         color: Option<String>,
     },
     BrowserAction {
         uid: String,
         label: String,
+        #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+        css_class: Option<String>,
         #[serde(default)]
         color: Option<String>,
     },
     ShortcutsToggle {
         uid: String,
         label: String,
+        #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+        css_class: Option<String>,
         #[serde(default)]
         color: Option<String>,
         on: bool,
@@ -587,6 +601,8 @@ pub enum LayoutEntry {
     Folder {
         uid: String,
         label: String,
+        #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+        css_class: Option<String>,
         #[serde(default)]
         color: Option<String>,
         children: Vec<LayoutEntry>,

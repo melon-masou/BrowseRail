@@ -1,11 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getLanguage } from "@browserail/i18n";
-import { initializeBarSettings } from "./pages/bar-settings";
-import { initializeSurface } from "./pages/menu";
-import { initializeListenerSettings } from "./pages/settings";
-import { initializePopupSurface } from "./pages/popup";
-import "@browserail/menu-ui/styles.css";
-import { initializeTemporaryConfirmation } from "./pages/temporary-confirm";
 import "./styles.css";
 
 const root = requiredElement("app");
@@ -26,15 +20,15 @@ document.addEventListener("contextmenu", (event) => {
 if (query.get("view") === "host") {
   document.body.replaceChildren();
 } else if (query.get("view") === "settings") {
-  void initializeListenerSettings(root);
+  void import("./pages/settings").then(page => page.initializeListenerSettings(root));
 } else if (query.get("view") === "barSettings") {
-  initializeBarSettings(root, query);
+  void import("./pages/bar-settings").then(page => page.initializeBarSettings(root, query));
 } else if (query.get("view") === "temporaryConfirm") {
-  initializeTemporaryConfirmation(root);
+  void import("./pages/temporary-confirm").then(page => page.initializeTemporaryConfirmation(root));
 } else if (query.get("surface") === "popup") {
-  void initializePopupSurface();
+  void import("./pages/popup").then(page => page.initializePopupSurface());
 } else {
-  void initializeSurface(root, query);
+  void import("./pages/menu").then(page => page.initializeSurface(root, query));
 }
 
 function requiredElement(id: string): HTMLElement {

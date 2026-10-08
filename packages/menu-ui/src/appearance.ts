@@ -96,6 +96,8 @@ export function menuButton(
   const button = doc.createElement("button");
   button.type = "button";
   button.className = "menu-button";
+  if (!popup && entry.cssClass?.trim()) button.classList.add(...entry.cssClass.trim().split(/\s+/));
+  if (!popup) { button.dataset.uid = entry.uid; button.dataset.kind = entry.kind; }
   button.toggleAttribute("data-popup", popup);
   button.title = entry.label;
 

@@ -5,7 +5,7 @@ import { t } from "@browserail/i18n";
 const PREFIX = "cloud:";
 const MANIFEST_KEY = `${PREFIX}index`;
 const CHUNK_BYTES = 6000;
-const fields = ["menus", "urlRules", "defaultUrlRuleUid", "dynamicBookmarks", "staticBookmarks", "temporaryBookmarks", "userVariables", "shortcuts", "nativeShortcuts"] as const;
+const fields = ["menus", "urlRules", "defaultUrlRuleUid", "dynamicBookmarks", "staticBookmarks", "temporaryBookmarks", "userVariables", "globalCss", "shortcuts", "nativeShortcuts"] as const;
 type Field = typeof fields[number];
 interface Manifest {
   version: number;
@@ -54,6 +54,7 @@ export async function uploadCloudSettings(data: ExportedSettingsData): Promise<v
     staticBookmarks: data.staticBookmarks ?? [],
     temporaryBookmarks: data.temporaryBookmarks ?? [],
     userVariables: data.userVariables ?? {},
+    globalCss: data.globalCss ?? {},
     shortcuts: data.shortcuts ?? [],
     nativeShortcuts: data.nativeShortcuts ?? [],
   };

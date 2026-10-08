@@ -12,7 +12,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
   },
   runtime: { sendMessage: async () => {} },
 } }));
-import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu, saveShortcutsEnabled, loadShortcutsEnabled } from "../../config";
+import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu, saveShortcutsEnabled, loadShortcutsEnabled, type StoredMenuItem } from "../../config";
 import { createOptionsState, settingsFromConfig } from "./state";
 import { createBookmarkLibrary } from "./bookmark-library";
 import { createPersistence, loadOptions } from "./persistence";
@@ -76,6 +76,35 @@ async function saveLayouts() {
   await saveBarLayout("bar", "native", { ...defaultMenuPlacement(), freePosition: { x: 300, y: 400 } }, { gapRatio: 0.2, extraGaps: { a: 0.4 } }, { ...defaultNativeBarSettings(), orientation: "row", attachmentMode: "free", onTopMode: "alwaysOnTop", autoHideRange: { start: .1, end: .3 } });
   await saveBarLayout("bar", "browser", { ...defaultMenuPlacement(), boundPosition: { anchor: "bottomRight", offsetX: 40, offsetY: 50 } }, { gapRatio: 0.3, extraGaps: {} }, { ...defaultBarSettings(), expandDirection: "left", expandAlignment: "center", popupFontSize: 18, autoHideRange: { start: .7, end: 1 } });
 }
+
+it("preserves CSS classes for every item type through save and portable import, and clears an empty class", async () => {
+  const { state, persistence } = await fixture();
+  state.addBookmark("temporary", { uid: "later", name: "Later" });
+  state.addBookmark("dynamic", { uid: "live", name: "Live", type: "external" });
+  const sources: Array<Omit<StoredMenuItem, "uid">> = [
+    { type: "bookmark", path: ["Docs"] }, { type: "folder", path: ["Folder"] },
+    { type: "flattenFolder", path: ["Folder"] }, { type: "static", staticUid: "link" },
+    { type: "temporary", temporaryUid: "later" }, { type: "dynamic", dynamicUid: "live" },
+    { type: "staticTag", staticTag: "work" }, { type: "flattenStaticTag", staticTag: "work" },
+    { type: "menuFold" }, { type: "menusToggle", targetMenuUids: [] },
+    { type: "browserAction", browserAction: "reload" }, { type: "shortcutsToggle" },
+  ];
+  for (const source of sources) {
+    state.addMenuItem("bar", { uid: source.type!, ...source });
+    state.setItemCssClass("bar", source.type!, " icon-home compact ");
+  }
+  await persistence.saveSettings();
+  const exported = await persistence.exportSettings();
+  expect(exported.menus[0]!.items.map(item => item.cssClass)).toEqual(sources.map(() => "icon-home compact"));
+  state.removeMenuItem("bar", "bookmark");
+  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.saveSettings();
+  expect((await loadConfig()).panel.menus[0]!.items.map(item => item.cssClass)).toEqual(sources.map(() => "icon-home compact"));
+  state.setItemCssClass("bar", "bookmark", " ");
+  await persistence.saveSettings();
+  expect((await loadConfig()).panel.menus[0]!.items[0]).not.toHaveProperty("cssClass");
+  persistence.destroy();
+});
 
 it("exports shared colors and bindings; optionally includes both modes without runtime or instance data", async () => {
   const { persistence } = await fixture(); await saveLayouts();
@@ -394,5 +423,59 @@ it("rejects empty or duplicate keys without saving over existing variables", asy
   await persistence.saveSettings();
   expect((await loadConfig()).userVariables).toEqual({});
   expect(state.dirty.settings).toBe(false);
+  persistence.destroy();
+});
+
+it("saves and exports shared CSS without bar layouts, stages imports, and removes cleared CSS", async () => {
+  const { state, persistence } = await fixture();
+  const globalCss = { icons: "& { --icon: \"★\"; }" };
+  const cssClass = "icon-bar compact";
+  state.addGlobalCss("icons");
+  state.setGlobalCss("icons", globalCss.icons); state.setMenuCssClass("bar", cssClass);
+  expect((await loadConfig()).globalCss).toBeUndefined();
+  await persistence.saveSettings();
+  expect((await loadConfig()).globalCss).toEqual(globalCss);
+  expect((await loadConfig()).panel.menus[0]!.cssClass).toBe(cssClass);
+  const exported = await persistence.exportSettings();
+  expect(exported).toMatchObject({ globalCss, menus: [{ uid: "bar", cssClass }] });
+  expect(exported.barConfigurations).toBeUndefined();
+  state.removeGlobalCss("icons"); state.setMenuCssClass("bar", "");
+  await persistence.saveSettings();
+  expect((await loadConfig()).globalCss).toBeUndefined();
+  expect((await loadConfig()).panel.menus[0]!.cssClass).toBeUndefined();
+  await persistence.importSettings(JSON.stringify(exported));
+  expect(state.settings).toMatchObject({ globalCss, menus: [{ uid: "bar", cssClass }] });
+  expect((await loadConfig()).globalCss).toBeUndefined();
+  await persistence.saveSettings();
+  expect((await loadConfig()).panel.menus[0]!.cssClass).toBe(cssClass);
+  delete exported.globalCss; delete exported.menus[0]!.cssClass;
+  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.saveSettings();
+  expect((await loadConfig()).globalCss).toEqual(globalCss);
+  expect((await loadConfig()).panel.menus[0]!.cssClass).toBeUndefined();
+  persistence.destroy();
+});
+
+it("merges global CSS by key on import, replaces matching keys and preserves absent keys", async () => {
+  const { state, persistence } = await fixture();
+  state.addGlobalCss("local");
+  state.setGlobalCss("local", ".menu-button { color: red; }");
+  state.addGlobalCss("shared");
+  state.setGlobalCss("shared", "& { --bar-shadow: none; }");
+  await persistence.saveSettings();
+  const exported = await persistence.exportSettings();
+  exported.globalCss = { shared: "& { --bar-border: 0; }", icons: "& { --icon: none; }" };
+  await persistence.importSettings(JSON.stringify(exported));
+  const expected = { local: ".menu-button { color: red; }", ...exported.globalCss };
+  expect(state.settings.globalCss).toEqual(expected);
+  expect((await loadConfig()).globalCss).not.toEqual(expected);
+  await persistence.saveSettings();
+  expect((await loadConfig()).globalCss).toEqual(expected);
+  exported.globalCss = { shared: "" };
+  await persistence.importSettings(JSON.stringify(exported));
+  expect(state.settings.globalCss).toEqual({ ...expected, shared: "" });
+  delete exported.globalCss;
+  await persistence.importSettings(JSON.stringify(exported));
+  expect(state.settings.globalCss).toEqual({ ...expected, shared: "" });
   persistence.destroy();
 });

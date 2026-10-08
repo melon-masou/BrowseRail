@@ -200,3 +200,34 @@ it.each(["staticTag", "flattenStaticTag"])("changes the tag source of %s without
   expect(state.settings.menus[0]!.items[0]!.staticTag).toBe("new");
   expect(state.dirty.settings).toBe(true);
 });
+
+it("keeps CSS in the shared settings draft and isolates a menu edit", () => {
+  const settings = initialSettings();
+  settings.menus.push({ uid: "other", cssClass: "other", items: [] });
+  const state = createState(settings);
+  state.addGlobalCss("icons");
+  state.setGlobalCss("icons", "& { --icon: '★'; }");
+  state.setMenuCssClass("menu", "compact");
+  expect(state.dirty).toMatchObject({ settings: true, instance: false });
+  expect(state.settings.menus[1]!.cssClass).toBe(settings.menus[1]!.cssClass);
+  state.removeGlobalCss("icons"); state.setMenuCssClass("menu", "");
+  expect(state.settings.globalCss).toBeUndefined();
+  expect(state.settings.menus[0]!.cssClass).toBeUndefined();
+  expect(state.settings.menus[1]!.cssClass).toBe(settings.menus[1]!.cssClass);
+  state.acceptSettingsSave(state.settings);
+  expect(state.dirty.settings).toBe(false);
+});
+
+it("edits named CSS independently, rejects duplicate names, and only removes the selected style", () => {
+  const state = createState(initialSettings());
+  expect(state.addGlobalCss(" icons ")).toBe("icons");
+  state.addGlobalCss("theme");
+  state.setGlobalCss("icons", "& { --icon: none; }");
+  expect(state.addGlobalCss("icons")).toBeUndefined();
+  expect(state.addGlobalCss(" ")).toBeUndefined();
+  state.setGlobalCss("theme", ".menu-button { color: blue; }");
+  state.setGlobalCss("icons", "");
+  expect(state.settings.globalCss).toEqual({ icons: "", theme: ".menu-button { color: blue; }" });
+  state.removeGlobalCss("icons");
+  expect(state.settings.globalCss).toEqual({ theme: ".menu-button { color: blue; }" });
+});

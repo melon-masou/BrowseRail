@@ -6,10 +6,13 @@ import { createLifetime, showMenuError } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
 import type { BarHost, BarState, BarController, PopupSession, PopupPin, FolderPin } from "../types";
 import { createBarAutoHide } from "./auto-hide";
+import { createBarCss } from "./css";
 
 export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): BarController {
   const doc = root.ownerDocument;
   const lifetime = createLifetime(root, host.waitForFonts);
+  const barCss = createBarCss(root);
+  lifetime.onDestroy(() => barCss.destroy());
   let renderLifetime = createLifetime(root);
   let state = initial;
   let session: PopupSession | undefined;
@@ -275,6 +278,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): B
     root.classList.add("browserail-menu-ui", "menu-surface");
     const bar = doc.createElement("div");
     bar.className = "menu-bar";
+    if (state.menu.cssClass?.trim()) bar.classList.add(...state.menu.cssClass.trim().split(/\s+/));
     bar.ariaLabel = t("aria.menu");
     bar.dataset.orientation = state.menu.orientation;
     bar.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
@@ -291,6 +295,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): B
       const empty = doc.createElement("div"); empty.className = "empty-menu"; empty.textContent = t("menu.empty"); bar.append(empty);
     }
     applyBarLayout(bar, { ...state.menu, items: entries }, state.itemSize);
+    barCss.update(bar, state.menu);
     const viewport = doc.createElement("div"); viewport.className = "bar-viewport";
     const content = doc.createElement("div"); content.className = "bar-content";
     content.append(bar); viewport.append(content); root.replaceChildren(viewport);

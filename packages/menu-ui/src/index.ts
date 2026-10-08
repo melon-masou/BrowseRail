@@ -16,3 +16,5 @@ export { placeCustomizationToolbar, type ToolbarSide } from "./bar/customization
 
 export { mountBarSettings, createSettingsIcon } from "./bar/settings";
 export { placeBarSettings } from "./bar/settings-position";
+
+export { createBarCss } from "./bar/css";
