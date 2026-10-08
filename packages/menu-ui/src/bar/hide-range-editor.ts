@@ -141,7 +141,7 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
       band.style.inset = rectInset(visible, surface);
       sensor.style.inset = rectInset(hit, surface);
       preview.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
-      preview.style.clipPath = `inset(${visible.top - offset.y}px ${surface.width - visible.right + offset.x}px ${surface.height - visible.bottom + offset.y}px ${visible.left - offset.x}px)`;
+      preview.style.clipPath = `inset(${visible.top - offset.y}px ${surface.width - visible.right + offset.x}px ${surface.height - visible.bottom + offset.y}px ${visible.left - offset.x}px round var(--bar-radius, var(--dock-radius, 7px)))`;
     }
     for (const [index, handle] of handles.entries()) {
       const boundary = index === 0 ? "start" : "end";

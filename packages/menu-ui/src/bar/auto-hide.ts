@@ -29,7 +29,7 @@ export function createBarAutoHide(root: HTMLElement, host: BarHost, canReveal: (
     content.style.transform = hidden && (offset.x || offset.y) ? `translate(${offset.x}px, ${offset.y}px)` : "";
     // The host's larger hit region must not expose more of the button bodies.
     content.style.clipPath = hidden
-      ? `inset(${visible.top - offset.y}px ${width - visible.right + offset.x}px ${height - visible.bottom + offset.y}px ${visible.left - offset.x}px)`
+      ? `inset(${visible.top - offset.y}px ${width - visible.right + offset.x}px ${height - visible.bottom + offset.y}px ${visible.left - offset.x}px round var(--bar-radius, var(--dock-radius, 7px)))`
       : "";
     content.inert = hidden;
     viewport.toggleAttribute("data-auto-hidden", hidden);
