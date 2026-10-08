@@ -24,7 +24,6 @@ export function createBarAutoHide(root: HTMLElement, host: BarHost, canReveal: (
     if (!viewport) return;
     const { surface: { width, height }, visible, hit, offset } = barHiddenArea(state.menu, state.itemSize);
     const region: Rect | null = hidden ? hit : null;
-    viewport.style.pointerEvents = enabled ? "auto" : "none";
     viewport.style.clipPath = region ? `inset(${region.top}px ${width - region.right}px ${height - region.bottom}px ${region.left}px)` : "";
     content.style.transform = hidden && (offset.x || offset.y) ? `translate(${offset.x}px, ${offset.y}px)` : "";
     // The host's larger hit region must not expose more of the button bodies.
@@ -33,6 +32,13 @@ export function createBarAutoHide(root: HTMLElement, host: BarHost, canReveal: (
       : "";
     const bar = content.firstElementChild as HTMLElement;
     applyBarHiddenAppearance(bar, state.menu, state.itemSize, hidden);
+    const backgroundEvents = state.editingLocked && !hidden
+      ? root.ownerDocument.defaultView!.getComputedStyle(bar).getPropertyValue("--bar-background-pointer-events").trim()
+      : "";
+    // The hidden wake area must stay interactive even when the revealed background passes through.
+    viewport.style.pointerEvents = hidden ? "auto"
+      : backgroundEvents === "none" || backgroundEvents === "auto" ? backgroundEvents
+      : enabled ? "auto" : "none";
     content.inert = hidden;
     viewport.toggleAttribute("data-auto-hidden", hidden);
     const signature = region ? `${root.ownerDocument.defaultView!.devicePixelRatio}:${JSON.stringify(region)}` : "null";

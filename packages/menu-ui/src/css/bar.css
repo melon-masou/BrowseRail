@@ -42,6 +42,9 @@
  * --bar-hidden-start / --bar-hidden-size  Visible band offset and size
  * --bar-hidden-center-x / --bar-hidden-center-y  Center relative to each button
  *
+ * --bar-background-pointer-events: none  Pass background clicks through in browser mode.
+ * Use auto to capture them. Hidden wake areas and editing keep their normal behavior.
+ *
  * Appearance overrides are the --bar-* variables used below.
  */
 
