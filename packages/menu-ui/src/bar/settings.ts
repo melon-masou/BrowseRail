@@ -56,7 +56,7 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
   }
   refreshAutoHide();
   section("settings.fontFamily");
-  const fontFamilies = new Set<string>(COMMON_FONT_FAMILIES);
+  const fontFamilies = new Set<string>("attachmentMode" in draft ? COMMON_FONT_FAMILIES : []);
   const familyRow = doc.createElement("div"); familyRow.className = "bar-settings-family";
   const family = doc.createElement("select"); family.ariaLabel = t("settings.fontFamily");
   const custom = doc.createElement("input"); custom.type = "text"; custom.ariaLabel = t("bar.fontCustom");
@@ -64,7 +64,7 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
   const customChoice = "__custom__";
   function renderFamilies(): void {
     family.replaceChildren();
-    const system = doc.createElement("option"); system.value = ""; system.textContent = t("bar.fontSystem"); family.append(system);
+    const system = doc.createElement("option"); system.value = ""; system.textContent = t("attachmentMode" in draft ? "bar.fontSystem" : "bar.fontBrowser"); family.append(system);
     for (const name of [...fontFamilies].sort((a, b) => a.localeCompare(b))) {
       const option = doc.createElement("option"); option.value = name; option.textContent = name; family.append(option);
     }

@@ -88,7 +88,7 @@ export function mountBrowserCustomization(
     settingsController.updateOrientation(spacingEditor.menu.orientation);
     orientationControl.update(spacingEditor.menu.orientation);
     settingsController.updateItemHeight(spacingEditor.itemSize.height);
-    const theme = applyBarTheme(root, { ...state, menu: spacingEditor.menu, itemSize: spacingEditor.itemSize, fontFamily: resolveFontFamily(spacingEditor.menu.fontFamily) });
+    const theme = applyBarTheme(root, { ...state, menu: spacingEditor.menu, itemSize: spacingEditor.itemSize, fontFamily: resolveFontFamily(spacingEditor.menu.fontFamily, "sans-serif") });
     rail.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
     const frame = barFrameInsets(spacingEditor.menu);
     const surfaceWidth = size.width + 2 * frame.x;

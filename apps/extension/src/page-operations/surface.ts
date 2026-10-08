@@ -77,12 +77,12 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
     root.removeAttribute("title"); delete root.dataset.error;
     layout(); mountRenderer();
   }
-  const barState = () => ({ menu: state.view, itemSize: { width: state.placement.itemWidth, height: state.placement.itemHeight }, collapsed: state.collapsed, editingLocked: state.editingLocked, fontFamily: resolveFontFamily(state.view.fontFamily) });
+  const barState = () => ({ menu: state.view, itemSize: { width: state.placement.itemWidth, height: state.placement.itemHeight }, collapsed: state.collapsed, editingLocked: state.editingLocked, fontFamily: resolveFontFamily(state.view.fontFamily, "sans-serif") });
   let renderer: ReturnType<typeof mountBar> | undefined;
   function mountRenderer(): void {
     renderer = mountBar(root, barState(), {
       ...actions, requestCustomize: customize,
-      waitForFonts: () => doc.fonts.load(`13px ${resolveFontFamily(state.view.fontFamily)}`),
+      waitForFonts: () => doc.fonts.load(`13px ${resolveFontFamily(state.view.fontFamily, "sans-serif")}`),
       async openPopup(request, pointerInside, pinned) {
         await closePopup();
         const opened = await openBrowserPopup(container, root, request, actions, lifetime.signal, pointerInside, pinned);

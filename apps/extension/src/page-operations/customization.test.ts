@@ -26,7 +26,9 @@ function fixture(overrides: Partial<MenuView> = {}) {
   }
   function changeFont() {
     const input = Array.from(wrapper.querySelectorAll("select")).find(input => input.ariaLabel === t("settings.fontFamily"))!;
-    input.value = "Arial"; input.dispatchEvent(new Event("change", { bubbles: true }));
+    input.value = "__custom__"; input.dispatchEvent(new Event("change", { bubbles: true }));
+    const custom = Array.from(wrapper.querySelectorAll("input")).find(input => input.ariaLabel === t("bar.fontCustom"))!;
+    custom.value = "Arial"; custom.dispatchEvent(new Event("input", { bubbles: true }));
     expect(root.style.getPropertyValue("--menu-font-family")).toMatch(/^"Arial",/);
   }
   return { menu, initial, saved, canceled, editor, wrapper, click, changeOrientation, changeFont };
