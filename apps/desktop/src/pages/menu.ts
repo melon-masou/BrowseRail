@@ -329,7 +329,7 @@ export async function initializeSurface(
     };
     const clampHeight = (height: number): number => {
       const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 }).height;
-      const max = barDimensions(spacingEditor.menu, { width: 400, height: spacingEditor.menu.orientation === "row" ? 64 : 200 }).height;
+      const max = barDimensions(spacingEditor.menu, { width: 400, height: 200 }).height;
       return Math.min(max, Math.max(min, height));
     };
 

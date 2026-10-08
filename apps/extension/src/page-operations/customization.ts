@@ -151,7 +151,7 @@ export function mountBrowserCustomization(
       if (spacingEditor.enabled || hideRangeEditor.enabled) return;
       const row = spacingEditor.menu.orientation === "row";
       const min = barDimensions(spacingEditor.menu, { width: 26, height: 26 });
-      const max = barDimensions(spacingEditor.menu, { width: row ? 400 : 220, height: row ? 64 : 200 });
+      const max = barDimensions(spacingEditor.menu, { width: row ? 400 : 220, height: 200 });
       const start = { point: { ...point }, size: { ...size }, x: event.clientX, y: event.clientY };
       beginGesture(handle, event, next => {
         const dx = next.clientX - start.x, dy = next.clientY - start.y;
