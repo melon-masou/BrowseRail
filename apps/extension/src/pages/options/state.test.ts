@@ -48,7 +48,6 @@ function createState(settings = initialSettings()) {
       displayMode: "native",
       externalAuthorization: { extensionsEnabled: false, extensionIds: [], userscriptEnabled: false, token: "" },
       rootPrefix: [],
-      syncEnabled: false,
     },
     settings,
   );

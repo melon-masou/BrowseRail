@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import { customBookmarkReference, customBookmarkUid, formatActionUid, invertNavigationActionUid, type FolderEntry } from "@browserail/protocol";
-import { loadConfig, saveConfig, saveSyncEnabled, saveTemporaryValue, SYNC_CONFIG_KEY } from "../config";
+import { loadConfig, saveConfig, saveTemporaryValue } from "../config";
 import { resolveMenuItems } from "./index";
 import { executeMenuAction } from "../background/execute-menu-action";
 
@@ -98,33 +98,17 @@ it("shares a temporary slot across menu buttons and shortcuts without exposing i
   expect(browser.tabs.update).not.toHaveBeenCalled();
 });
 
-it("syncs definitions and menu references across installations while keeping temporary values and shortcuts local", async () => {
-  await saveSyncEnabled(true);
+it("ordinary saves keep bookmark definitions and temporary values local without publishing to the cloud", async () => {
+  local.sync_enabled = true;
   const config = await loadConfig();
   config.staticBookmarks = [{ uid: "static", name: "Docs", url: "https://example.com/docs" }];
   config.temporaryBookmarks = [{ uid: "temporary", name: "Later" }];
-  config.dynamicBookmarks = [{ uid: "dynamic", name: "Script", type: "external" }];
-  config.panel.menus = [{ uid: "menu", items: [
-    { uid: "one", ...customBookmarkReference("static", "static") },
-    { uid: "two", ...customBookmarkReference("temporary", "temporary") },
-  ] }];
-  config.shortcuts = [{ slot: "slot_1", ...customBookmarkReference("static", "static") }];
-  config.nativeShortcuts = [{ id: "key", key: "Ctrl+K", ...customBookmarkReference("temporary", "temporary") }];
+  config.panel.menus = [{ uid: "menu", items: [{ uid: "one", ...customBookmarkReference("static", "static") }] }];
   await saveTemporaryValue("temporary", "https://private.example", "Private note");
   await saveConfig(config);
-  const current = await loadConfig();
-  expect(current.shortcuts).toEqual(config.shortcuts);
-  expect(current.nativeShortcuts).toEqual(config.nativeShortcuts);
-  expect(JSON.stringify(sync[SYNC_CONFIG_KEY])).not.toContain("private.example");
-  expect(JSON.stringify(sync[SYNC_CONFIG_KEY])).not.toContain("Private note");
-  local = { sync_enabled: true };
-  const restored = await loadConfig();
-  expect(restored.staticBookmarks).toEqual(config.staticBookmarks);
-  expect(restored.temporaryBookmarks).toEqual(config.temporaryBookmarks);
-  expect(restored.dynamicBookmarks).toEqual(config.dynamicBookmarks);
-  expect(restored.panel.menus[0]!.items).toEqual(config.panel.menus[0]!.items);
-  expect(restored.shortcuts).toEqual([]);
-  expect(restored.nativeShortcuts).toEqual([]);
+  expect((await loadConfig()).staticBookmarks).toEqual(config.staticBookmarks);
+  expect(browser.storage.sync.get).not.toHaveBeenCalled();
+  expect(browser.storage.sync.set).not.toHaveBeenCalled();
 });
 
 it("resolves a static menu button without a browser bookmark and does not send its URL to Native", async () => {

@@ -30,6 +30,7 @@ import { mountUrlMatchingTab } from "./tabs/url-matching";
 import { element } from "./dom";
 import { createScope } from "./lifecycle";
 import { normalizeDynamicBookmarks, type UrlRule } from "../../config";
+import { cloudStorageAvailable, uploadCloudSettings, downloadCloudSettings } from "../../config/cloud-storage";
 
 export async function mountOptionsPage() {
   const scope = createScope();
@@ -50,6 +51,8 @@ export async function mountOptionsPage() {
   const transfers = element<HTMLElement>("settings-transfer-actions");
   const importFile = element<HTMLInputElement>("import-file-input");
   const language = element<HTMLSelectElement>("language-select");
+  const cloudUpload = element<HTMLButtonElement>("cloud-upload");
+  const cloudDownload = element<HTMLButtonElement>("cloud-download");
   const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"));
   let activePanel = "start-panel";
   let saving = false;
@@ -131,6 +134,8 @@ export async function mountOptionsPage() {
     save.setAttribute("form", instancePanel ? connectionForm.id : menusForm.id);
     save.classList.toggle("is-dirty", instancePanel ? state.dirty.instance : state.dirty.settings);
     save.disabled = saving;
+    cloudUpload.disabled = cloudDownload.disabled = saving || !cloudStorageAvailable();
+    cloudUpload.title = cloudDownload.title = cloudStorageAvailable() ? "" : t("cloud.unavailable");
     transfers.hidden = instancePanel;
     for (const tab of tabs) tab.disabled = saving;
   }
@@ -147,18 +152,18 @@ export async function mountOptionsPage() {
     status.value = "";
     updateSave();
   }
+  function validateSettings(): boolean {
+    const unbound = state.settings.dynamicBookmarks.find((db) =>
+      !state.settings.urlRules.some((rule) => rule.uid === db.urlRuleUid));
+    if (!unbound) return true;
+    showStatus(t("dynamic.saveNeedsRule", { name: unbound.name }));
+    return false;
+  }
   async function saveCurrent(): Promise<void> {
     if (saving || activePanel === "start-panel") return;
     const instancePanel = activePanel === "connection-form";
     if (instancePanel && !instance.validate()) return;
-    if (!instancePanel) {
-      const unbound = state.settings.dynamicBookmarks.find((db) =>
-        !state.settings.urlRules.some((rule) => rule.uid === db.urlRuleUid));
-      if (unbound) {
-        showStatus(t("dynamic.saveNeedsRule", { name: unbound.name }));
-        return;
-      }
-    }
+    if (!instancePanel && !validateSettings()) return;
     saving = true;
     updateSave();
     try {
@@ -175,6 +180,47 @@ export async function mountOptionsPage() {
       if (!scope.signal.aborted) updateSave();
     }
   }
+  async function transferCloud(direction: "upload" | "download"): Promise<void> {
+    if (saving || !cloudStorageAvailable()) return;
+    if (state.dirty.instance || direction === "upload" && state.dirty.settings) {
+      flash(t("export.saveFirst"), 3000);
+      return;
+    }
+    saving = true;
+    updateSave();
+    try {
+      if (direction === "upload") {
+        if (!window.confirm(t("cloud.uploadConfirm"))) return;
+        showStatus(t("cloud.uploading"));
+        await uploadCloudSettings(await persistence.exportSettings());
+        flash(t("cloud.uploaded"), 2000);
+      } else {
+        showStatus(t("cloud.downloading"));
+        const data = await downloadCloudSettings();
+        if (scope.signal.aborted) return;
+        const hasRewrites = normalizeDynamicBookmarks(data.dynamicBookmarks).some(db => db.type === "rewrite");
+        let includeRewrites = false;
+        if (hasRewrites) {
+          const options = await chooseTransferOptions("cloudDownload", false, true);
+          if (!options || scope.signal.aborted) return;
+          includeRewrites = options.includeRewrites;
+        } else if (!window.confirm(t("cloud.downloadConfirm"))) return;
+        await persistence.importSettings(JSON.stringify(data), false, includeRewrites);
+        if (!validateSettings()) return;
+        const rules = await persistence.saveSettings();
+        authorization.refresh(rules);
+        flash(t("cloud.downloaded"), 2000);
+      }
+    } catch (error) {
+      showStatus(t("cloud.failed", { error: String(error) }));
+    } finally {
+      saving = false;
+      if (status.value === t("cloud.downloading") || status.value === t("cloud.uploading")) showStatus("");
+      if (!scope.signal.aborted) updateSave();
+    }
+  }
+  cloudUpload.addEventListener("click", () => void transferCloud("upload"), { signal: scope.signal });
+  cloudDownload.addEventListener("click", () => void transferCloud("download"), { signal: scope.signal });
   for (const form of [connectionForm, menusForm])
     form.addEventListener(
       "submit",

@@ -188,7 +188,7 @@ form {
 }
 
 .connection-card .fields-row > label > span:first-child,
-#sync-enabled-field > .label-row {
+#cloud-transfer-field > .label-row {
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -240,7 +240,7 @@ form {
 }
 
 label,
-#sync-enabled-field {
+#cloud-transfer-field {
   display: grid;
   gap: 6px;
   font-size: 14px;

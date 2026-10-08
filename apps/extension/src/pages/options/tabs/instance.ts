@@ -28,9 +28,6 @@ export function mountInstanceTab(
   const reconnectButton = element<HTMLButtonElement>("reconnect-button");
   const resyncButton = element<HTMLButtonElement>("resync-button");
   const resyncStatus = element<HTMLOutputElement>("resync-status");
-  const syncEnabledToggle = document.getElementById(
-    "sync-enabled-toggle",
-  ) as HTMLInputElement | null;
   const bookmarkRootInput = document.getElementById(
     "bookmark-root-input",
   ) as HTMLInputElement | null;
@@ -266,16 +263,6 @@ export function mountInstanceTab(
     desktopTestStatus.dataset.state = state;
   }
 
-  if (syncEnabledToggle) {
-    syncEnabledToggle.addEventListener(
-      "change",
-      () => {
-        state.editInstance({ syncEnabled: syncEnabledToggle.checked });
-      },
-      { signal: scope.signal },
-    );
-  }
-
   const debugLoggingToggle = document.getElementById(
     "debug-logging-toggle",
   ) as HTMLInputElement | null;
@@ -398,7 +385,6 @@ export function mountInstanceTab(
     instanceLabel.value = current.label;
     desktopUrl.value = current.desktopUrl;
     displayMode.value = current.displayMode;
-    if (syncEnabledToggle) syncEnabledToggle.checked = current.syncEnabled;
     if (bookmarkRootInput) {
       bookmarkRootInput.readOnly = true;
       bookmarkRootInput.value = library.formatRoot([...current.rootPrefix]);

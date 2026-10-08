@@ -208,77 +208,18 @@ export function resolveMenuPlacement(
   };
 }
 
-export const SYNC_ENABLED_STORAGE_KEY = "sync_enabled";
-export const SYNC_CONFIG_KEY = "sync_menus";
-
-export async function loadSyncEnabled(): Promise<boolean> {
-  const stored = await browser.storage.local.get(SYNC_ENABLED_STORAGE_KEY);
-  return Boolean(stored[SYNC_ENABLED_STORAGE_KEY]);
-}
-
-export async function saveSyncEnabled(enabled: boolean): Promise<void> {
-  await browser.storage.local.set({
-    [SYNC_ENABLED_STORAGE_KEY]: enabled,
-  });
-}
-
 export async function loadConfig(): Promise<ExtensionConfig> {
-  const [storedLocal, instanceUid, isSync] = await Promise.all([
+  const [stored, instanceUid] = await Promise.all([
     browser.storage.local.get(STORAGE_KEY),
     loadInstanceUid(),
-    loadSyncEnabled(),
   ]);
-  let config = normalizeConfig(storedLocal[STORAGE_KEY], instanceLabelFromUid(instanceUid));
-
-  if (isSync && browser.storage.sync) {
-    try {
-      const storedSync = await browser.storage.sync.get(SYNC_CONFIG_KEY);
-      const syncData = storedSync[SYNC_CONFIG_KEY];
-      if (Array.isArray(syncData) && syncData.length > 0) {
-        config = normalizeConfig(
-          { ...config, panel: { ...config.panel, menus: syncData } },
-          instanceLabelFromUid(instanceUid),
-        );
-      } else if (isRecord(syncData)) {
-        config = normalizeConfig(
-          { ...config, panel: { ...config.panel, ...syncData }, urlRules: syncData.urlRules, defaultUrlRuleUid: syncData.defaultUrlRuleUid,
-            dynamicBookmarks: syncData.dynamicBookmarks, staticBookmarks: syncData.staticBookmarks, temporaryBookmarks: syncData.temporaryBookmarks, userVariables: syncData.userVariables },
-          instanceLabelFromUid(instanceUid),
-        );
-      }
-    } catch (e) {
-      console.warn("Failed to load menus from storage.sync:", e);
-    }
-  }
-
-  return config;
+  return normalizeConfig(stored[STORAGE_KEY], instanceLabelFromUid(instanceUid));
 }
 
 export async function saveConfig(config: ExtensionConfig): Promise<void> {
   const instanceUid = await loadInstanceUid();
   const normalized = normalizeConfig(config, instanceLabelFromUid(instanceUid));
-  await browser.storage.local.set({
-    [STORAGE_KEY]: normalized,
-  });
-
-  const isSync = await loadSyncEnabled();
-  if (isSync && browser.storage.sync) {
-    try {
-      await browser.storage.sync.set({
-        [SYNC_CONFIG_KEY]: {
-          menus: normalized.panel.menus,
-          urlRules: normalized.urlRules,
-          ...(normalized.defaultUrlRuleUid ? { defaultUrlRuleUid: normalized.defaultUrlRuleUid } : {}),
-          dynamicBookmarks: normalized.dynamicBookmarks,
-          staticBookmarks: normalized.staticBookmarks,
-          temporaryBookmarks: normalized.temporaryBookmarks,
-          userVariables: normalized.userVariables,
-        },
-      });
-    } catch (e) {
-      console.warn("Failed to save menus to storage.sync:", e);
-    }
-  }
+  await browser.storage.local.set({ [STORAGE_KEY]: normalized });
 }
 
 export function normalizeConfig(value: unknown, defaultInstanceLabel: string): ExtensionConfig {

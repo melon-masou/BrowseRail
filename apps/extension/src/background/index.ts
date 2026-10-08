@@ -286,9 +286,6 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && (changes.config || changes.widget_enabled || changes.display_mode)) {
     scheduleReconcile();
   }
-  if (areaName === "sync" && changes.sync_menus) {
-    scheduleReconcile();
-  }
 });
 browser.permissions.onAdded.addListener(requestSync);
 browser.permissions.onRemoved.addListener(requestSync);

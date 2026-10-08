@@ -12,14 +12,12 @@ import {
 import {
   loadBookmarkRootPrefix,
   loadDisplayMode,
-  loadSyncEnabled,
   loadWidgetEnabled,
   loadConfig,
   loadBarConfigurations,
   importBarConfigurations,
   saveConfig,
   saveBookmarkRootPrefix,
-  saveSyncEnabled,
   saveDisplayMode,
   pruneTemporaryValues,
   normalizeConfig,
@@ -46,13 +44,12 @@ import { validateRewrite } from "../../dynamic/rewrite";
 import { loadExternalAuthorization, saveExternalAuthorization } from "../../config/external-authorization-store";
 export async function loadOptions() {
   const bookmarksAvailable = await canUseBookmarks();
-  const [config, enabled, tree, rootPrefix, displayMode, syncEnabled, externalAuthorization] = await Promise.all([
+  const [config, enabled, tree, rootPrefix, displayMode, externalAuthorization] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
     bookmarksAvailable ? browser.bookmarks.getTree() : [],
     loadBookmarkRootPrefix(),
     loadDisplayMode(),
-    loadSyncEnabled(),
     loadExternalAuthorization(),
   ]);
   return {
@@ -61,7 +58,6 @@ export async function loadOptions() {
       desktopUrl: config.desktopWidget.url,
       displayMode,
       rootPrefix,
-      syncEnabled,
       externalAuthorization,
     },
     settings: settingsFromConfig(config),
@@ -75,8 +71,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
   async function saveInstance(): Promise<UrlRule[]> {
     const savingSettings = structuredClone(state.instance);
     await saveBookmarkRootPrefix([...savingSettings.rootPrefix]);
-
-    await saveSyncEnabled(savingSettings.syncEnabled);
 
     const currentConfig = await loadConfig();
     await saveConfig({

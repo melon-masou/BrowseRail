@@ -47,7 +47,6 @@ import {
   loadConfig, saveConfig, loadDisplayMode, saveDisplayMode, loadBrowserPlacements,
   loadMenuPlacements, removeBrowserPlacement, loadTemporaryValues, loadTemporaryNotes,
   saveBrowserEditing,
-  saveSyncEnabled,
   saveBarLayout, loadBarConfigurations, resolveBarConfiguration, defaultMenuPlacement,
   loadShortcutsEnabled,
   toggleBrowserCollapsed,
@@ -175,13 +174,13 @@ it("follows saved global matching while separately configured menus use their ow
   expect((await service.forTab(17)).map(menu => menu.view.uid)).toEqual(["source"]);
 });
 
-it("restores the selected global matching and its definitions from Chrome sync", async () => {
+it("uses local matching even when a stale automatic cloud configuration exists", async () => {
   const config = await fixture();
   config.urlRules = [{ uid: "personal", name: "Personal", patterns: ["example.com"] }];
   config.defaultUrlRuleUid = "personal";
-  await saveSyncEnabled(true);
   await saveConfig(config);
-  mocks.storage.config = { ...config, urlRules: [], defaultUrlRuleUid: undefined };
+  mocks.storage.sync_enabled = true;
+  mocks.syncStorage.sync_menus = { menus: config.panel.menus, urlRules: [] };
 
   const service = createBrowserMenus(() => {});
   await service.publish(await loadConfig(), [view], {}, {}, true);
@@ -190,11 +189,10 @@ it("restores the selected global matching and its definitions from Chrome sync",
   expect(await service.forTab(17)).toEqual([]);
 });
 
-it("keeps both modes' bar settings local when shared configuration syncs", async () => {
+it("keeps both modes' bar settings when shared configuration is saved", async () => {
   const config = await fixture();
   await saveBarLayout("source", "browser", defaultMenuPlacement(), { gapRatio: 0.2, extraGaps: {} }, { ...defaultBarSettings(), expandAlignment: "center", autoHide: "end", autoHidePadding: 18 });
   await saveBarLayout("source", "native", defaultMenuPlacement(), { gapRatio: 0.4, extraGaps: {} }, { ...defaultNativeBarSettings(), autoHidePadding: 0 });
-  await saveSyncEnabled(true);
   await saveConfig(config);
   const bars = await loadBarConfigurations();
   expect(resolveBarConfiguration(bars, "browser", "source").expandAlignment).toBe("center");

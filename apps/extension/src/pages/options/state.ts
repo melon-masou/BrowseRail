@@ -36,7 +36,6 @@ export interface InstanceSettings {
   desktopUrl: string;
   displayMode: DisplayMode;
   rootPrefix: string[];
-  syncEnabled: boolean;
   externalAuthorization: ExternalAuthorization;
 }
 export interface SettingsDraft {

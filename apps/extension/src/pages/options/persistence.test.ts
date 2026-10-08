@@ -68,7 +68,7 @@ async function fixture() {
   config.staticBookmarks = [{ uid: "link", name: "Example", url: "https://example.com" }];
   config.shortcuts = [{ slot: "1", type: "static", staticUid: "link" }];
   await saveConfig(config);
-  const state = createOptionsState({ label: config.instanceLabel, desktopUrl: config.desktopWidget.url, displayMode: "native", rootPrefix: [], syncEnabled: false, externalAuthorization: { extensionsEnabled: false, extensionIds: [], userscriptEnabled: false, token: "" } }, settingsFromConfig(config));
+  const state = createOptionsState({ label: config.instanceLabel, desktopUrl: config.desktopWidget.url, displayMode: "native", rootPrefix: [], externalAuthorization: { extensionsEnabled: false, extensionIds: [], userscriptEnabled: false, token: "" } }, settingsFromConfig(config));
   const persistence = createPersistence(state, createBookmarkLibrary(() => []));
   return { state, persistence };
 }

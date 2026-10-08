@@ -5,13 +5,14 @@ interface TransferOptions {
   includeRewrites: boolean;
 }
 
-export function chooseTransferOptions(kind: "import" | "export", hasBars = true, hasRewrites = false): Promise<TransferOptions | undefined> {
+export function chooseTransferOptions(kind: "import" | "export" | "cloudDownload", hasBars = true, hasRewrites = false): Promise<TransferOptions | undefined> {
+  const action = kind === "cloudDownload" ? "cloud.download" : kind === "import" ? "btn.import" : "btn.export";
   const dialog = document.createElement("dialog");
   dialog.className = "space-bookmark-dialog";
   const header = document.createElement("div");
   header.className = "space-bookmark-dialog-header";
   const title = document.createElement("span");
-  title.textContent = t(kind === "import" ? "btn.import" : "btn.export");
+  title.textContent = t(action);
   const close = document.createElement("button");
   close.type = "button";
   close.className = "color-popover-close";
@@ -26,10 +27,14 @@ export function chooseTransferOptions(kind: "import" | "export", hasBars = true,
     const input = document.createElement("input"); input.type = "checkbox"; input.checked = checked; input.disabled = disabled;
     row.append(input, text); body.append(row); return input;
   }
-  choice(t("transfer.extensionData"), true, true);
-  const bars = choice(t("transfer.barConfiguration"), false, !hasBars);
+  if (kind === "cloudDownload") {
+    const message = document.createElement("p");
+    message.textContent = t("cloud.downloadConfirm");
+    body.append(message);
+  } else choice(t("transfer.extensionData"), true, true);
+  const bars = kind === "cloudDownload" ? undefined : choice(t("transfer.barConfiguration"), false, !hasBars);
   let rewrites: HTMLInputElement | undefined;
-  if (kind === "import" && hasRewrites) {
+  if (kind !== "export" && hasRewrites) {
     rewrites = choice(t("transfer.rewriteDynamicBookmarks"), false, false);
     const warning = document.createElement("p");
     warning.className = "space-bookmark-help transfer-rewrite-warning";
@@ -38,13 +43,13 @@ export function chooseTransferOptions(kind: "import" | "export", hasBars = true,
   }
   const actions = document.createElement("div"); actions.className = "space-bookmark-dialog-actions";
   const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "action-btn"; cancel.textContent = t("customize.cancel");
-  const confirm = document.createElement("button"); confirm.type = "button"; confirm.className = "save-btn"; confirm.textContent = t(kind === "import" ? "btn.import" : "btn.export");
+  const confirm = document.createElement("button"); confirm.type = "button"; confirm.className = "save-btn"; confirm.textContent = t(action);
   actions.append(confirm, cancel); body.append(actions); dialog.append(header, body); document.body.append(dialog);
   return new Promise(resolve => {
     let result: TransferOptions | undefined;
     close.addEventListener("click", () => dialog.close());
     cancel.addEventListener("click", () => dialog.close());
-    confirm.addEventListener("click", () => { result = { includeBars: bars.checked, includeRewrites: rewrites?.checked ?? false }; dialog.close(); });
+    confirm.addEventListener("click", () => { result = { includeBars: bars?.checked ?? false, includeRewrites: rewrites?.checked ?? false }; dialog.close(); });
     dialog.addEventListener("close", () => { dialog.remove(); resolve(result); }, { once: true });
     dialog.showModal();
   });

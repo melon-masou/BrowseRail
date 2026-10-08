@@ -7,6 +7,7 @@ import type { Storage } from "webextension-polyfill";
 
 const mock = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
+  cloud: {} as Record<string, unknown>,
   sendMessage: vi.fn<(message?: unknown) => Promise<unknown>>(async () => ({ state: "disconnected" })),
   bookmarkTree: [{id: "0", title: "", children: []}] as browser.Bookmarks.BookmarkTreeNode[],
   storageListeners: [] as Array<(changes: Record<string, Storage.StorageChange>, area: string) => void>,
@@ -17,6 +18,11 @@ vi.mock("webextension-polyfill", () => ({ default: {
       get: async (keys: string | string[] | null) => keys === null ? structuredClone(mock.storage) : Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, mock.storage[key]])),
       set: async (values: Record<string, unknown>) => { Object.assign(mock.storage, values); },
       remove: async (keys: string | string[]) => { for (const key of Array.isArray(keys) ? keys : [keys]) delete mock.storage[key]; },
+    },
+    sync: {
+      get: async () => structuredClone(mock.cloud),
+      set: async (values: Record<string, unknown>) => { Object.assign(mock.cloud, structuredClone(values)); },
+      remove: async (keys: string[]) => { for (const key of keys) delete mock.cloud[key]; },
     },
     onChanged: {
       addListener: (listener: (changes: Record<string, Storage.StorageChange>, area: string) => void) => { mock.storageListeners.push(listener); },
@@ -63,6 +69,7 @@ beforeEach(async () => {
   vi.stubGlobal("confirm", vi.fn(() => true));
   mock.sendMessage.mockReset().mockResolvedValue({ state: "disconnected" });
   mock.storage = {};
+  mock.cloud = {};
   mock.storageListeners = [];
   mock.bookmarkTree = [{id: "0", title: "", children: []}];
   const { loadConfig } = await import("../../config");
@@ -86,7 +93,7 @@ it("keeps externally added static bookmarks when saving drafts, without restorin
   await save();
   const previous = await savedConfig();
   button("add-static-btn").click();
-  const remove = document.querySelector("#static-list article .menu-remove-btn");
+  const remove = [...document.querySelectorAll<HTMLButtonElement>("#static-list article button")].find(button => button.ariaLabel === "Delete");
   if (!(remove instanceof HTMLButtonElement)) throw new Error("Missing bookmark delete button");
   remove.click();
   const name = document.querySelector("#static-list .dynamic-name-input");
@@ -103,6 +110,48 @@ it("keeps externally added static bookmarks when saving drafts, without restorin
   expect(saved.staticBookmarks).toEqual([
     expect.objectContaining({ name: "Unsaved draft" }), external,
   ]);
+});
+
+it("downloads only after confirmation and preserves instance settings and bar layout", async () => {
+  const { uploadCloudSettings } = await import("../../config/cloud-storage");
+  const { EXPORT_SCHEMA_VERSION, defaultBarSettings } = await import("@browserail/protocol");
+  const { saveBarLayout, loadBarConfigurations, defaultMenuPlacement, saveConfig } = await import("../../config");
+  const config = await savedConfig();
+  config.panel.menus = [{ uid: "local", items: [] }];
+  config.staticBookmarks = [{ uid: "old", name: "Old", url: "https://example.com" }];
+  await saveConfig(config);
+  const saved = await savedConfig();
+  await saveBarLayout("local", "browser", defaultMenuPlacement(), { gapRatio: .3, extraGaps: {} }, defaultBarSettings());
+  const layout = await loadBarConfigurations();
+  await uploadCloudSettings({ version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(), menus: [] });
+  vi.mocked(window.confirm).mockReturnValue(false);
+  button("cloud-download").click();
+  await vi.waitFor(() => expect(button("cloud-download").disabled).toBe(false));
+  expect(await savedConfig()).toEqual(saved);
+  vi.mocked(window.confirm).mockReturnValue(true);
+  button("cloud-download").click();
+  await vi.waitFor(() => expect(document.getElementById("status")!.textContent).toBe("Downloaded"));
+  expect(await savedConfig()).toMatchObject({ instanceLabel: "Original instance", desktopWidget: config.desktopWidget, panel: { menus: [] }, staticBookmarks: [], shortcuts: [] });
+  expect(await loadBarConfigurations()).toEqual(layout);
+});
+
+it("uploads saved settings only after confirmation and keeps local edits out of the cloud", async () => {
+  const { downloadCloudSettings } = await import("../../config/cloud-storage");
+  button("cloud-upload").click();
+  await vi.waitFor(() => expect(document.getElementById("status")!.textContent).toBe("Uploaded"));
+  expect((await downloadCloudSettings()).staticBookmarks).toEqual([]);
+  button("custom-bookmarks-tab").click();
+  button("add-static-btn").click();
+  button("cloud-upload").click();
+  expect((await downloadCloudSettings()).staticBookmarks).toEqual([]);
+  await save();
+  vi.mocked(window.confirm).mockReturnValue(false);
+  button("cloud-upload").click();
+  expect((await downloadCloudSettings()).staticBookmarks).toEqual([]);
+  vi.mocked(window.confirm).mockReturnValue(true);
+  button("cloud-upload").click();
+  await vi.waitFor(() => expect(document.getElementById("status")!.textContent).toBe("Uploaded"));
+  expect((await downloadCloudSettings()).staticBookmarks).toEqual((await savedConfig()).staticBookmarks);
 });
 
 it("filters static bookmarks by any selected tag and drags before the target in the complete saved order", async () => {
@@ -499,14 +548,14 @@ it("inserts source-qualified references at the URL selection and saves the templ
   url.dispatchEvent(new Event("input", { bubbles: true }));
   url.setSelectionRange(url.value.indexOf("REPLACE"), url.value.length);
   await pick("User variables");
-  expect(url.value).toBe("https://github.com/${user.github.author}");
+  await vi.waitFor(() => expect(url.value).toBe("https://github.com/${user.github.author}"));
   expect(document.activeElement).toBe(url);
   url.value += "?from=";
   url.dispatchEvent(new Event("input", { bubbles: true }));
   url.setSelectionRange(url.value.length, url.value.length);
   await pick("External variables");
   const template = "https://github.com/${user.github.author}?from=${external.github.author}";
-  expect(url.value).toBe(template);
+  await vi.waitFor(() => expect(url.value).toBe(template));
   await save();
   expect((await savedConfig()).staticBookmarks[0]!.url).toBe(template);
 });
