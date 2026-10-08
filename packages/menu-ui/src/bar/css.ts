@@ -28,7 +28,7 @@ export function createBarCss(root: HTMLElement) {
         sheet.replaceSync(css);
         // Parse before nesting so stray braces cannot end the bar's selector scope.
         const rules = Array.from(sheet.cssRules, rule => rule.cssText).join("\n");
-        sheet.replaceSync(`:where([data-bar-css="${scope}"]) {\n${rules}\n}`);
+        sheet.replaceSync(`[data-bar-css="${scope}"] {\n${rules}\n}`);
         next.push(sheet);
       }
       remove(); sheets = next; source = nextSource;
