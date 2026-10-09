@@ -1,12 +1,15 @@
-/* Editing controls, drag affordances and resize handles.
-   Editing changes interaction and placement; the bar keeps its normal appearance. */
+/* Editing controls, button bounds and resize handles. */
 
 .customize-mode {
   .customize-content {
     position: relative;
   }
 
-  .menu-bar.is-editing .menu-button { pointer-events: none; }
+  .menu-bar.is-editing .menu-button {
+    pointer-events: none;
+    outline: 1px dashed rgb(122 162 255 / 50%);
+    outline-offset: -1px;
+  }
 
   .customize-toolbar {
     font-family: var(--desktop-font-family, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif);
