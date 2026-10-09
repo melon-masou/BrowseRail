@@ -87,6 +87,21 @@ beforeEach(async () => {
   await vi.waitFor(() => expect(input("instance-label").value).toBe("Original instance"));
 });
 
+it("saves the selected base style as portable menu data", async () => {
+  button("menus-tab").click();
+  button("add-menu").click();
+  const settings = [...document.querySelectorAll<HTMLButtonElement>("#menus .menu-header-btn")].find(button => button.title === "Menu settings");
+  if (!settings) throw new Error("Missing menu settings button");
+  settings.click();
+  const style = document.getElementById("menu-setting-style");
+  if (!(style instanceof HTMLSelectElement)) throw new Error("Missing style selector");
+  style.value = "icons";
+  style.dispatchEvent(new Event("change", { bubbles: true }));
+  button("menu-settings-close").click();
+  await save();
+  expect((await savedConfig()).panel.menus[0]!.style).toBe("icons");
+});
+
 it("keeps externally added static bookmarks when saving drafts, without restoring a locally deleted bookmark", async () => {
   button("custom-bookmarks-tab").click();
   button("add-static-btn").click();

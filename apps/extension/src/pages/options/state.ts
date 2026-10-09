@@ -8,6 +8,7 @@ import {
   type TabMode,
   type JsonValue,
   type ShortcutAction,
+  type ItemIcon,
 } from "@browserail/protocol";
 import type {
   DisplayMode,
@@ -368,6 +369,14 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     setMenuCssClass(uid: string, cssClass: string): void {
       setOptional(menu(uid), { cssClass: cssClass.trim() || undefined });
+      publish(["menus"]);
+    },
+    setMenuStyle(uid: string, style: NonNullable<StoredMenu["style"]>): void {
+      setOptional(menu(uid), { style: style === "text" ? undefined : style });
+      publish(["menus"]);
+    },
+    setItemIcon(menuUid: string, itemUid: string, icon: ItemIcon | undefined): void {
+      setOptional(item(menuUid, itemUid), { icon: icon ? structuredClone(icon) : undefined });
       publish(["menus"]);
     },
     setItemCssClass(menuUid: string, uid: string, cssClass: string): void {

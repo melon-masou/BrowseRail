@@ -62,6 +62,8 @@ export function applyBarLayout(rail: HTMLElement, menu: MenuView, size: Size): v
   }
   const total = barDimensions(menu, size);
   rail.dataset.orientation = menu.orientation;
+  rail.classList.remove("bar-text", "bar-text-icon", "bar-text-color-icon", "bar-icons", "bar-tiles");
+  rail.classList.add(({ text: "bar-text", textIcon: "bar-text-icon", textColorIcon: "bar-text-color-icon", icons: "bar-icons", tiles: "bar-tiles" } as const)[menu.style ?? "text"]);
   rail.style.setProperty("--config-bar-tracks", tracks.join(" "));
   rail.style.setProperty("--config-bar-width", `${total.width}px`);
   rail.style.setProperty("--config-bar-height", `${total.height}px`);

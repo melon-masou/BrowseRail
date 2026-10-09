@@ -29,14 +29,15 @@ vi.mock("webextension-polyfill", () => ({ default: {
 
 beforeEach(() => { local = {}; sync = {}; vi.clearAllMocks(); });
 
-it("applies an item's CSS classes to its generated bar buttons without passing them into folder children", async () => {
+it("applies an item's CSS classes and icon to its generated bar buttons without passing them into folder children", async () => {
   const tree = [{ id: "folder", title: "Folder", children: [
     { id: "docs", title: "Docs", url: "https://example.com" },
     { id: "sub", title: "Sub", children: [{ id: "child", title: "Child", url: "https://example.com/child" }] },
   ] }];
+  const icon = { type: "lucide", name: "folder" } as const;
   const items = [
     { uid: "group", type: "folder", path: ["Folder"], cssClass: "folder-style" },
-    { uid: "flat", type: "flattenFolder", path: ["Folder"], includeFolders: true, cssClass: "icon-home compact" },
+    { uid: "flat", type: "flattenFolder", path: ["Folder"], includeFolders: true, cssClass: "icon-home compact", icon },
     { uid: "tags", type: "flattenStaticTag", staticTag: "work", cssClass: "tag-style" },
     { uid: "reload", type: "browserAction", browserAction: "reload" as const, cssClass: "action-style" },
   ];
@@ -44,8 +45,9 @@ it("applies an item's CSS classes to its generated bar buttons without passing t
     tree, staticBookmarks: [{ uid: "static", name: "Static", tags: ["work"] }],
   });
   expect(entries.map(entry => entry.cssClass)).toEqual(["folder-style", "icon-home compact", "icon-home compact", "tag-style", "action-style"]);
+  expect(entries.slice(1, 3).map(entry => entry.icon)).toEqual([icon, icon]);
   const folders = entries.filter(entry => entry.kind === "folder");
-  expect(folders.flatMap(folder => folder.children).every(child => child.cssClass === undefined)).toBe(true);
+  expect(folders.flatMap(folder => folder.children).every(child => child.cssClass === undefined && child.icon === undefined)).toBe(true);
 });
 
 it("renders a tag as a folder with the same child actions as its flattened form", async () => {

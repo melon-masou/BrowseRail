@@ -1,5 +1,5 @@
 export type OverlayName =
-  "color" | "menuSettings" | "itemSettings" | "addItem" | "shortcutSettings" | "shortcutPick";
+  "color" | "menuSettings" | "itemSettings" | "itemIcon" | "addItem" | "shortcutSettings" | "shortcutPick";
 export function createOverlays() {
   const closers = new Map<OverlayName, () => void>();
   return {

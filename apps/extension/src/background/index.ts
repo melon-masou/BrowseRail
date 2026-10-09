@@ -1,3 +1,4 @@
+import { resolveItemIcons } from "../icons/item-icons";
 import {
   isNativeMessage,
   barSettingsFromView,
@@ -658,11 +659,12 @@ async function syncOnce(): Promise<void> {
           dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks,
           bookmarksAvailable, shortcutsEnabled,
         });
-        return { uid: menu.uid, items, ...barSettingsFromView(settings), ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),
+        return { uid: menu.uid, items: await resolveItemIcons(items), ...barSettingsFromView(settings), ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),
           ...(menu.color ? { color: menu.color } : {}),
           ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
           ...(config.globalCss ? { globalCss: config.globalCss } : {}),
           ...(menu.cssClass ? { cssClass: menu.cssClass } : {}),
+          ...(menu.style ? { style: menu.style } : {}),
         };
       }
       const settings = resolveBarConfiguration(barConfigs, "native", menu.uid, index);

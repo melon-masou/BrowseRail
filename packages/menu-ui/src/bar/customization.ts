@@ -1,6 +1,6 @@
 import { t } from "@browserail/i18n";
 import { DEFAULT_DOCK_COLOR, type MenuAnchor, type MenuOrientation } from "@browserail/protocol";
-import { applyBarTheme, menuButton } from "../appearance";
+import { applyBarTheme, menuButton, menuFill } from "../appearance";
 import { applyBarLayout } from "../layout";
 import type { BarState, Rect } from "../types";
 import { placeCustomizationToolbar, type ToolbarSide } from "./customization-position";
@@ -30,6 +30,8 @@ export function createCustomizationRail(root: HTMLElement, state: BarState): HTM
   railContainer.dataset.orientation = menu.orientation;
   railContainer.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
   railContainer.style.setProperty("--config-bar-background", menu.dockColor || DEFAULT_DOCK_COLOR);
+  const fill = menuFill(menu.color);
+  if (fill) railContainer.style.setProperty("--config-menu-fill", fill);
 
   if (menu.items.length === 0) {
     const empty = doc.createElement("div");

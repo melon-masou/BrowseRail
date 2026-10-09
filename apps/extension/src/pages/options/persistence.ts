@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import { t } from "@browserail/i18n";
 import {
+  normalizeItemIcon,
   EXPORT_SCHEMA_VERSION,
   isExportedSettingsData,
   isCustomBookmarkType,
@@ -195,6 +196,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       nativeShortcuts,
       menus: menus.map((menu) => ({
         uid: menu.uid,
+        ...(menu.style ? { style: menu.style } : {}),
         ...(menu.name ? { name: menu.name } : {}),
         ...(menu.urlRuleUids && menu.urlRuleUids.length > 0
           ? { urlRuleUids: menu.urlRuleUids }
@@ -212,6 +214,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             return {
               uid: item.uid,
               ...(item.cssClass ? { cssClass: item.cssClass } : {}),
+              ...(item.icon ? { icon: item.icon } : {}),
               type: item.type,
               ...(item.type === "browserAction" ? { browserAction: item.browserAction } : {}),
               ...(item.type === "menusToggle" ? { targetMenuUids: item.targetMenuUids ?? [] } : {}),
@@ -224,6 +227,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             return {
               uid: item.uid,
               ...(item.cssClass ? { cssClass: item.cssClass } : {}),
+              ...(item.icon ? { icon: item.icon } : {}),
               type: "dynamic",
               ...(item.dynamicUid ? { dynamicUid: item.dynamicUid } : {}),
               ...(item.rename ? { rename: item.rename } : {}),
@@ -235,6 +239,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             return {
               uid: item.uid,
               ...(item.cssClass ? { cssClass: item.cssClass } : {}),
+              ...(item.icon ? { icon: item.icon } : {}),
               type: item.type,
               ...(item.staticTag ? { staticTag: item.staticTag } : {}),
               ...(item.rename ? { rename: item.rename } : {}),
@@ -247,6 +252,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             return {
               uid: item.uid,
               ...(item.cssClass ? { cssClass: item.cssClass } : {}),
+              ...(item.icon ? { icon: item.icon } : {}),
               type: item.type,
               ...(item.staticUid ? { staticUid: item.staticUid } : {}),
               ...(item.temporaryUid ? { temporaryUid: item.temporaryUid } : {}),
@@ -262,6 +268,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           const exportedItem: ExportedMenuItem = {
             uid: item.uid,
             ...(item.cssClass ? { cssClass: item.cssClass } : {}),
+            ...(item.icon ? { icon: item.icon } : {}),
             type: itemType,
             ...(path !== undefined ? { path } : {}),
             ...(item.url ? { url: item.url } : {}),
@@ -332,6 +339,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             ? itemRecord.rename
             : undefined;
 
+        const icon = normalizeItemIcon(itemRecord.icon);
         const cssClass = typeof itemRecord.cssClass === "string" ? itemRecord.cssClass.trim() : "";
 
         const cycleColors = Array.isArray(itemRecord.cycleColors)
@@ -359,6 +367,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             uid,
             type: "menuFold",
             ...(cssClass ? { cssClass } : {}),
+            ...(icon ? { icon } : {}),
             ...(rename ? { rename } : {}),
             ...(typeof itemRecord.color === "string" && itemRecord.color
               ? { color: itemRecord.color }
@@ -371,6 +380,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           uid,
           type,
           ...(cssClass ? { cssClass } : {}),
+          ...(icon ? { icon } : {}),
           ...(path !== undefined ? { path } : {}),
           ...(typeof itemRecord.url === "string" && itemRecord.url ? { url: itemRecord.url } : {}),
           ...(rename ? { rename } : {}),

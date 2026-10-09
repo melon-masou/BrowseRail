@@ -42,9 +42,23 @@ export function isAutoFontSize(value: unknown): boolean {
 export type ExpandDirection = "down" | "up" | "right" | "left";
 export type ExpandAlignment = "edge" | "center";
 
+export type ItemIcon = { type: "lucide" | "phosphor"; name: string } | { type: "text"; text: string } | { type: "initial"; length?: 2 };
+export type BarStyle = "text" | "textIcon" | "textColorIcon" | "icons" | "tiles";
+
+export function normalizeItemIcon(value: unknown): ItemIcon | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  if (raw.type === "initial") return raw.length === 2 ? { type: "initial", length: 2 } : { type: "initial" };
+  if (raw.type === "text" && typeof raw.text === "string" && raw.text.trim()) return { type: "text", text: raw.text.trim() };
+  if ((raw.type === "lucide" || raw.type === "phosphor") && typeof raw.name === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(raw.name)) return { type: raw.type, name: raw.name };
+  return undefined;
+}
+
 export interface BookmarkEntry {
   kind: "bookmark";
   cssClass?: string;
+  icon?: ItemIcon;
+  iconMask?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -54,6 +68,8 @@ export interface BookmarkEntry {
 export interface MenuFoldEntry {
   kind: "menuFold";
   cssClass?: string;
+  icon?: ItemIcon;
+  iconMask?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -62,6 +78,8 @@ export interface MenuFoldEntry {
 export interface MenusToggleEntry {
   kind: "menusToggle";
   cssClass?: string;
+  icon?: ItemIcon;
+  iconMask?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -70,6 +88,8 @@ export interface MenusToggleEntry {
 export interface BrowserActionEntry {
   kind: "browserAction";
   cssClass?: string;
+  icon?: ItemIcon;
+  iconMask?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -78,6 +98,8 @@ export interface BrowserActionEntry {
 export interface ShortcutsToggleEntry {
   kind: "shortcutsToggle";
   cssClass?: string;
+  icon?: ItemIcon;
+  iconMask?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -87,6 +109,8 @@ export interface ShortcutsToggleEntry {
 export interface FolderEntry {
   kind: "folder";
   cssClass?: string;
+  icon?: ItemIcon;
+  iconMask?: string;
   uid: string;
   label: string;
   color?: MenuColor;
@@ -143,6 +167,7 @@ export interface MenuView {
   uid: string;
   items: LayoutEntry[];
   orientation: MenuOrientation;
+  style?: BarStyle;
   autoHide?: BarAutoHide;
   autoHidePadding?: number;
   autoHideRange?: BarAutoHideRange;

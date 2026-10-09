@@ -28,6 +28,7 @@ import { type CustomBookmarkPicker } from "../components/custom-bookmark-picker"
 import { createItemPicker } from "../components/item-picker";
 import { actionChoices } from "../components/action-picker";
 import { createCssEditor } from "../components/css-editor";
+import { createItemIconPicker } from "../components/item-icon";
 import { createMoveButtons } from "../components/move-buttons";
 
 import { type Overlays } from "../components/overlays";
@@ -70,6 +71,11 @@ export function mountMenusTab(
     if (menu) state.setMenuName(menu.uid, menuSettingName.value);
   }, { signal: scope.signal });
   const menuSettingCssClass = element<HTMLInputElement>("menu-setting-css-class");
+  const menuSettingStyle = element<HTMLSelectElement>("menu-setting-style");
+  menuSettingStyle.addEventListener("change", () => {
+    const menu = state.settings.menus[activeMenuSettingsIndex];
+    if (menu) state.setMenuStyle(menu.uid, menuSettingStyle.value as NonNullable<StoredMenu["style"]>);
+  }, { signal: scope.signal });
   menuSettingCssClass.addEventListener("input", () => {
     const menu = state.settings.menus[activeMenuSettingsIndex];
     if (menu) state.setMenuCssClass(menu.uid, menuSettingCssClass.value);
@@ -81,6 +87,8 @@ export function mountMenusTab(
   const itemSettingsBookmarkControls = element<HTMLDivElement>("item-settings-bookmark-controls");
   const itemSettingRename = element<HTMLInputElement>("item-setting-rename");
   const itemSettingCssClass = element<HTMLInputElement>("item-setting-css-class");
+  const itemIconPicker = createItemIconPicker(showStatus);
+  scope.add(itemIconPicker.destroy);
   const itemSettingClearRename = element<HTMLButtonElement>("item-setting-clear-rename");
   const itemSettingFlatten = element<HTMLInputElement>("item-setting-flatten");
   const itemSettingHoverExpand = element<HTMLInputElement>("item-setting-hover-expand");
@@ -153,6 +161,7 @@ export function mountMenusTab(
     menuSettingName.value = menu.name ?? "";
     menuSettingName.placeholder = t("menu.title", { n: menuIndex + 1 });
     menuSettingCssClass.value = menu.cssClass ?? "";
+    menuSettingStyle.value = menu.style ?? "text";
     renderMenuUrlRulesContent(menu);
 
     menuSettingsDialog.style.marginTop = "";
@@ -904,6 +913,9 @@ export function mountMenusTab(
                 state.removeMenuItem(menu.uid, item.uid);
               });
 
+              const iconBtn = itemIconPicker.button(item.icon, item.rename || (item.type === "menuFold" ? t("menu.foldButton") : actionLabel),
+                icon => state.setItemIcon(menu.uid, item.uid, icon), () => overlays.closeExcept());
+              label.prepend(iconBtn);
               controls.append(moveButtons, settingsBtn, swatch, removeBtn);
               row.append(label, controls);
               return row;
@@ -922,12 +934,16 @@ export function mountMenusTab(
               if (customRename) {
                 titleSpan.textContent = `${customRename} (${rawLabel.trim()})`;
               } else {
-                titleSpan.textContent = `${isTagGroup ? "#" : source.icon(bookmarkType)} ${rawLabel.trim()}`;
+                titleSpan.textContent = rawLabel.trim();
               }
               const targetUid = customBookmarkUid(item);
               const liveUrl = targetUid ? source.url(bookmarkType, targetUid) : undefined;
               titleSpan.title = liveUrl ? `${rawLabel.trim()}\n${liveUrl}` : rawLabel.trim();
-              label.appendChild(titleSpan);
+              const typeIcon = document.createElement("span");
+              typeIcon.className = "item-type-icon";
+              typeIcon.ariaHidden = "true";
+              typeIcon.textContent = isTagGroup ? "#" : source.icon(bookmarkType);
+              label.append(titleSpan, typeIcon);
 
               const dynamicTag = document.createElement("span");
               if (isTagGroup) {
@@ -1003,6 +1019,9 @@ export function mountMenusTab(
                 state.removeMenuItem(menu.uid, item.uid);
               });
 
+              const iconBtn = itemIconPicker.button(item.icon, item.rename || rawLabel,
+                icon => state.setItemIcon(menu.uid, item.uid, icon), () => overlays.closeExcept());
+              label.prepend(iconBtn);
               controls.append(moveButtons, settingsBtn, swatch, removeBtn);
               row.append(label, controls);
               return row;
@@ -1029,10 +1048,14 @@ export function mountMenusTab(
             if (customRename) {
               titleSpan.textContent = `${customRename} (${rawLabel.trim()})`;
             } else {
-              titleSpan.textContent = `${iconPrefix} ${rawLabel.trim()}`;
+              titleSpan.textContent = rawLabel.trim();
             }
             titleSpan.title = rawLabel.trim();
-            label.appendChild(titleSpan);
+            const typeIcon = document.createElement("span");
+            typeIcon.className = "item-type-icon";
+            typeIcon.ariaHidden = "true";
+            typeIcon.textContent = iconPrefix;
+            label.append(titleSpan, typeIcon);
 
             if (isFlatten) {
               const badge = document.createElement("span");
@@ -1134,6 +1157,9 @@ export function mountMenusTab(
               state.removeMenuItem(menu.uid, item.uid);
             });
 
+            const iconBtn = itemIconPicker.button(item.icon, item.rename || rawLabel,
+              icon => state.setItemIcon(menu.uid, item.uid, icon), () => overlays.closeExcept());
+            label.prepend(iconBtn);
             controls.append(moveButtons, settingsBtn, swatch, removeBtn);
             row.append(label, controls);
             if (pathResolution.duplicatePath) {
@@ -1260,6 +1286,7 @@ export function mountMenusTab(
   }
   scope.add(overlays.register("menuSettings", closeMenuSettingsDialog));
   scope.add(overlays.register("itemSettings", closeItemSettingsPopover));
+  scope.add(overlays.register("itemIcon", itemIconPicker.close));
   scope.add(overlays.register("addItem", closeAddItemDropdown));
   const render = () => renderPreservingFocus(menusContainer, renderMenus);
   scope.add(

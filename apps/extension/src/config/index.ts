@@ -1,4 +1,4 @@
-import { AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference, isShortcutActionType, type ShortcutAction } from "@browserail/protocol";
+import { normalizeItemIcon, AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference, isShortcutActionType, type ShortcutAction } from "@browserail/protocol";
 import type { JsonValue } from "@browserail/protocol/api";
 import { normalizeUserVariables } from "./user-variables";
 export { normalizeUserVariables } from "./user-variables";
@@ -400,6 +400,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     enabled, items,
     uid,
     ...(typeof value.name === "string" && value.name.trim() ? { name: value.name.trim() } : {}),
+    ...(value.style === "text" || value.style === "textIcon" || value.style === "textColorIcon" || value.style === "icons" || value.style === "tiles" ? { style: value.style } : {}),
     ...(typeof value.cssClass === "string" && value.cssClass.trim() ? { cssClass: value.cssClass.trim() } : {}),
     ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
   };
@@ -423,7 +424,8 @@ function isAnchor(value: unknown): value is MenuAnchor {
 export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefined {
   if (!isRecord(value)) return undefined;
   const cssClass = typeof value.cssClass === "string" ? value.cssClass.trim() : "";
-  const classes = cssClass ? { cssClass } : {};
+  const icon = normalizeItemIcon(value.icon);
+  const classes = { ...(cssClass ? { cssClass } : {}), ...(icon ? { icon } : {}) };
   const rawType = typeof value.type === "string" && value.type
     ? (value.type as StoredMenuItemType)
     : undefined;

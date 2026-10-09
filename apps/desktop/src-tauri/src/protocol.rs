@@ -238,11 +238,35 @@ pub struct SyncedNativeShortcut {
     pub key: String,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BarStyle {
+    Text,
+    TextIcon,
+    TextColorIcon,
+    Icons,
+    Tiles,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ItemIcon {
+    Lucide { name: String },
+    Phosphor { name: String },
+    Text { text: String },
+    Initial {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        length: Option<u8>,
+    },
+}
+
 /// RENDER axis: the item tree and appearance the surface webview draws. Never
 /// describes window geometry, sizing-as-a-window, or when a surface shows.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MenuView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<BarStyle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_css: Option<std::collections::BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -560,6 +584,10 @@ pub enum LayoutEntry {
         label: String,
         #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
         css_class: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<ItemIcon>,
+        #[serde(default, rename = "iconMask", skip_serializing_if = "Option::is_none")]
+        icon_mask: Option<String>,
         #[serde(default)]
         color: Option<String>,
         #[serde(default)]
@@ -570,6 +598,10 @@ pub enum LayoutEntry {
         label: String,
         #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
         css_class: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<ItemIcon>,
+        #[serde(default, rename = "iconMask", skip_serializing_if = "Option::is_none")]
+        icon_mask: Option<String>,
         #[serde(default)]
         color: Option<String>,
     },
@@ -578,6 +610,10 @@ pub enum LayoutEntry {
         label: String,
         #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
         css_class: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<ItemIcon>,
+        #[serde(default, rename = "iconMask", skip_serializing_if = "Option::is_none")]
+        icon_mask: Option<String>,
         #[serde(default)]
         color: Option<String>,
     },
@@ -586,6 +622,10 @@ pub enum LayoutEntry {
         label: String,
         #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
         css_class: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<ItemIcon>,
+        #[serde(default, rename = "iconMask", skip_serializing_if = "Option::is_none")]
+        icon_mask: Option<String>,
         #[serde(default)]
         color: Option<String>,
     },
@@ -594,6 +634,10 @@ pub enum LayoutEntry {
         label: String,
         #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
         css_class: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<ItemIcon>,
+        #[serde(default, rename = "iconMask", skip_serializing_if = "Option::is_none")]
+        icon_mask: Option<String>,
         #[serde(default)]
         color: Option<String>,
         on: bool,
@@ -603,6 +647,10 @@ pub enum LayoutEntry {
         label: String,
         #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
         css_class: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<ItemIcon>,
+        #[serde(default, rename = "iconMask", skip_serializing_if = "Option::is_none")]
+        icon_mask: Option<String>,
         #[serde(default)]
         color: Option<String>,
         children: Vec<LayoutEntry>,
@@ -777,6 +825,26 @@ mod tests {
         let encoded = serde_json::to_value(entry).unwrap();
         assert_eq!(encoded["uid"], "temporary:slot");
         assert!(encoded.get("url").is_none());
+    }
+
+    #[test]
+    fn preserves_icons_and_bar_style_between_extension_and_webview() {
+        let view: MenuView = serde_json::from_value(serde_json::json!({
+            "uid": "bar", "style": "tiles", "items": [
+                {"kind": "bookmark", "uid": "link", "label": "Docs", "icon": {"type": "lucide", "name": "book"}, "iconMask": "url(data:image/svg+xml,mask)"},
+                {"kind": "folder", "uid": "folder", "label": "Folder", "children": [], "icon": {"type": "text", "text": "中"}},
+                {"kind": "menuFold", "uid": "fold", "label": "Fold", "icon": {"type": "initial"}},
+                {"kind": "bookmark", "uid": "prefix", "label": "GitHub", "icon": {"type": "initial", "length": 2}}
+            ]
+        })).unwrap();
+        let encoded = serde_json::to_value(view).unwrap();
+        assert_eq!(encoded["style"], "tiles");
+        assert_eq!(encoded["items"][0]["icon"]["name"], "book");
+        assert_eq!(encoded["items"][0]["iconMask"], "url(data:image/svg+xml,mask)");
+        assert_eq!(encoded["items"][1]["icon"]["text"], "中");
+        assert_eq!(encoded["items"][2]["icon"]["type"], "initial");
+        assert!(encoded["items"][2]["icon"].get("length").is_none());
+        assert_eq!(encoded["items"][3]["icon"]["length"], 2);
     }
 
     #[test]

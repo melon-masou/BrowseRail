@@ -64,7 +64,7 @@ it("saves external grants only with the instance and excludes them from portable
 async function fixture() {
   const config = await loadConfig();
   config.instanceLabel = "Local instance";
-  config.panel.menus = [{ uid: "bar", enabled: false, color: "#336699aa", dockColor: "#223344bb", items: [] }];
+  config.panel.menus = [{ uid: "bar", enabled: false, style: "tiles", color: "#336699aa", dockColor: "#223344bb", items: [] }];
   config.staticBookmarks = [{ uid: "link", name: "Example", url: "https://example.com" }];
   config.shortcuts = [{ slot: "1", type: "static", staticUid: "link" }];
   await saveConfig(config);
@@ -77,7 +77,7 @@ async function saveLayouts() {
   await saveBarLayout("bar", "browser", { ...defaultMenuPlacement(), boundPosition: { anchor: "bottomRight", offsetX: 40, offsetY: 50 } }, { gapRatio: 0.3, extraGaps: {} }, { ...defaultBarSettings(), expandDirection: "left", expandAlignment: "center", popupFontSize: 18, autoHideRange: { start: .7, end: 1 } });
 }
 
-it("preserves CSS classes for every item type through save and portable import, and clears an empty class", async () => {
+it("preserves CSS classes and icons for every item type through save and portable import, and clears an empty class", async () => {
   const { state, persistence } = await fixture();
   state.addBookmark("temporary", { uid: "later", name: "Later" });
   state.addBookmark("dynamic", { uid: "live", name: "Live", type: "external" });
@@ -89,20 +89,27 @@ it("preserves CSS classes for every item type through save and portable import, 
     { type: "menuFold" }, { type: "menusToggle", targetMenuUids: [] },
     { type: "browserAction", browserAction: "reload" }, { type: "shortcutsToggle" },
   ];
-  for (const source of sources) {
+  const icons = [{ type: "lucide", name: "bookmark" }, { type: "text", text: "你好" }, { type: "initial" }, { type: "initial", length: 2 }] as const;
+  for (const [index, source] of sources.entries()) {
     state.addMenuItem("bar", { uid: source.type!, ...source });
     state.setItemCssClass("bar", source.type!, " icon-home compact ");
+    state.setItemIcon("bar", source.type!, icons[index % icons.length]!);
   }
   await persistence.saveSettings();
   const exported = await persistence.exportSettings();
   expect(exported.menus![0]!.items.map(item => item.cssClass)).toEqual(sources.map(() => "icon-home compact"));
+  const expectedIcons = sources.map((_, index) => icons[index % icons.length]);
+  expect(exported.menus![0]!.items.map(item => item.icon)).toEqual(expectedIcons);
   state.removeMenuItem("bar", "bookmark");
   await persistence.importSettings(JSON.stringify(exported));
   await persistence.saveSettings();
   expect((await loadConfig()).panel.menus[0]!.items.map(item => item.cssClass)).toEqual(sources.map(() => "icon-home compact"));
+  expect((await loadConfig()).panel.menus[0]!.items.map(item => item.icon)).toEqual(expectedIcons);
+  state.setItemIcon("bar", "bookmark", undefined);
   state.setItemCssClass("bar", "bookmark", " ");
   await persistence.saveSettings();
   expect((await loadConfig()).panel.menus[0]!.items[0]).not.toHaveProperty("cssClass");
+  expect((await loadConfig()).panel.menus[0]!.items[0]).not.toHaveProperty("icon");
   persistence.destroy();
 });
 
@@ -116,6 +123,9 @@ it("exports shared colors and bindings; optionally includes both modes without r
   expect(portable).not.toHaveProperty("barConfigurations");
   const complete = await persistence.exportSettings({ bars: true });
   expect(complete.barConfigurations).toEqual(await loadBarConfigurations());
+  expect(portable.menus![0]!.style).toBe("tiles");
+  expect(complete.barConfigurations!.native.bar).not.toHaveProperty("style");
+  expect(complete.barConfigurations!.browser.bar).not.toHaveProperty("style");
   expect(complete.barConfigurations!.native.bar!.autoHideRange).toEqual({ start: .1, end: .3 });
   expect(complete.barConfigurations!.browser.bar!.autoHideRange).toEqual({ start: .7, end: 1 });
   persistence.destroy();
@@ -431,6 +441,7 @@ it("saves and exports shared CSS without bar layouts, stages imports, and remove
   const { state, persistence } = await fixture();
   const globalCss = { icons: "& { --icon: \"★\"; }" };
   const cssClass = "icon-bar compact";
+  state.setMenuStyle("bar", "icons");
   state.addGlobalCss("icons");
   state.setGlobalCss("icons", globalCss.icons); state.setMenuCssClass("bar", cssClass);
   expect((await loadConfig()).globalCss).toBeUndefined();
@@ -438,14 +449,16 @@ it("saves and exports shared CSS without bar layouts, stages imports, and remove
   expect((await loadConfig()).globalCss).toEqual(globalCss);
   expect((await loadConfig()).panel.menus[0]!.cssClass).toBe(cssClass);
   const exported = await persistence.exportSettings();
-  expect(exported).toMatchObject({ globalCss, menus: [{ uid: "bar", cssClass }] });
+  expect(exported).toMatchObject({ globalCss, menus: [{ uid: "bar", cssClass, style: "icons" }] });
   expect(exported.barConfigurations).toBeUndefined();
+  state.setMenuStyle("bar", "text");
   state.removeGlobalCss("icons"); state.setMenuCssClass("bar", "");
   await persistence.saveSettings();
   expect((await loadConfig()).globalCss).toBeUndefined();
+  expect((await loadConfig()).panel.menus[0]!.style).toBeUndefined();
   expect((await loadConfig()).panel.menus[0]!.cssClass).toBeUndefined();
   await persistence.importSettings(JSON.stringify(exported));
-  expect(state.settings).toMatchObject({ globalCss, menus: [{ uid: "bar", cssClass }] });
+  expect(state.settings).toMatchObject({ globalCss, menus: [{ uid: "bar", cssClass, style: "icons" }] });
   expect((await loadConfig()).globalCss).toBeUndefined();
   await persistence.saveSettings();
   expect((await loadConfig()).panel.menus[0]!.cssClass).toBe(cssClass);

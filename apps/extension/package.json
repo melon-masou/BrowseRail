@@ -14,6 +14,8 @@
     "@browserail/i18n": "workspace:*",
     "@browserail/menu-ui": "workspace:*",
     "@browserail/protocol": "workspace:*",
+    "@phosphor-icons/core": "2.1.1",
+    "lucide-static": "1.52.0",
     "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {

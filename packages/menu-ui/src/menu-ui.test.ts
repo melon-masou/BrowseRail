@@ -44,6 +44,35 @@ function mount(root: HTMLElement, state: BarState, adapter: BarHost): Controller
 }
 
 describe("shared menu mounting", () => {
+  it("keeps configured icons, aliases and full labels together in bars and editing previews", async () => {
+    const root = container(); const state = barState();
+    state.menu.style = "tiles";
+    state.menu.items = [
+      { kind: "bookmark", uid: "one", label: "Original", rename: "中文名称", icon: { type: "initial" } },
+      { kind: "bookmark", uid: "two", label: "Two", icon: { type: "text", text: "AB" } },
+      { kind: "bookmark", uid: "three", label: "Three", icon: { type: "lucide", name: "book" }, iconMask: 'url("data:image/svg+xml,book")' },
+      { kind: "bookmark", uid: "four", label: "GitHub", icon: { type: "initial", length: 2 } },
+      { kind: "bookmark", uid: "five", label: "你好世界", icon: { type: "initial", length: 2 } },
+      { kind: "bookmark", uid: "six", label: "Plain" },
+    ];
+    const controller = mount(root, state, host()); await controller.ready;
+    const preview = createCustomizationRail(container(), state);
+    for (const surface of [root, preview]) {
+      const buttons = [...surface.querySelectorAll<HTMLButtonElement>(".menu-button")];
+      expect(buttons.map(button => button.ariaLabel)).toEqual(["中文名称", "Two", "Three", "GitHub", "你好世界", "Plain"]);
+      const icons = buttons.map(button => button.querySelector<HTMLElement>(".menu-button-icon")!);
+      expect(icons.map(icon => icon.dataset.text)).toEqual(["中", "AB", "", "Gi", "你好", "P"]);
+      // Only unconfigured items take the bar style's default (bookmark or initial); a chosen prefix stays text.
+      expect(icons.map(icon => icon.hasAttribute("data-default"))).toEqual([false, false, false, false, false, true]);
+      // Bar CSS shrinks multi-character text by this count so it fits inside the icon.
+      expect(icons.map(icon => icon.style.getPropertyValue("--icon-text-em"))).toEqual(["", "1.5", "", "1.5", "2", ""]);
+      expect(icons[2]!.style.getPropertyValue("--config-icon")).toBe(state.menu.items[2]!.iconMask);
+    }
+    await controller.update({ ...state, menu: { ...state.menu, items: [{ kind: "bookmark", uid: "one", label: "Updated", icon: { type: "text", text: "新" } }] } });
+    expect(root.querySelector<HTMLElement>(".menu-button-icon")!.dataset.text).toBe("新");
+    expect(root.querySelector("button")!.ariaLabel).toBe("Updated");
+  });
+
   it("exposes bar and item CSS classes in bars and editing previews and removes replaced classes", async () => {
     const state = barState();
     state.menu.cssClass = " icon-bar compact-rail ";

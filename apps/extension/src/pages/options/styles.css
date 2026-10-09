@@ -978,7 +978,8 @@ output {
 }
 
 /* Item Settings Button */
-.item-settings-btn {
+.item-settings-btn,
+.item-icon-btn {
   width: 28px;
   height: 28px;
   min-height: 28px;
@@ -996,7 +997,8 @@ output {
   line-height: 0;
 }
 
-.item-settings-btn:hover {
+.item-settings-btn:hover,
+.item-icon-btn:hover {
   background: #eff6ff;
   border-color: #93c5fd;
   color: #1d4ed8;
@@ -3464,3 +3466,98 @@ button.item-tag {
   background: #f8fafc;
   color: #172033;
 }
+
+
+/* A fixed panel height keeps the centered dialog in place across tabs and while icons load. */
+.icon-picker-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  height: min(380px, 58vh);
+}
+
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  align-content: start;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.icon-picker-grid .url-rule-empty-hint {
+  grid-column: 1 / -1;
+}
+
+.icon-picker-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.icon-picker-cell:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.icon-picker-cell[aria-pressed="true"] {
+  background: #dbeafe;
+  border-color: #3b82f6;
+}
+
+.icon-picker-cell img {
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+}
+
+.icon-picker-preview {
+  justify-self: start;
+  width: 48px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+span.icon-picker-preview {
+  cursor: default;
+}
+
+.icon-picker-text-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-picker-text-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.icon-picker-hint {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+.icon-picker-library-link {
+  flex: 0 0 auto;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.item-icon-btn { overflow: hidden; line-height: 1; }
+.item-icon-btn img { width: 18px; height: 18px; pointer-events: none; }
+.item-icon-btn span { max-width: 100%; padding: 1px 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: normal; pointer-events: none; }
+
+.item-type-icon { flex: 0 0 auto; }

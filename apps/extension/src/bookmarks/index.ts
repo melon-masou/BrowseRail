@@ -729,8 +729,8 @@ export async function resolveMenuItems(
   );
 
   return entryGroups.flatMap((entries, index) => {
-    const cssClass = items[index]?.cssClass;
-    return cssClass ? entries.map(entry => ({ ...entry, cssClass })) : entries;
+    const { cssClass, icon } = items[index] ?? {};
+    return entries.map(entry => ({ ...entry, ...(cssClass ? { cssClass } : {}), ...(icon ? { icon } : {}) }));
   });
 }
 

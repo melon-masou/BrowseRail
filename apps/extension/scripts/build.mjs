@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -161,3 +161,48 @@ await writeFile(resolve(outDir, "manifest.json"), JSON.stringify(manifestJson, n
 
 await cp(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
 await cp(resolve(root, "src/pages/offscreen/index.html"), resolve(outDir, "offscreen.html"));
+
+const lucide = resolve(root, "node_modules/lucide-static");
+const lucideOut = resolve(outDir, "icons/lucide");
+const iconNodes = JSON.parse(await readFile(resolve(lucide, "icon-nodes.json"), "utf8"));
+const iconFiles = (await readdir(resolve(lucide, "icons"))).filter(name => name.endsWith(".svg")).sort();
+const iconBodies = await Promise.all(iconFiles.map(async file => {
+  const svg = await readFile(resolve(lucide, "icons", file), "utf8");
+  const body = svg.match(/<svg\b[^>]*>([\s\S]*?)<\/svg>/)?.[1].trim();
+  if (!body) throw new Error(`Invalid Lucide SVG: ${file}`);
+  return [file.slice(0, -4), body];
+}));
+// The package's node data omits aliases; match their geometry to canonical icons.
+const canonicalNames = new Map(iconBodies.filter(([name]) => Object.hasOwn(iconNodes, name)).map(([name, body]) => [body, name]));
+const aliases = {};
+for (const [name, body] of iconBodies) {
+  if (Object.hasOwn(iconNodes, name)) continue;
+  const canonical = canonicalNames.get(body);
+  if (!canonical) throw new Error(`Unresolved Lucide alias: ${name}`);
+  aliases[name] = canonical;
+}
+await mkdir(lucideOut, { recursive: true });
+await writeFile(resolve(lucideOut, "icons.json"), JSON.stringify({ icons: iconNodes, aliases }));
+await cp(resolve(lucide, "LICENSE"), resolve(lucideOut, "LICENSE"));
+// Search tags ship separately so the background only loads icon geometry.
+await writeFile(resolve(lucideOut, "tags.json"), JSON.stringify(JSON.parse(await readFile(resolve(lucide, "tags.json"), "utf8"))));
+
+// Only the fill weight ships; Lucide already covers outline icons.
+const phosphor = resolve(root, "node_modules/@phosphor-icons/core");
+const phosphorOut = resolve(outDir, "icons/phosphor");
+const phosphorFiles = (await readdir(resolve(phosphor, "assets/fill"))).filter(name => name.endsWith("-fill.svg")).sort();
+const phosphorIcons = Object.fromEntries(await Promise.all(phosphorFiles.map(async file => {
+  const svg = await readFile(resolve(phosphor, "assets/fill", file), "utf8");
+  const body = svg.match(/<svg\b[^>]*viewBox="0 0 256 256"[^>]*>([\s\S]*?)<\/svg>/)?.[1].trim();
+  if (!body) throw new Error(`Invalid Phosphor SVG: ${file}`);
+  return [file.slice(0, -"-fill.svg".length), body];
+})));
+await mkdir(phosphorOut, { recursive: true });
+await writeFile(resolve(phosphorOut, "icons.json"), JSON.stringify({ icons: phosphorIcons }));
+await cp(resolve(phosphor, "LICENSE"), resolve(phosphorOut, "LICENSE"));
+const { icons: phosphorMeta } = await import("@phosphor-icons/core");
+// Drop release markers such as "*new*".
+const phosphorTags = Object.fromEntries(phosphorMeta
+  .filter(icon => Object.hasOwn(phosphorIcons, icon.name))
+  .map(icon => [icon.name, icon.tags.filter(tag => !tag.startsWith("*"))]));
+await writeFile(resolve(phosphorOut, "tags.json"), JSON.stringify(phosphorTags));

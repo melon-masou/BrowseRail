@@ -729,6 +729,7 @@ mod tests {
     fn menu(window_uid: &str) -> SyncedMenu {
         SyncedMenu {
             view: MenuView {
+                style: None,
                 global_css: None,
                 css_class: None,
                 uid: format!("menu-{window_uid}"),

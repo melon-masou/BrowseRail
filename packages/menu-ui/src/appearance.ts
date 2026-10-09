@@ -3,6 +3,8 @@ import { t } from "@browserail/i18n";
 import { barFrameInsets } from "./layout";
 import type { BarState, PopupPin } from "./types";
 
+const WIDE_CHAR = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Extended_Pictographic}\u3000-\u303f\uff00-\uffef]/u;
+
 export function automaticButtonFontSize(itemHeight: number): number {
   return Math.max(6, Math.round(itemHeight / 2.7));
 }
@@ -78,6 +80,11 @@ function normalizeChip(color: string): { fill: string; ink: string; accent: stri
   };
 }
 
+/** The processed button fill for a menu's default color, used as a shared button background. */
+export function menuFill(color: string | undefined): string | undefined {
+  return color ? normalizeChip(color)?.fill : undefined;
+}
+
 export function applyMenuColor(element: HTMLElement, color: string): void {
   element.style.setProperty("--button-custom-color", color);
   const chip = normalizeChip(color);
@@ -146,6 +153,22 @@ export function menuButton(
   if (!popup && /^\p{Extended_Pictographic}+$/u.test(labelSpan.textContent.trim())) {
     labelSpan.classList.add("menu-button-emoji");
     button.dataset.hasEmoji = "true";
+  }
+  if (!popup) {
+    const icon = doc.createElement("span");
+    icon.className = "menu-button-icon";
+    icon.setAttribute("aria-hidden", "true");
+    const image = entry.icon?.type === "lucide" || entry.icon?.type === "phosphor";
+    icon.dataset.text = image ? ""
+      : entry.icon?.type === "text" ? entry.icon.text
+      : entry.icon?.type === "initial" && entry.icon.length === 2 ? Array.from(labelSpan.textContent.trim()).slice(0, 2).join("")
+      : button.dataset.initial ?? "";
+    // CSS cannot measure text, so estimate: full-width scripts and emoji take 1em, others about 0.75em.
+    const textEm = Array.from(icon.dataset.text).reduce((width, char) => width + (WIDE_CHAR.test(char) ? 1 : 0.75), 0);
+    if (textEm > 1) icon.style.setProperty("--icon-text-em", String(textEm));
+    if (!entry.icon) icon.dataset.default = "";
+    if (entry.iconMask) icon.style.setProperty("--config-icon", entry.iconMask);
+    button.append(icon);
   }
   button.append(labelSpan);
 

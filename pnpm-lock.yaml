@@ -75,6 +75,12 @@ importers:
       '@browserail/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@phosphor-icons/core':
+        specifier: 2.1.1
+        version: 2.1.1
+      lucide-static:
+        specifier: 1.52.0
+        version: 1.52.0
       webextension-polyfill:
         specifier: ^0.12.0
         version: 0.12.0
@@ -286,6 +292,9 @@ packages:
 
   '@oxc-project/types@0.149.0':
     resolution: {integrity: sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA==}
+
+  '@phosphor-icons/core@2.1.1':
+    resolution: {integrity: sha512-v4ARvrip4qBCImOE5rmPUylOEK4iiED9ZyKjcvzuezqMaiRASCHKcRIuvvxL/twvLpkfnEODCOJp5dM4eZilxQ==}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -1530,6 +1539,9 @@ packages:
   lodash.once@4.1.1:
     resolution: {integrity: sha512-Sb487aTOCr9drQVL8pIxOzVhafOjZN9UU54hiN8PU3uAiSV7lx1yYNpbNmex2PK6dSJoNTSJUUswT651yww3Mg==}
 
+  lucide-static@1.52.0:
+    resolution: {integrity: sha512-0zZYihAze4ZmUCcyNa9OkWYqn/Y5f9AdTh02AZIxMtP5ravcTTfoSIAnUPBH6ZvKxt+ZW28JB0ldzLRyD82fcw==}
+
   magic-string@1.3.1:
     resolution: {integrity: sha512-rm91zr2Ou+XueDTohjQQjdQEcYM6zVi8KVUCG8Ec3vHwUEKrhSdCNyfuIywkA6hcCAteIn0ZOtAHA6eGpiX+Pg==}
 
@@ -2290,6 +2302,8 @@ snapshots:
   '@mdn/browser-compat-data@8.1.0': {}
 
   '@oxc-project/types@0.149.0': {}
+
+  '@phosphor-icons/core@2.1.1': {}
 
   '@pinojs/redact@0.4.0': {}
 
@@ -3418,6 +3432,8 @@ snapshots:
   lodash.merge@4.6.2: {}
 
   lodash.once@4.1.1: {}
+
+  lucide-static@1.52.0: {}
 
   magic-string@1.3.1:
     dependencies:

@@ -403,6 +403,16 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <input type="text" id="menu-setting-name" />
             </label>
             <label class="menu-setting-field">
+              <span class="menu-setting-label" data-i18n="bar.style">Bar style</span>
+              <select id="menu-setting-style">
+                <option value="text" data-i18n="bar.styleText">Text</option>
+                <option value="textIcon" data-i18n="bar.styleTextIcon">Icon + text</option>
+                <option value="textColorIcon" data-i18n="bar.styleTextColorIcon">Colored icon + text</option>
+                <option value="icons" data-i18n="bar.styleIcons">Icon</option>
+                <option value="tiles" data-i18n="bar.styleTiles">Icon tiles</option>
+              </select>
+            </label>
+            <label class="menu-setting-field">
               <span class="menu-setting-label">CSS class</span>
               <input type="text" id="menu-setting-css-class" data-i18n-ph="css.classHint" placeholder="Separate multiple classes with spaces" spellcheck="false" />
             </label>

@@ -1,4 +1,4 @@
-import type { MenuColor } from "./menu";
+import type { MenuColor, ItemIcon, BarStyle } from "./menu";
 import type { JsonValue } from "./api";
 
 export * from "./menu";
@@ -32,6 +32,7 @@ export const MENU_ORIENTATIONS = ["row", "column"] as const;
 export const MENU_ANCHORS = ["topLeft", "topRight", "bottomLeft", "bottomRight"] as const;
 
 export interface StoredMenuItem {
+  icon?: ItemIcon;
   uid: string;
   cssClass?: string;
   path?: string[];
@@ -118,6 +119,7 @@ export interface UrlRule {
 
 export interface StoredMenu {
   name?: string;
+  style?: BarStyle;
   cssClass?: string;
   color?: MenuColor;
   dockColor?: MenuColor;
@@ -262,6 +264,7 @@ export function invertBookmarkActionUid(actionUid: string): string {
 }
 
 export interface ExportedMenuItem {
+  icon?: ItemIcon;
   type: MenuItemType;
   uid: string;
   cssClass?: string;
@@ -305,6 +308,7 @@ export interface TemporaryBookmark {
 
 export interface ExportedMenu {
   name?: string;
+  style?: BarStyle;
   cssClass?: string;
   uid: string;
   color?: MenuColor;

@@ -1,14 +1,16 @@
 /*
- * Bar styles. In Global CSS, "&" selects the bar and "&.CLASS" selects a bar
- * with that CSS class. Use ".menu-button.CLASS" for configured item classes.
+ * In Custom CSS, "&" selects the bar; "&.CLASS" selects a bar with that class.
+ * Use ".menu-button.CLASS" for item classes. The styles below share the
+ * layout and icon slot defined later in this file.
  *
  * ELEMENTS
  * .menu-bar                Bar root
  * .menu-button             Bookmark, folder or action button
+ * .menu-button-icon        Icon data, rendered by the selected bar style
  * .menu-button-label       Text label
  * .menu-button-emoji       Emoji-only label
  * &::before               Bar background and frame
- * .menu-button::before     Colored stripe; can be replaced with an icon
+ * .menu-button::before     Colored stripe in the text bar
  * .menu-button::after      Folder triangle or temporary pin dot
  * .folder-lock-marker      Persistent folder pin
  * .shortcut-status-dot     Shortcut toggle status
@@ -24,7 +26,8 @@
  * &[data-auto-hidden]              Bar is hidden
  * .menu-button[data-uid="UID"]      Rendered action UID
  * .menu-button[data-kind="KIND"]    Bookmark, folder or action kind
- * .menu-button[data-initial]        Automatically generated first character of the displayed name
+ * .menu-button-icon[data-default]   Item has no configured icon; the bar style decides what shows
+ * .menu-button[data-initial]        First character of the displayed name (the shown name prefix is .menu-button-icon[data-text])
  * .menu-button[data-folder]         Folder button
  * .menu-button[data-has-custom-color="true"]  Effective color applied
  * .menu-button[data-has-emoji="true"]         Emoji-only label
@@ -38,6 +41,11 @@
  * --button-accent        Stripe/icon color
  * --button-ink           Text color
  * --button-font-size     Font size
+ * --icon                 SVG mask; overrides the icon chosen in the picker (transparent gradient hides it)
+ * --icon-text            Text icon override ("" for a custom SVG)
+ * --icon-text-em         Width of --icon-text in em (1 per full-width character or emoji, about 0.75 otherwise); required for more than one character
+ * --icon-size / --icon-color  Icon size and color
+ * --bar-default-icon     SVG mask for items without an icon in the icon and icon + text styles
  *
  * HIDDEN BAND VALUES
  * --bar-hidden-start / --bar-hidden-size  Visible band offset and size
@@ -50,8 +58,121 @@
  * Appearance overrides are the --bar-* variables used below.
  */
 
-.menu-bar,
-.popup-surface {
+/* Text bar: processed button colors, a colored edge and left-aligned labels. */
+.menu-bar:where(.bar-text, .bar-text-icon, .bar-text-color-icon) {
+  --bar-background: var(--config-bar-background, var(--dock-surface));
+  --bar-backdrop-filter: blur(3px);
+  --bar-border: 1px solid rgb(255 255 255 / 10%);
+  --bar-shadow: 0 6px 18px rgb(0 0 0 / 28%);
+
+  /* Button padding shrinks with narrow cells. */
+  .menu-button {
+    --button-padding-left: clamp(0px, calc((var(--config-bar-item-width) - 32px) * 0.225), 9px);
+    --button-padding-right: min(var(--button-padding-left), clamp(1px, calc(1px + (var(--button-font-size, 13px) - 9px) * 1.25), 6px));
+    background: var(--bar-button-background, var(--button-norm-fill, var(--button-custom-color, var(--button-default-fill))));
+    justify-content: flex-start;
+    padding: var(--bar-button-padding, 0 var(--button-padding-right) 0 var(--button-padding-left));
+    border-radius: var(--bar-button-radius, 4px);
+  }
+
+  /* Labels retain their full text, with ellipsis when needed. */
+  .menu-button-label { text-align: left; }
+
+  /* Emoji-only names use the label slot. */
+  .menu-button[data-has-emoji="true"] .menu-button-emoji {
+    font-size: calc(var(--button-font-size, 13px) * 1.25);
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Keep the source color on the edge; the body uses its processed color. */
+  .menu-button[data-has-custom-color="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--button-accent);
+    pointer-events: none;
+  }
+}
+
+/* Icon + text styles: the text bar plus an icon before each label, without the edge stripe. */
+.menu-bar:where(.bar-text-icon, .bar-text-color-icon) {
+  --bar-icon-display: inline-grid;
+  --icon-size: min(16px, calc(var(--config-bar-item-height) * 0.55));
+
+  .menu-button {
+    --button-padding-left: clamp(0px, calc((var(--config-bar-item-width) - 32px) * 0.1), 4px);
+    gap: 0.25em;
+  }
+  .menu-button[data-has-custom-color="true"]::before { content: none; }
+  /* Text icons widen the slot instead of overlapping the label. */
+  .menu-button-icon { width: auto; min-width: var(--icon-size); }
+  /* Items without an icon show the default bookmark. */
+  .menu-button-icon:where([data-default]) {
+    --config-icon: var(--bar-default-icon);
+    --config-icon-text: "";
+  }
+}
+
+/* Colored icon + text: buttons share the menu's default color; the icon carries the item color. */
+.menu-bar:where(.bar-text-color-icon) {
+  .menu-button {
+    --config-icon-color: var(--button-accent, currentColor);
+    background: var(--bar-button-background, var(--config-menu-fill, var(--button-default-fill)));
+    color: var(--bar-button-text-color, var(--label-color));
+  }
+}
+
+/* Icon bar: no frame or button fill; empty space lets clicks through. */
+.menu-bar:where(.bar-icons) {
+  --bar-icon-display: inline-grid;
+  --bar-background-pointer-events: none;
+  --icon-size: 100%;
+  --icon-font-size: var(--config-bar-item-height);
+
+  /* Icons inherit each item's accent unless custom CSS supplies --icon-color. */
+  .menu-button { --config-icon-color: var(--button-accent, currentColor); }
+  /* Items without an icon show the default bookmark. */
+  .menu-button-icon:where([data-default]) {
+    --config-icon: var(--bar-default-icon);
+    --config-icon-text: "";
+  }
+  /* Keep labels in the DOM for accessibility. */
+  .menu-button-label { display: none; }
+  /* Hide unpinned corners; pinned folders retain their marker. */
+  .menu-button[data-folder]:not([data-pin])::after { display: none; }
+}
+
+/* Tile bar: square buttons centered inside the configured button cells; items without an icon show their initial. */
+.menu-bar:where(.bar-tiles) {
+  --bar-background: var(--config-bar-background, var(--dock-surface));
+  --bar-icon-display: inline-grid;
+  --tile-size: calc(min(var(--config-bar-item-width), var(--config-bar-item-height)) * 0.72);
+  --icon-size: calc(var(--tile-size) * 0.6);
+  --icon-font-size: calc(var(--tile-size) * 0.58);
+
+  /* Leave equal room around a tile in either bar orientation. */
+  .menu-button {
+    background: var(--bar-button-background, var(--button-norm-fill, var(--button-custom-color, var(--button-default-fill))));
+    width: var(--tile-size);
+    height: var(--tile-size);
+    place-self: center;
+    border-radius: var(--bar-button-radius, 22%);
+  }
+
+  /* Keep labels in the DOM for accessibility. */
+  .menu-button-label { display: none; }
+  /* Hide unpinned corners; pinned folders retain their marker. */
+  .menu-button[data-folder]:not([data-pin])::after { display: none; }
+}
+
+/* Shared palette, font, button reset and markers; each surface supplies its layout. */
+:where(.menu-bar, .popup-surface) {
   color-scheme: dark;
   font-family: var(--menu-font-family, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif);
   -webkit-font-smoothing: antialiased;
@@ -60,10 +181,8 @@
   --dock-surface: rgba(22, 27, 36, 0.88);
   --dock-radius: 7px;
   --label-color: rgb(255 255 255 / 90%);
-}
 
-/* Shared text, button reset and markers. Each surface defines its own layout and states. */
-:where(.menu-bar, .popup-surface) {
+  /* Reset native button styles before each surface supplies its appearance. */
   .menu-button {
     position: relative;
     box-sizing: border-box;
@@ -77,6 +196,7 @@
     font: inherit;
   }
 
+  /* Flexible labels must be allowed to shrink for ellipsis. */
   .menu-button-label {
     flex: 1 1 auto;
     min-width: 0;
@@ -85,6 +205,7 @@
     white-space: nowrap;
   }
 
+  /* The shortcut action uses a status dot rather than text. */
   .shortcut-status-dot {
     display: inline-block;
     width: 7px;
@@ -95,10 +216,12 @@
     pointer-events: none;
   }
 
+  /* Enabled shortcut bindings use the active status color. */
   .shortcut-status-dot[data-on="true"] {
     background: #389b62;
   }
 
+  /* Folder corners remain legible against any item color. */
   .menu-button[data-folder]::after {
     content: "";
     position: absolute;
@@ -109,12 +232,12 @@
     pointer-events: none;
     background: transparent;
     border: 0 solid transparent;
-    /* Fixed neutral, not the item's hue: a same-hue corner vanishes on its own fill. */
     border-top: var(--folder-marker-size, 9px) solid var(--folder-marker-color, rgb(255 255 255 / 60%));
     border-left-width: var(--folder-marker-size, 9px);
     border-radius: 0;
   }
 
+  /* A temporary pin replaces the folder corner with a dot. */
   .menu-button[data-folder][data-pin="temporary"]::after {
     width: calc(var(--folder-marker-size, 9px) * 0.65);
     height: calc(var(--folder-marker-size, 9px) * 0.65);
@@ -125,6 +248,7 @@
     background: var(--folder-marker-color, rgb(255 255 255 / 60%));
   }
 
+  /* Persistent pins use an SVG lock instead of a font glyph. */
   .folder-lock-marker {
     display: none;
     position: absolute;
@@ -140,31 +264,34 @@
     stroke-linejoin: round;
   }
 
+  /* Persistent pins replace the corner rather than overlaying it. */
   .menu-button[data-folder][data-pin="locked"]::after {
     display: none;
   }
 
+  /* Show the lock only while that folder is persistently pinned. */
   .menu-button[data-folder][data-pin="locked"] > .folder-lock-marker {
     display: block;
   }
 
+  /* Failed clicks show a marker without taking space from the label. */
+  .menu-action-error {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #a42525;
+    stroke: white;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    pointer-events: none;
+    z-index: 2;
+  }
 }
 
-:where(.menu-bar, .popup-surface) .menu-action-error {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #a42525;
-  stroke: white;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  pointer-events: none;
-  z-index: 2;
-}
-
+/* The viewport clips the visible band; the content holds the moving bar. */
 .bar-viewport,
 .bar-content {
   position: absolute;
@@ -172,12 +299,14 @@
   pointer-events: none;
 }
 
+/* Hidden content cannot catch pointer events outside the wake area. */
 .bar-viewport[data-auto-hidden] .bar-content,
 .bar-viewport[data-auto-hidden] .bar-content * {
   pointer-events: none;
 }
 
-.menu-bar {
+/* Geometry stays below the appearance rules and has lower selector priority. */
+:where(.menu-bar) {
   position: absolute;
   top: var(--config-bar-frame-y);
   left: var(--config-bar-frame-x);
@@ -190,72 +319,55 @@
   --button-font-size: var(--bar-font-size, var(--config-bar-font-size));
   width: var(--bar-width, var(--config-bar-width));
   height: var(--bar-height, var(--config-bar-height));
+  /* Phosphor bookmark-simple (MIT). */
+  --bar-default-icon: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20256%20256%22%20fill%3D%22black%22%3E%3Cpath%20d%3D%22M184%2C32H72A16%2C16%2C0%2C0%2C0%2C56%2C48V224a8%2C8%2C0%2C0%2C0%2C12.24%2C6.78L128%2C193.43l59.77%2C37.35A8%2C8%2C0%2C0%2C0%2C200%2C224V48A16%2C16%2C0%2C0%2C0%2C184%2C32Z%22%2F%3E%3C%2Fsvg%3E");
   font-family: var(--bar-font-family, var(--menu-font-family, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif));
 
+  /* The frame paints independently from the button hit areas. */
   &::before {
     content: "";
     position: absolute;
     inset: calc(-1 * var(--config-bar-frame-y)) calc(-1 * var(--config-bar-frame-x));
     z-index: 0;
     pointer-events: none;
-    background-color: var(--bar-background, var(--config-bar-background, var(--dock-surface)));
-    backdrop-filter: var(--bar-backdrop-filter, blur(3px));
-    -webkit-backdrop-filter: var(--bar-backdrop-filter, blur(3px));
+    background-color: var(--bar-background, transparent);
+    backdrop-filter: var(--bar-backdrop-filter, none);
+    -webkit-backdrop-filter: var(--bar-backdrop-filter, none);
     border-radius: var(--bar-radius, var(--dock-radius));
-    border: var(--bar-border, 1px solid rgb(255 255 255 / 10%));
-    box-shadow: var(--bar-shadow, 0 6px 18px rgb(0 0 0 / 28%));
+    border: var(--bar-border, 0);
+    box-shadow: var(--bar-shadow, none);
   }
 
+  /* Buttons stay interactive even when the bar background passes clicks through. */
   & > * {
     position: relative;
     z-index: 1;
     pointer-events: auto;
   }
 
+  /* Tracks include saved per-item spacing along the bar's axis. */
   &[data-orientation="row"] { grid-template-columns: var(--bar-tracks, var(--config-bar-tracks)); }
   &[data-orientation="column"] { grid-template-rows: var(--bar-tracks, var(--config-bar-tracks)); }
 
+  /* Buttons fill their cells unless the selected style supplies a smaller shape. */
   .menu-button {
-    --button-padding-left: clamp(0px, calc((var(--config-bar-item-width) - 32px) * 0.225), 9px);
-    --button-padding-right: min(var(--button-padding-left), clamp(1px, calc(1px + (var(--button-font-size, 13px) - 9px) * 1.25), 6px));
     --button-default-fill: var(--default-button-fill);
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     container-type: inline-size;
     min-height: 0;
     width: 100%;
     height: 100%;
-    padding: var(--bar-button-padding, 0 var(--button-padding-right) 0 var(--button-padding-left));
+    padding: var(--bar-button-padding, 0);
     font-size: var(--button-font-size, 13px);
     color: var(--bar-button-text-color, var(--button-ink, var(--label-color)));
-    background: var(--bar-button-background, var(--button-norm-fill, var(--button-custom-color, var(--button-default-fill))));
-    border-radius: var(--bar-button-radius, 4px);
+    background: var(--bar-button-background, transparent);
+    border-radius: var(--bar-button-radius, 0);
     transition: filter 0.12s ease, background-color 0.12s ease;
   }
 
-  .menu-button-label { text-align: left; }
-
-  .menu-button[data-has-emoji="true"] .menu-button-emoji {
-    font-size: calc(var(--button-font-size, 13px) * 1.25);
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .menu-button[data-has-custom-color="true"]::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: var(--button-accent);
-    pointer-events: none;
-  }
-
-  /* Change the fallback fill only; colored buttons keep their processed body color. */
+  /* State filters preserve each item's processed color. */
   .menu-button:hover,
   .menu-button:focus-visible {
     --button-default-fill: #2a3344;
@@ -263,18 +375,21 @@
     filter: var(--bar-button-hover-filter, brightness(1.12));
   }
 
+  /* Press feedback does not change layout. */
   .menu-button:active {
     --button-default-fill: rgba(255, 255, 255, 0.04);
     outline: none;
     filter: var(--bar-button-active-filter, brightness(0.92));
   }
 
+  /* Open folders retain their highlighted state while the pointer leaves. */
   .menu-button[data-expanded] {
     --button-default-fill: #333e54;
     outline: none;
     filter: var(--bar-button-expanded-filter, brightness(1.2));
   }
 
+  /* Empty menus retain a visible placeholder. */
   .empty-menu {
     display: grid;
     min-width: 0;
@@ -289,5 +404,46 @@
     border-radius: 8px;
     color: #dbe5ff;
     background: rgb(31 37 49 / 90%);
+  }
+
+  /* Style variables control visibility and size without changing the icon data. */
+  .menu-button-icon {
+    display: var(--bar-icon-display, none);
+    /* Keep the grid track at the icon size so wide text stays centered instead of widening it. */
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    flex: 0 0 auto;
+    width: var(--icon-size, min(24px, calc(var(--config-bar-item-height) * 0.65)));
+    height: var(--icon-size, min(24px, calc(var(--config-bar-item-height) * 0.65)));
+    color: var(--icon-color, var(--config-icon-color, currentColor));
+    pointer-events: none;
+  }
+
+  /* SVG and text are separate layers in the same cell, so either can be replaced alone. */
+  .menu-button-icon::before,
+  .menu-button-icon::after {
+    grid-area: 1 / 1;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* SVG layer: paints only where a mask exists; mask: none would paint the whole box. */
+  .menu-button-icon::before {
+    content: "";
+    background: currentColor;
+    mask: var(--icon, var(--config-icon, linear-gradient(transparent, transparent))) center / contain no-repeat;
+  }
+
+  /* Text layer: empty when the picker chose a library icon. */
+  .menu-button-icon::after {
+    content: var(--icon-text, var(--config-icon-text, attr(data-text)));
+    /* Flex centering overflows wide text on both sides; a grid track would grow rightward. */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    font: inherit;
+    /* Text may extend past the icon box: cap it so its estimated width fits the button (cqi). */
+    font-size: min(var(--icon-font-size, var(--button-font-size)), calc(82cqi / var(--icon-text-em, 1)));
+    line-height: 1;
   }
 }
