@@ -359,6 +359,7 @@ export const en = {
   "shortcuts.clearTarget": "Clear",
   "shortcuts.pickDialogTitle": "Assign bookmark to Slot {n}",
   "itemSettings.change": "Change bookmark / folder…",
+  "itemSettings.duplicate": "Duplicate item",
   "item.duplicatePathWarning": "⚠ This path matches multiple bookmarks. BrowseRail uses the saved URL when possible; choose a unique path to avoid ambiguity.",
 
   // Menu card
@@ -389,6 +390,8 @@ export const en = {
   "css.invalidKey": "Name must be nonempty and unique.",
   "menu.settings": "Settings",
   "menu.settingsTitle": "Menu settings",
+  "menu.duplicate": "Duplicate menu",
+  "menu.copyName": "{name} (copy)",
   "menu.resetPosition": "↺ Reset position",
   "menu.resetPositionTitle": "Reset menu position",
   "menu.removeMenu": "Remove menu",
@@ -883,6 +886,7 @@ export const zhCN: Record<MessageKey, string> = {
   "shortcuts.clearTarget": "清除",
   "shortcuts.pickDialogTitle": "为槽位 {n} 选择书签",
   "itemSettings.change": "更换书签 / 目录…",
+  "itemSettings.duplicate": "复制项目",
   "item.duplicatePathWarning": "⚠ 这个路径匹配到多个书签。BrowseRail 会尽量用已保存的网址消歧；建议改用唯一路径。",
 
   // Menu card
@@ -913,6 +917,8 @@ export const zhCN: Record<MessageKey, string> = {
   "css.invalidKey": "名称不能为空或重复。",
   "menu.settings": "设置",
   "menu.settingsTitle": "菜单设置",
+  "menu.duplicate": "复制菜单",
+  "menu.copyName": "{name}（副本）",
   "menu.resetPosition": "↺ 重置位置",
   "menu.resetPositionTitle": "重置菜单位置",
   "menu.removeMenu": "删除菜单",

@@ -80,6 +80,22 @@ export function mountMenusTab(
     const menu = state.settings.menus[activeMenuSettingsIndex];
     if (menu) state.setMenuCssClass(menu.uid, menuSettingCssClass.value);
   }, { signal: scope.signal });
+  const menuSettingDuplicateBtn = element<HTMLButtonElement>("menu-setting-duplicate-btn");
+  menuSettingDuplicateBtn.addEventListener("click", () => {
+    const menu = state.settings.menus[activeMenuSettingsIndex];
+    if (menu) {
+      const sourceUid = menu.uid;
+      closeMenuSettingsDialog();
+      const newUid = state.duplicateMenu(sourceUid);
+      collapsedMenuUids.delete(newUid);
+      renderMenus();
+    }
+  }, { signal: scope.signal });
+  const menuSettingResetPositionBtn = element<HTMLButtonElement>("menu-setting-reset-position-btn");
+  menuSettingResetPositionBtn.addEventListener("click", () => {
+    const menu = state.settings.menus[activeMenuSettingsIndex];
+    if (menu) void browserActions.resetMenuPosition(menu.uid);
+  }, { signal: scope.signal });
   const itemSettingsPopover = element<HTMLDivElement>("item-settings-popover");
   const itemSettingsTitle = element<HTMLSpanElement>("item-settings-title");
   const itemSettingsClose = element<HTMLButtonElement>("item-settings-close");
@@ -98,6 +114,21 @@ export function mountMenusTab(
   );
   const itemSettingIncludeFolders = element<HTMLInputElement>("item-setting-include-folders");
   const itemSettingChangeBtn = element<HTMLButtonElement>("item-setting-change-btn");
+  const itemSettingDuplicateBtn = element<HTMLButtonElement>("item-setting-duplicate-btn");
+  itemSettingDuplicateBtn.addEventListener(
+    "click",
+    () => {
+      if (!activeItemSettings) return;
+      const { menuIndex, itemIndex } = activeItemSettings;
+      const menu = state.settings.menus[menuIndex];
+      const item = menu?.items[itemIndex];
+      if (!menu || !item) return;
+      closeItemSettingsPopover();
+      state.duplicateMenuItem(menu.uid, item.uid);
+      renderMenus();
+    },
+    { signal: scope.signal },
+  );
   const addItemPopover = element<HTMLDivElement>("add-item-popover");
   const addPopoverBookmarkBtn = element<HTMLButtonElement>("add-popover-bookmark-btn");
   addPopoverBookmarkBtn.disabled = itemSettingChangeBtn.disabled = !library.available;
@@ -432,9 +463,11 @@ export function mountMenusTab(
     const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction" || item.type === "shortcutsToggle";
     itemSettingRename.placeholder = t(item.type === "shortcutsToggle" ? "menuAction.shortcutsToggleLabel" : "itemSettings.renamePlaceholder");
     const isDynamic = item.type === "dynamic";
+    itemSettingChangeBtn.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
+    itemSettingDuplicateBtn.style.display = isMenuFold ? "none" : "";
     const changeActions = itemSettingChangeBtn.parentElement;
     if (changeActions)
-      changeActions.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
+      changeActions.style.display = itemSettingChangeBtn.style.display === "none" && itemSettingDuplicateBtn.style.display === "none" ? "none" : "";
     const isTagGroup = item.type === "staticTag" || item.type === "flattenStaticTag";
     itemSettingChangeBtn.disabled = !isTagGroup && !library.available;
     const changeLabel = isTagGroup ? "itemSettings.changeTag" : "itemSettings.change";
@@ -802,16 +835,7 @@ export function mountMenusTab(
           openMenuColor(menu, defaultColorBtn);
         });
 
-        const resetPositionBtn = document.createElement("button");
-        resetPositionBtn.type = "button";
-        resetPositionBtn.className = "action-btn menu-header-btn";
-        resetPositionBtn.textContent = t("menu.resetPosition");
-        resetPositionBtn.title = t("menu.resetPositionTitle");
-        resetPositionBtn.addEventListener("click", () => {
-          void browserActions.resetMenuPosition(menu.uid);
-        });
-
-        titleRow.append(collapseBtn, title, toggleLabel, resetPositionBtn);
+        titleRow.append(collapseBtn, title, toggleLabel);
 
         const headerActions = document.createElement("div");
         headerActions.className = "menu-header-actions";

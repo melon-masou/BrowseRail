@@ -11,6 +11,7 @@ import {
   type ShortcutAction,
   type ItemIcon,
 } from "@browserail/protocol";
+import { t } from "@browserail/i18n";
 import type {
   DisplayMode,
   DynamicBookmark,
@@ -338,6 +339,26 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       settingsDraft.menus.push(structuredClone(value));
       publish(["menus"], true);
     },
+    duplicateMenu(uid: string): string {
+      const source = menu(uid);
+      const index = settingsDraft.menus.findIndex((existing) => existing.uid === uid);
+      const newUid = crypto.randomUUID();
+      const clonedItems = source.items.map((item) => ({
+        ...structuredClone(item),
+        uid: crypto.randomUUID(),
+      }));
+      const fallbackName = t("menu.title", { n: index + 1 });
+      const newName = t("menu.copyName", { name: source.name || fallbackName });
+      const copy: StoredMenu = {
+        ...structuredClone(source),
+        uid: newUid,
+        name: newName,
+        items: clonedItems,
+      };
+      settingsDraft.menus.splice(index + 1, 0, copy);
+      publish(["menus"], true);
+      return newUid;
+    },
     removeMenu(uid: string): void {
       menu(uid);
       settingsDraft.menus = settingsDraft.menus.filter((value) => value.uid !== uid);
@@ -409,6 +430,23 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       if (isCustomBookmarkType(value.type)) definition(value.type, customBookmarkUid(value) ?? "");
       target.items.push(structuredClone(value));
       publish(["menus"], true);
+    },
+    duplicateMenuItem(menuUid: string, uid: string): string {
+      const target = menu(menuUid);
+      const index = target.items.findIndex((existing) => existing.uid === uid);
+      if (index < 0) throw new Error(`Unknown menu item ${uid}`);
+      const source = target.items[index]!;
+      if (source.type === "menuFold") {
+        throw new Error("Menu already has a fold action");
+      }
+      const newUid = crypto.randomUUID();
+      const copy: StoredMenuItem = {
+        ...structuredClone(source),
+        uid: newUid,
+      };
+      target.items.splice(index + 1, 0, copy);
+      publish(["menus"], true);
+      return newUid;
     },
     removeMenuItem(menuUid: string, uid: string): void {
       item(menuUid, uid);

@@ -1592,6 +1592,23 @@ output[data-state="error"] {
   color: #475569;
 }
 
+.menu-settings-dialog-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+}
+
+.menu-setting-action-btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 12px;
+  min-height: 32px;
+  text-align: center;
+  justify-content: center;
+}
+
 .menu-settings-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2007,12 +2024,14 @@ output[data-state="error"] {
 
 .item-settings-actions {
   display: flex;
-  padding-top: 4px;
+  gap: 8px;
+  padding-top: 8px;
   border-top: 1px solid #f1f5f9;
 }
 
-.item-setting-change-btn {
-  width: 100%;
+.item-setting-change-btn,
+.item-setting-duplicate-btn {
+  flex: 1;
   font-size: 12px;
   padding: 4px 8px;
   min-height: 28px;

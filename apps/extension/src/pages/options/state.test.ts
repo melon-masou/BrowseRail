@@ -235,3 +235,34 @@ it("edits named CSS independently, rejects duplicate names, and only removes the
   state.removeGlobalCss("icons");
   expect(state.settings.globalCss).toEqual({ theme: ".menu-button { color: blue; }" });
 });
+
+it("duplicates a menu and all its items with fresh uids", () => {
+  const state = createState();
+  state.setMenuName("menu", "Primary");
+  const newUid = state.duplicateMenu("menu");
+  expect(newUid).not.toBe("menu");
+  expect(state.settings.menus).toHaveLength(2);
+  const cloned = state.settings.menus[1]!;
+  expect(cloned.uid).toBe(newUid);
+  expect(cloned.name).toBe("Primary (copy)");
+  expect(cloned.items).toHaveLength(2);
+  expect(cloned.items[0]!.uid).not.toBe("static-item");
+  expect(cloned.items[0]!.type).toBe("static");
+  expect(cloned.items[0]!.staticUid).toBe("static");
+  expect(cloned.items[1]!.uid).not.toBe("other-item");
+  expect(cloned.items[1]!.type).toBe("temporary");
+  expect(state.dirty.settings).toBe(true);
+});
+
+it("duplicates a menu item with a fresh uid directly after the source item", () => {
+  const state = createState();
+  const newItemUid = state.duplicateMenuItem("menu", "static-item");
+  expect(newItemUid).not.toBe("static-item");
+  expect(state.settings.menus[0]!.items).toHaveLength(3);
+  expect(state.settings.menus[0]!.items[0]!.uid).toBe("static-item");
+  expect(state.settings.menus[0]!.items[1]!.uid).toBe(newItemUid);
+  expect(state.settings.menus[0]!.items[1]!.type).toBe("static");
+  expect(state.settings.menus[0]!.items[1]!.staticUid).toBe("static");
+  expect(state.settings.menus[0]!.items[2]!.uid).toBe("other-item");
+  expect(state.dirty.settings).toBe(true);
+});

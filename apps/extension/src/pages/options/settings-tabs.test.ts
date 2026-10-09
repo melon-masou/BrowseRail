@@ -650,3 +650,32 @@ it("shows counts and defaults all available transfer groups on; imports only sel
   partialDialog.querySelector<HTMLButtonElement>(".save-btn")!.click();
   expect(await partial).toMatchObject({ menus: false, urlRules: true, bookmarks: false, shortcuts: false, bars: false });
 });
+
+it("duplicates menus and menu items from their settings panels", async () => {
+  button("menus-tab").click();
+  button("add-menu").click();
+  await vi.waitFor(() => expect(document.querySelectorAll("#menus .menu-card")).toHaveLength(1));
+
+  // Add an action item to the menu
+  document.querySelectorAll<HTMLButtonElement>(".menu-add-btn")[0]!.click();
+  button("add-popover-action-btn").click();
+  const choice = [...document.querySelectorAll<HTMLButtonElement>(".item-picker-dialog .pick-menu-item")]
+    .find(b => b.textContent === "Back")!;
+  choice.click();
+  await vi.waitFor(() => expect(document.querySelectorAll("#menus .menu-item-row")).toHaveLength(1));
+
+  // Duplicate item
+  document.querySelector<HTMLButtonElement>("#menus .item-settings-btn")!.click();
+  button("item-setting-duplicate-btn").click();
+  await vi.waitFor(() => expect(document.querySelectorAll("#menus .menu-item-row")).toHaveLength(2));
+  expect(document.querySelectorAll("#menus .menu-item-row")[1]!.textContent).toContain("Back");
+
+  // Duplicate menu
+  const settingsBtn = [...document.querySelectorAll<HTMLButtonElement>("#menus .menu-header-btn")]
+    .find(b => b.title === "Menu settings")!;
+  settingsBtn.click();
+  button("menu-setting-duplicate-btn").click();
+  await vi.waitFor(() => expect(document.querySelectorAll("#menus .menu-card")).toHaveLength(2));
+  expect(document.querySelectorAll("#menus .menu-card")[1]!.textContent).toContain("(copy)");
+  expect(document.querySelectorAll("#menus .menu-card")[1]!.querySelectorAll(".menu-item-row")).toHaveLength(2);
+});
