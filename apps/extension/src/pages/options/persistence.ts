@@ -48,6 +48,7 @@ import { createScope } from "./lifecycle";
 import { hasTransferGroup, mergeByKey, selectTransferData, type TransferOptions } from "./transfer";
 import { validateRewrite } from "../../lib/rewrite/rewrite";
 import { loadExternalAuthorization, saveExternalAuthorization } from "../../lib/config/external-authorization-store";
+import { CONFIG_SAVED } from "../../lib/config/messages";
 export async function loadOptions() {
   const bookmarksAvailable = await canUseBookmarks();
   const [config, enabled, tree, rootPrefix, displayMode, externalAuthorization] = await Promise.all([
@@ -88,7 +89,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     });
     await saveDisplayMode(savingSettings.displayMode);
     await saveExternalAuthorization(structuredClone(savingSettings.externalAuthorization));
-    await browser.runtime.sendMessage({ type: "configSaved" });
+    await browser.runtime.sendMessage({ type: CONFIG_SAVED });
     state.acceptInstanceSave(savingSettings);
     return currentConfig.urlRules;
   }
@@ -140,7 +141,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     });
     if (saving.barConfigurations) await importBarConfigurations(saving.barConfigurations, menus.map(menu => menu.uid), saving.replaceBarConfigurations === true);
     await pruneTemporaryValues(temporaryBookmarks);
-    await browser.runtime.sendMessage({ type: "configSaved" });
+    await browser.runtime.sendMessage({ type: CONFIG_SAVED });
     state.acceptSettingsSave(submitted);
     return savedRules;
   }
@@ -158,7 +159,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         ),
       },
     });
-    await browser.runtime.sendMessage({ type: "configSaved" });
+    await browser.runtime.sendMessage({ type: CONFIG_SAVED });
     return true;
   }
   async function exportSettings(options: Partial<TransferOptions> = {}): Promise<ExportedSettingsData> {

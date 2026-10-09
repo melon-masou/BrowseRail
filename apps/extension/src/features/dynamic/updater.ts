@@ -11,6 +11,7 @@ import {
   normalizeUrlRules,
 } from "../../lib/config";
 import { evaluateDynamicBookmark, type DynamicUpdate } from "./evaluate";
+import { DYNAMIC_TEST } from "./messages";
 
 const MARKER_HOST = "browserail.local";
 const DYNAMIC_FRAGMENT_PREFIX = "Dynamic:";
@@ -26,7 +27,7 @@ export function initDynamicBookmarks(requestSync: () => void): void {
     // The options page opens in a tab, so check that the sender is an extension page
     // rather than rejecting every sender with a tab (which also covers content scripts).
     if (sender.id !== browser.runtime.id || !sender.url?.startsWith(browser.runtime.getURL(""))) return;
-    if (typeof message === "object" && message !== null && "type" in message && message.type === "testDynamicBookmark") {
+    if (typeof message === "object" && message !== null && "type" in message && message.type === DYNAMIC_TEST) {
       const data = message as { bookmark?: unknown; rule?: unknown; url?: unknown };
       const bookmark = normalizeDynamicBookmarks([data.bookmark])[0];
       if (!bookmark || typeof data.url !== "string") return Promise.resolve({ ok: false, error: "Invalid test input" });

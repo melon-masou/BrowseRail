@@ -15,6 +15,7 @@ import { openTemporaryConfirmation, temporaryConfirmationContext } from "../capt
 import { requestBrowserMenuRefresh } from "./refresh";
 import { createBrowserEditSession } from "./edit-session";
 import { resolveMenuBookmarkTarget } from "../actions/menu-target";
+import { TEMPORARY_SAVE_CONFIRMED } from "../capture/messages";
 
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
@@ -50,7 +51,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     }));
   }
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
-    if ((message as { type?: string } | null)?.type === "temporarySaveConfirmed") {
+    if ((message as { type?: string } | null)?.type === TEMPORARY_SAVE_CONFIRMED) {
       return saveConfirmed(message, sender).then(() => ({ saved: true }), error => ({ error: String(error) }));
     }
     const type = (message as { type?: string } | null)?.type;

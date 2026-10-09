@@ -7,6 +7,8 @@ import {
 import { openStaticConfirmation, staticConfirmationContext } from "../capture/confirmation";
 import { requestBrowserMenuRefresh } from "../bar/refresh";
 import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
+import { EDITING_SET, EDITING_STATE_CHANGED, EDITING_STATE_REQUEST } from "./messages";
+import { STATIC_SAVE_CONFIRMED } from "../capture/messages";
 
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
@@ -52,7 +54,7 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
   }
   async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
     const state = await stateFor(mode, enabled);
-    await browser.runtime.sendMessage({ type: "menuEditingStateChanged", ...state }).catch(() => {});
+    await browser.runtime.sendMessage({ type: EDITING_STATE_CHANGED, ...state }).catch(() => {});
     await ready;
     if (!contextMenuAvailable) return;
     await browser.contextMenus.update(EDIT_MENU_ID, {
@@ -97,13 +99,13 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
   });
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
     const value = message as { type?: string; editing?: unknown } | null;
-    if (value?.type === "getMenuEditingState" || value?.type === "setMenuEditing") {
+    if (value?.type === EDITING_STATE_REQUEST || value?.type === EDITING_SET) {
       if (sender.id !== browser.runtime.id || sender.url?.split(/[?#]/)[0] !== browser.runtime.getURL("options.html")) return undefined;
-      if (value.type === "getMenuEditingState") return getState();
+      if (value.type === EDITING_STATE_REQUEST) return getState();
       if (typeof value.editing !== "boolean") return Promise.reject(new Error("Invalid editing state"));
       return setEditing(value.editing).then(getState);
     }
-    if (value?.type !== "staticSaveConfirmed") return undefined;
+    if (value?.type !== STATIC_SAVE_CONFIRMED) return undefined;
     return saveStaticConfirmed(message, sender).then(() => ({ saved: true }), error => ({ error: String(error) }));
   });
   browser.storage.onChanged.addListener((changes, area) => {

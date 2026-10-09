@@ -5,6 +5,12 @@ import {
   WIDGET_ENABLED_STORAGE_KEY, SHORTCUTS_ENABLED_STORAGE_KEY,
 } from "../../lib/config";
 import { browserKind } from "../../lib/browser/windows";
+import {
+  DEBUG_INFO_REQUEST, DEBUG_LOGGING_SET, DESKTOP_RECONNECT, DESKTOP_RESYNC_WINDOWS, DESKTOP_STATE_CHANGED,
+  DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET,
+} from "../../features/desktop/messages";
+import { EDITING_SET, EDITING_STATE_CHANGED, EDITING_STATE_REQUEST } from "../../features/toolbar/messages";
+import { MENU_LAYOUT_RESET } from "../../features/bar/messages";
 
 type RuntimeState = { enabled: boolean; shortcutsEnabled: boolean };
 
@@ -27,24 +33,24 @@ export const browserActions = {
   },
   async setWidgetEnabled(enabled: boolean): Promise<void> {
     await saveWidgetEnabled(enabled);
-    await browser.runtime.sendMessage({ type: "setWidgetEnabled", enabled });
+    await browser.runtime.sendMessage({ type: WIDGET_ENABLED_SET, enabled });
   },
-  reconnect: () => browser.runtime.sendMessage({ type: "manualReconnect" }),
-  resync: () => browser.runtime.sendMessage({ type: "resyncWindows" }),
+  reconnect: () => browser.runtime.sendMessage({ type: DESKTOP_RECONNECT }),
+  resync: () => browser.runtime.sendMessage({ type: DESKTOP_RESYNC_WINDOWS }),
   desktopState: () =>
-    browser.runtime.sendMessage({ type: "getDesktopState" }) as Promise<
+    browser.runtime.sendMessage({ type: DESKTOP_STATE_REQUEST }) as Promise<
       { state?: string; detail?: string } | undefined
     >,
-  menuEditingState: () => browser.runtime.sendMessage({ type: "getMenuEditingState" }) as Promise<
+  menuEditingState: () => browser.runtime.sendMessage({ type: EDITING_STATE_REQUEST }) as Promise<
     { enabled: boolean; editing: boolean }
   >,
-  setMenuEditing: (editing: boolean) => browser.runtime.sendMessage({ type: "setMenuEditing", editing }) as Promise<
+  setMenuEditing: (editing: boolean) => browser.runtime.sendMessage({ type: EDITING_SET, editing }) as Promise<
     { enabled: boolean; editing: boolean }
   >,
   onMenuEditingState(listener: (state: { enabled: boolean; editing: boolean }) => void): () => void {
     const receive = (message: unknown): void => {
       const value = message as { type?: string; enabled?: unknown; editing?: unknown } | null;
-      if (value?.type === "menuEditingStateChanged" && typeof value.enabled === "boolean" && typeof value.editing === "boolean") {
+      if (value?.type === EDITING_STATE_CHANGED && typeof value.enabled === "boolean" && typeof value.editing === "boolean") {
         listener({ enabled: value.enabled, editing: value.editing });
       }
     };
@@ -54,7 +60,7 @@ export const browserActions = {
   commands: () => browser.commands.getAll(),
   probeDesktop: probeDesktopConnection,
   resetMenuPosition: (menuUid: string) =>
-    browser.runtime.sendMessage({ type: "resetMenuLayout", menuUid }),
+    browser.runtime.sendMessage({ type: MENU_LAYOUT_RESET, menuUid }),
   async openShortcutSettings(): Promise<void> {
     const kind = browserKind();
     if (kind === "firefox") {
@@ -75,7 +81,7 @@ export const browserActions = {
         typeof message === "object" &&
         message !== null &&
         "type" in message &&
-        message.type === "desktopStateChanged" &&
+        message.type === DESKTOP_STATE_CHANGED &&
         "state" in message &&
         typeof message.state === "string"
       )
@@ -89,11 +95,11 @@ export const browserActions = {
   },
   async setDiagnosticsEnabled(enabled: boolean): Promise<void> {
     await browser.storage.local.set({ debugLoggingEnabled: enabled });
-    await browser.runtime.sendMessage({ type: "setDebugLogging", enabled }).catch(() => {});
+    await browser.runtime.sendMessage({ type: DEBUG_LOGGING_SET, enabled }).catch(() => {});
   },
   async debugInfo(): Promise<unknown> {
     const extension = await browser.runtime
-      .sendMessage({ type: "getDebugInfo" })
+      .sendMessage({ type: DEBUG_INFO_REQUEST })
       .catch((error) => ({ error: String(error) }));
     let desktop: unknown;
     try {
