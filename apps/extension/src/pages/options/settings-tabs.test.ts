@@ -10,6 +10,7 @@ const mock = vi.hoisted(() => ({
   cloud: {} as Record<string, unknown>,
   sendMessage: vi.fn<(message?: unknown) => Promise<unknown>>(async () => ({ state: "disconnected" })),
   bookmarkTree: [{id: "0", title: "", children: []}] as browser.Bookmarks.BookmarkTreeNode[],
+  requestPermission: vi.fn(async () => true),
   storageListeners: [] as Array<(changes: Record<string, Storage.StorageChange>, area: string) => void>,
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
@@ -36,7 +37,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
   },
   bookmarks: { getTree: async () => mock.bookmarkTree },
   commands: { getAll: async () => [] },
-  permissions: { onAdded: { addListener: vi.fn(), removeListener: vi.fn() }, onRemoved: { addListener: vi.fn(), removeListener: vi.fn() } },
+  permissions: { request: mock.requestPermission, onAdded: { addListener: vi.fn(), removeListener: vi.fn() }, onRemoved: { addListener: vi.fn(), removeListener: vi.fn() } },
 } }));
 
 function input(id: string): HTMLInputElement {
@@ -71,6 +72,7 @@ beforeEach(async () => {
   mock.storage = {};
   mock.cloud = {};
   mock.storageListeners = [];
+  mock.requestPermission.mockReset().mockResolvedValue(true);
   mock.bookmarkTree = [{id: "0", title: "", children: []}];
   const { loadConfig } = await import("../../config");
   const config = await loadConfig();
@@ -127,46 +129,142 @@ it("keeps externally added static bookmarks when saving drafts, without restorin
   ]);
 });
 
-it("downloads only after confirmation and preserves instance settings and bar layout", async () => {
+async function openSync(): Promise<void> {
+  button("menus-tab").click();
+  button("sync-btn").click();
+  await vi.waitFor(() => expect(button("sync-download").disabled).toBe(false));
+}
+
+function transferChoice(group: string, checked: boolean): void {
+  const control = document.querySelector<HTMLInputElement>(`#sync-dialog input[data-transfer-group="${group}"]`)!;
+  control.checked = checked;
+  control.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+it("previews cloud download before applying selected categories and preserves instance settings and unselected layout", async () => {
   const { uploadCloudSettings } = await import("../../config/cloud-storage");
   const { EXPORT_SCHEMA_VERSION, defaultBarSettings } = await import("@browserail/protocol");
-  const { saveBarLayout, loadBarConfigurations, defaultMenuPlacement, saveConfig } = await import("../../config");
-  const config = await savedConfig();
-  config.panel.menus = [{ uid: "local", items: [] }];
-  config.staticBookmarks = [{ uid: "old", name: "Old", url: "https://example.com" }];
-  await saveConfig(config);
+  const { saveBarLayout, loadBarConfigurations, defaultMenuPlacement } = await import("../../config");
   const saved = await savedConfig();
   await saveBarLayout("local", "browser", defaultMenuPlacement(), { gapRatio: .3, extraGaps: {} }, defaultBarSettings());
   const layout = await loadBarConfigurations();
-  await uploadCloudSettings({ version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(), menus: [] });
-  vi.mocked(window.confirm).mockReturnValue(false);
-  button("cloud-download").click();
-  await vi.waitFor(() => expect(button("cloud-download").disabled).toBe(false));
+  await uploadCloudSettings({
+    version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(),
+    menus: [{ uid: "remote", items: [] }],
+    staticBookmarks: [{ uid: "incoming", name: "Incoming", url: "https://example.com" }],
+    barConfigurations: { browser: { ...layout.browser, remote: layout.browser.local! }, native: {} },
+  });
+  await openSync();
+  const styles = document.createElement("style");
+  styles.textContent = readFileSync(new NodeURL("./styles.css", import.meta.url), "utf8");
+  document.head.append(styles);
+  expect(getComputedStyle(document.querySelector(".sync-webdav-fields")!).display).toBe("none");
+  expect([...document.querySelectorAll<HTMLInputElement>("#sync-dialog [data-transfer-group]")].every(input => input.checked)).toBe(true);
+  button("sync-download").click();
+  await vi.waitFor(() => expect(button("sync-download").textContent).toBe("Import"));
   expect(await savedConfig()).toEqual(saved);
-  vi.mocked(window.confirm).mockReturnValue(true);
-  button("cloud-download").click();
-  await vi.waitFor(() => expect(document.getElementById("status")!.textContent).toBe("Downloaded"));
-  expect(await savedConfig()).toMatchObject({ instanceLabel: "Original instance", desktopWidget: config.desktopWidget, panel: { menus: [] }, staticBookmarks: [], shortcuts: [] });
+  expect(document.getElementById("sync-dialog")!.textContent).toContain("Menus (1)");
+  transferChoice("bars", false);
+  button("sync-download").click();
+  await vi.waitFor(() => expect(document.getElementById("sync-status")!.textContent).toBe("Downloaded"));
+  expect(await savedConfig()).toMatchObject({ instanceLabel: saved.instanceLabel, desktopWidget: saved.desktopWidget, panel: { menus: [{ uid: "remote" }] }, staticBookmarks: [{ uid: "incoming" }] });
   expect(await loadBarConfigurations()).toEqual(layout);
 });
 
-it("uploads saved settings only after confirmation and keeps local edits out of the cloud", async () => {
-  const { downloadCloudSettings } = await import("../../config/cloud-storage");
-  button("cloud-upload").click();
-  await vi.waitFor(() => expect(document.getElementById("status")!.textContent).toBe("Uploaded"));
-  expect((await downloadCloudSettings()).staticBookmarks).toEqual([]);
+it("uploads saved selected categories after confirmation, retaining unselected remote data", async () => {
+  const { downloadCloudSettings, uploadCloudSettings } = await import("../../config/cloud-storage");
+  const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
+  const remote = { version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(), menus: [{ uid: "remote", items: [] }], globalCss: { remote: "& {}" }, staticBookmarks: [{ uid: "remote-bookmark", name: "Remote", url: "https://example.com" }] };
+  await uploadCloudSettings(remote);
+  await openSync();
+  for (const group of ["menus", "urlRules", "shortcuts", "bars"]) transferChoice(group, false);
+  vi.mocked(window.confirm).mockReturnValue(false);
+  button("sync-upload").click();
+  expect(await downloadCloudSettings()).toEqual(remote);
+  vi.mocked(window.confirm).mockReturnValue(true);
+  button("sync-upload").click();
+  await vi.waitFor(() => expect(document.getElementById("sync-status")!.textContent).toBe("Uploaded"));
+  expect(await downloadCloudSettings()).toMatchObject({ menus: remote.menus, globalCss: remote.globalCss, staticBookmarks: [] });
+  document.querySelector<HTMLDialogElement>("#sync-dialog")!.close();
   button("custom-bookmarks-tab").click();
   button("add-static-btn").click();
-  button("cloud-upload").click();
+  await openSync();
+  button("sync-upload").click();
   expect((await downloadCloudSettings()).staticBookmarks).toEqual([]);
+  expect(document.getElementById("sync-status")!.textContent).toBe("Please save settings before exporting");
+  document.querySelector<HTMLDialogElement>("#sync-dialog")!.close();
+  button("custom-bookmarks-tab").click();
   await save();
-  vi.mocked(window.confirm).mockReturnValue(false);
-  button("cloud-upload").click();
-  expect((await downloadCloudSettings()).staticBookmarks).toEqual([]);
-  vi.mocked(window.confirm).mockReturnValue(true);
-  button("cloud-upload").click();
-  await vi.waitFor(() => expect(document.getElementById("status")!.textContent).toBe("Uploaded"));
+  await openSync();
+  button("sync-upload").click();
+  await vi.waitFor(() => expect(document.getElementById("sync-status")!.textContent).toBe("Uploaded"));
   expect((await downloadCloudSettings()).staticBookmarks).toEqual((await savedConfig()).staticBookmarks);
+});
+
+function useWebDav(): void {
+  document.querySelector<HTMLButtonElement>('#sync-dialog button[data-provider="webdav"]')!.click();
+  input("sync-webdav-url").value = "https://dav.example.com/config/browserail.json";
+  input("sync-webdav-username").value = "alice";
+  input("sync-webdav-password").value = "app-password";
+}
+
+it("uploads selected WebDAV categories, preserves remote categories, and keeps credentials out of transferred data", async () => {
+  const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
+  const remote = { version: EXPORT_SCHEMA_VERSION, exportedAt: "2026-10-08T00:00:00Z", menus: [{ uid: "remote", items: [] }], globalCss: { remote: "& {}" }, staticBookmarks: [{ uid: "old", name: "Old", url: "https://example.com" }] };
+  let uploaded: unknown;
+  const fetchMock = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    if (options?.method === "PUT") {
+      uploaded = JSON.parse(options.body as string);
+      return new Response(null, { status: 201 });
+    }
+    return new Response(JSON.stringify(remote));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  await openSync();
+  useWebDav();
+  for (const group of ["menus", "urlRules", "shortcuts", "bars"]) transferChoice(group, false);
+  button("sync-upload").click();
+  await vi.waitFor(() => expect(document.getElementById("sync-status")!.textContent).toBe("Uploaded"));
+  expect(uploaded).toMatchObject({ menus: remote.menus, globalCss: remote.globalCss, staticBookmarks: [] });
+  expect(JSON.stringify(uploaded)).not.toContain("app-password");
+  expect(JSON.stringify(uploaded)).not.toContain("dav.example.com");
+  expect(mock.requestPermission).toHaveBeenCalledWith({ origins: ["https://dav.example.com/*"] });
+  document.querySelector<HTMLDialogElement>("#sync-dialog")!.close();
+  await openSync();
+  expect(input("sync-webdav-url").value).toBe("https://dav.example.com/config/browserail.json");
+  expect(input("sync-webdav-password").value).toBe("app-password");
+});
+
+it("does not upload after denied WebDAV permission or an invalid remote response", async () => {
+  const saved = await savedConfig();
+  const fetchMock = vi.fn(async () => new Response("not JSON"));
+  vi.stubGlobal("fetch", fetchMock);
+  await openSync(); useWebDav();
+  mock.requestPermission.mockResolvedValue(false);
+  button("sync-upload").click();
+  await vi.waitFor(() => expect(document.getElementById("sync-status")!.textContent).toContain("not granted"));
+  expect(fetchMock).not.toHaveBeenCalled();
+  mock.requestPermission.mockResolvedValue(true);
+  button("sync-upload").click();
+  await vi.waitFor(() => expect(button("sync-upload").disabled).toBe(false));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(await savedConfig()).toEqual(saved);
+});
+
+it("cancels a pending WebDAV download when the popup closes", async () => {
+  const saved = await savedConfig();
+  let requestSignal: AbortSignal | undefined;
+  vi.stubGlobal("fetch", vi.fn((_url: unknown, options?: RequestInit) => {
+    requestSignal = options?.signal ?? undefined;
+    return new Promise<Response>((_resolve, reject) => requestSignal!.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError")), { once: true }));
+  }));
+  await openSync(); useWebDav();
+  button("sync-download").click();
+  await vi.waitFor(() => expect(requestSignal).toBeDefined());
+  document.querySelector<HTMLDialogElement>("#sync-dialog")!.close();
+  expect(requestSignal!.aborted).toBe(true);
+  await vi.waitFor(() => expect(button("sync-btn").disabled).toBe(false));
+  expect(await savedConfig()).toEqual(saved);
 });
 
 it("moves static bookmarks up and down under tag filters in the complete saved order", async () => {
@@ -382,7 +480,7 @@ it("saves the instance separately, and freely switches other tabs before saving 
   confirm.mockRestore();
 });
 
-afterEach(() => { window.dispatchEvent(new Event("pagehide")); });
+afterEach(() => { window.dispatchEvent(new Event("pagehide")); vi.unstubAllGlobals(); });
 
 it("creates Native shortcut sets with separate rule selections and records keys inside the selected set", async () => {
   button("url-rules-tab").click();

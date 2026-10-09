@@ -121,13 +121,6 @@
                 <span data-i18n="language.label">Language</span>
                 <select id="language-select"></select>
               </label>
-              <div id="cloud-transfer-field">
-                <span class="label-row" data-i18n="form.chromeSync">Chrome Sync</span>
-                <span class="input-row">
-                  <button id="cloud-upload" type="button" data-i18n="cloud.upload">Upload</button>
-                  <button id="cloud-download" type="button" data-i18n="cloud.download">Download</button>
-                </span>
-              </div>
             </div>
 
             <div class="instance-access-controls">
@@ -295,6 +288,7 @@
           <button type="submit" id="save-btn" form="connection-form" class="save-btn" data-i18n="btn.saveInstance">Save instance</button>
           <output id="status" aria-live="polite"></output>
           <div id="settings-transfer-actions" class="settings-transfer-actions" hidden>
+            <button type="button" id="sync-btn" class="menu-action-btn sync-btn" data-i18n="btn.sync">Sync</button>
             <button type="button" id="export-btn" class="menu-action-btn export-btn" data-i18n="btn.export">Export</button>
             <button type="button" id="import-btn" class="menu-action-btn import-btn" data-i18n="btn.import">Import</button>
             <input type="file" id="import-file-input" accept=".json" hidden />

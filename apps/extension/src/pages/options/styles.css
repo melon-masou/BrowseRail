@@ -178,17 +178,19 @@ form {
   align-items: start;
 }
 
-.connection-primary-row,
-.connection-preferences-row {
+.connection-primary-row {
   grid-template-columns: 1.8fr 1fr 1.2fr;
+}
+
+.connection-preferences-row {
+  grid-template-columns: 1.8fr 1fr;
 }
 
 .connection-primary-row > :last-child {
   grid-column: span 2;
 }
 
-.connection-card .fields-row > label > span:first-child,
-#cloud-transfer-field > .label-row {
+.connection-card .fields-row > label > span:first-child {
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -239,8 +241,7 @@ form {
   }
 }
 
-label,
-#cloud-transfer-field {
+label {
   display: grid;
   gap: 6px;
   font-size: 14px;
@@ -818,6 +819,7 @@ output[data-state="error"] {
   color: #1e40af;
 }
 
+.sync-btn,
 .export-btn,
 .import-btn {
   background: #f8fafc;
@@ -825,6 +827,7 @@ output[data-state="error"] {
   border-color: #cbd5e1;
 }
 
+.sync-btn:hover,
 .export-btn:hover,
 .import-btn:hover {
   background: #f1f5f9;
@@ -3661,3 +3664,40 @@ span.icon-picker-preview {
 .item-icon-btn span { max-width: 100%; padding: 1px 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: normal; pointer-events: none; }
 
 .item-type-icon { flex: 0 0 auto; }
+
+.transfer-choices {
+  display: grid;
+  gap: 12px;
+}
+
+.sync-providers {
+  justify-self: start;
+  margin-bottom: 0;
+}
+
+.sync-webdav-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.sync-dialog [hidden] {
+  display: none;
+}
+
+.sync-webdav-fields > :first-child {
+  grid-column: 1 / -1;
+}
+
+#sync-status {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+#sync-status:empty {
+  display: none;
+}
+
+#sync-status[data-state="error"] {
+  color: #dc2626;
+}

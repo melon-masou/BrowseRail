@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { EXPORT_SCHEMA_VERSION, type ExportedSettingsData } from "@browserail/protocol";
+import { defaultBarSettings, EXPORT_SCHEMA_VERSION, type ExportedSettingsData } from "@browserail/protocol";
 
 const mocks = vi.hoisted(() => ({
   local: {} as Record<string, unknown>,
@@ -43,6 +43,7 @@ function snapshot(): ExportedSettingsData {
     globalCss: { icons: "& { --icon: none; }" },
     shortcuts: [{ slot: "slot_1", type: "static", staticUid: "docs" }],
     nativeShortcutSets: [{ uid: "docs-keys", name: "Docs", urlRuleUids: ["docs"], shortcuts: [{ id: "docs-key", key: "F1", type: "static", staticUid: "docs" }] }],
+    barConfigurations: { native: {}, browser: { bar: { ...defaultBarSettings(), placement: { boundPosition: { anchor: "topLeft", offsetX: 20, offsetY: 40 }, itemWidth: 100, itemHeight: 32 }, gapRatio: .2, extraGaps: {} } } },
   };
 }
 
@@ -67,11 +68,11 @@ it("round trips large CSS, Unicode, references and bindings under the browser's 
   expect(await loadConfig()).not.toHaveProperty("globalCss");
 });
 
-it("an empty downloaded collection replaces the previous collection instead of retaining it", async () => {
+it("stores exactly the supplied categories, without fabricating absent collections", async () => {
   const data = snapshot();
   await uploadCloudSettings(data);
   await uploadCloudSettings({ version: data.version, exportedAt: data.exportedAt, menus: [] });
-  expect(await downloadCloudSettings()).toMatchObject({ menus: [], staticBookmarks: [], dynamicBookmarks: [], temporaryBookmarks: [], urlRules: [], shortcuts: [], nativeShortcutSets: [], userVariables: {}, globalCss: {} });
+  expect(await downloadCloudSettings()).toEqual({ version: data.version, exportedAt: data.exportedAt, menus: [] });
 });
 
 it("failed uploads preserve both the previous cloud snapshot and local settings", async () => {

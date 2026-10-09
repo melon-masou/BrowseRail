@@ -35,6 +35,16 @@ export function selectTransferData(data: ExportedSettingsData, selection: Partia
   return selected;
 }
 
+export function mergeTransferData(remote: ExportedSettingsData | undefined, local: ExportedSettingsData, selection: TransferSelection): ExportedSettingsData {
+  const merged = structuredClone(remote ?? { version: local.version, exportedAt: local.exportedAt });
+  merged.version = local.version;
+  merged.exportedAt = local.exportedAt;
+  for (const group of transferGroups) {
+    if (selection[group]) for (const field of fields[group]) delete merged[field];
+  }
+  return Object.assign(merged, selectTransferData(local, selection));
+}
+
 export function mergeByKey<T>(local: readonly T[], incoming: readonly T[], key: (item: T) => string): T[] {
   const merged = new Map(incoming.map(item => [key(item), item]));
   for (const item of local) if (!merged.has(key(item))) merged.set(key(item), item);

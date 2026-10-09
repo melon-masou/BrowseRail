@@ -5,12 +5,12 @@ import { t } from "@browserail/i18n";
 const PREFIX = "cloud:";
 const MANIFEST_KEY = `${PREFIX}index`;
 const CHUNK_BYTES = 6000;
-const fields = ["menus", "urlRules", "defaultUrlRuleUid", "dynamicBookmarks", "staticBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "globalCss", "shortcuts", "nativeShortcutSets"] as const;
+const fields = ["menus", "urlRules", "defaultUrlRuleUid", "dynamicBookmarks", "staticBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "globalCss", "shortcuts", "nativeShortcutSets", "barConfigurations"] as const;
 type Field = typeof fields[number];
 interface Manifest {
   version: number;
   exportedAt: string;
-  fields: Record<Field, string[]>;
+  fields: Partial<Record<Field, string[]>>;
 }
 
 export function cloudStorageAvailable(): boolean {
@@ -46,24 +46,12 @@ async function hash(value: string): Promise<string> {
 export async function uploadCloudSettings(data: ExportedSettingsData): Promise<void> {
   const area = storage();
   const current = await area.get(null);
-  const complete = {
-    menus: data.menus,
-    urlRules: data.urlRules ?? [],
-    defaultUrlRuleUid: data.defaultUrlRuleUid ?? "",
-    dynamicBookmarks: data.dynamicBookmarks ?? [],
-    staticBookmarks: data.staticBookmarks ?? [],
-    temporaryBookmarks: data.temporaryBookmarks ?? [],
-    externalActions: data.externalActions ?? [],
-    userVariables: data.userVariables ?? {},
-    globalCss: data.globalCss ?? {},
-    shortcuts: data.shortcuts ?? [],
-    nativeShortcutSets: data.nativeShortcutSets ?? [],
-  };
-  const manifest: Manifest = { version: data.version, exportedAt: data.exportedAt, fields: {} as Record<Field, string[]> };
+  const manifest: Manifest = { version: data.version, exportedAt: data.exportedAt, fields: {} };
   const values: Record<string, unknown> = {};
   const retained = new Set([MANIFEST_KEY]);
   for (const field of fields) {
-    const value = JSON.stringify(complete[field]);
+    if (data[field] === undefined) continue;
+    const value = JSON.stringify(data[field]);
     const digest = await hash(value);
     manifest.fields[field] = split(value).map((part, index) => {
       const key = `${PREFIX}${field}:${digest}:${index}`;
@@ -82,21 +70,27 @@ export async function uploadCloudSettings(data: ExportedSettingsData): Promise<v
   }
 }
 
-export async function downloadCloudSettings(): Promise<ExportedSettingsData> {
+export async function readCloudSettings(): Promise<ExportedSettingsData | undefined> {
   const stored = await storage().get(null);
   const manifest = stored[MANIFEST_KEY] as Manifest | undefined;
-  if (!manifest) throw new Error(t("cloud.empty"));
+  if (manifest === undefined) return undefined;
   if (typeof manifest !== "object" || manifest === null || !manifest.fields || typeof manifest.fields !== "object")
     throw new Error(t("cloud.invalid"));
   const data: Record<string, unknown> = { version: manifest.version, exportedAt: manifest.exportedAt };
   for (const field of fields) {
     const keys = manifest.fields[field];
-    if (field === "nativeShortcutSets" && keys === undefined) continue;
+    if (keys === undefined) continue;
     if (!Array.isArray(keys) || !keys.length || keys.some(key => typeof key !== "string" || !key.startsWith(`${PREFIX}${field}:`) || typeof stored[key] !== "string"))
       throw new Error(t("cloud.incomplete"));
     try { data[field] = JSON.parse(keys.map(key => stored[key]).join("")) as unknown; }
     catch { throw new Error(t("cloud.invalid")); }
   }
   if (!isExportedSettingsData(data)) throw new Error(t("cloud.invalid"));
+  return data;
+}
+
+export async function downloadCloudSettings(): Promise<ExportedSettingsData> {
+  const data = await readCloudSettings();
+  if (!data) throw new Error(t("cloud.empty"));
   return data;
 }
