@@ -66,6 +66,7 @@ export function applyBarLayout(rail: HTMLElement, menu: MenuView, size: Size): v
   rail.style.setProperty("--config-bar-width", `${total.width}px`);
   rail.style.setProperty("--config-bar-height", `${total.height}px`);
   rail.style.setProperty("--config-bar-item-width", `${size.width}px`);
+  rail.style.setProperty("--config-bar-item-height", `${size.height}px`);
   rail.querySelectorAll<HTMLElement>(":scope > .menu-button").forEach((button, index) => {
     button.style.gridColumn = row ? String(2 * index + 1) : "1";
     button.style.gridRow = row ? "1" : String(2 * index + 1);

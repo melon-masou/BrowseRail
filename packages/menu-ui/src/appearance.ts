@@ -139,6 +139,10 @@ export function menuButton(
   } else {
     labelSpan.textContent = entry.label;
   }
+  if (!popup) {
+    button.dataset.initial = Array.from(labelSpan.textContent.trim())[0] ?? "";
+    if (!button.hasAttribute("aria-label")) button.ariaLabel = labelSpan.textContent;
+  }
   if (!popup && /^\p{Extended_Pictographic}+$/u.test(labelSpan.textContent.trim())) {
     labelSpan.classList.add("menu-button-emoji");
     button.dataset.hasEmoji = "true";

@@ -1,6 +1,6 @@
 /*
- * Bar styles. In Global CSS, & selects the bar and &.CLASS selects a bar
- * with that CSS class. Use .menu-button.CLASS for configured item classes.
+ * Bar styles. In Global CSS, "&" selects the bar and "&.CLASS" selects a bar
+ * with that CSS class. Use ".menu-button.CLASS" for configured item classes.
  *
  * ELEMENTS
  * .menu-bar                Bar root
@@ -24,6 +24,7 @@
  * &[data-auto-hidden]              Bar is hidden
  * .menu-button[data-uid="UID"]      Rendered action UID
  * .menu-button[data-kind="KIND"]    Bookmark, folder or action kind
+ * .menu-button[data-initial]        Automatically generated first character of the displayed name
  * .menu-button[data-folder]         Folder button
  * .menu-button[data-has-custom-color="true"]  Effective color applied
  * .menu-button[data-has-emoji="true"]         Emoji-only label
