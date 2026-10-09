@@ -447,6 +447,31 @@ describe("bar auto-hide", () => {
     expect(adapter.commitHitRegion).toHaveBeenLastCalledWith([{ left: 0, top: 0, right: 86, bottom: 46 }]);
   });
 
+  it.each([
+    ["column", "start"], ["column", "end"], ["row", "start"], ["row", "end"],
+  ] as const)("hides the whole bar while retaining a usable hover edge (%s/%s)", async (orientation, autoHide) => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu = { ...state.menu, orientation, autoHide, autoHideRange: { start: .5, end: .5 }, autoHidePadding: 0 };
+    let region: Rect | null = null;
+    adapter.commitHitRegion = async next => { region = next?.[0] ?? null; };
+    const controller = mount(root, state, adapter); await controller.ready;
+    const hitSize = orientation === "column" ? region!.right - region!.left : region!.bottom - region!.top;
+    expect(hitSize).toBeGreaterThan(0);
+    const content = root.querySelector<HTMLElement>(".bar-content")!;
+    const clip = content.style.clipPath.match(/-?[\d.]+/g)!.map(Number);
+    const clippedSize = orientation === "column" ? clip[1]! + clip[3]! : clip[0]! + clip[2]!;
+    expect(clippedSize).toBe(orientation === "column" ? 86 : 38);
+    press(root.querySelector("button")!);
+    expect(adapter.invokeAction).not.toHaveBeenCalled();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    root.querySelector(".bar-viewport")!.dispatchEvent(new Event("pointerenter"));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(region).toBeNull();
+    expect(content.style.clipPath).toBe("");
+    press(root.querySelector("button")!);
+    expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
+  });
+
   it.each(["column", "row"] as const)("expands the wake area by the configured amount and can restore its original size (%s)", async orientation => {
     const root = container(); const adapter = host(); const state = barState();
     state.menu = { ...state.menu, orientation, autoHide: "start", autoHidePadding: 0 };

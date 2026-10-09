@@ -3,6 +3,7 @@ import { barFrameInsets, barSurfaceDimensions } from "../layout";
 import type { Rect, Size } from "../types";
 
 const PEEK_SIZE = 6;
+const MIN_HIT_SIZE = 4;
 
 export function barHiddenRange(menu: MenuView, itemSize: Size): BarAutoHideRange {
   if (menu.autoHideRange) return { ...menu.autoHideRange };
@@ -22,14 +23,16 @@ export function barHiddenArea(menu: MenuView, itemSize: Size) {
   const start = menu.autoHide === "end" ? extent - bandSize : 0;
   const end = start + bandSize;
   const distance = start - bandStart;
-  const padding = menu.autoHidePadding ?? DEFAULT_AUTO_HIDE_PADDING;
+  // A fully hidden bar still needs a nonempty edge to receive hover events.
+  const minimumPadding = Math.max(0, Math.min(extent, MIN_HIT_SIZE) - bandSize);
+  const padding = Math.max(minimumPadding, menu.autoHidePadding ?? DEFAULT_AUTO_HIDE_PADDING);
   const visible: Rect = horizontal
     ? { left: start, top: 0, right: end, bottom: surface.height }
     : { left: 0, top: start, right: surface.width, bottom: end };
   const hit: Rect = horizontal
     ? { ...visible, left: Math.max(0, start - padding), right: Math.min(extent, end + padding) }
     : { ...visible, top: Math.max(0, start - padding), bottom: Math.min(extent, end + padding) };
-  return { surface, visible, hit, offset: { x: horizontal ? distance : 0, y: horizontal ? 0 : distance } };
+  return { surface, visible, hit, minimumPadding, offset: { x: horizontal ? distance : 0, y: horizontal ? 0 : distance } };
 }
 
 export function applyBarHiddenAppearance(rail: HTMLElement, menu: MenuView, itemSize: Size, hidden: boolean): void {

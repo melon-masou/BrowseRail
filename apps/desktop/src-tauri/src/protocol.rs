@@ -326,7 +326,7 @@ pub struct BarAutoHideRange {
 impl BarAutoHideRange {
     fn is_valid(&self) -> bool {
         self.start.is_finite() && self.end.is_finite()
-            && self.start >= 0.0 && self.end <= 1.0 && self.start < self.end
+            && self.start >= 0.0 && self.end <= 1.0 && self.start <= self.end
     }
 }
 
@@ -831,6 +831,25 @@ mod tests {
         BrowserWindowSnapshot, ExtensionMessage, LayoutEntry, MenuPlacement, MenuView, NativeMessage,
         SyncedMenu, compute_menu_geometry_for_state, free_menu_geometry_for_state,
     };
+
+    #[test]
+    fn accepts_fully_hidden_bands_in_saved_native_settings() {
+        let mut settings: super::NativeBarSettings = serde_json::from_value(serde_json::json!({
+            "orientation": "column", "autoHide": "start", "autoHidePadding": 4,
+            "autoHideRange": { "start": 0.5, "end": 0.5 },
+            "buttonFontSize": -1, "popupFontSize": -1, "expandAlignment": "edge",
+            "attachmentMode": "lastFocused", "onTopMode": "aboveBrowser"
+        })).unwrap();
+        assert!(settings.is_valid());
+        let mut view: MenuView = serde_json::from_value(serde_json::json!({
+            "uid": "hidden", "items": []
+        })).unwrap();
+        settings.apply_view(&mut view);
+        let range = view.auto_hide_range.unwrap();
+        assert_eq!(range.start, range.end);
+        settings.auto_hide_range.as_mut().unwrap().start = 0.75;
+        assert!(!settings.is_valid());
+    }
 
     #[test]
     fn preserves_temporary_bookmark_action_without_its_url() {

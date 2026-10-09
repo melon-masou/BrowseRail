@@ -75,21 +75,18 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
   overlay.append(preview, before, after, band, sensor, label, ...handles); rail.append(overlay);
 
   function setBoundary(boundary: "start" | "end", value: number): void {
-    const surface = barSurfaceDimensions(menu, itemSize);
-    const extent = menu.orientation === "column" ? surface.width : surface.height;
-    const minimum = Math.min(1, 4 / extent);
     const range = barHiddenRange(menu, itemSize);
     range[boundary] = boundary === "start"
-      ? Math.max(0, Math.min(range.end - minimum, value))
-      : Math.min(1, Math.max(range.start + minimum, value));
+      ? Math.max(0, Math.min(range.end, value))
+      : Math.min(1, Math.max(range.start, value));
     menu = { ...menu, autoHideRange: range };
     render(); changed({ autoHideRange: { ...range } });
   }
 
   function setPadding(value: number): void {
-    const { surface, visible } = barHiddenArea(menu, itemSize);
+    const { surface, visible, minimumPadding } = barHiddenArea(menu, itemSize);
     const maximum = menu.orientation === "column" ? surface.width - (visible.right - visible.left) : surface.height - (visible.bottom - visible.top);
-    const autoHidePadding = Math.max(0, Math.min(maximum, value));
+    const autoHidePadding = Math.max(minimumPadding, Math.min(maximum, value));
     menu = { ...menu, autoHidePadding };
     render(); changed({ autoHidePadding });
   }
@@ -128,7 +125,7 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
     const range = barHiddenRange(menu, itemSize);
     const surface = barSurfaceDimensions(menu, itemSize);
     const frame = barFrameInsets(menu);
-    const { visible, hit, offset } = barHiddenArea(menu, itemSize);
+    const { visible, hit, offset, minimumPadding } = barHiddenArea(menu, itemSize);
     const extent = horizontal ? surface.width : surface.height;
     const maximumPadding = extent - (horizontal ? visible.right - visible.left : visible.bottom - visible.top);
     overlay.dataset.axis = horizontal ? "x" : "y";
@@ -149,13 +146,16 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
     }
     for (const [index, handle] of handles.entries()) {
       const boundary = index === 0 ? "start" : "end";
-      handle.hidden = sensing && boundary !== (menu.autoHide === "end" ? "start" : "end");
+      // Coincident handles must expose the boundary that can expand the band.
+      handle.hidden = sensing
+        ? boundary !== (menu.autoHide === "end" ? "start" : "end")
+        : range.start === range.end && boundary === (range.end === 1 ? "end" : "start");
       const hitBoundary = horizontal ? index === 0 ? hit.left : hit.right : index === 0 ? hit.top : hit.bottom;
       const coordinate = sensing ? hitBoundary : range[boundary] * extent;
       handle.style.left = horizontal ? `${coordinate}px` : "";
       handle.style.top = horizontal ? "" : `${coordinate}px`;
       handle.setAttribute("aria-orientation", horizontal ? "horizontal" : "vertical");
-      handle.setAttribute("aria-valuemin", String(sensing ? 0 : boundary === "start" ? 0 : range.start * 100));
+      handle.setAttribute("aria-valuemin", String(sensing ? minimumPadding : boundary === "start" ? 0 : range.start * 100));
       handle.setAttribute("aria-valuemax", String(sensing ? maximumPadding : boundary === "end" ? 100 : range.end * 100));
       handle.setAttribute("aria-valuenow", String(Math.round(sensing ? padding() : range[boundary] * 100)));
       handle.ariaLabel = `${label.textContent}: ${t(horizontal ? index === 0 ? "expandDirection.left" : "expandDirection.right" : index === 0 ? "expandDirection.up" : "expandDirection.down")}`;

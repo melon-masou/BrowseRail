@@ -48,7 +48,7 @@ export function isBarAutoHideRange(value: unknown): value is BarAutoHideRange {
   if (!value || typeof value !== "object") return false;
   const { start, end } = value as BarAutoHideRange;
   return typeof start === "number" && Number.isFinite(start) && start >= 0
-    && typeof end === "number" && Number.isFinite(end) && end <= 1 && start < end;
+    && typeof end === "number" && Number.isFinite(end) && end <= 1 && start <= end;
 }
 export function isBarSettings(value: unknown): value is BarSettings {
   if (!value || typeof value !== "object") return false;
