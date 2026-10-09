@@ -6,6 +6,7 @@ import {
 } from "../config";
 import { openStaticConfirmation, staticConfirmationContext } from "./temporary-confirmation";
 import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
+import { normalizeStaticBookmarkTags } from "../config/static-bookmark-tags";
 
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
@@ -122,11 +123,12 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
 
 async function saveStaticConfirmed(message: unknown, sender: Runtime.MessageSender): Promise<void> {
   const source = staticConfirmationContext(sender);
-  const { name, url } = message as { name?: unknown; url?: unknown };
+  const { name, url, tags } = message as { name?: unknown; url?: unknown; tags?: unknown };
   if (typeof name !== "string" || typeof url !== "string" || !url.trim()) throw new Error("Invalid static bookmark");
   const tab = await browser.tabs.get(source.sourceTabId);
   if (tab.windowId !== source.sourceWindowId) throw new Error("Source window is unavailable");
   const config = await loadConfig();
-  config.staticBookmarks.push({ uid: crypto.randomUUID(), name: name.trim(), url: url.trim() });
+  const selectedTags = normalizeStaticBookmarkTags(tags);
+  config.staticBookmarks.push({ uid: crypto.randomUUID(), name: name.trim(), url: url.trim(), ...(selectedTags.length ? { tags: selectedTags } : {}) });
   await saveConfig(config);
 }

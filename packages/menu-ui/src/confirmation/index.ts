@@ -14,7 +14,10 @@ export function mountTemporaryConfirmation(root: HTMLElement, host: {
 
 export function mountBookmarkConfirmation(root: HTMLElement, host: {
   title: string;
-  fields: Array<{ key: string; label: string; value?: string; required?: boolean; maxLength?: number; inputMode?: string }>;
+  fields: Array<{
+    key: string; label: string; value?: string; required?: boolean; maxLength?: number; inputMode?: string;
+    placeholder?: string; suggestions?: readonly string[]; multiple?: boolean;
+  }>;
   save(values: Record<string, string>): Promise<void>;
   close(): Promise<void>;
 }) {
@@ -32,9 +35,29 @@ export function mountBookmarkConfirmation(root: HTMLElement, host: {
     input.name = field.key;
     input.value = field.value ?? "";
     input.required = field.required ?? false;
+    if (field.placeholder) input.placeholder = field.placeholder;
     if (field.maxLength !== undefined) input.maxLength = field.maxLength;
     if (field.inputMode) input.inputMode = field.inputMode;
     label.append(input);
+    if (field.suggestions?.length) {
+      const choices = doc.createElement("datalist");
+      choices.id = `confirmation-${field.key}-suggestions`;
+      input.setAttribute("list", choices.id);
+      const updateChoices = () => {
+        // Native suggestions replace the whole input; retain tags chosen before the last comma.
+        const lastSeparator = field.multiple ? Math.max(input.value.lastIndexOf(","), input.value.lastIndexOf("，")) : -1;
+        const prefix = input.value.slice(0, lastSeparator + 1);
+        const selected = prefix.split(/[,，]/).map(value => value.trim());
+        choices.replaceChildren(...field.suggestions!.filter(value => !selected.includes(value)).map(value => {
+          const option = doc.createElement("option");
+          option.value = prefix + value;
+          return option;
+        }));
+      };
+      updateChoices();
+      input.addEventListener("input", updateChoices, { signal: lifetime.signal });
+      label.append(choices);
+    }
     return { key: field.key, input, label };
   });
   const status = doc.createElement("p");

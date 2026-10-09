@@ -158,7 +158,7 @@ it("rejects editing commands from web pages", async () => {
   expect(await loadBrowserEditing()).toBe(false);
 });
 
-it("confirms edited name and URL before adding a persistent static bookmark in native mode with the widget disabled", async () => {
+it("confirms edited name, URL and tags before adding a persistent static bookmark in native mode with the widget disabled", async () => {
   const config = await loadConfig();
   config.staticBookmarks = [{ uid: "existing", name: "Existing", url: "https://example.com/old" }];
   await saveConfig(config);
@@ -178,12 +178,12 @@ it("confirms edited name and URL before adding a persistent static bookmark in n
   expect((await loadConfig()).staticBookmarks).toEqual(config.staticBookmarks);
   // The extension confirmation URL carries its context across worker restarts.
   const restarted = createBrowserEditingMenu({ setNativeEditing: mocks.setNativeEditing }); await restarted.update("native", false);
-  expect(await mocks.message!({ type: "staticSaveConfirmed", name: "Edited name", url: "https://example.com/edited" }, {
+  expect(await mocks.message!({ type: "staticSaveConfirmed", name: "Edited name", url: "https://example.com/edited", tags: [" gbf ", "work", "gbf", ""] }, {
     id: "browserail", url,
   })).toEqual({ saved: true });
   const saved = await loadConfig();
   expect(saved.staticBookmarks[0]).toEqual(config.staticBookmarks[0]);
-  expect(saved.staticBookmarks[1]).toMatchObject({ name: "Edited name", url: "https://example.com/edited" });
+  expect(saved.staticBookmarks[1]).toMatchObject({ name: "Edited name", url: "https://example.com/edited", tags: ["gbf", "work"] });
   expect(saved.staticBookmarks[1]?.uid).toBeTruthy();
   expect(saved.panel.menus).toEqual(config.panel.menus);
 });
