@@ -200,7 +200,7 @@ export function nextAnchor(anchor: MenuAnchor): MenuAnchor {
 }
 
 export function anchorLabel(anchor: MenuAnchor): string {
-  return { topLeft: "TL", topRight: "TR", bottomLeft: "BL", bottomRight: "BR" }[anchor];
+  return t(`anchor.${anchor}`);
 }
 
 export function createSpacingIcon(doc: Document): SVGSVGElement {
