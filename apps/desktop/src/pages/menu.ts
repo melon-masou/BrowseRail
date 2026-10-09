@@ -57,8 +57,8 @@ export async function initializeSurface(
   const report = (action: Promise<void>): void => { void action.catch(showSurfaceError); };
   const closePopup = (): Promise<void> => popup.close();
   let hitRegionUpdate = Promise.resolve();
-  function commitHitRegion(region: Rect | null): Promise<void> {
-    const apply = (): Promise<void> => invoke("set_bar_hit_region", { region });
+  function commitHitRegion(regions: Rect[] | null): Promise<void> {
+    const apply = (): Promise<void> => invoke("set_bar_hit_region", { regions });
     hitRegionUpdate = hitRegionUpdate.then(apply, apply);
     return hitRegionUpdate;
   }

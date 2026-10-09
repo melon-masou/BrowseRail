@@ -22,7 +22,7 @@ This example replaces button labels with colored icons and removes the bar backg
   --bar-button-background: transparent;
   --bar-button-padding: 0;
 
-  /* Pass background clicks through in browser mode; buttons remain clickable. */
+  /* Pass clicks through outside the buttons */
   --bar-background-pointer-events: none;
 
   /* Icons fill the button; control the distance between buttons with spacing. */

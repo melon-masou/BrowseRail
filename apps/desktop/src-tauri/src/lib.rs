@@ -436,8 +436,11 @@ fn set_popup_hit_regions(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn set_bar_hit_region(window: tauri::Window, region: Option<panel::PopupHitRect>) -> Result<(), String> {
-    panel::set_bar_hit_region(&window, region)
+fn set_bar_hit_region(
+    window: tauri::Window,
+    regions: Option<Vec<panel::PopupHitRect>>,
+) -> Result<(), String> {
+    panel::set_bar_hit_region(&window, regions)
 }
 
 #[cfg(target_os = "windows")]

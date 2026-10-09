@@ -41,10 +41,21 @@ export function createBarAutoHide(root: HTMLElement, host: BarHost, canReveal: (
       : enabled ? "auto" : "none";
     content.inert = hidden;
     viewport.toggleAttribute("data-auto-hidden", hidden);
-    const signature = region ? `${root.ownerDocument.defaultView!.devicePixelRatio}:${JSON.stringify(region)}` : "null";
+    let regions: Rect[] | null = region ? [region] : null;
+    if (!hidden && backgroundEvents === "none" && host.commitHitRegion) {
+      const origin = root.getBoundingClientRect();
+      regions = Array.from(bar.querySelectorAll<HTMLElement>(":scope > .menu-button, :scope > .empty-menu")).flatMap(button => {
+        const bounds = button.getBoundingClientRect();
+        const style = root.ownerDocument.defaultView!.getComputedStyle(button);
+        if (!bounds.width || !bounds.height || style.visibility === "hidden") return [];
+        return [{ left: bounds.left - origin.left, top: bounds.top - origin.top,
+          right: bounds.right - origin.left, bottom: bounds.bottom - origin.top }];
+      });
+    }
+    const signature = regions ? `${root.ownerDocument.defaultView!.devicePixelRatio}:${JSON.stringify(regions)}` : "null";
     if (signature !== lastRegion) {
       lastRegion = signature;
-      committed = host.commitHitRegion?.(region) ?? Promise.resolve();
+      committed = host.commitHitRegion?.(regions) ?? Promise.resolve();
       report(committed);
     }
   }

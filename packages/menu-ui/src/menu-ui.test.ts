@@ -317,16 +317,58 @@ it("lets a click-only bar folder replace a temporary pin using its normal left c
 });
 
 describe("bar auto-hide", () => {
+  it("keeps CSS-sized button interiors clickable while gaps pass through and restores the window for editing", async () => {
+    const root = container(); const adapter = host(); const state = barState();
+    root.style.setProperty("--bar-background-pointer-events", "none");
+    state.menu.items.push({ kind: "bookmark", uid: "bookmark:two", label: "Two" });
+    // Happy DOM does not inherit custom properties into computed styles.
+    const computedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation(element => {
+      const style = computedStyle(element);
+      if (element.classList.contains("menu-bar")) {
+        const property = style.getPropertyValue.bind(style);
+        vi.spyOn(style, "getPropertyValue").mockImplementation(name =>
+          name === "--bar-background-pointer-events" ? "none" : property(name));
+      }
+      return style;
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this === root) return new DOMRect(100, 200, 100, 50);
+      if (this.classList.contains("menu-button")) {
+        return new DOMRect(this.dataset.uid === "bookmark:one" ? 110 : 160, 210, 30, 30);
+      }
+      return new DOMRect();
+    });
+    let regions: Rect[] | null = null;
+    adapter.commitHitRegion = async next => { regions = next; };
+    const accepts = (x: number, y: number): boolean => regions === null || regions.some(rect =>
+      x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom);
+    const controller = mount(root, state, adapter); await controller.ready;
+    expect(accepts(11, 11)).toBe(true);
+    expect(accepts(39, 39)).toBe(true);
+    expect(accepts(61, 11)).toBe(true);
+    expect(accepts(50, 20)).toBe(false);
+    expect(accepts(0, 0)).toBe(false);
+    press(root.querySelector("button")!);
+    expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
+    await controller.update({ ...state, editingLocked: false });
+    expect(accepts(50, 20)).toBe(true);
+    await controller.update(state);
+    expect(accepts(50, 20)).toBe(false);
+    controller.destroy();
+    expect(accepts(50, 20)).toBe(true);
+  });
+
   it.each([
     ["column", "start"], ["column", "end"], ["row", "start"], ["row", "end"],
   ] as const)("moves the chosen band to the hiding edge and restores the full bar on hover (%s/%s)", async (orientation, autoHide) => {
     const root = container(); const adapter = host(); const state = barState();
     state.menu = { ...state.menu, orientation, autoHide, autoHideRange: { start: .25, end: .5 }, autoHidePadding: 3 };
-    const regions: Array<Rect | null> = [];
+    const regions: Array<Rect[] | null> = [];
     adapter.commitHitRegion = async region => { regions.push(region); };
     const controller = mount(root, state, adapter); await controller.ready;
     const extent = orientation === "column" ? 86 : 38;
-    const hit = regions.at(-1)!;
+    const hit = regions.at(-1)![0]!;
     const start = autoHide === "start" ? 0 : extent * .75;
     const end = start + extent * .25;
     expect(orientation === "column" ? hit!.left : hit!.top).toBeCloseTo(Math.max(0, start - 3));
@@ -345,10 +387,10 @@ describe("bar auto-hide", () => {
     expect(regions.at(-1)).toBeNull(); expect(content.style.clipPath).toBe(""); expect(content.style.transform).toBe("");
     press(root.querySelector("button")!); expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
     viewport.dispatchEvent(new Event("pointerleave")); await vi.advanceTimersByTimeAsync(200);
-    expect(regions.at(-1)).toEqual(hit);
+    expect(regions.at(-1)).toEqual([hit]);
     await controller.update({ ...state, itemSize: { width: 168, height: 72 } });
     const resized = orientation === "column" ? 170 : 74;
-    const nextHit = regions.at(-1)!;
+    const nextHit = regions.at(-1)![0]!;
     expect(orientation === "column" ? nextHit!.left : nextHit!.top).toBeCloseTo(autoHide === "start" ? 0 : resized * .75 - 3);
     expect(orientation === "column" ? nextHit!.right : nextHit!.bottom).toBeCloseTo(autoHide === "start" ? resized * .25 + 3 : resized);
     await controller.update({ ...state, editingLocked: false });
@@ -360,14 +402,14 @@ describe("bar auto-hide", () => {
     state.menu = { ...state.menu, orientation: "column", autoHide: "end", autoHideRange: { start: .9, end: 1 }, autoHidePadding: 1000 };
     adapter.commitHitRegion = vi.fn(async () => {});
     await mount(root, state, adapter).ready;
-    expect(adapter.commitHitRegion).toHaveBeenLastCalledWith({ left: 0, top: 0, right: 86, bottom: 46 });
+    expect(adapter.commitHitRegion).toHaveBeenLastCalledWith([{ left: 0, top: 0, right: 86, bottom: 46 }]);
   });
 
   it.each(["column", "row"] as const)("expands the wake area by the configured amount and can restore its original size (%s)", async orientation => {
     const root = container(); const adapter = host(); const state = barState();
     state.menu = { ...state.menu, orientation, autoHide: "start", autoHidePadding: 0 };
     let region: Rect | null = null;
-    adapter.commitHitRegion = async next => { region = next; };
+    adapter.commitHitRegion = async next => { region = next?.[0] ?? null; };
     const size = (): number => orientation === "column" ? region!.right - region!.left : region!.bottom - region!.top;
     const controller = mount(root, state, adapter); await controller.ready;
     const original = size();
@@ -384,10 +426,10 @@ describe("bar auto-hide", () => {
   ] as const)("keeps a clickable edge and reveals without changing the bar layout (%s/%s)", async (orientation, autoHide) => {
     const root = container(true); const adapter = host(); const state = barState();
     state.menu = { ...state.menu, orientation, autoHide };
-    const regions: Array<Rect | null> = [];
+    const regions: Array<Rect[] | null> = [];
     adapter.commitHitRegion = async region => { regions.push(region); };
     await mount(root, state, adapter).ready;
-    const edge = regions.at(-1)!;
+    const edge = regions.at(-1)![0]!;
     expect(edge).not.toBeNull();
     const horizontal = orientation === "column";
     expect(horizontal ? edge!.right - edge!.left : edge!.bottom - edge!.top).toBeGreaterThan(0);
@@ -407,7 +449,7 @@ describe("bar auto-hide", () => {
     expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
     viewport.dispatchEvent(new Event("pointerleave"));
     await vi.advanceTimersByTimeAsync(500);
-    expect(regions.at(-1)).toEqual(edge);
+    expect(regions.at(-1)).toEqual([edge]);
   });
 
   it("disables hiding as soon as editing is unlocked and preserves the configured direction", async () => {
@@ -415,7 +457,7 @@ describe("bar auto-hide", () => {
     state.menu.autoHide = "end";
     state.menu.items.push({ kind: "menuFold", uid: "fold", label: "Fold" });
     let region: Rect | null = null;
-    adapter.commitHitRegion = async next => { region = next; };
+    adapter.commitHitRegion = async next => { region = next?.[0] ?? null; };
     const controller = mount(root, state, adapter); await controller.ready;
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     root.querySelector(".bar-viewport")!.dispatchEvent(new Event("pointerenter"));
@@ -439,7 +481,7 @@ describe("bar auto-hide", () => {
       children: [{ kind: "bookmark", uid: "child", label: "Child" }] }];
     let pointerInside!: (inside: boolean) => void;
     let region: Rect | null = null;
-    adapter.commitHitRegion = async next => { region = next; };
+    adapter.commitHitRegion = async next => { region = next?.[0] ?? null; };
     const close = vi.fn();
     adapter.openPopup = async (_request, pointer) => {
       pointerInside = pointer;

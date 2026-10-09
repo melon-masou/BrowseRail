@@ -55,7 +55,7 @@ export interface BarHost extends MenuActions {
   waitForFonts?(): Promise<unknown>;
   openPopup(request: PopupRequest, pointerInside: (inside: boolean) => void, pinChanged: (pin: PopupPin, rootPin: PopupPin) => void): Promise<PopupSession>;
   requestCustomize(): Promise<void>;
-  commitHitRegion?(region: Rect | null): Promise<void>;
+  commitHitRegion?(regions: Rect[] | null): Promise<void>;
 }
 export interface PopupSession {
   togglePin(pin: FolderPin): Promise<void>;
