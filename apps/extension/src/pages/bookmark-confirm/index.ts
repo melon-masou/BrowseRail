@@ -1,10 +1,10 @@
-import browser from "webextension-polyfill";
 import { t } from "@browserail/i18n";
 import { mountBookmarkConfirmation, mountTemporaryConfirmation } from "@browserail/menu-ui";
 import { loadConfig } from "../../lib/config";
 import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
 import "@browserail/menu-ui/temporary-confirm.css";
-import { STATIC_SAVE_CONFIRMED, TEMPORARY_SAVE_CONFIRMED, type CaptureConfirmation } from "../../features/capture/messages";
+import { STATIC_SAVE_CONFIRMED, TEMPORARY_SAVE_CONFIRMED, type CaptureConfirmation, type CaptureResult } from "../../features/capture/messages";
+import { request } from "../../lib/messaging";
 
 const query = new URLSearchParams(location.search);
 const isStatic = query.get("kind") === "static";
@@ -12,7 +12,7 @@ document.title = t(isStatic ? "static.confirmTitle" : "temporary.confirmTitle");
 const root = document.getElementById("app")!;
 const close = async (): Promise<void> => { window.close(); };
 async function save(message: CaptureConfirmation): Promise<void> {
-  const result = await browser.runtime.sendMessage(message) as { error?: string; saved?: boolean } | undefined;
+  const result = await request<CaptureResult | undefined>(message);
   if (result?.error) throw new Error(result.error);
   if (!result?.saved) throw new Error("Bookmark was not saved");
 }

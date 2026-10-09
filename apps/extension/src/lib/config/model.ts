@@ -25,7 +25,6 @@ import type {
 } from "@browserail/protocol";
 
 import { DEFAULT_DESKTOP_URL, isLocalDesktopUrl } from "../desktop/connection";
-import { isRecord } from "./records";
 
 export function normalizeShortcutAction(value: unknown): ShortcutAction | undefined {
   if (!isRecord(value)) return undefined;
@@ -561,4 +560,8 @@ export function normalizeBrowserPlacement(value: unknown): BrowserMenuPlacement 
     itemWidth: boundedNumber(value.itemWidth, 26, 400, DEFAULT_ITEM_WIDTH),
     itemHeight: boundedNumber(value.itemHeight, 26, 200, DEFAULT_ITEM_HEIGHT),
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

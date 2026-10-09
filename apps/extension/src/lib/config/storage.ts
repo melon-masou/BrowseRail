@@ -3,7 +3,7 @@ import type { TemporaryBookmark } from "@browserail/protocol";
 import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
 import { normalizeConfig, type DisplayMode, type ExtensionConfig } from "./model";
-import { isRecord } from "./records";
+import { isRecord } from "../messaging";
 
 const STORAGE_KEY = "config";
 export async function loadConfig(): Promise<ExtensionConfig> {

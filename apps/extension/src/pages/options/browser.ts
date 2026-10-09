@@ -6,11 +6,14 @@ import {
 } from "../../lib/config";
 import { browserKind } from "../../lib/browser/windows";
 import {
-  DEBUG_INFO_REQUEST, DEBUG_LOGGING_SET, DESKTOP_RECONNECT, DESKTOP_RESYNC_WINDOWS, DESKTOP_STATE_CHANGED,
-  DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET,
+  DEBUG_INFO_REQUEST, DEBUG_LOGGING_SET, DESKTOP_RECONNECT, DESKTOP_RESYNC_WINDOWS, DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET,
+  isDesktopStateChanged, type DesktopDebugInfo, type DesktopRequest, type DesktopState, type ResyncResult,
 } from "../../features/desktop/messages";
-import { EDITING_SET, EDITING_STATE_CHANGED, EDITING_STATE_REQUEST } from "../../features/toolbar/messages";
-import { MENU_LAYOUT_RESET } from "../../features/bar/messages";
+import {
+  EDITING_SET, EDITING_STATE_REQUEST, isEditingStateChanged, type EditingRequest, type EditingState,
+} from "../../features/toolbar/messages";
+import { MENU_LAYOUT_RESET, type MenuLayoutReset } from "../../features/bar/messages";
+import { request } from "../../lib/messaging";
 
 type RuntimeState = { enabled: boolean; shortcutsEnabled: boolean };
 
@@ -33,34 +36,23 @@ export const browserActions = {
   },
   async setWidgetEnabled(enabled: boolean): Promise<void> {
     await saveWidgetEnabled(enabled);
-    await browser.runtime.sendMessage({ type: WIDGET_ENABLED_SET, enabled });
+    await request({ type: WIDGET_ENABLED_SET, enabled } satisfies DesktopRequest);
   },
-  reconnect: () => browser.runtime.sendMessage({ type: DESKTOP_RECONNECT }),
-  resync: () => browser.runtime.sendMessage({ type: DESKTOP_RESYNC_WINDOWS }),
-  desktopState: () =>
-    browser.runtime.sendMessage({ type: DESKTOP_STATE_REQUEST }) as Promise<
-      { state?: string; detail?: string } | undefined
-    >,
-  menuEditingState: () => browser.runtime.sendMessage({ type: EDITING_STATE_REQUEST }) as Promise<
-    { enabled: boolean; editing: boolean }
-  >,
-  setMenuEditing: (editing: boolean) => browser.runtime.sendMessage({ type: EDITING_SET, editing }) as Promise<
-    { enabled: boolean; editing: boolean }
-  >,
-  onMenuEditingState(listener: (state: { enabled: boolean; editing: boolean }) => void): () => void {
+  reconnect: () => request<{ ok: true }>({ type: DESKTOP_RECONNECT } satisfies DesktopRequest),
+  resync: () => request<ResyncResult>({ type: DESKTOP_RESYNC_WINDOWS } satisfies DesktopRequest),
+  desktopState: () => request<DesktopState | undefined>({ type: DESKTOP_STATE_REQUEST } satisfies DesktopRequest),
+  menuEditingState: () => request<EditingState>({ type: EDITING_STATE_REQUEST } satisfies EditingRequest),
+  setMenuEditing: (editing: boolean) => request<EditingState>({ type: EDITING_SET, editing } satisfies EditingRequest),
+  onMenuEditingState(listener: (state: EditingState) => void): () => void {
     const receive = (message: unknown): void => {
-      const value = message as { type?: string; enabled?: unknown; editing?: unknown } | null;
-      if (value?.type === EDITING_STATE_CHANGED && typeof value.enabled === "boolean" && typeof value.editing === "boolean") {
-        listener({ enabled: value.enabled, editing: value.editing });
-      }
+      if (isEditingStateChanged(message)) listener({ enabled: message.enabled, editing: message.editing });
     };
     browser.runtime.onMessage.addListener(receive);
     return () => browser.runtime.onMessage.removeListener(receive);
   },
   commands: () => browser.commands.getAll(),
   probeDesktop: probeDesktopConnection,
-  resetMenuPosition: (menuUid: string) =>
-    browser.runtime.sendMessage({ type: MENU_LAYOUT_RESET, menuUid }),
+  resetMenuPosition: (menuUid: string) => request<{ ok: true }>({ type: MENU_LAYOUT_RESET, menuUid } satisfies MenuLayoutReset),
   async openShortcutSettings(): Promise<void> {
     const kind = browserKind();
     if (kind === "firefox") {
@@ -77,15 +69,7 @@ export const browserActions = {
   },
   onDesktopState(listener: (state: string) => void): () => void {
     const receive = (message: unknown): void => {
-      if (
-        typeof message === "object" &&
-        message !== null &&
-        "type" in message &&
-        message.type === DESKTOP_STATE_CHANGED &&
-        "state" in message &&
-        typeof message.state === "string"
-      )
-        listener(message.state);
+      if (isDesktopStateChanged(message)) listener(message.state);
     };
     browser.runtime.onMessage.addListener(receive);
     return () => browser.runtime.onMessage.removeListener(receive);
@@ -95,11 +79,10 @@ export const browserActions = {
   },
   async setDiagnosticsEnabled(enabled: boolean): Promise<void> {
     await browser.storage.local.set({ debugLoggingEnabled: enabled });
-    await browser.runtime.sendMessage({ type: DEBUG_LOGGING_SET, enabled }).catch(() => {});
+    await request({ type: DEBUG_LOGGING_SET, enabled } satisfies DesktopRequest).catch(() => {});
   },
   async debugInfo(): Promise<unknown> {
-    const extension = await browser.runtime
-      .sendMessage({ type: DEBUG_INFO_REQUEST })
+    const extension = await request<DesktopDebugInfo>({ type: DEBUG_INFO_REQUEST } satisfies DesktopRequest)
       .catch((error) => ({ error: String(error) }));
     let desktop: unknown;
     try {

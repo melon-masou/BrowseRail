@@ -1,7 +1,7 @@
 import browser, { type Runtime } from "webextension-polyfill";
 import menuStyles from "@browserail/menu-ui/styles.css?inline";
 import hostStyles from "./styles.css?inline";
-import { BAR_COMMAND_MESSAGE, BAR_REFRESH_MESSAGE, BAR_SNAPSHOT_MESSAGE, type BrowserMenuState, type MenuReply, type MenuCommandResult } from "@browserail/protocol/content";
+import { BAR_COMMAND_MESSAGE, BAR_SNAPSHOT_MESSAGE, isBarRefresh, type BrowserMenuState, type MenuReply, type MenuCommandResult } from "@browserail/protocol/content";
 import { mountBrowserMenu, type MenuCommand } from "./surface";
 
 function createPageController() {
@@ -127,7 +127,7 @@ function createPageController() {
   }
 
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
-    if ((message as { type?: string } | null)?.type !== BAR_REFRESH_MESSAGE || sender.id !== browser.runtime.id) return undefined;
+    if (!isBarRefresh(message) || sender.id !== browser.runtime.id) return undefined;
     return start(true).then(() => ({ updated: true }));
   });
   window.addEventListener("pagehide", () => { suspended = true; stop(); });

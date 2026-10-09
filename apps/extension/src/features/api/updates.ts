@@ -8,7 +8,11 @@ import { hasWebsitePermission } from "../../lib/browser/site-permissions";
 import { createExternalUpdateHandler, type ExternalSource } from "./handler";
 import { createExternalInjection } from "../injection/bridge";
 import type { ExternalUpdateResult } from "@browserail/protocol/api";
-import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RECEIVER_REFRESH, EXTERNAL_RELAY_MESSAGE } from "@browserail/protocol/content";
+import {
+  EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RECEIVER_REFRESH, EXTERNAL_RELAY_MESSAGE, isExternalRelay,
+  type ExternalReceiverConfig,
+} from "@browserail/protocol/content";
+import { messageType } from "../../lib/messaging";
 
 function userscriptSource(sender: Runtime.MessageSender, token: string): ExternalSource | undefined {
   if (sender.id !== browser.runtime.id || typeof sender.tab?.id !== "number" || sender.frameId !== 0 || typeof sender.url !== "string") return;
@@ -58,19 +62,20 @@ export function initExternalUpdates(requestSync: () => void): void {
     return handler({ kind: "extension", id: sender.id }, message);
   });
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
-    if (!message || typeof message !== "object" || !("type" in message)) return;
-    if (message.type === EXTERNAL_RECEIVER_CONFIG) {
+    if (messageType(message) === EXTERNAL_RECEIVER_CONFIG) {
       const source = userscriptSource(sender, "");
       return (async () => {
-        if (!source || source.kind !== "userscript" || !await hasWebsitePermission(source.url)) return { token: "" };
+        if (!source || source.kind !== "userscript" || !await hasWebsitePermission(source.url)) return { token: "" } satisfies ExternalReceiverConfig;
         const authorization = await loadExternalAuthorization();
-        return { token: authorization.userscriptEnabled ? authorization.token : "" };
+        return { token: authorization.userscriptEnabled ? authorization.token : "" } satisfies ExternalReceiverConfig;
       })();
     }
-    if (message.type !== EXTERNAL_RELAY_MESSAGE) return;
-    const source = userscriptSource(sender, "token" in message && typeof message.token === "string" ? message.token : "");
+    if (messageType(message) !== EXTERNAL_RELAY_MESSAGE) return;
+    // A malformed relay still goes through the token check, so it is answered as unauthorized.
+    const relay = isExternalRelay(message) ? message : undefined;
+    const source = userscriptSource(sender, relay?.token ?? "");
     if (!source) return Promise.resolve({ ok: false, error: "unauthorized", errmsg: "API access is not authorized." } satisfies ExternalUpdateResult);
-    return handler(source, "message" in message ? message.message : undefined);
+    return handler(source, relay?.message);
   });
 
   const injection = createExternalInjection();

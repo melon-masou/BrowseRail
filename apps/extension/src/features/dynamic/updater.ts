@@ -10,8 +10,8 @@ import {
   normalizeDynamicBookmarks,
   normalizeUrlRules,
 } from "../../lib/config";
-import { evaluateDynamicBookmark, type DynamicUpdate } from "./evaluate";
-import { DYNAMIC_TEST } from "./messages";
+import { evaluateDynamicBookmark, type DynamicEvaluation, type DynamicUpdate } from "./evaluate";
+import { isDynamicTest } from "./messages";
 
 const MARKER_HOST = "browserail.local";
 const DYNAMIC_FRAGMENT_PREFIX = "Dynamic:";
@@ -27,12 +27,12 @@ export function initDynamicBookmarks(requestSync: () => void): void {
     // The options page opens in a tab, so check that the sender is an extension page
     // rather than rejecting every sender with a tab (which also covers content scripts).
     if (sender.id !== browser.runtime.id || !sender.url?.startsWith(browser.runtime.getURL(""))) return;
-    if (typeof message === "object" && message !== null && "type" in message && message.type === DYNAMIC_TEST) {
-      const data = message as { bookmark?: unknown; rule?: unknown; url?: unknown };
-      const bookmark = normalizeDynamicBookmarks([data.bookmark])[0];
-      if (!bookmark || typeof data.url !== "string") return Promise.resolve({ ok: false, error: "Invalid test input" });
-      const rule = normalizeUrlRules([data.rule])[0];
-      return evaluateDynamicBookmark(bookmark, rule, data.url, "");
+    if (isDynamicTest(message)) {
+      // The drafts come from another page; normalize them like saved settings.
+      const bookmark = normalizeDynamicBookmarks([message.bookmark])[0];
+      if (!bookmark) return Promise.resolve({ ok: false, error: "Invalid test input" } satisfies DynamicEvaluation);
+      const rule = normalizeUrlRules([message.rule])[0];
+      return evaluateDynamicBookmark(bookmark, rule, message.url, "");
     }
   });
   browser.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => {

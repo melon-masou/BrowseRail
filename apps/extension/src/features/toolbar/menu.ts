@@ -7,8 +7,10 @@ import {
 import { openStaticConfirmation, staticConfirmationContext } from "../capture/confirmation";
 import { requestBrowserMenuRefresh } from "../bar/refresh";
 import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
-import { EDITING_SET, EDITING_STATE_CHANGED, EDITING_STATE_REQUEST } from "./messages";
-import { STATIC_SAVE_CONFIRMED } from "../capture/messages";
+import {
+  EDITING_STATE_CHANGED, EDITING_STATE_REQUEST, isEditingRequest, type EditingState, type EditingStateChanged,
+} from "./messages";
+import { isStaticSaveConfirmed, type CaptureResult, type StaticSaveConfirmed } from "../capture/messages";
 
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
@@ -47,14 +49,14 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
     const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
     return stateFor(mode, enabled);
   }
-  async function stateFor(mode: DisplayMode, enabled: boolean) {
+  async function stateFor(mode: DisplayMode, enabled: boolean): Promise<EditingState> {
     const editing = mode === "browser" ? await loadBrowserEditing() : nativeEditing;
     const available = enabled && editing !== undefined;
     return { enabled: available, editing: available && editing === true };
   }
   async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
     const state = await stateFor(mode, enabled);
-    await browser.runtime.sendMessage({ type: EDITING_STATE_CHANGED, ...state }).catch(() => {});
+    await browser.runtime.sendMessage({ type: EDITING_STATE_CHANGED, ...state } satisfies EditingStateChanged).catch(() => {});
     await ready;
     if (!contextMenuAvailable) return;
     await browser.contextMenus.update(EDIT_MENU_ID, {
@@ -98,15 +100,13 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
     });
   });
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
-    const value = message as { type?: string; editing?: unknown } | null;
-    if (value?.type === EDITING_STATE_REQUEST || value?.type === EDITING_SET) {
+    if (isEditingRequest(message)) {
       if (sender.id !== browser.runtime.id || sender.url?.split(/[?#]/)[0] !== browser.runtime.getURL("options.html")) return undefined;
-      if (value.type === EDITING_STATE_REQUEST) return getState();
-      if (typeof value.editing !== "boolean") return Promise.reject(new Error("Invalid editing state"));
-      return setEditing(value.editing).then(getState);
+      if (message.type === EDITING_STATE_REQUEST) return getState();
+      return setEditing(message.editing).then(getState);
     }
-    if (value?.type !== STATIC_SAVE_CONFIRMED) return undefined;
-    return saveStaticConfirmed(message, sender).then(() => ({ saved: true }), error => ({ error: String(error) }));
+    if (!isStaticSaveConfirmed(message)) return undefined;
+    return saveStaticConfirmed(message, sender).then((): CaptureResult => ({ saved: true }), (error): CaptureResult => ({ error: String(error) }));
   });
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes[BROWSER_EDITING_STORAGE_KEY]) {
@@ -123,10 +123,9 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
   };
 }
 
-async function saveStaticConfirmed(message: unknown, sender: Runtime.MessageSender): Promise<void> {
+async function saveStaticConfirmed({ name, url, tags }: StaticSaveConfirmed, sender: Runtime.MessageSender): Promise<void> {
   const source = staticConfirmationContext(sender);
-  const { name, url, tags } = message as { name?: unknown; url?: unknown; tags?: unknown };
-  if (typeof name !== "string" || typeof url !== "string" || !url.trim()) throw new Error("Invalid static bookmark");
+  if (!url.trim()) throw new Error("Invalid static bookmark");
   const tab = await browser.tabs.get(source.sourceTabId);
   if (tab.windowId !== source.sourceWindowId) throw new Error("Source window is unavailable");
   const config = await loadConfig();

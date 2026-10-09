@@ -22,9 +22,10 @@ import { createToolbarBadge } from "../features/toolbar/badge";
 import { createBrowserEditingMenu } from "../features/toolbar/menu";
 import {
   DEBUG_INFO_REQUEST, DEBUG_LOGGING_SET, DESKTOP_RECONNECT, DESKTOP_RESYNC_WINDOWS, DESKTOP_STATE_CHANGED,
-  DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET,
+  DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET, isDesktopRequest, type DesktopDebugInfo, type DesktopState, type DesktopStateChanged,
 } from "../features/desktop/messages";
-import { MENU_LAYOUT_RESET } from "../features/bar/messages";
+import { isMenuLayoutReset } from "../features/bar/messages";
+import { messageType } from "../lib/messaging";
 import { CONFIG_SAVED } from "../lib/config/messages";
 
 // Everything below registers synchronously at startup so browser events can wake the background.
@@ -66,7 +67,7 @@ desktop.state.subscribe((next, _prev, detail) => {
     void editingMenu.updateNativeEditing(undefined).catch(error => console.error("BrowseRail editing:", error));
   }
   badge.update(next, detail);
-  void browser.runtime.sendMessage({ type: DESKTOP_STATE_CHANGED, state: next, detail }).catch(() => {});
+  void browser.runtime.sendMessage({ type: DESKTOP_STATE_CHANGED, state: next, detail } satisfies DesktopStateChanged).catch(() => {});
 });
 badge.update(desktop.state.getState());
 
@@ -162,13 +163,22 @@ browser.permissions.onAdded.addListener(requestSync);
 browser.permissions.onRemoved.addListener(requestSync);
 
 browser.runtime.onMessage.addListener((message: unknown) => {
-  if (typeof message !== "object" || message === null) return;
-  const request = message as { type?: unknown; enabled?: unknown; menuUid?: unknown };
-  switch (request.type) {
+  if (isMenuLayoutReset(message)) {
+    const { menuUid } = message;
+    return (async () => {
+      if (await loadDisplayMode() === "browser") await removeBrowserPlacement(menuUid);
+      else { await removeMenuPlacements(menuUid); sync.resetNativeLayout(menuUid); }
+      void requestSync();
+      return { ok: true };
+    })();
+  }
+  if (messageType(message) === CONFIG_SAVED) return reconcileConnection().then(() => ({ ok: true }));
+  if (!isDesktopRequest(message)) return;
+  switch (message.type) {
     case DESKTOP_STATE_REQUEST:
-      return Promise.resolve({ state: desktop.state.getState(), detail: desktop.state.getDetail() });
+      return Promise.resolve({ state: desktop.state.getState(), detail: desktop.state.getDetail() } satisfies DesktopState);
     case DEBUG_INFO_REQUEST:
-      return (async () => {
+      return (async (): Promise<DesktopDebugInfo> => {
         const windows = await listBrowserWindows().catch(() => []);
         const connection = desktop.debugInfo();
         return {
@@ -185,26 +195,13 @@ browser.runtime.onMessage.addListener((message: unknown) => {
         };
       })();
     case DEBUG_LOGGING_SET:
-      return log.setEnabled(Boolean(request.enabled));
+      return log.setEnabled(message.enabled);
     case DESKTOP_RECONNECT:
       return reconcileConnection(true).then(() => ({ ok: true }));
     case DESKTOP_RESYNC_WINDOWS:
       return desktop.rebuildWindows();
-    case MENU_LAYOUT_RESET: {
-      if (typeof request.menuUid !== "string") return;
-      const menuUid = request.menuUid;
-      return (async () => {
-        if (await loadDisplayMode() === "browser") await removeBrowserPlacement(menuUid);
-        else { await removeMenuPlacements(menuUid); sync.resetNativeLayout(menuUid); }
-        void requestSync();
-        return { ok: true };
-      })();
-    }
-    case CONFIG_SAVED:
-      return reconcileConnection().then(() => ({ ok: true }));
     case WIDGET_ENABLED_SET:
-      if (typeof request.enabled !== "boolean") return;
-      void applyWidgetEnabled(request.enabled);
+      void applyWidgetEnabled(message.enabled);
       return Promise.resolve({ ok: true });
   }
 });

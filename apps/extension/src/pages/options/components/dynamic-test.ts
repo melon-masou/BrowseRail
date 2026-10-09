@@ -1,8 +1,8 @@
-import browser from "webextension-polyfill";
 import { t } from "@browserail/i18n";
 import type { DynamicEvaluation } from "../../../features/dynamic/evaluate";
 import type { OptionsState } from "../state";
-import { DYNAMIC_TEST } from "../../../features/dynamic/messages";
+import { DYNAMIC_TEST, type DynamicTest } from "../../../features/dynamic/messages";
+import { request } from "../../../lib/messaging";
 
 interface TestState {
   url: string;
@@ -67,12 +67,12 @@ export function createDynamicTester(state: OptionsState) {
         saved.display?.();
         const revision = saved.revision;
         try {
-          const result: DynamicEvaluation = await browser.runtime.sendMessage({
+          const result = await request<DynamicEvaluation | undefined>({
             type: DYNAMIC_TEST,
             bookmark: structuredClone(draft),
             rule: structuredClone(state.settings.urlRules.find(rule => rule.uid === draft.urlRuleUid)),
             url: url.value.trim(),
-          });
+          } satisfies DynamicTest);
           if (!inputs.has(uid) || revision !== saved.revision) return;
           saved.error = !result?.ok;
           if (!result) saved.text = t("dynamic.testNoResponse");

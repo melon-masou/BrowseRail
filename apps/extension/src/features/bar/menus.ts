@@ -5,7 +5,7 @@ import {
   type ExtensionConfig,
 } from "../../lib/config";
 import {
-  BAR_COMMAND_MESSAGE, BAR_SNAPSHOT_MESSAGE,
+  BAR_SNAPSHOT_MESSAGE, isBarRequest,
   type BrowserMenu, type BrowserMenuPlacement, type BrowserMenuState, type MenuRequest, type MenuCommandResult,
 } from "@browserail/protocol/content";
 import { executeMenuAction } from "../actions/execute-menu-action";
@@ -15,7 +15,7 @@ import { openTemporaryConfirmation, temporaryConfirmationContext } from "../capt
 import { requestBrowserMenuRefresh } from "./refresh";
 import { createBrowserEditSession } from "./edit-session";
 import { resolveMenuBookmarkTarget } from "../actions/menu-target";
-import { TEMPORARY_SAVE_CONFIRMED } from "../capture/messages";
+import { isTemporarySaveConfirmed, type CaptureResult, type TemporarySaveConfirmed } from "../capture/messages";
 
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
@@ -51,11 +51,11 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     }));
   }
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
-    if ((message as { type?: string } | null)?.type === TEMPORARY_SAVE_CONFIRMED) {
-      return saveConfirmed(message, sender).then(() => ({ saved: true }), error => ({ error: String(error) }));
+    if (isTemporarySaveConfirmed(message)) {
+      return saveConfirmed(message, sender).then((): CaptureResult => ({ saved: true }), (error): CaptureResult => ({ error: String(error) }));
     }
-    const type = (message as { type?: string } | null)?.type;
-    if (type !== BAR_SNAPSHOT_MESSAGE && type !== BAR_COMMAND_MESSAGE) return undefined;
+    if (!isBarRequest(message)) return undefined;
+    const type = message.type;
     if (sender.frameId !== 0 || sender.tab?.id === undefined) {
       return Promise.resolve(type === BAR_SNAPSHOT_MESSAGE ? { type: "state", menus: [] } : { error: "Invalid menu source" });
     }
@@ -63,7 +63,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     return (async () => {
       await changed();
       if (type === BAR_SNAPSHOT_MESSAGE) return { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState;
-      const result = await handle(tabId, (message as { command: MenuRequest }).command);
+      const result = await handle(tabId, message.command);
       await changed();
       return { ...(result !== undefined ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState };
     })().catch(error => ({ error: String(error) }));
@@ -74,10 +74,8 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     if (result !== "saved") throw new Error("Temporary bookmark was not saved");
     await changed();
   }
-  async function saveConfirmed(message: unknown, sender: Runtime.MessageSender): Promise<void> {
+  async function saveConfirmed({ note }: TemporarySaveConfirmed, sender: Runtime.MessageSender): Promise<void> {
     const context = temporaryConfirmationContext(sender);
-    const note = (message as { note?: unknown }).note;
-    if (typeof note !== "string") throw new Error("Invalid temporary bookmark note");
     // The confirmation page carries the original window, so worker restarts
     // and focusing the popup cannot redirect capture to the extension page.
     await changed();

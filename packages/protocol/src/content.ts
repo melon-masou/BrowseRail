@@ -48,3 +48,39 @@ export const EXTERNAL_RECEIVER_REFRESH = "externalReceiverRefresh";
 export function userscriptUpdateEvent(token: string): string {
   return `browserail:${token}`;
 }
+
+export type BarRequest = { type: typeof BAR_SNAPSHOT_MESSAGE } | { type: typeof BAR_COMMAND_MESSAGE; command: MenuRequest };
+export interface ExternalRelay { type: typeof EXTERNAL_RELAY_MESSAGE; token: string; message: unknown }
+export interface ExternalReceiverConfig { token: string }
+export interface ExternalRun { type: typeof EXTERNAL_RUN_MESSAGE; eventName: string; detail: string | null }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** Checks the envelope only; the command's own fields are validated when it runs. */
+export function isBarRequest(value: unknown): value is BarRequest {
+  if (!isRecord(value)) return false;
+  if (value.type === BAR_SNAPSHOT_MESSAGE) return true;
+  return value.type === BAR_COMMAND_MESSAGE && isRecord(value.command)
+    && typeof value.command.menuUid === "string" && typeof value.command.type === "string";
+}
+
+export function isBarRefresh(value: unknown): value is { type: typeof BAR_REFRESH_MESSAGE } {
+  return isRecord(value) && value.type === BAR_REFRESH_MESSAGE;
+}
+
+/** The relayed userscript payload stays `unknown`: it comes from the page and is validated by the API. */
+export function isExternalRelay(value: unknown): value is ExternalRelay {
+  return isRecord(value) && value.type === EXTERNAL_RELAY_MESSAGE && typeof value.token === "string";
+}
+
+export function isExternalRun(value: unknown): value is ExternalRun {
+  return isRecord(value) && value.type === EXTERNAL_RUN_MESSAGE && typeof value.eventName === "string" && value.eventName !== ""
+    && (value.detail === null || typeof value.detail === "string");
+}
+
+/** The `type` of a content-script message; runtime messages arrive untyped. */
+export function contentMessageType(value: unknown): unknown {
+  return isRecord(value) ? value.type : undefined;
+}

@@ -1,7 +1,8 @@
 import browser from "webextension-polyfill";
 import { createRewriteHost } from "./rewrite-host";
 import { applyRewrite, type RewriteResult } from "../../lib/rewrite/rewrite";
-import { REWRITE_RUN } from "./messages";
+import { REWRITE_RUN, type RewriteRun } from "./messages";
+import { request } from "../../lib/messaging";
 
 interface ChromeHost {
   offscreen?: {
@@ -35,8 +36,8 @@ export async function runRewrite(source: string, url: string): Promise<RewriteRe
     }
     if (typeof chromeApi?.offscreen?.createDocument !== "function") return applyRewrite(source, url);
     await ensureOffscreen();
-    const result = await browser.runtime.sendMessage({ type: REWRITE_RUN, source, url });
-    if (result && typeof result === "object" && "ok" in result && typeof result.ok === "boolean") return result as RewriteResult;
+    const result = await request<RewriteResult | undefined>({ type: REWRITE_RUN, source, url } satisfies RewriteRun);
+    if (typeof result?.ok === "boolean") return result;
     return { ok: false, error: "No rewrite response" };
   } catch (error) { return { ok: false, error: String(error) }; }
 }
