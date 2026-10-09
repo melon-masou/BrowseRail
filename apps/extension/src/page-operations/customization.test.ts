@@ -84,7 +84,7 @@ it.each(["column", "row"] as const)("drags the hidden area's boundary and preser
 });
 
 it("keeps the range inside the bar with ordered boundaries and discards it on Cancel", () => {
-  const f = fixture({ autoHideRange: { start: .2, end: .5 } });
+  const f = fixture({ autoHide: "start", autoHideRange: { start: .2, end: .5 } });
   f.click(t("customize.hideRange"));
   const [start, end] = f.wrapper.querySelectorAll<HTMLElement>('[role="slider"]');
   for (let index = 0; index < 100; index++) {

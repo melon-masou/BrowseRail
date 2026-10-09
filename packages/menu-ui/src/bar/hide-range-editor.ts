@@ -113,6 +113,8 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
   }
 
   function render(): void {
+    button.disabled = (menu.autoHide ?? "off") === "off";
+    if (button.disabled) mode = "off";
     applyBarHiddenAppearance(rail, menu, itemSize, false);
     overlay.hidden = mode === "off";
     if (mode === "off") rail.removeAttribute("data-hide-range"); else rail.dataset.hideRange = mode;
@@ -164,6 +166,7 @@ export function mountHideRangeEditor(rail: HTMLElement, initialMenu: MenuView, i
   return {
     get enabled(): boolean { return mode !== "off"; },
     cycle(): void {
+      if (button.disabled) return;
       stopGesture?.(); mode = mode === "off" ? "range" : mode === "range" ? "sense" : "off";
       refreshPreview(); render();
     },

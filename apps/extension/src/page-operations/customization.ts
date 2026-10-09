@@ -187,6 +187,7 @@ export function mountBrowserCustomization(
       if (lifetime.signal.aborted) return;
       root.dataset.error = ""; root.title = String(error); saving = false; rail.inert = false;
       for (const button of [anchorButton, orientationControl.button, spacingButton, hideRangeButton, settingsButton, cancelButton, saveButton]) button.disabled = false;
+      hideRangeButton.disabled = (settings.autoHide ?? "off") === "off";
     });
   }, options);
   rail.addEventListener("contextmenu", event => event.preventDefault(), options);

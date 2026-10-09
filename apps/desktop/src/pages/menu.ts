@@ -574,6 +574,7 @@ export async function initializeSurface(
         saving = false;
         railContainer.inert = false;
         for (const button of controls) button.disabled = false;
+        hideRangeButton.disabled = (settings.autoHide ?? "off") === "off";
         showSurfaceError(error);
       }
     }
