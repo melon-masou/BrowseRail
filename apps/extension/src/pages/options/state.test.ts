@@ -102,7 +102,7 @@ it("normalizes static tags and removes the last tag without leaving an empty tag
   expect(state.settings.staticBookmarks[0]!.tags ?? []).toEqual([]);
 });
 
-it("moves static bookmarks immediately before the target in the full list, retaining hidden entries and references", () => {
+it("moves static bookmarks immediately before or after the target in the full list, retaining hidden entries and references", () => {
   const input = initialSettings();
   input.staticBookmarks = [
     { uid: "b", name: "B", url: "https://b.example", tags: ["work"] },
@@ -111,10 +111,12 @@ it("moves static bookmarks immediately before the target in the full list, retai
     { uid: "last", name: "Last", url: "https://last.example" },
   ];
   const state = createState(input);
-  state.moveStaticBookmarkBefore("static", "b");
+  state.moveStaticBookmark("static", "b", "before");
   expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["static", "b", "hidden", "last"]);
-  state.moveStaticBookmarkBefore("static", "last");
+  state.moveStaticBookmark("static", "last", "before");
   expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["b", "hidden", "static", "last"]);
+  state.moveStaticBookmark("b", "static", "after");
+  expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["hidden", "static", "b", "last"]);
   expect(state.settings.menus[0]!.items[0]!.staticUid).toBe("static");
   expect(state.settings.shortcuts[0]!.staticUid).toBe("static");
 });
@@ -123,9 +125,10 @@ it("ignores unchanged static order and rejects missing reorder targets without r
   const state = createState();
   state.addBookmark("static", { uid: "next", name: "Next", url: "https://next.example" });
   state.acceptSettingsSave(state.settings);
-  state.moveStaticBookmarkBefore("static", "next");
-  state.moveStaticBookmarkBefore("static", "static");
-  expect(() => state.moveStaticBookmarkBefore("static", "missing")).toThrow();
+  state.moveStaticBookmark("static", "next", "before");
+  state.moveStaticBookmark("static", "static", "before");
+  state.moveStaticBookmark("next", "static", "after");
+  expect(() => state.moveStaticBookmark("static", "missing", "before")).toThrow();
   expect(() => state.setStaticTags("missing", ["work"])).toThrow();
   expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["static", "next"]);
   expect(state.dirty.settings).toBe(false);

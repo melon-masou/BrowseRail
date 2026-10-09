@@ -28,6 +28,7 @@ import { type CustomBookmarkPicker } from "../components/custom-bookmark-picker"
 import { createItemPicker } from "../components/item-picker";
 import { actionChoices } from "../components/action-picker";
 import { createCssEditor } from "../components/css-editor";
+import { createMoveButtons } from "../components/move-buttons";
 
 import { type Overlays } from "../components/overlays";
 import { removeIcon, setIconContent, settingsIcon } from "../components/icons";
@@ -710,7 +711,6 @@ export function mountMenusTab(
     activeAddBtn = null;
   }
 
-  let draggingItem: { menuIndex: number; itemIndex: number } | null = null;
   const collapsedMenuUids = new Set<string>();
 
   function renderMenus(): void {
@@ -847,6 +847,7 @@ export function mountMenusTab(
           ...menu.items.map((item, itemIndex) => {
             const row = document.createElement("li");
             row.className = "menu-item-row";
+            row.dataset.recordId = item.uid;
 
             if (
               item.type === "menuFold" ||
@@ -874,62 +875,8 @@ export function mountMenusTab(
               const controls = document.createElement("div");
               controls.className = "item-color-controls";
 
-              const dragHandleBtn = document.createElement("button");
-              dragHandleBtn.type = "button";
-              dragHandleBtn.className = "drag-handle-btn";
-              dragHandleBtn.title = t("item.dragHandleTitle");
-              dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
-              dragHandleBtn.addEventListener("mousedown", () => {
-                row.draggable = true;
-              });
-              dragHandleBtn.addEventListener("mouseup", () => {
-                if (!row.classList.contains("is-dragging")) row.draggable = false;
-              });
-              dragHandleBtn.addEventListener("mouseleave", () => {
-                if (!row.classList.contains("is-dragging")) row.draggable = false;
-              });
-
-              row.addEventListener("dragstart", (event) => {
-                draggingItem = { menuIndex, itemIndex };
-                if (event.dataTransfer) {
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", `${menuIndex}:${itemIndex}`);
-                }
-                requestAnimationFrame(() => row.classList.add("is-dragging"));
-              });
-              row.addEventListener("dragover", (event) => {
-                if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-                event.preventDefault();
-                if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-                const rect = row.getBoundingClientRect();
-                const isAfter = event.clientY > rect.top + rect.height / 2;
-                row.classList.toggle("drag-over-top", !isAfter);
-                row.classList.toggle("drag-over-bottom", isAfter);
-              });
-              row.addEventListener("dragleave", () => {
-                row.classList.remove("drag-over-top", "drag-over-bottom");
-              });
-              row.addEventListener("drop", (event) => {
-                event.preventDefault();
-                row.classList.remove("drag-over-top", "drag-over-bottom");
-                if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-                const sourceIndex = draggingItem.itemIndex;
-                const rect = row.getBoundingClientRect();
-                const isAfter = event.clientY > rect.top + rect.height / 2;
-                let targetIndex = isAfter ? itemIndex + 1 : itemIndex;
-                if (sourceIndex < targetIndex) targetIndex--;
-                if (sourceIndex !== targetIndex) {
-                  state.moveMenuItem(menu.uid, sourceIndex, targetIndex);
-                }
-                draggingItem = null;
-              });
-              row.addEventListener("dragend", () => {
-                row.draggable = false;
-                row.classList.remove("is-dragging");
-                draggingItem = null;
-                items.querySelectorAll(".menu-item-row").forEach((element) => {
-                  element.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
-                });
+              const moveButtons = createMoveButtons(itemIndex, menu.items.length, step => {
+                state.moveMenuItem(menu.uid, itemIndex, itemIndex + step);
               });
 
               const settingsBtn = document.createElement("button");
@@ -963,7 +910,7 @@ export function mountMenusTab(
                 state.removeMenuItem(menu.uid, item.uid);
               });
 
-              controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
+              controls.append(moveButtons, settingsBtn, swatch, removeBtn);
               row.append(label, controls);
               return row;
             }
@@ -1019,77 +966,8 @@ export function mountMenusTab(
               const controls = document.createElement("div");
               controls.className = "item-color-controls";
 
-              const dragHandleBtn = document.createElement("button");
-              dragHandleBtn.type = "button";
-              dragHandleBtn.className = "drag-handle-btn";
-              dragHandleBtn.title = t("item.dragHandleTitle");
-              dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
-
-              dragHandleBtn.addEventListener("mousedown", () => {
-                row.draggable = true;
-              });
-              dragHandleBtn.addEventListener("mouseup", () => {
-                if (!row.classList.contains("is-dragging")) {
-                  row.draggable = false;
-                }
-              });
-              dragHandleBtn.addEventListener("mouseleave", () => {
-                if (!row.classList.contains("is-dragging")) {
-                  row.draggable = false;
-                }
-              });
-
-              row.addEventListener("dragstart", (e) => {
-                draggingItem = { menuIndex, itemIndex };
-                if (e.dataTransfer) {
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", `${menuIndex}:${itemIndex}`);
-                }
-                requestAnimationFrame(() => {
-                  row.classList.add("is-dragging");
-                });
-              });
-
-              row.addEventListener("dragover", (e) => {
-                if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-                e.preventDefault();
-                if (e.dataTransfer) {
-                  e.dataTransfer.dropEffect = "move";
-                }
-                const rect = row.getBoundingClientRect();
-                const isAfter = e.clientY > rect.top + rect.height / 2;
-                row.classList.toggle("drag-over-top", !isAfter);
-                row.classList.toggle("drag-over-bottom", isAfter);
-              });
-
-              row.addEventListener("dragleave", () => {
-                row.classList.remove("drag-over-top", "drag-over-bottom");
-              });
-
-              row.addEventListener("drop", (e) => {
-                e.preventDefault();
-                row.classList.remove("drag-over-top", "drag-over-bottom");
-                if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-                const sourceIndex = draggingItem.itemIndex;
-                const rect = row.getBoundingClientRect();
-                const isAfter = e.clientY > rect.top + rect.height / 2;
-                let targetIndex = isAfter ? itemIndex + 1 : itemIndex;
-                if (sourceIndex < targetIndex) {
-                  targetIndex--;
-                }
-                if (sourceIndex !== targetIndex) {
-                  state.moveMenuItem(menu.uid, sourceIndex, targetIndex);
-                }
-                draggingItem = null;
-              });
-
-              row.addEventListener("dragend", () => {
-                row.draggable = false;
-                row.classList.remove("is-dragging");
-                draggingItem = null;
-                items.querySelectorAll(".menu-item-row").forEach((el) => {
-                  el.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
-                });
+              const moveButtons = createMoveButtons(itemIndex, menu.items.length, step => {
+                state.moveMenuItem(menu.uid, itemIndex, itemIndex + step);
               });
 
               const settingsBtn = document.createElement("button");
@@ -1131,7 +1009,7 @@ export function mountMenusTab(
                 state.removeMenuItem(menu.uid, item.uid);
               });
 
-              controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
+              controls.append(moveButtons, settingsBtn, swatch, removeBtn);
               row.append(label, controls);
               return row;
             }
@@ -1192,78 +1070,8 @@ export function mountMenusTab(
             const controls = document.createElement("div");
             controls.className = "item-color-controls";
 
-            // Drag handle button to directly drag and drop bookmarks
-            const dragHandleBtn = document.createElement("button");
-            dragHandleBtn.type = "button";
-            dragHandleBtn.className = "drag-handle-btn";
-            dragHandleBtn.title = t("item.dragHandleTitle");
-            dragHandleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>`;
-
-            dragHandleBtn.addEventListener("mousedown", () => {
-              row.draggable = true;
-            });
-            dragHandleBtn.addEventListener("mouseup", () => {
-              if (!row.classList.contains("is-dragging")) {
-                row.draggable = false;
-              }
-            });
-            dragHandleBtn.addEventListener("mouseleave", () => {
-              if (!row.classList.contains("is-dragging")) {
-                row.draggable = false;
-              }
-            });
-
-            row.addEventListener("dragstart", (e) => {
-              draggingItem = { menuIndex, itemIndex };
-              if (e.dataTransfer) {
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", `${menuIndex}:${itemIndex}`);
-              }
-              requestAnimationFrame(() => {
-                row.classList.add("is-dragging");
-              });
-            });
-
-            row.addEventListener("dragover", (e) => {
-              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-              e.preventDefault();
-              if (e.dataTransfer) {
-                e.dataTransfer.dropEffect = "move";
-              }
-              const rect = row.getBoundingClientRect();
-              const isAfter = e.clientY > rect.top + rect.height / 2;
-              row.classList.toggle("drag-over-top", !isAfter);
-              row.classList.toggle("drag-over-bottom", isAfter);
-            });
-
-            row.addEventListener("dragleave", () => {
-              row.classList.remove("drag-over-top", "drag-over-bottom");
-            });
-
-            row.addEventListener("drop", (e) => {
-              e.preventDefault();
-              row.classList.remove("drag-over-top", "drag-over-bottom");
-              if (!draggingItem || draggingItem.menuIndex !== menuIndex) return;
-              const sourceIndex = draggingItem.itemIndex;
-              const rect = row.getBoundingClientRect();
-              const isAfter = e.clientY > rect.top + rect.height / 2;
-              let targetIndex = isAfter ? itemIndex + 1 : itemIndex;
-              if (sourceIndex < targetIndex) {
-                targetIndex--;
-              }
-              if (sourceIndex !== targetIndex) {
-                state.moveMenuItem(menu.uid, sourceIndex, targetIndex);
-              }
-              draggingItem = null;
-            });
-
-            row.addEventListener("dragend", () => {
-              row.draggable = false;
-              row.classList.remove("is-dragging");
-              draggingItem = null;
-              items.querySelectorAll(".menu-item-row").forEach((el) => {
-                el.classList.remove("drag-over-top", "drag-over-bottom", "is-dragging");
-              });
+            const moveButtons = createMoveButtons(itemIndex, menu.items.length, step => {
+              state.moveMenuItem(menu.uid, itemIndex, itemIndex + step);
             });
 
             // Settings button for item
@@ -1332,7 +1140,7 @@ export function mountMenusTab(
               state.removeMenuItem(menu.uid, item.uid);
             });
 
-            controls.append(dragHandleBtn, settingsBtn, swatch, removeBtn);
+            controls.append(moveButtons, settingsBtn, swatch, removeBtn);
             row.append(label, controls);
             if (pathResolution.duplicatePath) {
               const warning = document.createElement("div");

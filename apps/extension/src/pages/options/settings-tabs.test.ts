@@ -154,7 +154,7 @@ it("uploads saved settings only after confirmation and keeps local edits out of 
   expect((await downloadCloudSettings()).staticBookmarks).toEqual((await savedConfig()).staticBookmarks);
 });
 
-it("filters static bookmarks by any selected tag and drags before the target in the complete saved order", async () => {
+it("moves static bookmarks up and down under tag filters in the complete saved order", async () => {
   button("custom-bookmarks-tab").click();
   button("static-tab").click();
   function add(name: string, tags: string[]): void {
@@ -183,15 +183,50 @@ it("filters static bookmarks by any selected tag and drags before the target in 
   add("C", ["personal"]);
   filter("work");
   expect(visibleNames()).toEqual(["A", "B"]);
-  const cards = [...document.querySelectorAll<HTMLElement>("#static-list article")];
-  cards[1]!.querySelector(".drag-handle-btn")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-  cards[1]!.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true }));
-  cards[0]!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true }));
+  function move(index: number, direction: string): HTMLButtonElement {
+    return [...document.querySelectorAll<HTMLElement>("#static-list article")][index]!
+      .querySelector<HTMLButtonElement>(`button[title="Move ${direction}"]`)!;
+  }
+  expect(move(0, "up").disabled).toBe(true);
+  expect(move(1, "down").disabled).toBe(true);
+  move(1, "up").click();
+  expect(visibleNames()).toEqual(["B", "A"]);
+  move(0, "down").click();
+  expect(visibleNames()).toEqual(["A", "B"]);
+  move(1, "up").click();
   expect(visibleNames()).toEqual(["B", "A"]);
   filter("personal");
   expect(visibleNames()).toEqual(["B", "A", "C"]);
   await save();
   expect((await savedConfig()).staticBookmarks.map(value => value.name)).toEqual(["B", "A", "Hidden", "C"]);
+});
+
+it("moves menu items up and down without affecting another menu and saves their order", async () => {
+  button("menus-tab").click(); button("add-menu").click();
+  async function addAction(menuIndex: number, label: string): Promise<void> {
+    document.querySelectorAll<HTMLButtonElement>(".menu-add-btn")[menuIndex]!.click();
+    button("add-popover-action-btn").click();
+    const choice = [...document.querySelectorAll<HTMLButtonElement>(".item-picker-dialog .pick-menu-item")]
+      .find(button => button.textContent === label)!;
+    choice.click();
+    await vi.waitFor(() => expect(document.querySelector(".item-picker-dialog")).toBeNull());
+  }
+  await addAction(0, "Back"); await addAction(0, "Reload");
+  button("add-menu").click(); await addAction(1, "Forward");
+  const move = (index: number, direction: string) => document.querySelectorAll<HTMLElement>("#menus .menu-item-row")[index]!
+    .querySelector<HTMLButtonElement>(`button[title="Move ${direction}"]`)!;
+  expect(move(0, "up").disabled).toBe(true);
+  expect(move(1, "down").disabled).toBe(true);
+  expect(move(2, "up").disabled).toBe(true);
+  expect(move(2, "down").disabled).toBe(true);
+  move(0, "down").click();
+  await save();
+  expect((await savedConfig()).panel.menus.map(menu => menu.items.map(item => item.browserAction)))
+    .toEqual([["reload", "back"], ["forward"]]);
+  move(1, "up").click();
+  await save();
+  expect((await savedConfig()).panel.menus.map(menu => menu.items.map(item => item.browserAction)))
+    .toEqual([["back", "reload"], ["forward"]]);
 });
 
 it("refuses to save a dynamic bookmark without a URL rule", async () => {

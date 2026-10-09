@@ -180,7 +180,7 @@ it("preserves static bookmark tags and order through save, reload, export and im
   state.setStaticTags("link", [" work ", "reading", "work"]);
   state.addBookmark("static", { uid: "another", name: "Another", url: "https://another.example" });
   state.setStaticTags("another", ["reading"]);
-  state.moveStaticBookmarkBefore("another", "link");
+  state.moveStaticBookmark("another", "link", "before");
   await persistence.saveSettings();
   const expected = [
     { uid: "another", name: "Another", url: "https://another.example", tags: ["reading"] },

@@ -498,15 +498,15 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       setOptional(target, { tags: next.length ? next : undefined });
       publish(["bookmarks"], true);
     },
-    moveStaticBookmarkBefore(uid: string, targetUid: string): void {
+    moveStaticBookmark(uid: string, targetUid: string, position: "before" | "after"): void {
       const bookmarks = settingsDraft.staticBookmarks;
       const source = requireTarget(bookmarks.find(value => value.uid === uid), `static bookmark ${uid}`);
       const target = requireTarget(bookmarks.find(value => value.uid === targetUid), `static bookmark ${targetUid}`);
       const sourceIndex = bookmarks.indexOf(source);
       const targetIndex = bookmarks.indexOf(target);
-      if (source === target || sourceIndex + 1 === targetIndex) return;
+      if (source === target || (position === "before" ? sourceIndex + 1 === targetIndex : targetIndex + 1 === sourceIndex)) return;
       bookmarks.splice(sourceIndex, 1);
-      bookmarks.splice(bookmarks.indexOf(target), 0, source);
+      bookmarks.splice(bookmarks.indexOf(target) + (position === "after" ? 1 : 0), 0, source);
       publish(["bookmarks"], true);
     },
     setDynamicType(uid: string, type: DynamicBookmark["type"]): void {

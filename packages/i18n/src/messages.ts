@@ -387,7 +387,8 @@ export const en = {
   "item.clickBadge": "Click to expand",
   "item.hoverBadgeTitle": "Expand on hover (click to edit)",
   "item.clickBadgeTitle": "Expand on click (click to edit)",
-  "item.dragHandleTitle": "Drag to reorder",
+  "item.moveUp": "Move up",
+  "item.moveDown": "Move down",
   "item.settingsTitle": "Configure item",
 
   "btn.browse": "Browse",
@@ -871,7 +872,8 @@ export const zhCN: Record<MessageKey, string> = {
   "item.clickBadge": "点击展开",
   "item.hoverBadgeTitle": "鼠标悬停展开（点击修改配置）",
   "item.clickBadgeTitle": "点击才展开（点击修改配置）",
-  "item.dragHandleTitle": "拖拽调整顺序",
+  "item.moveUp": "上移",
+  "item.moveDown": "下移",
   "item.settingsTitle": "配置书签 / 目录",
 
   "btn.browse": "浏览",
