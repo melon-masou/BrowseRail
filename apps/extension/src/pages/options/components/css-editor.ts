@@ -77,12 +77,12 @@ export function createCssEditor(closed: () => void) {
     collection.remove(selectedKey); renderCollection();
   }, options);
   close.addEventListener("click", () => dialog.close(), options);
-  dialog.addEventListener("close", () => { collection = undefined; selectedKey = undefined; closed(); }, options);
+  dialog.addEventListener("close", () => { collection = undefined; closed(); }, options);
   return {
     get isOpen(): boolean { return dialog.open; },
     openGlobal(actions: GlobalCssEditor): void {
       title.textContent = t("css.global"); dialog.ariaLabel = t("css.global");
-      collection = actions; selectedKey = undefined; toolbar.hidden = false;
+      collection = actions; toolbar.hidden = false;
       renderCollection(); dialog.showModal();
       if (input.disabled) add.focus(); else input.focus();
     },
