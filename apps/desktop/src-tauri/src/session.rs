@@ -222,14 +222,21 @@ impl SessionRegistry {
             .cloned()
     }
 
-    pub fn all_active_shortcut_keys(&self) -> HashSet<String> {
+    pub fn active_shortcut_keys_by_instance(&self) -> HashMap<String, HashSet<String>> {
         self.sessions
             .read()
             .map(|sessions| {
                 sessions
-                    .values()
-                    .filter(|s| s.outgoing.is_some())
-                    .flat_map(|s| s.native_shortcuts.iter().map(|sc| sc.key.to_ascii_lowercase()))
+                    .iter()
+                    .filter(|(_, s)| s.outgoing.is_some() && !s.native_shortcuts.is_empty())
+                    .map(|(uid, s)| {
+                        let keys = s
+                            .native_shortcuts
+                            .iter()
+                            .map(|sc| sc.key.to_ascii_lowercase())
+                            .collect();
+                        (uid.clone(), keys)
+                    })
                     .collect()
             })
             .unwrap_or_default()
@@ -463,8 +470,59 @@ mod tests {
     use crate::protocol::{
         AttachmentMode, BrowserInstance, BrowserWindowSnapshot, MenuAnchor, MenuBoundPosition,
         MenuNativeProps, MenuOrientation, MenuPlacement, MenuTarget, MenuView, NativeMessage,
-        OnTopMode, SyncedMenu, WindowBounds,
+        OnTopMode, SyncedMenu, SyncedNativeShortcut, WindowBounds,
     };
+
+    #[test]
+    fn disabling_shortcuts_in_one_instance_preserves_only_the_other_instances_bindings() {
+        let registry = SessionRegistry::default();
+        let connection_a = Uuid::new_v4();
+        let connection_b = Uuid::new_v4();
+        let (sender_a, _) = unbounded_channel();
+        let (sender_b, _) = unbounded_channel();
+        registry.register(connection_a, instance("instance-a"), sender_a);
+        registry.register(connection_b, instance("instance-b"), sender_b);
+        registry
+            .sync(
+                connection_a,
+                1,
+                Vec::new(),
+                Vec::new(),
+                vec![SyncedNativeShortcut {
+                    id: "shortcut-a".into(),
+                    key: "C".into(),
+                }],
+            )
+            .unwrap();
+        registry
+            .sync(
+                connection_b,
+                1,
+                Vec::new(),
+                Vec::new(),
+                vec![SyncedNativeShortcut {
+                    id: "shortcut-b".into(),
+                    key: "D".into(),
+                }],
+            )
+            .unwrap();
+
+        let keys = registry.active_shortcut_keys_by_instance();
+        assert!(keys["instance-a"].contains("c"));
+        assert!(!keys["instance-a"].contains("d"));
+        assert!(keys["instance-b"].contains("d"));
+        assert!(!keys["instance-b"].contains("c"));
+
+        registry
+            .sync(connection_a, 2, Vec::new(), Vec::new(), Vec::new())
+            .unwrap();
+        let keys = registry.active_shortcut_keys_by_instance();
+        assert!(!keys.contains_key("instance-a"));
+        assert!(keys["instance-b"].contains("d"));
+
+        registry.disconnect(connection_b);
+        assert!(registry.active_shortcut_keys_by_instance().is_empty());
+    }
 
     #[test]
     fn routes_identical_actions_to_the_exact_instance_and_window() {

@@ -335,40 +335,30 @@ fn install_foreground_event_hook(app: &AppHandle, sender: UnboundedSender<Native
 }
 
 static mut KEYBOARD_HOOK: isize = 0;
-static mut ACTIVE_NATIVE_SHORTCUTS: *mut HashSet<String> = std::ptr::null_mut();
-static mut ACTIVE_PAIRED_HWNDS: *mut HashSet<isize> = std::ptr::null_mut();
+// Only the hook's message thread reads or replaces this window-specific snapshot.
+static mut ACTIVE_NATIVE_SHORTCUTS: *mut HashMap<isize, HashSet<String>> = std::ptr::null_mut();
 static KEYBOARD_EVENT_SENDER: OnceLock<UnboundedSender<NativeCommand>> = OnceLock::new();
 
-fn sync_paired_hwnds(app: &AppHandle, hwnds: HashSet<isize>) {
+fn sync_keyboard_hook(app: &AppHandle, shortcuts: HashMap<isize, HashSet<String>>) {
     let _ = app.run_on_main_thread(move || {
         unsafe {
-            if !ACTIVE_PAIRED_HWNDS.is_null() {
-                drop(Box::from_raw(ACTIVE_PAIRED_HWNDS));
-                ACTIVE_PAIRED_HWNDS = std::ptr::null_mut();
-            }
-            ACTIVE_PAIRED_HWNDS = Box::into_raw(Box::new(hwnds));
-        }
-    });
-}
-
-fn sync_keyboard_hook(app: &AppHandle, shortcuts: HashSet<String>) {
-    let _ = app.run_on_main_thread(move || {
-        unsafe {
-            if let Some(hook_ptr) = (KEYBOARD_HOOK != 0).then_some(HHOOK(KEYBOARD_HOOK as *mut _)) {
-                let _ = UnhookWindowsHookEx(hook_ptr);
-                KEYBOARD_HOOK = 0;
-            }
-
             if !ACTIVE_NATIVE_SHORTCUTS.is_null() {
                 drop(Box::from_raw(ACTIVE_NATIVE_SHORTCUTS));
                 ACTIVE_NATIVE_SHORTCUTS = std::ptr::null_mut();
             }
 
             if shortcuts.is_empty() {
+                if KEYBOARD_HOOK != 0 {
+                    let _ = UnhookWindowsHookEx(HHOOK(KEYBOARD_HOOK as *mut _));
+                    KEYBOARD_HOOK = 0;
+                }
                 return;
             }
 
             ACTIVE_NATIVE_SHORTCUTS = Box::into_raw(Box::new(shortcuts));
+            if KEYBOARD_HOOK != 0 {
+                return;
+            }
 
             let hook = SetWindowsHookExW(
                 WH_KEYBOARD_LL,
@@ -488,31 +478,23 @@ unsafe extern "system" fn low_level_keyboard_proc(
     if code >= 0 && (wparam.0 as u32 == WM_KEYDOWN || wparam.0 as u32 == WM_SYSKEYDOWN) {
         let fg_hwnd = unsafe { GetForegroundWindow() };
         if !fg_hwnd.0.is_null() {
-            let is_paired = unsafe {
-                if ACTIVE_PAIRED_HWNDS.is_null() || (*ACTIVE_PAIRED_HWNDS).is_empty() {
-                    false
+            let shortcuts = unsafe {
+                if ACTIVE_NATIVE_SHORTCUTS.is_null() {
+                    None
                 } else {
                     let raw = fg_hwnd.0 as isize;
-                    (*ACTIVE_PAIRED_HWNDS).contains(&raw) || {
+                    (*ACTIVE_NATIVE_SHORTCUTS).get(&raw).or_else(|| {
                         let root = GetAncestor(fg_hwnd, GA_ROOT);
-                        !root.0.is_null() && (*ACTIVE_PAIRED_HWNDS).contains(&(root.0 as isize))
-                    }
+                        (*ACTIVE_NATIVE_SHORTCUTS).get(&(root.0 as isize))
+                    })
                 }
             };
 
-            if is_paired {
+            if let Some(shortcuts) = shortcuts {
                 let kbd = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
                 if let Some(key_str) = format_vk_key(kbd) {
                     let lower = key_str.to_ascii_lowercase();
-                    let has_match = unsafe {
-                        if !ACTIVE_NATIVE_SHORTCUTS.is_null() {
-                            (*ACTIVE_NATIVE_SHORTCUTS).contains(&lower)
-                        } else {
-                            false
-                        }
-                    };
-
-                    if has_match {
+                    if shortcuts.contains(&lower) {
                         let is_typing = is_caret_or_edit_active(fg_hwnd);
                         let is_single_char = !key_str.contains('+') && key_str.chars().count() == 1;
                         if !(is_single_char && is_typing) {
@@ -831,17 +813,12 @@ impl NativeReactor {
                     if let Some((instance_uid, window_uids)) =
                         self.registry.disconnect(connection_uid)
                     {
-                        if self.enable_shortcuts.load(Ordering::Relaxed) {
-                            sync_keyboard_hook(&self.app, self.registry.all_active_shortcut_keys());
-                        } else {
-                            sync_keyboard_hook(&self.app, HashSet::new());
-                        }
                         if let Ok(mut handles) = self.browser_window_handles.lock() {
                             handles.retain(|(stored_instance_uid, _), _| {
                                 stored_instance_uid != &instance_uid
                             });
                         }
-                        self.sync_active_paired_hwnds();
+                        self.sync_window_shortcuts();
                         self.hide_instance_windows(&instance_uid, &window_uids);
                         self.hide_instance_free_surfaces(&instance_uid);
                         self.check_update_tray();
@@ -851,17 +828,12 @@ impl NativeReactor {
                     self.pending_window_pairings
                         .retain(|_, pairing| pairing.connection_uid != connection_uid);
                     if let Some(instance_uid) = self.registry.detach(connection_uid) {
-                        if self.enable_shortcuts.load(Ordering::Relaxed) {
-                            sync_keyboard_hook(&self.app, self.registry.all_active_shortcut_keys());
-                        } else {
-                            sync_keyboard_hook(&self.app, HashSet::new());
-                        }
                         if let Ok(mut handles) = self.browser_window_handles.lock() {
                             handles.retain(|(stored_instance_uid, _), _| {
                                 stored_instance_uid != &instance_uid
                             });
                         }
-                        self.sync_active_paired_hwnds();
+                        self.sync_window_shortcuts();
                         self.destroy_instance_surfaces(instance_uid);
                         self.check_update_tray();
                     }
@@ -878,11 +850,7 @@ impl NativeReactor {
                             .sync(connection_uid, revision, menus, reset_menu_uids, native_shortcuts)
                     {
                         let instance_uid = outcome.instance_uid.clone();
-                        if self.enable_shortcuts.load(Ordering::Relaxed) {
-                            sync_keyboard_hook(&self.app, self.registry.all_active_shortcut_keys());
-                        } else {
-                            sync_keyboard_hook(&self.app, HashSet::new());
-                        }
+                        self.sync_window_shortcuts();
                         let synced_menus = outcome.menus.clone();
                         let free_menus = synced_menus
                             .iter()
@@ -1271,11 +1239,7 @@ impl NativeReactor {
                     settings.enable_shortcuts = next;
                     settings.listener_port = self.socket.port();
                     let _ = crate::settings::save(&self.app, &settings);
-                    if next {
-                        sync_keyboard_hook(&self.app, self.registry.all_active_shortcut_keys());
-                    } else {
-                        sync_keyboard_hook(&self.app, HashSet::new());
-                    }
+                    self.sync_window_shortcuts();
                     self.check_update_tray();
                 }
                 NativeCommand::SetEditing { editing } => {
@@ -1354,11 +1318,19 @@ impl NativeReactor {
         }
     }
 
-    fn sync_active_paired_hwnds(&self) {
-        if let Ok(handles) = self.browser_window_handles.lock() {
-            let hwnds: HashSet<isize> = handles.values().copied().collect();
-            sync_paired_hwnds(&self.app, hwnds);
+    fn sync_window_shortcuts(&self) {
+        let mut shortcuts = HashMap::new();
+        if self.enable_shortcuts.load(Ordering::Relaxed) {
+            let by_instance = self.registry.active_shortcut_keys_by_instance();
+            if let Ok(handles) = self.browser_window_handles.lock() {
+                for ((instance_uid, _), hwnd) in handles.iter() {
+                    if let Some(keys) = by_instance.get(instance_uid) {
+                        shortcuts.insert(*hwnd, keys.clone());
+                    }
+                }
+            }
         }
+        sync_keyboard_hook(&self.app, shortcuts);
     }
 
     fn begin_window_pairing(
@@ -1483,7 +1455,7 @@ impl NativeReactor {
             if let Ok(mut handles) = self.browser_window_handles.lock() {
                 handles.insert(identity, pairing.hwnd);
             }
-            self.sync_active_paired_hwnds();
+            self.sync_window_shortcuts();
             let menus = self.registry.window_menus(&instance_uid, &window_uid);
             if !menus.is_empty() {
                 crate::debug::log(
@@ -1632,7 +1604,7 @@ impl NativeReactor {
                 stored_instance_uid != &instance_uid || is_valid_window(*hwnd)
             });
         }
-        self.sync_active_paired_hwnds();
+        self.sync_window_shortcuts();
         if let Ok(mut levels) = self.window_levels.lock() {
             levels.retain(|label, _| {
                 !label.starts_with(&menu_prefix) && !label.starts_with(&popup_prefix)
@@ -2012,7 +1984,7 @@ impl NativeReactor {
                 self.popups.remove_window(&id.0, &id.1);
             }
         }
-        self.sync_active_paired_hwnds();
+        self.sync_window_shortcuts();
 
         let mut menus_by_window: HashMap<String, (BrowserWindowSnapshot, Vec<SyncedMenu>)> =
             HashMap::new();

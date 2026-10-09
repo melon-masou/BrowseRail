@@ -749,7 +749,7 @@ async function syncOnce(): Promise<void> {
     `syncOnce: totalWindows=${windows.length}, menus=${menuStates.length}, free=${syncedFreeMenus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
   );
 
-  const rawNativeShortcuts = config.nativeShortcuts ?? [];
+  const rawNativeShortcuts = shortcutsEnabled ? config.nativeShortcuts ?? [] : [];
   const nativeShortcuts: SyncedNativeShortcut[] = rawNativeShortcuts
     .filter(
       (s) =>
