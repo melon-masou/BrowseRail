@@ -151,6 +151,17 @@ export function mountCustomBookmarksTab(
         },
         { signal: scope.signal },
       );
+    const importStaticBtn = element<HTMLButtonElement>("import-static-btn");
+    importStaticBtn.disabled = !tools.available;
+    importStaticBtn.addEventListener(
+      "click",
+      () => {
+        void tools.importStatic().then(result => {
+          if (result) showStatus(t("static.imported", { count: result.added, skipped: result.skipped }));
+        }).catch((error: unknown) => showStatus(String(error)));
+      },
+      { signal: scope.signal },
+    );
     element<HTMLButtonElement>("add-static-btn").addEventListener(
       "click",
       () => staticBookmarks.addBookmark(),

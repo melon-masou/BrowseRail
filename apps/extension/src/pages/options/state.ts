@@ -496,6 +496,11 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       definitions(type).push(structuredClone(value));
       publish(["bookmarks"], true);
     },
+    addStaticBookmarks(values: readonly StaticBookmark[]): void {
+      if (!values.length) return;
+      settingsDraft.staticBookmarks.push(...structuredClone(values));
+      publish(["bookmarks"], true);
+    },
     renameBookmark(type: CustomBookmarkType, uid: string, name: string): void {
       definition(type, uid).name = name;
       publish(["bookmarks", "menus", "shortcuts"]);

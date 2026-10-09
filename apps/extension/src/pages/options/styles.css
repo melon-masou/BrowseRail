@@ -791,6 +791,11 @@ output {
   flex-shrink: 0;
 }
 
+/* Several toolbar actions stay together at the end. */
+.add-toolbar-action + .add-toolbar-action {
+  margin-left: 0;
+}
+
 .menu-action-btn {
   display: inline-flex;
   align-items: center;
@@ -2273,6 +2278,18 @@ output {
   color: #334155;
   cursor: pointer;
   user-select: none;
+}
+
+/* Import puts the options and tag input on one line that fills the space beside the button. */
+#bookmark-picker-dialog[data-mode="import"] {
+  .picker-actions { flex: 1 1 auto; }
+  .picker-options { flex: 1 1 auto; align-items: stretch; }
+  .picker-flatten-check { white-space: nowrap; flex-shrink: 0; }
+}
+
+.picker-import-tag {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .picker-flatten-check input[type="checkbox"] {

@@ -1,4 +1,4 @@
-import { type DynamicBookmark } from "../../../config";
+import { type DynamicBookmark, type StaticBookmark } from "../../../config";
 import {
   buildTemporaryDirectiveUrl,
   type BookmarkNode,
@@ -11,6 +11,35 @@ import { element } from "../dom";
 import { createScope } from "../lifecycle";
 import { type BookmarkLibrary } from "../bookmark-library";
 import { type BookmarkPicker } from "../components/bookmark-picker";
+
+/**
+ * Static bookmarks for the bookmarks in a browser folder, optionally including nested folders.
+ * URLs that already exist, or repeat within the folder, are skipped so re-importing adds only new
+ * entries; Firefox `place:` queries are skipped because they only work inside the browser's UI.
+ */
+export function staticBookmarksFromFolder(
+  folder: BookmarkNode,
+  subfolders: boolean,
+  existingUrls: Iterable<string>,
+  tags: readonly string[] = [],
+): { added: StaticBookmark[]; skipped: number } {
+  const seen = new Set(existingUrls);
+  const added: StaticBookmark[] = [];
+  let skipped = 0;
+  function visit(node: BookmarkNode): void {
+    for (const child of node.children ?? []) {
+      if (child.url === undefined) {
+        if (subfolders) visit(child);
+      } else if (!child.url.startsWith("place:")) {
+        if (seen.has(child.url)) { skipped++; continue; }
+        seen.add(child.url);
+        added.push({ uid: crypto.randomUUID(), name: child.title.trim() || child.url, url: child.url, ...(tags.length ? { tags: [...tags] } : {}) });
+      }
+    }
+  }
+  visit(folder);
+  return { added, skipped };
+}
 
 export function createBookmarkTools(
   state: OptionsState,
@@ -205,10 +234,29 @@ export function createBookmarkTools(
     { signal: scope.signal },
   );
   initTemporaryBookmarkDialog();
+  /** Asks for a folder and adds its bookmarks as static bookmarks; undefined when cancelled. */
+  async function importStatic(): Promise<{ added: number; skipped: number } | undefined> {
+    const result = await bookmarkPicker.pick({
+      mode: "import",
+      title: t("static.importTitle"),
+      confirmLabel: t("static.importConfirm"),
+      rootPrefix: state.instance.rootPrefix,
+    });
+    if (!result) return undefined;
+    const existing = state.settings.staticBookmarks.map(bookmark => bookmark.url);
+    const node = result.node as BookmarkNode;
+    // A single bookmark imports like a folder that holds only it.
+    const folder = node.url === undefined ? node : { ...node, children: [node] };
+    const { added, skipped } = staticBookmarksFromFolder(folder, result.subfolders, existing, result.tags);
+    state.addStaticBookmarks(added);
+    return { added: added.length, skipped };
+  }
+
   return {
     get available() {
       return library.available;
     },
+    importStatic,
     openTemporary: openTemporaryMarkerDialog,
     openDynamic: openDynamicMarkerDialog,
     render(): void {

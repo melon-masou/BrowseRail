@@ -8,10 +8,12 @@ import {
   type BookmarkNode,
 } from "../../../bookmarks";
 import { type BookmarkLibrary } from "../bookmark-library";
+import { normalizeStaticBookmarkTags } from "../../../config/static-bookmark-tags";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
 export interface BookmarkPickOptions {
-  mode: "item" | "root" | "folder" | "bookmark";
+  /** "import" browses the whole tree and accepts a bookmark or a folder, with an "Include subfolders" option. */
+  mode: "item" | "root" | "folder" | "bookmark" | "import";
   title: string;
   confirmLabel: string;
   selectedId?: string;
@@ -27,6 +29,9 @@ export interface BookmarkPickResult {
   flattened: boolean;
   expandOnHover: boolean;
   includeFolders: boolean;
+  subfolders: boolean;
+  /** Import mode: tags for every imported bookmark, separated by commas in the input. */
+  tags: string[];
 }
 export function createBookmarkPicker(library: BookmarkLibrary) {
   const scope = createScope();
@@ -38,6 +43,9 @@ export function createBookmarkPicker(library: BookmarkLibrary) {
   const pickerHoverExpandCheckbox = element<HTMLInputElement>("picker-hover-expand-checkbox");
   const pickerIncludeFoldersLabel = element<HTMLLabelElement>("picker-include-folders-label");
   const pickerIncludeFoldersCheckbox = element<HTMLInputElement>("picker-include-folders-checkbox");
+  const pickerSubfoldersLabel = element<HTMLLabelElement>("picker-subfolders-label");
+  const pickerSubfoldersCheckbox = element<HTMLInputElement>("picker-subfolders-checkbox");
+  const pickerImportTag = element<HTMLInputElement>("picker-import-tag");
   const pickerCloseBtn = element<HTMLButtonElement>("picker-close-btn");
   const pickerUpBtn = element<HTMLButtonElement>("picker-up-btn");
   const pickerBreadcrumbs = element<HTMLDivElement>("picker-breadcrumbs");
@@ -76,7 +84,7 @@ export function createBookmarkPicker(library: BookmarkLibrary) {
     () => {
       const path = getFolderPath(pickerCurrentFolderId, library.tree as BookmarkNode[]);
       const root =
-        options.mode === "root" || options.mode === "folder" ? undefined : library.root();
+        wholeTree() ? undefined : library.root();
       if (root?.id === pickerCurrentFolderId) return;
       const parent = path[path.length - 2];
       if (parent) {
@@ -100,7 +108,7 @@ export function createBookmarkPicker(library: BookmarkLibrary) {
     () => {
       const id =
         pickerSelectedId ||
-        (options.mode === "root" || options.mode === "folder" ? pickerCurrentFolderId : null);
+        (wholeTree() ? pickerCurrentFolderId : null);
       const node = id ? library.find(id) : undefined;
       if (!node) return;
       const path = getFolderPath(node.id, library.tree as BookmarkNode[]);
@@ -119,15 +127,20 @@ export function createBookmarkPicker(library: BookmarkLibrary) {
         flattened: pickerFlattenCheckbox.checked,
         expandOnHover: pickerHoverExpandCheckbox.checked,
         includeFolders: pickerIncludeFoldersCheckbox.checked,
+        subfolders: options.mode === "import" && node.url === undefined && pickerSubfoldersCheckbox.checked,
+        tags: options.mode === "import" ? normalizeStaticBookmarkTags(pickerImportTag.value.split(/[,，]/)) : [],
       });
       finish = undefined;
       pickerDialog.close();
     },
     { signal: scope.signal },
   );
+  function wholeTree(): boolean {
+    return options.mode === "root" || options.mode === "folder" || options.mode === "import";
+  }
   function renderPicker(): void {
     const rootNode =
-      options.mode === "root" || options.mode === "folder" ? undefined : library.root();
+      wholeTree() ? undefined : library.root();
     let currentPath = getFolderPath(pickerCurrentFolderId, library.tree as BookmarkNode[]);
     if (rootNode && !currentPath.some((node) => node.id === rootNode.id)) {
       pickerCurrentFolderId = rootNode.id;
@@ -265,6 +278,20 @@ export function createBookmarkPicker(library: BookmarkLibrary) {
   }
 
   function updateSelectedInfo(): void {
+    // The second option row would keep its minimum height and push the import checkbox below the button.
+    pickerIncludeFoldersLabel.parentElement!.style.display = options.mode === "import" ? "none" : "";
+    pickerSubfoldersLabel.style.display = "none";
+    pickerImportTag.style.display = options.mode === "import" ? "" : "none";
+    if (options.mode === "import") {
+      pickerFlattenLabel.style.display = "none";
+      pickerHoverExpandLabel.style.display = "none";
+      pickerIncludeFoldersLabel.style.display = "none";
+      const targetId = pickerSelectedId || (pickerCurrentFolderId !== "0" ? pickerCurrentFolderId : null);
+      const targetNode = targetId && targetId !== "0" ? library.find(targetId) : undefined;
+      if (targetNode && targetNode.url === undefined) pickerSubfoldersLabel.style.display = "inline-flex";
+      pickerConfirmBtn.disabled = !targetNode;
+      return;
+    }
     if (options.mode === "folder") {
       pickerFlattenLabel.style.display = "none";
       pickerHoverExpandLabel.style.display = "none";
@@ -336,6 +363,9 @@ export function createBookmarkPicker(library: BookmarkLibrary) {
       pickerHoverExpandCheckbox.checked = next.expandOnHover !== false;
       pickerHoverExpandCheckbox.disabled = false;
       pickerIncludeFoldersCheckbox.checked = next.flatten === true && next.includeFolders === true;
+      pickerSubfoldersCheckbox.checked = false;
+      pickerImportTag.value = "";
+      pickerDialog.dataset.mode = next.mode;
       pickerTitle.textContent = next.title;
       pickerConfirmBtn.textContent = next.confirmLabel;
       renderPicker();

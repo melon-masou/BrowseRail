@@ -212,6 +212,7 @@
               <section id="static-panel" role="tabpanel" aria-labelledby="static-tab">
                 <div class="dynamic-toolbar">
                   <span class="url-rules-hint" data-i18n="static.hint">Set a URL, then add it to menus or assign a shortcut.</span>
+                  <button id="import-static-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="static.importFromBookmarks">Import from bookmarks</button>
                   <button id="add-static-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="customBookmarks.add">+ Add</button>
                 </div>
                 <div id="static-tag-filters" class="static-tag-filters" role="group"></div>
@@ -559,6 +560,11 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
             <div class="picker-actions">
               <div class="picker-options">
                 <div class="picker-option-row">
+                  <label id="picker-subfolders-label" class="picker-flatten-check" style="display: none;">
+                    <input type="checkbox" id="picker-subfolders-checkbox" />
+                    <span data-i18n="picker.includeSubfolders">Include subfolders</span>
+                  </label>
+                  <input id="picker-import-tag" class="picker-import-tag" type="text" list="static-tag-options" data-i18n-ph="static.importTags" data-i18n-aria="static.importTags" placeholder="Tags, comma separated" aria-label="Tags, comma separated" style="display: none;" />
                   <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
                     <input type="checkbox" id="picker-flatten-checkbox" />
                     <span data-i18n="itemSettings.flatten">Flatten folder contents</span>
