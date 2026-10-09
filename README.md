@@ -47,3 +47,14 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
 
     # Build the Windows executable from WSL:
     pnpm build:windows
+
+### Source layout
+
+- `packages/protocol`: contracts that cross a runtime boundary: the desktop WebSocket protocol, content-script messages, the import/export format, the external API and the userscript client.
+- `apps/content`: content scripts injected into web pages (the browser-mode bar and the userscript bridge). They depend only on `protocol`, `menu-ui` and `i18n`.
+- `apps/extension/src/background`: entry points only (`index.ts`, the offscreen page, the rewrite worker); they create features and route messages.
+- `apps/extension/src/pages`: the options and bookmark confirmation pages.
+- `apps/extension/src/features`: one folder per feature (bar, desktop, toolbar, sync, actions, capture, dynamic, api, injection), including its internal `messages.ts`.
+- `apps/extension/src/lib`: standalone modules (config, bookmarks, rewrite, icons, browser, desktop) that know nothing about features.
+
+Dependencies point downward only: `background`/`pages` → `features` → `lib` → `packages`. Entry folders never import each other, and features call each other in one direction.
