@@ -78,6 +78,12 @@ export function createTextMeasure(root: HTMLElement, lifetime: Lifetime): (text:
   const span = root.ownerDocument.createElement("span");
   span.setAttribute("aria-hidden", "true");
   span.className = "menu-text-measure";
+  // Planning runs in the bar host before a popup surface exists.
+  Object.assign(span.style, {
+    position: "absolute", left: "-9999px", top: "0",
+    width: "max-content", visibility: "hidden", whiteSpace: "nowrap",
+    pointerEvents: "none", fontFamily: "var(--menu-font-family, inherit)",
+  });
   root.append(span);
   lifetime.onDestroy(() => span.remove());
   return (text, fontSize) => {
