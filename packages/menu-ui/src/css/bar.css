@@ -103,7 +103,8 @@
 /* Icon + text styles: the text bar plus an icon before each label, without the edge stripe. */
 .menu-bar:where(.bar-text-icon, .bar-text-color-icon) {
   --bar-icon-display: inline-grid;
-  --icon-size: min(16px, calc(var(--config-bar-item-height) * 0.55));
+  /* Match the label's font size instead of capping icons independently. */
+  --icon-size: 1em;
 
   .menu-button {
     --button-padding-left: clamp(0px, calc((var(--config-bar-item-width) - 32px) * 0.1), 4px);
