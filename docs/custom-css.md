@@ -1,129 +1,67 @@
 # Custom CSS
 
-Add CSS in **Menus → Global CSS**, then set **CSS class** in menu or item settings.
+Open **Menus → Custom CSS**, add an entry, and paste the CSS. Set **CSS class** in menu or item settings to apply a style.
 
-[Bar stylesheet](../packages/menu-ui/src/css/bar.css): selectors and variables.
+### Custom SVG icons
 
-## Example of an icon-only bar
+The icon picker covers Phosphor and Lucide. Custom CSS can add icons they don't have, such as a site logo. Icons show in every **Bar style** except **Text**, and in custom styles that set `--bar-icon-display`. A custom icon replaces the one chosen in the picker.
 
-This example replaces button labels with colored icons and removes the bar background.
-
-- In the extension settings, open **Menus**, click **Global CSS**, add an entry, and paste the CSS below.
-- Open the target menu's settings and set **CSS class** to `icon-bar`.
-- Buttons use the bookmark icon by default. To change one, set its **CSS class** to `icon-folder`, `icon-home`, `icon-grid`, or `icon-settings`.
+Set an item's **CSS class** to `icon-browserail`, or the menu's **CSS class** to `smile-bar`.
 
 ```css
-&.icon-bar {
-  /* Hide the bar frame and button fills. */
-  --bar-background: transparent;
-  --bar-border: 0;
-  --bar-backdrop-filter: none;
-  --bar-shadow: none;
-  --bar-button-background: transparent;
-  --bar-button-padding: 0;
-
-  /* Pass clicks through outside the buttons */
-  --bar-background-pointer-events: none;
-
-  /* Icons fill the button; control the distance between buttons with spacing. */
-  --icon-size: 100%;
-
-  /* SVG masks icons*/
-  --icon-bookmark: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5%202h14a1%201%200%200%201%201%201v19l-8-5-8%205V3a1%201%200%200%201%201-1z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-folder: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M4%204h6l3%203h7a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H4a2%202%200%200%201-2-2V6a2%202%200%200%201%202-2z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-home: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M12%202%202%2011h3v11h5v-7h4v7h5V11h3z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-grid: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M2%202h8v8H2zM14%202h8v8h-8zM2%2014h8v8H2zM14%2014h8v8h-8z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-settings: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M9%202h6v3l1%20.5%202-2%202.5%202.5-2%202%20.5%201h3v6h-3l-.5%201%202%202-2.5%202.5-2-2-1%20.5v3H9v-3l-1-.5-2%202L3.5%2018l2-2-.5-1H2V9h3l.5-1-2-2L6%203.5l2%202L9%205zM15.5%2012a3.5%203.5%200%201%200-7%200%203.5%203.5%200%201%200%207%200z%22%2F%3E%3C%2Fsvg%3E");
-
-  /* Default icon; item classes below override it. */
-  --icon: var(--icon-bookmark);
-
-  .menu-button.icon-bookmark { --icon: var(--icon-bookmark); }
-  .menu-button.icon-folder { --icon: var(--icon-folder); }
-  .menu-button.icon-home { --icon: var(--icon-home); }
-  .menu-button.icon-grid { --icon: var(--icon-grid); }
-  .menu-button.icon-settings { --icon: var(--icon-settings); }
-
-  .menu-button-label { visibility: hidden; }
-
-  /* Scale icons with the button, preserve their proportions, and use its color. */
-  .menu-button[data-uid][data-kind]::before {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    bottom: auto;
-    width: var(--icon-size);
-    height: var(--icon-size);
-    transform: translate(-50%, -50%);
-    background: var(--button-accent);
-    mask: var(--icon) center / contain no-repeat;
-  }
+& {
+  --icon-browserail: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2296%2096%20320%20320%22%20fill%3D%22black%22%3E%3Cpath%20d%3D%22M154%20112h64v288l-32-24-32%2024zM294%20112h64v288l-32-24-32%2024z%22%2F%3E%3C%2Fsvg%3E");
+  --icon-smile: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M12%202a10%2010%200%201%200%200%2020a10%2010%200%201%200%200-20zM8.5%207.5a1.5%201.5%200%201%200%200%203a1.5%201.5%200%201%200%200-3zM15.5%207.5a1.5%201.5%200%201%200%200%203a1.5%201.5%200%201%200%200-3zM7%2013.5h10a5%205%200%200%201-10%200z%22%2F%3E%3C%2Fsvg%3E");
 }
+
+
+/* Item class: replaces one button's icon. 
+  --icon-text: "" drops the text or name prefix.
+*/
+.menu-button.icon-browserail { --icon: var(--icon-browserail); --icon-text: ""; }
+.menu-button.icon-smile { --icon: var(--icon-smile); --icon-text: ""; }
+/* Menu class: replaces every button's icon in the bar; an item class still wins. */
+&.smile-bar { --icon: var(--icon-smile); --icon-text: ""; }
 ```
 
-## Example of a square-button bar
+## Example: round buttons
 
-Set the menu's **CSS class** to `tile-bar`. Adjust button size and spacing in editing mode.
+Custom CSS can add bar styles beyond the built-in presets. Refer to `.bar-text`, `.bar-text-icon`, `.bar-text-color-icon`, `.bar-icons` and `.bar-tiles` in [bar.css](../packages/menu-ui/src/css/bar.css) for implementations of the presets.
 
-Buttons show the first character of their name. Set an item's **CSS class** to `icon-bookmark`, `icon-folder`, `icon-home`, `icon-grid`, or `icon-settings` to use an icon instead.
+This is an example of custom bar style. Paste this CSS and set the menu's **CSS class** to `round-tiles`.
 
 ```css
-&.tile-bar {
-  --bar-background: var(--config-bar-background, var(--dock-surface));
+&.round-tiles {
+  /* No frame; clicks between buttons reach the page. */
+  --bar-background: transparent;
+  --bar-backdrop-filter: none;
   --bar-border: 0;
   --bar-shadow: none;
-  --bar-backdrop-filter: none;
-  --bar-button-padding: 0;
-  /* Leave equal space around each square, including above and below it. */
-  --tile-size: calc(min(var(--config-bar-item-width), var(--config-bar-item-height)) * 0.72);
+  --bar-background-pointer-events: none;
 
-  --icon-bookmark: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5%202h14a1%201%200%200%201%201%201v19l-8-5-8%205V3a1%201%200%200%201%201-1z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-folder: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M4%204h6l3%203h7a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H4a2%202%200%200%201-2-2V6a2%202%200%200%201%202-2z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-home: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M12%202%202%2011h3v11h5v-7h4v7h5V11h3z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-grid: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M2%202h8v8H2zM14%202h8v8h-8zM2%2014h8v8H2zM14%2014h8v8h-8z%22%2F%3E%3C%2Fsvg%3E");
-  --icon-settings: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22black%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M9%202h6v3l1%20.5%202-2%202.5%202.5-2%202%20.5%201h3v6h-3l-.5%201%202%202-2.5%202.5-2-2-1%20.5v3H9v-3l-1-.5-2%202L3.5%2018l2-2-.5-1H2V9h3l.5-1-2-2L6%203.5l2%202L9%205zM15.5%2012a3.5%203.5%200%201%200-7%200%203.5%203.5%200%201%200%207%200z%22%2F%3E%3C%2Fsvg%3E");
-
-  .menu-button.icon-bookmark { --icon: var(--icon-bookmark); }
-  .menu-button.icon-folder { --icon: var(--icon-folder); }
-  .menu-button.icon-home { --icon: var(--icon-home); }
-  .menu-button.icon-grid { --icon: var(--icon-grid); }
-  .menu-button.icon-settings { --icon: var(--icon-settings); }
+  /* Scale circles and their icons with the configured button dimensions. */
+  --round-button-size: calc(min(var(--config-bar-item-width), var(--config-bar-item-height)) * 0.85);
+  --bar-icon-display: inline-grid;
+  --icon-size: calc(var(--round-button-size) * 0.6);
+  --icon-font-size: calc(var(--round-button-size) * 0.58);
+  --bar-button-hover-filter: brightness(1.25);
 
   .menu-button {
-    width: var(--tile-size);
-    height: var(--tile-size);
+    width: var(--round-button-size);
+    height: var(--round-button-size);
     place-self: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 50%;
     background: var(--button-norm-fill, var(--default-button-fill));
-    border-radius: 22%;
-    container-type: size;
+    --icon-color: currentColor;
+
+    /* Replace text and the colored edge with the icon slot. */
+    .menu-button-label { display: none; }
+    &::before { content: none; }
   }
 
-  .menu-button-label { visibility: hidden; }
+  /* Pinned folders retain their marker. */
   .menu-button[data-folder]:not([data-pin])::after { display: none; }
-
-  .menu-button[data-uid][data-kind]::before {
-    content: attr(data-initial);
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: grid;
-    place-items: center;
-    background: none;
-    font: 400 58cqmin / 1 "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-    letter-spacing: 0;
-    text-transform: uppercase;
-  }
-
-  /* An icon class replaces the character; both scale with the button. */
-  .menu-button[data-uid][data-kind]:is(.icon-bookmark, .icon-folder, .icon-home, .icon-grid, .icon-settings)::before {
-    content: "";
-    inset: 20%;
-    width: 60%;
-    height: 60%;
-    background: currentColor;
-    mask: var(--icon) center / contain no-repeat;
-  }
 }
 ```
