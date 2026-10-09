@@ -97,6 +97,9 @@ importers:
 
   apps/extension:
     dependencies:
+      '@browserail/content':
+        specifier: workspace:*
+        version: link:../content
       '@browserail/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n

@@ -7,6 +7,8 @@ import { build } from "vite";
 const target = process.argv[2] === "firefox" ? "firefox" : "chrome";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Other workspace packages are reached through their package exports, never relative paths.
+const packageEntry = (specifier) => fileURLToPath(import.meta.resolve(specifier));
 const outDir = resolve(root, "..", "..", "build", "extension", target);
 
 await rm(outDir, { force: true, recursive: true });
@@ -68,7 +70,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "../content/src/bar/entry.ts"),
+      entry: packageEntry("@browserail/content/bar"),
       fileName: () => "content.js",
       formats: ["iife"],
       name: "BrowseRailContent",
@@ -83,7 +85,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "../content/src/bridge/entry.ts"),
+      entry: packageEntry("@browserail/content/bridge"),
       fileName: () => "external-updates.js",
       formats: ["iife"],
       name: "BrowseRailExternalUpdates",
@@ -97,7 +99,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "../../packages/protocol/src/userscript-client.ts"),
+      entry: packageEntry("@browserail/protocol/userscript-client"),
       fileName: () => "userscript-client.js",
       formats: ["iife"],
       name: "BrowseRailExternalClient",

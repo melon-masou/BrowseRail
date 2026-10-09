@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@browserail/content": "workspace:*",
     "@browserail/i18n": "workspace:*",
     "@browserail/menu-ui": "workspace:*",
     "@browserail/protocol": "workspace:*",
