@@ -9,9 +9,9 @@ import {
   loadBookmarkRootPrefix, loadConfig, loadDisplayMode, normalizeShortcutAction, toggleBrowserCollapsed, type ExtensionConfig,
 } from "../../lib/config";
 import { requestBrowserMenuRefresh } from "../bar/refresh";
-import { executeMenuAction } from "./execute-menu-action";
-import { nativeShortcutSetMatches } from "./native-shortcuts";
-import { canExecuteShortcut, executeShortcutAction } from "./shortcut-actions";
+import { executeMenuAction } from "../actions/execute-menu-action";
+import { nativeShortcutSetMatches } from "./native";
+import { canExecuteShortcut, executeShortcutAction } from "./actions";
 
 export interface ShortcutsHost {
   requestSync(): Promise<void>;

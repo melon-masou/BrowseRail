@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { StoredNativeShortcutSet, UrlRule } from "@browserail/protocol";
-import { nativeShortcutsForWindows } from "./native-shortcuts";
+import { nativeShortcutsForWindows } from "./native";
 
 const rules: UrlRule[] = [
   { uid: "github", name: "GitHub", patterns: ["github.com", "!github.com/private/*"] },

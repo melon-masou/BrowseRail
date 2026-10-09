@@ -14,10 +14,10 @@ vi.mock("webextension-polyfill", () => ({ default: {
 } }));
 
 import { loadConfig, saveConfig, saveShortcutsEnabled, loadShortcutsEnabled } from "../../lib/config";
-import { canExecuteShortcut, executeShortcutAction } from "./shortcut-actions";
+import { canExecuteShortcut, executeShortcutAction } from "./actions";
 import { defaultNativeBarSettings } from "@browserail/protocol";
 import { saveBarLayout, loadBarConfigurations, defaultMenuPlacement } from "../../lib/config";
-import { autoHideEnabled } from "../bar/auto-hide";
+import { autoHideEnabled } from "../../lib/config/auto-hide";
 
 beforeEach(() => { mocks.storage = {}; mocks.session = {}; vi.clearAllMocks(); });
 

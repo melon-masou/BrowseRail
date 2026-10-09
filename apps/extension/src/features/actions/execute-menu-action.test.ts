@@ -31,7 +31,7 @@ import { projectMenuSpacing } from "../../lib/bookmarks/spacing";
 import { staticBookmarkReferenceErrors } from "../../lib/bookmarks/variables";
 import { saveExternalData } from "../../lib/config/external-data";
 import { executeMenuAction } from "./execute-menu-action";
-import { autoHideEnabled, reconcileAutoHideOverrides } from "../bar/auto-hide";
+import { autoHideEnabled, reconcileAutoHideOverrides } from "../../lib/config/auto-hide";
 
 beforeEach(() => {
   mocks.storage = {}; mocks.session = {}; mocks.tree = []; mocks.update.mockClear(); mocks.create.mockClear();
@@ -53,7 +53,7 @@ it("toggles auto-hide live without changing saved settings, isolates modes and c
   expect(await autoHideEnabled("auto-menu", "browser", bars.browser["auto-menu"]!)).toBe(true);
   expect(mocks.storage).toEqual(saved);
   vi.resetModules();
-  const restarted = await import("../bar/auto-hide");
+  const restarted = await import("../../lib/config/auto-hide");
   expect(await restarted.autoHideEnabled("auto-menu", "native", bars.native["auto-menu"]!)).toBe(false);
 
   await saveDisplayMode("browser");

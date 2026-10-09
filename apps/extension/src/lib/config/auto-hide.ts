@@ -1,7 +1,7 @@
 import { t } from "@browserail/i18n";
 import { type BarConfigurations, type BarSettings } from "@browserail/protocol";
 import browser from "webextension-polyfill";
-import { loadBarConfigurations, loadConfig, loadDisplayMode, resolveBarConfiguration, type DisplayMode } from "../../lib/config";
+import { loadBarConfigurations, loadConfig, loadDisplayMode, resolveBarConfiguration, type DisplayMode } from "./";
 
 const prefix = (mode: DisplayMode): string => `auto_hide_override:${mode}:`;
 

@@ -7,9 +7,9 @@ import {
 } from "../lib/config";
 import { EXTERNAL_DATA_STORAGE_PREFIX } from "../lib/config/external-data";
 import { executeMenuAction } from "../features/actions/execute-menu-action";
-import { createShortcuts } from "../features/actions/shortcuts";
+import { createShortcuts } from "../features/shortcuts/index";
 import { initExternalUpdates } from "../features/api/updates";
-import { reconcileAutoHideOverrides } from "../features/bar/auto-hide";
+import { reconcileAutoHideOverrides } from "../lib/config/auto-hide";
 import { createBrowserMenus } from "../features/bar/menus";
 import { requestBrowserMenuRefresh } from "../features/bar/refresh";
 import { createDesktopConnection } from "../features/desktop/connection";

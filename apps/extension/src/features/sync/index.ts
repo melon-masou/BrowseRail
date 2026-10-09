@@ -10,8 +10,8 @@ import {
   resolveBarConfiguration,
 } from "../../lib/config";
 import { resolveItemIcons } from "../../lib/icons/item-icons";
-import { nativeShortcutsForWindows } from "../actions/native-shortcuts";
-import { autoHideEnabled, reconcileAutoHideOverrides } from "../bar/auto-hide";
+import { nativeShortcutsForWindows } from "../shortcuts/native";
+import { autoHideEnabled, reconcileAutoHideOverrides } from "../../lib/config/auto-hide";
 import { menuVisibleForUrl as isMenuVisibleForUrl, type createBrowserMenus } from "../bar/menus";
 import type { DesktopConnection } from "../desktop/connection";
 import type { DebugLog } from "../desktop/debug-log";

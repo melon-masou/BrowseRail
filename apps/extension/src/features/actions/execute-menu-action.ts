@@ -8,7 +8,7 @@ import { runTabAction, toggleTargetMenus } from "./menu-actions";
 import { runExternalAction } from "./external-action";
 import { resolveStaticBookmarkUrl } from "../../lib/bookmarks/variables";
 import { resolveMenuBookmarkTarget } from "./menu-target";
-import { toggleAutoHide } from "../bar/auto-hide";
+import { toggleAutoHide } from "../../lib/config/auto-hide";
 
 export async function executeMenuAction(actionUid: string, menuUid: string | undefined, targetWindowUid: string, changed: () => void): Promise<void> {
   if (actionUid.startsWith("noop")) return;

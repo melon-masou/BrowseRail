@@ -1,8 +1,8 @@
 import browser from "webextension-polyfill";
 import { type ShortcutAction } from "@browserail/protocol";
 import { loadShortcutsEnabled, saveShortcutsEnabled, saveConfig, type ExtensionConfig } from "../../lib/config";
-import { runTabAction, toggleTargetMenus } from "./menu-actions";
-import { toggleAutoHide } from "../bar/auto-hide";
+import { runTabAction, toggleTargetMenus } from "../actions/menu-actions";
+import { toggleAutoHide } from "../../lib/config/auto-hide";
 
 export async function canExecuteShortcut(type: unknown): Promise<boolean> {
   return type === "shortcutsToggle" || await loadShortcutsEnabled();
