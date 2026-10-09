@@ -1,14 +1,19 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { defaultNativeBarSettings, invertNavigationActionUid, parseTemporaryAction, type FolderEntry } from "@browserail/protocol";
+import { defaultBarSettings, defaultNativeBarSettings, invertNavigationActionUid, parseTemporaryAction, type FolderEntry } from "@browserail/protocol";
 import { barDimensions } from "@browserail/menu-ui";
 
 const mocks = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
+  session: {} as Record<string, unknown>,
   tree: [] as Array<{ id: string; title: string; children: Array<{ id: string; title: string; url: string }> }>,
   update: vi.fn(), create: vi.fn(),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
-  storage: { local: {
+  storage: { session: {
+    get: async (key: string | null) => key === null ? { ...mocks.session } : { [key]: mocks.session[key] },
+    set: async (values: Record<string, unknown>) => { Object.assign(mocks.session, values); },
+    remove: async (keys: string | string[]) => { for (const key of typeof keys === "string" ? [keys] : keys) delete mocks.session[key]; },
+  }, local: {
     get: async (key: string) => ({ [key]: mocks.storage[key] }),
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.storage, values); },
   } },
@@ -20,15 +25,62 @@ vi.mock("webextension-polyfill", () => ({ default: {
   windows: { get: async () => ({}) },
 } }));
 
-import { loadConfig, saveConfig, saveDynamicValue, loadTemporaryValues, loadTemporaryNotes, saveBarLayout, loadBarConfigurations, importBarConfigurations, defaultMenuPlacement, loadShortcutsEnabled, type StoredMenuItem } from "../config";
+import { loadConfig, saveConfig, saveDisplayMode, saveDynamicValue, loadTemporaryValues, loadTemporaryNotes, saveBarLayout, loadBarConfigurations, importBarConfigurations, defaultMenuPlacement, loadShortcutsEnabled, type StoredMenuItem } from "../config";
 import { buildTemporaryDirectiveUrl, resolveMenuItems } from "../bookmarks";
 import { projectMenuSpacing } from "../bookmarks/spacing";
 import { staticBookmarkReferenceErrors } from "../bookmarks/variables";
 import { saveExternalData } from "../config/external-data";
 import { executeMenuAction } from "./execute-menu-action";
+import { autoHideEnabled, reconcileAutoHideOverrides } from "./auto-hide-runtime";
 
 beforeEach(() => {
-  mocks.storage = {}; mocks.tree = []; mocks.update.mockClear(); mocks.create.mockClear();
+  mocks.storage = {}; mocks.session = {}; mocks.tree = []; mocks.update.mockClear(); mocks.create.mockClear();
+});
+
+it("toggles auto-hide live without changing saved settings, isolates modes and clears overrides when hide settings change", async () => {
+  const config = await loadConfig();
+  config.panel.menus = [{ uid: "auto-menu", items: [{ uid: "hide/#", type: "autoHideToggle" }] }];
+  await saveConfig(config);
+  const nativeSettings = { ...defaultNativeBarSettings(), autoHide: "end" as const, autoHideRange: { start: .2, end: .4 } };
+  await saveBarLayout("auto-menu", "native", defaultMenuPlacement(), { gapRatio: 0, extraGaps: {} }, nativeSettings);
+  await saveBarLayout("auto-menu", "browser", defaultMenuPlacement(), { gapRatio: 0, extraGaps: {} }, { ...defaultBarSettings(), autoHide: "start" });
+  const saved = structuredClone(mocks.storage);
+  const [entry] = await resolveMenuItems(config.panel.menus[0]!.items);
+  const changed = vi.fn();
+  await executeMenuAction(entry!.uid, "auto-menu", "42", changed);
+  let bars = await loadBarConfigurations();
+  expect(await autoHideEnabled("auto-menu", "native", bars.native["auto-menu"]!)).toBe(false);
+  expect(await autoHideEnabled("auto-menu", "browser", bars.browser["auto-menu"]!)).toBe(true);
+  expect(mocks.storage).toEqual(saved);
+  vi.resetModules();
+  const restarted = await import("./auto-hide-runtime");
+  expect(await restarted.autoHideEnabled("auto-menu", "native", bars.native["auto-menu"]!)).toBe(false);
+
+  await saveDisplayMode("browser");
+  await executeMenuAction(entry!.uid, "auto-menu", "42", changed);
+  expect(await autoHideEnabled("auto-menu", "browser", bars.browser["auto-menu"]!)).toBe(false);
+  await executeMenuAction(entry!.uid, "auto-menu", "42", changed);
+  expect(await autoHideEnabled("auto-menu", "browser", bars.browser["auto-menu"]!)).toBe(true);
+
+  await saveBarLayout("auto-menu", "native", defaultMenuPlacement(), { gapRatio: 0, extraGaps: {} }, { ...nativeSettings, buttonFontSize: 18 });
+  bars = await loadBarConfigurations();
+  await reconcileAutoHideOverrides(bars);
+  expect(await autoHideEnabled("auto-menu", "native", bars.native["auto-menu"]!)).toBe(false);
+  await saveBarLayout("auto-menu", "native", defaultMenuPlacement(), { gapRatio: 0, extraGaps: {} }, { ...nativeSettings, autoHidePadding: 20 });
+  bars = await loadBarConfigurations();
+  await reconcileAutoHideOverrides(bars);
+  expect(await autoHideEnabled("auto-menu", "native", bars.native["auto-menu"]!)).toBe(true);
+});
+
+it("rejects the auto-hide action when no hiding direction is configured", async () => {
+  const config = await loadConfig();
+  config.panel.menus = [{ uid: "auto-menu", items: [{ uid: "hide", type: "autoHideToggle" }] }];
+  await saveConfig(config);
+  const saved = structuredClone(mocks.storage);
+  const changed = vi.fn();
+  await expect(executeMenuAction("autoHideToggle:hide", "auto-menu", "42", changed)).rejects.toThrow();
+  expect(changed).not.toHaveBeenCalled();
+  expect(mocks.storage).toEqual(saved);
 });
 
 it("toggles only the instance shortcut switch, keeps bindings and ordinary clicks, and can turn itself back on", async () => {

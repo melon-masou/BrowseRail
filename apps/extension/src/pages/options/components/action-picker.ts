@@ -10,6 +10,7 @@ export function actionChoices(): PickerItem[] {
     { id: "menusToggle", label: t("menuAction.menusToggle") },
     { id: "menuFold", label: t("menu.addMenuFold") },
     { id: "shortcutsToggle", label: t("menuAction.shortcutsToggle") },
+    { id: "autoHideToggle", label: t("menuAction.autoHideToggle") },
   ];
 }
 
@@ -25,7 +26,7 @@ export function createShortcutActionPicker() {
         const targets = await picker.pickMany(t("menuAction.targets"), menus, t("menuAction.noTargets"));
         return targets === null ? null : { type: kind, targetMenuUids: targets };
       }
-      if (kind === "menuFold") {
+      if (kind === "menuFold" || kind === "autoHideToggle") {
         const uid = await picker.pick(t("menuAction.targets"), menus, t("menuAction.noTargets"));
         return uid === null ? null : { type: kind, menuUid: uid };
       }
@@ -43,6 +44,7 @@ export function shortcutActionLabel(action: { type?: string; browserAction?: str
   if (action.type === "menuFold") return `${t("menu.addMenuFold")} · ${menuName(action.menuUid ?? "")}`;
   if (action.type === "menusToggle") return `${t("menuAction.menusToggle")} · ${(action.targetMenuUids ?? []).map(menuName).join(", ")}`;
   if (action.type === "shortcutsToggle") return t("menuAction.shortcutsToggle");
+  if (action.type === "autoHideToggle") return `${t("menuAction.autoHideToggle")} · ${menuName(action.menuUid ?? "")}`;
   const labels = { back: "menuAction.back", forward: "menuAction.forward", reload: "menuAction.reload" } as const;
   return action.browserAction && action.browserAction in labels ? t(labels[action.browserAction as keyof typeof labels]) : "";
 }

@@ -499,6 +499,7 @@ export async function resolveMenuItems(
     temporaryBookmarks?: Array<{ uid: string; name: string }>;
     externalActions?: Array<{ uid: string; name: string }>;
     shortcutsEnabled?: boolean;
+    autoHideEnabled?: boolean;
     // False when the browser exposes no bookmarks API: items backed by the
     // bookmark tree are omitted from the layout but stay in the stored config.
     bookmarksAvailable?: boolean;
@@ -521,12 +522,12 @@ export async function resolveMenuItems(
         return [entry];
       }
 
-      if (type === "shortcutsToggle") {
+      if (type === "shortcutsToggle" || type === "autoHideToggle") {
         return [{
-          kind: "shortcutsToggle",
+          kind: type === "shortcutsToggle" ? "shortcutsToggle" : "autoHideToggle",
           uid: `${type}:${encodeURIComponent(uid)}`,
-          label: rename || t("menuAction.shortcutsToggleLabel"),
-          on: context.shortcutsEnabled !== false,
+          label: rename || t(type === "shortcutsToggle" ? "menuAction.shortcutsToggleLabel" : "menuAction.autoHideToggleLabel"),
+          on: type === "shortcutsToggle" ? context.shortcutsEnabled !== false : context.autoHideEnabled === true,
           ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
         }];
       }

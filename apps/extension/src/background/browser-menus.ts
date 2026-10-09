@@ -100,7 +100,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
         if (!await loadBrowserEditing() || typeof request.token !== "string" || !request.token) throw new Error("Menu editing is disabled");
         return editSession.begin(tabId, request.menuUid, request.token);
       case "invoke":
-        if (!entries.some(entry => (entry.kind === "bookmark" || entry.kind === "browserAction" || entry.kind === "menusToggle" || entry.kind === "shortcutsToggle") && (entry.uid === request.actionUid || (entry.kind === "bookmark" && !entry.uid.startsWith("noop") && invertNavigationActionUid(entry.uid) === request.actionUid)))) throw new Error("Action is unavailable");
+        if (!entries.some(entry => (entry.kind === "bookmark" || entry.kind === "browserAction" || entry.kind === "menusToggle" || entry.kind === "shortcutsToggle" || entry.kind === "autoHideToggle") && (entry.uid === request.actionUid || (entry.kind === "bookmark" && !entry.uid.startsWith("noop") && invertNavigationActionUid(entry.uid) === request.actionUid)))) throw new Error("Action is unavailable");
         await executeMenuAction(request.actionUid, request.menuUid, String(tab.windowId), changed);
         break;
       case "fold":

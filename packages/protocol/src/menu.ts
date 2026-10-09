@@ -106,6 +106,10 @@ export interface ShortcutsToggleEntry {
   on: boolean;
 }
 
+export interface AutoHideToggleEntry extends Omit<ShortcutsToggleEntry, "kind"> {
+  kind: "autoHideToggle";
+}
+
 export interface FolderEntry {
   kind: "folder";
   cssClass?: string;
@@ -147,11 +151,11 @@ export function isMenuSpacing(value: unknown): value is MenuSpacing {
     && Object.values(raw.extraGaps as object).every(value => typeof value === "number" && Number.isFinite(value) && value >= 0);
 }
 
-export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry | ShortcutsToggleEntry;
+export type LayoutEntry = BookmarkEntry | FolderEntry | MenuFoldEntry | MenusToggleEntry | BrowserActionEntry | ShortcutsToggleEntry | AutoHideToggleEntry;
 
 /**
- * Render content for one menu: the item tree plus its appearance. Everything
- * here lives in menu configuration; spacing edits are submitted with placement
+ * Render content for one menu: the item tree, appearance and runtime gates.
+ * Spacing edits are submitted with placement
  * and persisted separately for Native and browser modes by the extension.
  *
  * Spacing ratios are projected from the receiving host's configuration.
@@ -169,6 +173,8 @@ export interface MenuView {
   orientation: MenuOrientation;
   style?: BarStyle;
   autoHide?: BarAutoHide;
+  // Runtime gate; layout editing always uses the configured direction above.
+  autoHideEnabled?: boolean;
   autoHidePadding?: number;
   autoHideRange?: BarAutoHideRange;
   fontFamily?: string;

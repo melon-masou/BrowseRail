@@ -1,8 +1,12 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ storage: {} as Record<string, unknown>, back: vi.fn(), forward: vi.fn(), reload: vi.fn() }));
+const mocks = vi.hoisted(() => ({ storage: {} as Record<string, unknown>, session: {} as Record<string, unknown>, back: vi.fn(), forward: vi.fn(), reload: vi.fn() }));
 vi.mock("webextension-polyfill", () => ({ default: {
-  storage: { local: {
+  storage: { session: {
+    get: async (key: string) => ({ [key]: mocks.session[key] }),
+    set: async (values: Record<string, unknown>) => { Object.assign(mocks.session, values); },
+    remove: async (key: string) => { delete mocks.session[key]; },
+  }, local: {
     get: async (key: string) => ({ [key]: mocks.storage[key] }),
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.storage, values); },
   } },
@@ -11,8 +15,25 @@ vi.mock("webextension-polyfill", () => ({ default: {
 
 import { loadConfig, saveConfig, saveShortcutsEnabled, loadShortcutsEnabled } from "../config";
 import { canExecuteShortcut, executeShortcutAction } from "./shortcut-actions";
+import { defaultNativeBarSettings } from "@browserail/protocol";
+import { saveBarLayout, loadBarConfigurations, defaultMenuPlacement } from "../config";
+import { autoHideEnabled } from "./auto-hide-runtime";
 
-beforeEach(() => { mocks.storage = {}; vi.clearAllMocks(); });
+beforeEach(() => { mocks.storage = {}; mocks.session = {}; vi.clearAllMocks(); });
+
+it("toggles the selected bar's auto-hide through a shortcut without changing its settings", async () => {
+  const config = await loadConfig();
+  config.panel.menus = [{ uid: "shortcut-hide", items: [] }];
+  await saveConfig(config);
+  await saveBarLayout("shortcut-hide", "native", defaultMenuPlacement(), { gapRatio: 0, extraGaps: {} }, { ...defaultNativeBarSettings(), autoHide: "start" });
+  const saved = structuredClone(mocks.storage);
+  const host = { changed: vi.fn(), toggleFold: vi.fn(async () => {}) };
+  await executeShortcutAction({ type: "autoHideToggle", menuUid: "shortcut-hide" }, config, "42", host);
+  const bars = await loadBarConfigurations();
+  expect(await autoHideEnabled("shortcut-hide", "native", bars.native["shortcut-hide"]!)).toBe(false);
+  expect(mocks.storage).toEqual(saved);
+  expect(host.changed).toHaveBeenCalledOnce();
+});
 
 it("executes independent actions on the source window and lets a shortcut switch turn shortcuts back on", async () => {
   const config = await loadConfig();

@@ -117,7 +117,7 @@ export function menuButton(
   const labelSpan = doc.createElement("span");
   labelSpan.className = "menu-button-label";
   const displayText = entry.kind === "bookmark" || entry.kind === "folder" ? entry.rename : undefined;
-  if (entry.kind === "shortcutsToggle") {
+  if (entry.kind === "shortcutsToggle" || entry.kind === "autoHideToggle") {
     const status = t(entry.on ? "menuAction.shortcutsOn" : "menuAction.shortcutsOff");
     const parts = entry.label.split("{on}");
     parts.forEach((part, index) => {

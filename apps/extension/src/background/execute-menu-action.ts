@@ -8,19 +8,23 @@ import { runTabAction, toggleTargetMenus } from "./menu-actions";
 import { runExternalAction } from "./external-action";
 import { resolveStaticBookmarkUrl } from "../bookmarks/variables";
 import { resolveMenuBookmarkTarget } from "../bookmarks/menu-target";
+import { toggleAutoHide } from "./auto-hide-runtime";
 
 export async function executeMenuAction(actionUid: string, menuUid: string | undefined, targetWindowUid: string, changed: () => void): Promise<void> {
   if (actionUid.startsWith("noop")) return;
   const config = await loadConfig();
   const targetUid = (identity: string, type: "bookmark" | CustomBookmarkType): Promise<string> =>
     menuUid === undefined ? Promise.resolve(identity) : resolveMenuBookmarkTarget(config, menuUid, identity, type);
-  if (actionUid.startsWith("browserAction:") || actionUid.startsWith("menusToggle:") || actionUid.startsWith("shortcutsToggle:")) {
+  if (actionUid.startsWith("browserAction:") || actionUid.startsWith("menusToggle:") || actionUid.startsWith("shortcutsToggle:") || actionUid.startsWith("autoHideToggle:")) {
     const separator = actionUid.indexOf(":");
     const type = actionUid.slice(0, separator);
     const uid = decodeURIComponent(actionUid.slice(separator + 1));
     const sourceMenu = config.panel.menus.find((menu) => menu.uid === menuUid);
     const action = sourceMenu?.items.find((item) => item.uid === uid && item.type === type);
-    if (action?.type === "shortcutsToggle") {
+    if (sourceMenu && action?.type === "autoHideToggle") {
+      await toggleAutoHide(sourceMenu.uid);
+      changed();
+    } else if (action?.type === "shortcutsToggle") {
       await saveShortcutsEnabled(!await loadShortcutsEnabled());
       changed();
     } else if (sourceMenu && action?.type === "menusToggle") {

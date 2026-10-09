@@ -3,6 +3,7 @@ import {
   isNativeMessage,
   barSettingsFromView,
   normalizeMenuSpacing,
+  normalizeBarConfigurations,
   actionUid,
   customBookmarkUid,
   isShortcutActionType,
@@ -44,6 +45,7 @@ import {
   saveBarLayout,
   removeMenuPlacements,
   saveWidgetEnabled,
+  BAR_CONFIGURATIONS_STORAGE_KEY,
 } from "../config";
 import { loadInstanceUid } from "../config/instance-identity";
 import { EXTERNAL_DATA_STORAGE_PREFIX } from "../config/external-data";
@@ -54,6 +56,7 @@ import { initDynamicBookmarks } from "./dynamic";
 import { initExternalUpdates } from "./external-updates";
 import { executeMenuAction } from "./execute-menu-action";
 import { canExecuteShortcut, executeShortcutAction } from "./shortcut-actions";
+import { autoHideEnabled, reconcileAutoHideOverrides } from "./auto-hide-runtime";
 
 import { createBrowserMenus, menuVisibleForUrl as isMenuVisibleForUrl } from "./browser-menus";
 import { createBrowserEditingMenu } from "./browser-editing";
@@ -282,7 +285,10 @@ function scheduleReconcile(): void {
   }, 50);
 }
 
-browser.storage.onChanged.addListener((changes, areaName) => {
+browser.storage.onChanged.addListener(async (changes, areaName) => {
+  if (areaName === "local" && changes[BAR_CONFIGURATIONS_STORAGE_KEY]) {
+    await reconcileAutoHideOverrides(normalizeBarConfigurations(changes[BAR_CONFIGURATIONS_STORAGE_KEY]!.newValue));
+  }
   if (areaName === "local" && Object.keys(changes).some(key => !key.startsWith(EXTERNAL_DATA_STORAGE_PREFIX))) requestSync();
   if (areaName === "local" && (changes.config || changes.widget_enabled || changes.display_mode)) {
     scheduleReconcile();
@@ -650,16 +656,18 @@ async function syncOnce(): Promise<void> {
     };
   };
   const activeMenus = config.panel.menus.filter((menu) => menu.enabled !== false);
+  await reconcileAutoHideOverrides(barConfigs, config.panel.menus.map(menu => menu.uid));
   const menuStates = await Promise.all(
     activeMenus.map(async (menu, index) => {
       async function viewForMode(mode: "native" | "browser"): Promise<MenuView> {
         const settings = mode === "native" ? resolveBarConfiguration(barConfigs, "native", menu.uid, index) : resolveBarConfiguration(barConfigs, "browser", menu.uid, index);
+        const hideEnabled = await autoHideEnabled(menu.uid, mode, settings);
         const items = await resolveMenuItems(menu.items, menu.color, settings.expandDirection, rootPrefix, {
           tree: bookmarkTree as BookmarkNode[],
           dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks, externalActions: config.externalActions,
-          bookmarksAvailable, shortcutsEnabled,
+          bookmarksAvailable, shortcutsEnabled, autoHideEnabled: hideEnabled,
         });
-        return { uid: menu.uid, items: await resolveItemIcons(items), ...barSettingsFromView(settings), ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),
+        return { uid: menu.uid, items: await resolveItemIcons(items), ...barSettingsFromView(settings), autoHideEnabled: hideEnabled, ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),
           ...(menu.color ? { color: menu.color } : {}),
           ...(menu.dockColor ? { dockColor: menu.dockColor } : {}),
           ...(config.globalCss ? { globalCss: config.globalCss } : {}),

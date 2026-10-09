@@ -794,6 +794,7 @@ mod tests {
                 items: vec![],
                 orientation: MenuOrientation::Row,
                 auto_hide: Default::default(),
+                auto_hide_enabled: None,
                 auto_hide_padding: 6.0,
                 auto_hide_range: None,
                 font_family: None,

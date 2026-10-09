@@ -34,8 +34,8 @@ export function normalizeShortcutAction(value: unknown): ShortcutAction | undefi
   if (value.type === "shortcutsToggle") return { type: "shortcutsToggle" };
   if (value.type === "browserAction" && BROWSER_ACTION_KINDS.includes(value.browserAction as (typeof BROWSER_ACTION_KINDS)[number]))
     return { type: "browserAction", browserAction: value.browserAction as (typeof BROWSER_ACTION_KINDS)[number] };
-  if (value.type === "menuFold" && typeof value.menuUid === "string" && value.menuUid)
-    return { type: "menuFold", menuUid: value.menuUid };
+  if ((value.type === "menuFold" || value.type === "autoHideToggle") && typeof value.menuUid === "string" && value.menuUid)
+    return { type: value.type, menuUid: value.menuUid };
   if (value.type === "menusToggle" && Array.isArray(value.targetMenuUids))
     return { type: "menusToggle", targetMenuUids: [...new Set(value.targetMenuUids.filter((uid): uid is string => typeof uid === "string" && !!uid))] };
   return undefined;
@@ -461,7 +461,7 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
   const uid = typeof value.uid === "string" && value.uid ? value.uid : crypto.randomUUID();
   if (rawType === "menuToggle" || rawType === "space") return undefined;
 
-  if (rawType === "menuFold" || rawType === "shortcutsToggle") {
+  if (rawType === "menuFold" || rawType === "shortcutsToggle" || rawType === "autoHideToggle") {
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
     return {

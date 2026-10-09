@@ -91,9 +91,9 @@ describe("shared menu mounting", () => {
     expect(root.querySelector(".icon-home, .compact, .icon-bar, .compact-rail")).toBeNull();
   });
 
-  it("renders the shortcut status placeholder and dispatches its action even while off", async () => {
+  it.each(["shortcutsToggle", "autoHideToggle"] as const)("renders the %s status placeholder and dispatches its action even while off", async kind => {
     const root = container(); const adapter = host(); const state = barState();
-    state.menu.items = [{ kind: "shortcutsToggle", uid: "shortcutsToggle:keys", label: "Keys {on}", on: true }];
+    state.menu.items = [{ kind, uid: `${kind}:keys`, label: "Keys {on}", on: true }];
     const controller = mount(root, state, adapter);
     await controller.ready;
     let button = root.querySelector<HTMLButtonElement>("button")!;
@@ -101,14 +101,27 @@ describe("shared menu mounting", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.textContent).not.toContain("{on}");
     const onTitle = button.title;
-    await controller.update({ ...state, menu: { ...state.menu, items: [{ kind: "shortcutsToggle", uid: "shortcutsToggle:keys", label: "Keys {on}", on: false }] } });
+    await controller.update({ ...state, menu: { ...state.menu, items: [{ kind, uid: `${kind}:keys`, label: "Keys {on}", on: false }] } });
     button = root.querySelector<HTMLButtonElement>("button")!;
     expect(button.title).not.toBe(onTitle);
     expect(button.getAttribute("aria-pressed")).toBe("false");
     press(button, 2);
     expect(adapter.invokeAction).not.toHaveBeenCalled();
     press(button);
-    expect(adapter.invokeAction).toHaveBeenCalledWith("shortcutsToggle:keys");
+    expect(adapter.invokeAction).toHaveBeenCalledWith(`${kind}:keys`);
+  });
+
+  it("reveals a live-disabled bar and restores auto-hide when enabled again", async () => {
+    const root = container(); const adapter = host(); const state = barState();
+    state.menu = { ...state.menu, autoHide: "end", autoHideRange: { start: .2, end: .4 } };
+    const controller = mount(root, state, adapter); await controller.ready;
+    expect(root.querySelector(".bar-viewport")!.hasAttribute("data-auto-hidden")).toBe(true);
+    await controller.update({ ...state, menu: { ...state.menu, autoHideEnabled: false } });
+    expect(root.querySelector(".bar-viewport")!.hasAttribute("data-auto-hidden")).toBe(false);
+    press(root.querySelector("button")!);
+    expect(adapter.invokeAction).toHaveBeenCalledWith("bookmark:one");
+    await controller.update({ ...state, menu: { ...state.menu, autoHideEnabled: true } });
+    expect(root.querySelector(".bar-viewport")!.hasAttribute("data-auto-hidden")).toBe(true);
   });
 
   it("keeps a failure visible until the host reports success, including an alternate click", async () => {

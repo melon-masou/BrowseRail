@@ -87,7 +87,7 @@ it("preserves CSS classes and icons for every item type through save and portabl
     { type: "temporary", temporaryUid: "later" }, { type: "dynamic", dynamicUid: "live" },
     { type: "staticTag", staticTag: "work" }, { type: "flattenStaticTag", staticTag: "work" },
     { type: "menuFold" }, { type: "menusToggle", targetMenuUids: [] },
-    { type: "browserAction", browserAction: "reload" }, { type: "shortcutsToggle" },
+    { type: "browserAction", browserAction: "reload" }, { type: "shortcutsToggle" }, { type: "autoHideToggle" },
   ];
   const icons = [{ type: "lucide", name: "bookmark" }, { type: "text", text: "你好" }, { type: "initial" }, { type: "initial", length: 2 }] as const;
   for (const [index, source] of sources.entries()) {
@@ -170,6 +170,7 @@ it("saves and imports independent shortcut actions without a bar action button",
   state.setShortcutTarget({ kind: "slot", slot: "slot_1" }, { type: "menuFold", menuUid: "bar" });
   state.setShortcutTarget({ kind: "slot", slot: "slot_2" }, { type: "menusToggle", targetMenuUids: ["bar"] });
   state.setShortcutTarget({ kind: "slot", slot: "slot_3" }, { type: "shortcutsToggle" });
+  state.setShortcutTarget({ kind: "slot", slot: "slot_4" }, { type: "autoHideToggle", menuUid: "bar" });
   state.addNativeShortcut({ id: "reload", key: "F1" });
   state.setShortcutTarget({ kind: "native", id: "reload" }, { type: "browserAction", browserAction: "reload" });
   await persistence.saveSettings();

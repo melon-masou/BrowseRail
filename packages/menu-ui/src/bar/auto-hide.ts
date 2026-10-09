@@ -88,7 +88,7 @@ export function createBarAutoHide(root: HTMLElement, host: BarHost, canReveal: (
     update(next: BarState, nextViewport?: HTMLElement, nextContent?: HTMLElement): void {
       state = next;
       if (nextViewport && nextContent) { viewport = nextViewport; content = nextContent; }
-      enabled = next.editingLocked && !next.collapsed && (next.menu.autoHide ?? "off") !== "off";
+      enabled = next.editingLocked && !next.collapsed && next.menu.autoHideEnabled !== false && (next.menu.autoHide ?? "off") !== "off";
       const nextMode = `${enabled}:${next.menu.orientation}:${next.menu.autoHide ?? "off"}`;
       if (nextMode !== mode) {
         mode = nextMode;

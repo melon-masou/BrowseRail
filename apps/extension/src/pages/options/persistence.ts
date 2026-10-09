@@ -215,7 +215,8 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             item.type === "menuFold" ||
             item.type === "menusToggle" ||
             item.type === "browserAction" ||
-            item.type === "shortcutsToggle"
+            item.type === "shortcutsToggle" ||
+            item.type === "autoHideToggle"
           ) {
             return {
               uid: item.uid,
@@ -357,6 +358,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           type === "menusToggle" ||
           type === "browserAction" ||
           type === "shortcutsToggle" ||
+          type === "autoHideToggle" ||
           type === "static" ||
           type === "staticTag" ||
           type === "flattenStaticTag" ||

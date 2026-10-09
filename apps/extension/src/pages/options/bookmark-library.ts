@@ -83,6 +83,7 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
         item.type === "menusToggle" ||
         item.type === "browserAction" ||
         item.type === "shortcutsToggle" ||
+        item.type === "autoHideToggle" ||
         isCustomBookmarkType(item.type)
       )
         continue;

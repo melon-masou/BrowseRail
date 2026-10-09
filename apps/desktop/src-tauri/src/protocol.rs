@@ -278,6 +278,8 @@ pub struct MenuView {
     pub orientation: MenuOrientation,
     #[serde(default)]
     pub auto_hide: BarAutoHide,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_hide_enabled: Option<bool>,
     #[serde(default = "default_auto_hide_padding")]
     pub auto_hide_padding: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -642,6 +644,19 @@ pub enum LayoutEntry {
         color: Option<String>,
         on: bool,
     },
+    AutoHideToggle {
+        uid: String,
+        label: String,
+        #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+        css_class: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<ItemIcon>,
+        #[serde(default, rename = "iconMask", skip_serializing_if = "Option::is_none")]
+        icon_mask: Option<String>,
+        #[serde(default)]
+        color: Option<String>,
+        on: bool,
+    },
     Folder {
         uid: String,
         label: String,
@@ -673,6 +688,7 @@ fn menu_gap_ratio_after(view: &MenuView, index: usize) -> f64 {
         | LayoutEntry::MenuFold { uid, .. }
         | LayoutEntry::MenusToggle { uid, .. }
         | LayoutEntry::ShortcutsToggle { uid, .. }
+        | LayoutEntry::AutoHideToggle { uid, .. }
         | LayoutEntry::BrowserAction { uid, .. } => Some(uid),
         LayoutEntry::Unknown => None,
     };
@@ -1161,10 +1177,12 @@ mod tests {
     fn preserves_action_buttons_when_forwarding_menu_views_to_the_webview() {
         let view: MenuView = serde_json::from_value(serde_json::json!({
             "uid": "actions",
+            "autoHide": "end", "autoHideEnabled": false,
             "items": [
                 { "kind": "browserAction", "uid": "browserAction:back", "label": "Back" },
                 { "kind": "menusToggle", "uid": "menusToggle:others", "label": "Menus" },
-                { "kind": "menuFold", "uid": "fold", "label": "Fold" }
+                { "kind": "menuFold", "uid": "fold", "label": "Fold" },
+                { "kind": "autoHideToggle", "uid": "autoHideToggle:hide", "label": "Auto-hide {on}", "on": false }
             ]
         }))
         .unwrap();
@@ -1174,5 +1192,9 @@ mod tests {
         assert_eq!(forwarded["items"][1]["kind"], "menusToggle");
         assert_eq!(forwarded["items"][1]["uid"], "menusToggle:others");
         assert_eq!(forwarded["items"][2]["kind"], "menuFold");
+        assert_eq!(forwarded["autoHide"], "end");
+        assert_eq!(forwarded["autoHideEnabled"], false);
+        assert_eq!(forwarded["items"][3]["kind"], "autoHideToggle");
+        assert_eq!(forwarded["items"][3]["on"], false);
     }
 }

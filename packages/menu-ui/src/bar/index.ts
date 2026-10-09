@@ -220,7 +220,7 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): B
         event.preventDefault();
         run((async () => { await closePopup(); await host.requestToggleFold(); })());
       }, options);
-    } else if (entry.kind === "browserAction" || entry.kind === "menusToggle" || entry.kind === "shortcutsToggle") {
+    } else if (entry.kind === "browserAction" || entry.kind === "menusToggle" || entry.kind === "shortcutsToggle" || entry.kind === "autoHideToggle") {
       button.addEventListener("pointerdown", event => {
         if (event.button !== 0 || !state.editingLocked) return;
         event.preventDefault();

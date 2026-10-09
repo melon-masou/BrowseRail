@@ -460,8 +460,8 @@ export function mountMenusTab(
     itemSettingsBookmarkControls.style.display = "block";
 
     const isMenuFold = item.type === "menuFold";
-    const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction" || item.type === "shortcutsToggle";
-    itemSettingRename.placeholder = t(item.type === "shortcutsToggle" ? "menuAction.shortcutsToggleLabel" : "itemSettings.renamePlaceholder");
+    const isAction = isMenuFold || item.type === "menusToggle" || item.type === "browserAction" || item.type === "shortcutsToggle" || item.type === "autoHideToggle";
+    itemSettingRename.placeholder = t(item.type === "shortcutsToggle" ? "menuAction.shortcutsToggleLabel" : item.type === "autoHideToggle" ? "menuAction.autoHideToggleLabel" : "itemSettings.renamePlaceholder");
     const isDynamic = item.type === "dynamic";
     itemSettingChangeBtn.style.display = isAction || isCustomBookmarkType(item.type) ? "none" : "";
     itemSettingDuplicateBtn.style.display = isMenuFold ? "none" : "";
@@ -484,13 +484,15 @@ export function mountMenusTab(
       return;
     }
 
-    if (item.type === "menusToggle" || item.type === "browserAction" || item.type === "shortcutsToggle") {
+    if (item.type === "menusToggle" || item.type === "browserAction" || item.type === "shortcutsToggle" || item.type === "autoHideToggle") {
       const actionLabel =
         item.type === "menusToggle"
           ? t("menuAction.menusToggle")
           : item.type === "shortcutsToggle"
             ? t("menuAction.shortcutsToggle")
-            : browserActionLabel(item.browserAction);
+            : item.type === "autoHideToggle"
+              ? t("menuAction.autoHideToggle")
+              : browserActionLabel(item.browserAction);
       itemSettingsTitle.textContent = item.rename || actionLabel;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
@@ -672,7 +674,7 @@ export function mountMenusTab(
           showStatus(t("menu.menuFoldAlreadyExists"));
           return;
         }
-        state.addMenuItem(menu.uid, kind === "menuFold" || kind === "shortcutsToggle" ? {
+        state.addMenuItem(menu.uid, kind === "menuFold" || kind === "shortcutsToggle" || kind === "autoHideToggle" ? {
           uid: crypto.randomUUID(), type: kind,
         } : {
           uid: crypto.randomUUID(), type: "browserAction", browserAction: kind as BrowserActionKind,
@@ -882,7 +884,8 @@ export function mountMenusTab(
               item.type === "menuFold" ||
               item.type === "menusToggle" ||
               item.type === "browserAction" ||
-              item.type === "shortcutsToggle"
+              item.type === "shortcutsToggle" ||
+              item.type === "autoHideToggle"
             ) {
               const label = document.createElement("span");
               label.className = "item-label";
@@ -896,7 +899,9 @@ export function mountMenusTab(
                     ? t("menuAction.menusToggle")
                     : item.type === "shortcutsToggle"
                       ? t("menuAction.shortcutsToggle")
-                      : browserActionLabel(item.browserAction);
+                      : item.type === "autoHideToggle"
+                        ? t("menuAction.autoHideToggle")
+                        : browserActionLabel(item.browserAction);
               titleSpan.textContent = item.rename ? `${item.rename} (${actionLabel})` : actionLabel;
               titleSpan.title = actionLabel;
               label.appendChild(titleSpan);
