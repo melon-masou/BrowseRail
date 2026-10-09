@@ -7,6 +7,7 @@ import type { StaticBookmark } from "../../../config";
 import type { OptionsState, ReadonlyData } from "../state";
 import { renderPreservingFocus } from "./render-focus";
 import { addIcon, removeIcon, setIconContent } from "./icons";
+import { filterCustomBookmarks } from "../custom-bookmark-search";
 import { createVariablePicker } from "./variable-picker";
 import { createMoveButtons } from "./move-buttons";
 
@@ -17,6 +18,7 @@ export function createStaticBookmarksList(
   suggestions: HTMLDataListElement,
   removeBookmark: (uid: string) => void,
   showStatus: (message: string) => void,
+  getSearchQuery?: () => string,
 ) {
   const scope = createScope();
   let externalKeys: ReadonlySet<string> | undefined;
@@ -220,7 +222,9 @@ export function createStaticBookmarksList(
     renderPreservingFocus(filters, () => renderFilters(tags));
     renderPreservingFocus(list, () => {
       list.replaceChildren();
-      const visible = bookmarks.filter(bookmark => selectedTags.size === 0 || bookmark.tags?.some(tag => selectedTags.has(tag)));
+      const tagMatched = bookmarks.filter(bookmark => selectedTags.size === 0 || bookmark.tags?.some(tag => selectedTags.has(tag)));
+      const query = getSearchQuery ? getSearchQuery() : "";
+      const visible = filterCustomBookmarks("static", tagMatched, query);
       if (!visible.length) {
         const empty = document.createElement("p");
         empty.className = "url-rule-empty-hint";

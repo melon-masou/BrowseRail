@@ -16,6 +16,7 @@ function bookmarkChoices(type: CustomBookmarkType, definitions: readonly CustomB
     id: bookmark.uid,
     label: bookmark.name || t(`${type}.defaultName`),
     icon: type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : type === "externalAction" ? "🔌" : "🔖",
+    ...(type === "static" ? { tags: bookmark.tags } : {}),
     ...(type === "static" || type === "temporary" ? { meta: bookmark.url || t("dynamic.noValueShort") } : {}),
   }));
 }
@@ -25,11 +26,11 @@ function tagChoices(definitions: readonly CustomBookmarkChoice[]): PickerItem[] 
   for (const bookmark of definitions) {
     for (const tag of new Set(bookmark.tags ?? [])) tags.set(tag, (tags.get(tag) ?? 0) + 1);
   }
-  return [...tags].map(([tag, count]) => ({ id: tag, label: tag, icon: "#", meta: t("static.tagCount", { count }) }));
+  return [...tags].map(([tag, count]) => ({ id: tag, label: tag, icon: "#", tags: [tag], meta: t("static.tagCount", { count }) }));
 }
 
 export function createCustomBookmarkPicker() {
-  const picker = createItemPicker();
+  const picker = createItemPicker({ rememberSearch: true });
   return {
     pick(type: CustomBookmarkType, definitions: readonly CustomBookmarkChoice[]): Promise<string | null> {
       return picker.pick(t("customBookmarks.pickTitle"), bookmarkChoices(type, definitions));

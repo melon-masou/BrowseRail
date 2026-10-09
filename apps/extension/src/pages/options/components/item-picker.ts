@@ -1,10 +1,12 @@
 import { t } from "@browserail/i18n";
+import { matchesSearchQuery } from "../custom-bookmark-search";
 
 export interface PickerItem {
   readonly id: string;
   readonly label: string;
   readonly icon?: string;
   readonly meta?: string;
+  readonly tags?: readonly string[];
 }
 
 interface PickerTab {
@@ -15,9 +17,10 @@ interface PickerTab {
 
 type PickerContent = readonly PickerItem[] | { readonly tabs: readonly PickerTab[] };
 
-export function createItemPicker() {
+export function createItemPicker({ rememberSearch = false }: { rememberSearch?: boolean } = {}) {
   let dismiss: (() => void) | undefined;
   let destroyed = false;
+  let searchQuery = "";
 
   function open(title: string, content: PickerContent, emptyText: string, multiple = false): Promise<string | string[] | null> {
       dismiss?.();
@@ -43,6 +46,8 @@ export function createItemPicker() {
         let items = "tabs" in content ? tabs[0]?.items ?? [] : content;
         const search = document.createElement("input");
         search.type = "search";
+        search.autocomplete = "off";
+        search.value = rememberSearch ? searchQuery : "";
         search.placeholder = t("common.search");
         search.setAttribute("aria-label", t("common.search"));
         const list = document.createElement("div");
@@ -67,7 +72,7 @@ export function createItemPicker() {
         dialog.addEventListener("close", cancel);
         function render(): void {
           const query = search.value.trim().toLocaleLowerCase();
-          const matches = items.filter(item => `${item.label} ${item.meta ?? ""}`.toLocaleLowerCase().includes(query));
+          const matches = items.filter(item => matchesSearchQuery(`${item.label} ${item.meta ?? ""} ${(item.tags ?? []).join(" ")}`, query, item.tags));
           list.replaceChildren();
           list.scrollTop = 0;
           for (const item of matches) {
@@ -111,7 +116,10 @@ export function createItemPicker() {
             list.append(empty);
           }
         }
-        search.addEventListener("input", render);
+        search.addEventListener("input", () => {
+          if (rememberSearch) searchQuery = search.value;
+          render();
+        });
         if (tabs.length) {
           const navigation = document.createElement("div");
           navigation.className = "shortcuts-subtabs item-picker-tabs";
@@ -125,7 +133,7 @@ export function createItemPicker() {
             button.addEventListener("click", () => {
               activeTab = index;
               items = tab.items;
-              search.value = "";
+              if (!rememberSearch) search.value = "";
               for (const [position, control] of [...navigation.children].entries()) {
                 control.classList.toggle("is-active", position === index);
                 control.setAttribute("aria-pressed", String(position === index));

@@ -3161,6 +3161,44 @@ button.item-tag {
 }
 
 /* Shortcuts Sub-tabs (Segment Control) */
+.custom-bookmarks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.custom-bookmarks-header .shortcuts-subtabs {
+  margin-bottom: 0;
+}
+
+.custom-bookmarks-search-row {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.custom-bookmarks-search-input {
+  min-width: 180px;
+  max-width: 260px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.custom-bookmarks-search-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
 .shortcuts-subtabs {
   display: inline-flex;
   gap: 4px;

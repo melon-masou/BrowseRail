@@ -16,6 +16,8 @@ import { mountVariables } from "../components/variables";
 import { createStaticBookmarksList } from "../components/static-bookmarks";
 import { createExternalAction, createExternalActionsList } from "../components/external-actions";
 
+import { filterCustomBookmarks } from "../custom-bookmark-search";
+
 export function mountCustomBookmarksTab(
   state: OptionsState,
   source: CustomBookmarkSource,
@@ -24,6 +26,10 @@ export function mountCustomBookmarksTab(
   showStatus: (message: string) => void,
 ) {
   const scope = createScope();
+  const searchInput = element<HTMLInputElement>("custom-bookmarks-search");
+  searchInput.value = "";
+  searchInput.autocomplete = "off";
+  const getSearchQuery = () => searchInput.value;
   const variables = mountVariables(state, showStatus);
   scope.add(variables.destroy);
   const tester = createDynamicTester(state);
@@ -37,10 +43,16 @@ export function mountCustomBookmarksTab(
     element<HTMLDataListElement>("static-tag-options"),
     uid => removeCustomDefinition("static", uid),
     showStatus,
+    getSearchQuery,
   );
   scope.add(staticBookmarks.destroy);
   const externalActionList = element<HTMLDivElement>("external-action-list");
-  const externalActions = createExternalActionsList(state, externalActionList, uid => removeCustomDefinition("externalAction", uid));
+  const externalActions = createExternalActionsList(
+    state,
+    externalActionList,
+    uid => removeCustomDefinition("externalAction", uid),
+    getSearchQuery,
+  );
   const temporaryList = element<HTMLDivElement>("temporary-list");
   const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
   function removeCustomDefinition(type: CustomBookmarkType, uid: string): void {
@@ -53,11 +65,12 @@ export function mountCustomBookmarksTab(
   function renderSimpleBookmarks(): void {
     staticBookmarks.render();
     temporaryList.replaceChildren();
-    const definitions = source.definitions("temporary");
+    const allDefinitions = source.definitions("temporary");
+    const definitions = filterCustomBookmarks("temporary", allDefinitions, getSearchQuery(), { source });
     if (!definitions.length) {
       const empty = document.createElement("p");
       empty.className = "url-rule-empty-hint";
-      empty.textContent = t("customBookmarks.empty");
+      empty.textContent = t(allDefinitions.length ? "customBookmarks.noMatches" : "customBookmarks.empty");
       temporaryList.append(empty);
     }
     for (const definition of definitions) temporaryList.append(renderTemporaryCard(definition));
@@ -198,14 +211,19 @@ export function mountCustomBookmarksTab(
 
   function renderDynamicList(): void {
     dynamicList.replaceChildren();
-    if (state.settings.dynamicBookmarks.length === 0) {
+    const allBookmarks = state.settings.dynamicBookmarks;
+    const dynamicBookmarks = filterCustomBookmarks("dynamic", allBookmarks, getSearchQuery(), {
+      source,
+      urlRules: state.settings.urlRules,
+    });
+    if (!dynamicBookmarks.length) {
       const empty = document.createElement("p");
       empty.className = "url-rule-empty-hint";
-      empty.textContent = t("dynamic.empty");
+      empty.textContent = t(allBookmarks.length ? "customBookmarks.noMatches" : "dynamic.empty");
       dynamicList.append(empty);
       return;
     }
-    for (const db of state.settings.dynamicBookmarks) {
+    for (const db of dynamicBookmarks) {
       dynamicList.append(renderDynamicCard(db));
     }
   }
@@ -510,6 +528,11 @@ export function mountCustomBookmarksTab(
   );
   initCustomBookmarksPanel();
   initDynamicPanel();
+  searchInput.addEventListener("input", () => {
+    renderSimple();
+    renderDynamic();
+    renderExternalActions();
+  }, { signal: scope.signal });
   render();
   return {
     render,

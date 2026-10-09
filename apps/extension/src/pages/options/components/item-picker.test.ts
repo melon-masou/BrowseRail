@@ -50,7 +50,7 @@ it("searches bookmark names and displayed URLs and selects the original bookmark
   expect(document.querySelector("dialog[open]")).toBeNull();
 });
 
-it("cancels the old selection when reopened, resets search, and cancels on destruction", async () => {
+it("cancels the old selection when reopened, preserves its search, and cancels on destruction", async () => {
   const control = picker();
   const bookmarks = [{ uid: "dynamic", name: "GitHub owner", url: "https://github.com/alice" }];
   const previous = control.pick("dynamic", bookmarks);
@@ -58,10 +58,37 @@ it("cancels the old selection when reopened, resets search, and cancels on destr
   search("missing");
   const next = control.pick("dynamic", bookmarks);
   await expect(previous).resolves.toBeNull();
-  expect(dialog().textContent).toContain("GitHub owner");
-  expect(dialog().querySelector<HTMLInputElement>("input")!.value).toBe("");
+  expect(dialog().textContent).not.toContain("GitHub owner");
+  expect(dialog().querySelector<HTMLInputElement>("input")!.value).toBe("missing");
   control.destroy();
   await expect(next).resolves.toBeNull();
   expect(document.querySelector("dialog[open]")).toBeNull();
   await expect(control.pick("static", bookmarks)).resolves.toBeNull();
+});
+
+it("keeps a tag query across bookmark categories and clears it in a new page's picker", async () => {
+  const control = picker();
+  const bookmarks = [
+    { uid: "tagged", name: "Raids", tags: ["gbf_list"] },
+    { uid: "name", name: "gbf_list" },
+  ];
+  const pending = control.pickStaticForMenu(bookmarks);
+  search("#gbf_list");
+  expect(dialog().querySelectorAll(".pick-menu-item")).toHaveLength(1);
+  expect(dialog().querySelector(".pick-menu-item")!.textContent).toContain("Raids");
+  dialog().querySelectorAll<HTMLButtonElement>(".item-picker-tabs button")[1]!.click();
+  expect(dialog().querySelector<HTMLInputElement>("input")!.value).toBe("#gbf_list");
+  expect(dialog().querySelector(".pick-menu-item")!.textContent).toContain("gbf_list");
+  dialog().querySelector<HTMLButtonElement>(".pick-menu-item")!.click();
+  await expect(pending).resolves.toEqual({ type: "staticTag", staticTag: "gbf_list" });
+
+  const next = control.pick("static", bookmarks);
+  expect(dialog().querySelector<HTMLInputElement>("input")!.value).toBe("#gbf_list");
+  control.destroy();
+  await expect(next).resolves.toBeNull();
+  const fresh = picker();
+  const reloaded = fresh.pick("static", bookmarks);
+  expect(dialog().querySelector<HTMLInputElement>("input")!.value).toBe("");
+  fresh.destroy();
+  await expect(reloaded).resolves.toBeNull();
 });

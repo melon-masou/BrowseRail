@@ -679,3 +679,34 @@ it("duplicates menus and menu items from their settings panels", async () => {
   expect(document.querySelectorAll("#menus .menu-card")[1]!.textContent).toContain("(copy)");
   expect(document.querySelectorAll("#menus .menu-card")[1]!.querySelectorAll(".menu-item-row")).toHaveLength(2);
 });
+
+it("filters custom bookmarks dynamically with the unified search input", async () => {
+  button("custom-bookmarks-tab").click();
+  button("add-static-btn").click();
+  const name1 = document.querySelector<HTMLInputElement>("#static-list .dynamic-name-input")!;
+  name1.value = "React Documentation";
+  name1.dispatchEvent(new Event("input", { bubbles: true }));
+
+  button("add-static-btn").click();
+  const name2 = document.querySelectorAll<HTMLInputElement>("#static-list .dynamic-name-input")[1]!;
+  name2.value = "Vue Guide";
+  name2.dispatchEvent(new Event("input", { bubbles: true }));
+
+  expect(document.querySelectorAll("#static-list article")).toHaveLength(2);
+
+  const searchInput = input("custom-bookmarks-search");
+  searchInput.value = "react";
+  searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+  expect(document.querySelectorAll("#static-list article")).toHaveLength(1);
+  expect(document.querySelector<HTMLInputElement>("#static-list .dynamic-name-input")?.value).toBe("React Documentation");
+
+  searchInput.value = "nonexistent";
+  searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(document.querySelectorAll("#static-list article")).toHaveLength(0);
+  expect(document.querySelector("#static-list")?.textContent).toContain("No matching bookmarks");
+
+  searchInput.value = "";
+  searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(document.querySelectorAll("#static-list article")).toHaveLength(2);
+});

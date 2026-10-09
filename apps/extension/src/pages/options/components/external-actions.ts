@@ -1,6 +1,7 @@
 import { t } from "@browserail/i18n";
 import { ALL_URLS_RULE_UID, DEFAULT_EXTERNAL_EVENT_NAME, type ExternalAction } from "@browserail/protocol";
 import type { OptionsState, ReadonlyData } from "../state";
+import { filterCustomBookmarks } from "../custom-bookmark-search";
 import { removeIcon, setIconContent } from "./icons";
 
 /** Extensions receive parsed JSON; empty data is valid and sends null. */
@@ -23,7 +24,12 @@ export function createExternalAction(): ExternalAction {
   return { uid: crypto.randomUUID(), name: t("externalAction.defaultName"), target: "event", eventName: DEFAULT_EXTERNAL_EVENT_NAME };
 }
 
-export function createExternalActionsList(state: OptionsState, list: HTMLElement, remove: (uid: string) => void) {
+export function createExternalActionsList(
+  state: OptionsState,
+  list: HTMLElement,
+  remove: (uid: string) => void,
+  getSearchQuery?: () => string,
+) {
   // Like dynamic bookmarks: existing and imported actions start collapsed; one just added opens.
   const seen = new Set(state.settings.externalActions.map(action => action.uid));
   const collapsed = new Set(seen);
@@ -165,11 +171,13 @@ export function createExternalActionsList(state: OptionsState, list: HTMLElement
 
   function render(): void {
     list.replaceChildren();
-    const actions = state.settings.externalActions;
+    const allActions = state.settings.externalActions;
+    const query = getSearchQuery ? getSearchQuery() : "";
+    const actions = filterCustomBookmarks("externalAction", allActions, query, { urlRules: state.settings.urlRules });
     if (!actions.length) {
       const empty = document.createElement("p");
       empty.className = "url-rule-empty-hint";
-      empty.textContent = t("customBookmarks.empty");
+      empty.textContent = t(allActions.length ? "customBookmarks.noMatches" : "customBookmarks.empty");
       list.append(empty);
       return;
     }

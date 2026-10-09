@@ -203,12 +203,17 @@
             </section>
 
             <section id="custom-bookmarks-panel" role="tabpanel" aria-labelledby="custom-bookmarks-tab" hidden>
-              <div class="shortcuts-subtabs" role="tablist">
-                <button type="button" id="static-tab" class="shortcuts-subtab-btn is-active" role="tab" aria-selected="true" aria-controls="static-panel" data-custom-bookmark-panel="static-panel" data-i18n="section.static">Static bookmarks</button>
-                <button type="button" id="temporary-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="temporary-panel" data-custom-bookmark-panel="temporary-panel" data-i18n="section.temporary">Temporary bookmarks</button>
-                <button type="button" id="dynamic-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="dynamic-panel" data-custom-bookmark-panel="dynamic-panel" data-i18n="section.dynamic">Dynamic bookmarks</button>
-                <button type="button" id="external-actions-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="external-actions-panel" data-custom-bookmark-panel="external-actions-panel" data-i18n="section.externalActions">External actions</button>
-                <button type="button" id="variables-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="variables-panel" data-custom-bookmark-panel="variables-panel" data-i18n="variables.tab">Variables</button>
+              <div class="custom-bookmarks-header">
+                <div class="shortcuts-subtabs" role="tablist">
+                  <button type="button" id="static-tab" class="shortcuts-subtab-btn is-active" role="tab" aria-selected="true" aria-controls="static-panel" data-custom-bookmark-panel="static-panel" data-i18n="section.static">Static bookmarks</button>
+                  <button type="button" id="temporary-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="temporary-panel" data-custom-bookmark-panel="temporary-panel" data-i18n="section.temporary">Temporary bookmarks</button>
+                  <button type="button" id="dynamic-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="dynamic-panel" data-custom-bookmark-panel="dynamic-panel" data-i18n="section.dynamic">Dynamic bookmarks</button>
+                  <button type="button" id="external-actions-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="external-actions-panel" data-custom-bookmark-panel="external-actions-panel" data-i18n="section.externalActions">External actions</button>
+                  <button type="button" id="variables-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="variables-panel" data-custom-bookmark-panel="variables-panel" data-i18n="variables.tab">Variables</button>
+                </div>
+                <div class="custom-bookmarks-search-row">
+                  <input type="search" id="custom-bookmarks-search" class="custom-bookmarks-search-input custom-bookmark-search" data-i18n-ph="common.search" data-i18n-aria="common.search" placeholder="Search" aria-label="Search" />
+                </div>
               </div>
               <section id="static-panel" role="tabpanel" aria-labelledby="static-tab">
                 <div class="dynamic-toolbar">
