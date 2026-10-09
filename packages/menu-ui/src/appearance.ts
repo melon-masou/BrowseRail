@@ -59,23 +59,32 @@ function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: n
   return { h, s, l };
 }
 
-/**
- * Map an item's color onto a consistent chip palette: keep the hue, render a calm
- * muted fill (clamped saturation, fixed dark lightness) with white ink, plus a
- * brighter accent of the same hue for the item's left bar and folder corner. HSL is
- * used on purpose — its per-hue brightness variation keeps the bar livelier than a
- * perceptually-flat space, which reads washed out here. Undefined if unparseable.
- */
+function fillInk(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l);
+  const channel = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const value = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * channel(0) + 0.7152 * channel(8) + 0.0722 * channel(4);
+  return luminance > 0.2 ? "#161b24" : "#ffffff";
+}
+
+// Relative adjustments keep picker changes visible, including highly saturated colors.
+// Presets use roughly 80% saturation / 50% lightness to retain the muted 35% / 34% fill.
 function normalizeChip(color: string): { fill: string; ink: string; accent: string; column: string } | undefined {
   const rgb = parseHex(color);
   if (!rgb) return undefined;
-  const { h, s } = rgbToHsl(rgb.r, rgb.g, rgb.b);
-  const hue = Math.round(h);
-  const fill = `hsl(${hue} ${Math.round(Math.min(s, 0.35) * 100)}% 34% / ${rgb.alpha})`;
+  const { h, s, l } = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  const percent = (value: number) => Number((value * 100).toFixed(2));
+  const hue = Number(h.toFixed(2));
+  const saturation = s * 0.4375;
+  const lightness = l * 0.68;
+  const fill = `hsl(${hue} ${percent(saturation)}% ${percent(lightness)}% / ${rgb.alpha})`;
   return {
     fill,
-    ink: "#ffffff",
-    accent: `hsl(${hue} ${Math.round(Math.min(s, 0.48) * 100)}% 46% / ${rgb.alpha})`,
+    ink: fillInk(h, saturation, lightness),
+    accent: `hsl(${hue} ${percent(s * 0.6)}% ${percent(l * 0.92)}% / ${rgb.alpha})`,
     column: fill,
   };
 }
@@ -83,6 +92,10 @@ function normalizeChip(color: string): { fill: string; ink: string; accent: stri
 /** The processed button fill for a menu's default color, used as a shared button background. */
 export function menuFill(color: string | undefined): string | undefined {
   return color ? normalizeChip(color)?.fill : undefined;
+}
+
+export function menuInk(color: string | undefined): string | undefined {
+  return color ? normalizeChip(color)?.ink : undefined;
 }
 
 export function applyMenuColor(element: HTMLElement, color: string): void {

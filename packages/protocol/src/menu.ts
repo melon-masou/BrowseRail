@@ -20,7 +20,7 @@
 export type MenuColor = string;
 export const DEFAULT_DOCK_COLOR = "#161b24e0";
 /** Every menu has a default color; menus stored without one are filled with this. */
-export const DEFAULT_MENU_COLOR = "#3a465cff";
+export const DEFAULT_MENU_COLOR = "#3d6cc2ff";
 
 export type MenuOrientation = "row" | "column";
 export type BarAutoHide = "off" | "start" | "end";

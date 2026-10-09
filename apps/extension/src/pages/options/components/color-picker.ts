@@ -1,4 +1,4 @@
-export const DEFAULT_COLOR = "#3b82f6ff";
+export const DEFAULT_COLOR = "#1a59e5ff";
 
 export function withColorAlpha(rgb: string, alpha: number): string {
   return `${rgb.slice(0, 7).toLowerCase()}${Math.round(Math.max(0, Math.min(255, alpha)))

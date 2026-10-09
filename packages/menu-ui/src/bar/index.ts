@@ -1,6 +1,6 @@
 import { DEFAULT_DOCK_COLOR, invertNavigationActionUid, type FolderEntry, type LayoutEntry } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
-import { applyActionError, applyBarTheme, applyFolderPin, menuButton, menuFill } from "../appearance";
+import { applyActionError, applyBarTheme, applyFolderPin, menuButton, menuFill, menuInk } from "../appearance";
 import { applyBarLayout } from "../layout";
 import { createLifetime, showMenuError } from "../lifetime";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
@@ -284,7 +284,9 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): B
     bar.style.setProperty("--config-bar-font-size", `${theme.buttonFontSize}px`);
     bar.style.setProperty("--config-bar-background", state.menu.dockColor || DEFAULT_DOCK_COLOR);
     const fill = menuFill(state.menu.color);
+    const ink = menuInk(state.menu.color);
     if (fill) bar.style.setProperty("--config-menu-fill", fill);
+    if (ink) bar.style.setProperty("--config-menu-ink", ink);
     const options = { signal: renderLifetime.signal };
     bar.addEventListener("pointerdown", event => {
       if (state.editingLocked || state.collapsed) return;

@@ -87,7 +87,7 @@
     justify-content: center;
   }
 
-  /* Keep the source color on the edge; the body uses its processed color. */
+  /* The edge uses a brighter version of the item's processed color. */
   .menu-button[data-has-custom-color="true"]::before {
     content: "";
     position: absolute;
@@ -125,7 +125,7 @@
   .menu-button {
     --config-icon-color: var(--button-accent, currentColor);
     background: var(--bar-button-background, var(--config-menu-fill, var(--button-default-fill)));
-    color: var(--bar-button-text-color, var(--label-color));
+    color: var(--bar-button-text-color, var(--config-menu-ink, var(--label-color)));
   }
 }
 
@@ -178,7 +178,7 @@
   font-family: var(--menu-font-family, "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --default-button-fill: #3a465c;
+  --default-button-fill: #43516a;
   --dock-surface: rgba(22, 27, 36, 0.88);
   --dock-radius: 7px;
   --label-color: rgb(255 255 255 / 90%);

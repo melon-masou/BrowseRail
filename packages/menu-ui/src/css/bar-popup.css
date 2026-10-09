@@ -94,7 +94,7 @@
     overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: rgb(255 255 255 / 35%) transparent;
-    color: var(--label-color);
+    color: var(--button-ink, var(--label-color));
     background: var(--default-button-fill);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -176,6 +176,7 @@
     border-radius: 4px;
     padding: 0 clamp(6px, calc(var(--menu-font-size, 13px) * 0.75), 10px);
     background: transparent;
+    color: inherit;
     text-align: left;
     justify-content: flex-start;
     font-size: var(--menu-font-size, 13px);

@@ -30,26 +30,26 @@ export interface ColorBinding {
   fields?: readonly ColorFieldOption[];
 }
 const PALETTE_COLORS = [
-  "#2563eb", // Blue
-  "#0284c7", // Sky
-  "#0891b2", // Cyan
-  "#059669", // Emerald
-  "#16a34a", // Green
-  "#65a30d", // Lime
-  "#ca8a04", // Gold
-  "#d97706", // Amber
-  "#ea580c", // Orange
-  "#dc2626", // Red
-  "#db2777", // Pink
-  "#c026d3", // Fuchsia
-  "#7c3aed", // Purple
-  "#4f46e5", // Indigo
-  "#475569", // Slate
-  "#334155", // Charcoal
-  "#0d9488", // Teal
-  "#9a3412", // Rust
-  "#9d174d", // Wine
-  "#1e293b", // Navy
+  "#1a59e5", // Blue
+  "#1aa0e5", // Sky
+  "#1abee5", // Cyan
+  "#1ae5a6", // Emerald
+  "#1ae565", // Green
+  "#91e51a", // Lime
+  "#e5a41a", // Gold
+  "#e5871a", // Amber
+  "#e55f1a", // Orange
+  "#e51a1a", // Red
+  "#e51a74", // Pink
+  "#cf1ae5", // Fuchsia
+  "#651ae5", // Purple
+  "#251ae5", // Indigo
+  "#4776b8", // Slate
+  "#3773c8", // Charcoal
+  "#1ae5d3", // Teal
+  "#e54d1a", // Rust
+  "#e51a6c", // Wine
+  "#2169de", // Navy
 ];
 
 function getRandomPaletteColor(): string {
@@ -153,7 +153,7 @@ export function createColorPopover(overlays: Overlays) {
         const item = activeColorTarget as ColorValue;
         if (colorPopoverCycleToggle.checked) {
           if (!Array.isArray(item.cycleColors) || item.cycleColors.length === 0) {
-            writeCycleColors(["#3b82f6ff", "#10b981ff"]);
+            writeCycleColors([`${PALETTE_COLORS[0]}ff`, `${PALETTE_COLORS[3]}ff`]);
           }
 
           colorPopoverCycleSection.style.display = "block";
