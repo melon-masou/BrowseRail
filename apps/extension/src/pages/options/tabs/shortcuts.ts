@@ -455,7 +455,7 @@ export function mountShortcutsTab(
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
       deleteBtn.className = "remove-item-btn";
-      deleteBtn.title = t("common.delete");
+      deleteBtn.title = deleteBtn.ariaLabel = t("common.delete");
       setIconContent(deleteBtn, removeIcon());
       deleteBtn.addEventListener("click", () => {
         const idx = state.settings.nativeShortcuts.findIndex((s) => s.id === item.id);
@@ -473,7 +473,7 @@ export function mountShortcutsTab(
         const settingsBtn = document.createElement("button");
         settingsBtn.type = "button";
         settingsBtn.className = "item-settings-btn";
-        settingsBtn.title = t("itemSettings.title");
+        settingsBtn.title = settingsBtn.ariaLabel = t("itemSettings.title");
         setIconContent(settingsBtn, settingsIcon());
         settingsBtn.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -568,7 +568,7 @@ export function mountShortcutsTab(
         const settingsBtn = document.createElement("button");
         settingsBtn.type = "button";
         settingsBtn.className = "item-settings-btn";
-        settingsBtn.title = t("menu.settings");
+        settingsBtn.title = settingsBtn.ariaLabel = t("menu.settings");
         setIconContent(settingsBtn, settingsIcon());
         settingsBtn.addEventListener("click", (e) => {
           e.stopPropagation();

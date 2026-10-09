@@ -788,8 +788,8 @@ export function mountMenusTab(
         const settingsBtn = document.createElement("button");
         settingsBtn.type = "button";
         settingsBtn.className = "action-btn menu-header-btn";
-        setIconContent(settingsBtn, settingsIcon(), t("menu.settings"));
-        settingsBtn.title = t("menu.settingsTitle");
+        setIconContent(settingsBtn, settingsIcon());
+        settingsBtn.title = settingsBtn.ariaLabel = t("menu.settingsTitle");
         settingsBtn.addEventListener("click", () => {
           openMenuSettingsDialog(menuIndex);
         });
@@ -818,10 +818,10 @@ export function mountMenusTab(
 
         const removeMenu = document.createElement("button");
         removeMenu.type = "button";
-        removeMenu.className = "remove-item-btn menu-remove-btn";
+        removeMenu.className = "remove-item-btn";
         removeMenu.title = t("menu.removeMenu");
         removeMenu.setAttribute("aria-label", t("menu.removeMenu"));
-        setIconContent(removeMenu, removeIcon(), t("menu.remove"));
+        setIconContent(removeMenu, removeIcon());
         removeMenu.addEventListener("click", () => {
           if (activeMenuSettingsIndex === menuIndex) {
             closeMenuSettingsDialog();
@@ -844,7 +844,7 @@ export function mountMenusTab(
           openAddItemDropdown(menuIndex, addBtn);
         });
 
-        headerActions.append(defaultColorBtn, settingsBtn, removeMenu, addBtn);
+        headerActions.append(addBtn, settingsBtn, defaultColorBtn, removeMenu);
         header.append(titleRow, headerActions);
 
         const items = document.createElement("ol");
@@ -887,7 +887,7 @@ export function mountMenusTab(
               const settingsBtn = document.createElement("button");
               settingsBtn.type = "button";
               settingsBtn.className = "item-settings-btn";
-              settingsBtn.title = t("itemSettings.title");
+              settingsBtn.title = settingsBtn.ariaLabel = t("itemSettings.title");
               setIconContent(settingsBtn, settingsIcon());
               settingsBtn.addEventListener("click", (event) => {
                 event.stopPropagation();
@@ -909,8 +909,8 @@ export function mountMenusTab(
               const removeBtn = document.createElement("button");
               removeBtn.type = "button";
               removeBtn.className = "remove-item-btn";
-              removeBtn.title = t("menu.removeItem");
-              removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
+              removeBtn.title = removeBtn.ariaLabel = t("menu.removeItem");
+              setIconContent(removeBtn, removeIcon());
               removeBtn.addEventListener("click", () => {
                 state.removeMenuItem(menu.uid, item.uid);
               });
@@ -987,7 +987,7 @@ export function mountMenusTab(
               const settingsBtn = document.createElement("button");
               settingsBtn.type = "button";
               settingsBtn.className = "item-settings-btn";
-              settingsBtn.title = t("itemSettings.title");
+              settingsBtn.title = settingsBtn.ariaLabel = t("itemSettings.title");
               setIconContent(settingsBtn, settingsIcon());
               settingsBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
@@ -1009,8 +1009,8 @@ export function mountMenusTab(
               const removeBtn = document.createElement("button");
               removeBtn.type = "button";
               removeBtn.className = "remove-item-btn";
-              removeBtn.title = t("menu.removeItem");
-              removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
+              removeBtn.title = removeBtn.ariaLabel = t("menu.removeItem");
+              setIconContent(removeBtn, removeIcon());
               removeBtn.addEventListener("click", () => {
                 colorPopoverController.close();
                 if (
@@ -1099,7 +1099,7 @@ export function mountMenusTab(
             const settingsBtn = document.createElement("button");
             settingsBtn.type = "button";
             settingsBtn.className = "item-settings-btn";
-            settingsBtn.title = t("item.settingsTitle");
+            settingsBtn.title = settingsBtn.ariaLabel = t("item.settingsTitle");
             setIconContent(settingsBtn, settingsIcon());
             settingsBtn.addEventListener("click", (e) => {
               e.stopPropagation();
@@ -1147,8 +1147,8 @@ export function mountMenusTab(
             const removeBtn = document.createElement("button");
             removeBtn.type = "button";
             removeBtn.className = "remove-item-btn";
-            removeBtn.title = t("menu.removeItem");
-            removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>`;
+            removeBtn.title = removeBtn.ariaLabel = t("menu.removeItem");
+            setIconContent(removeBtn, removeIcon());
             removeBtn.addEventListener("click", () => {
               colorPopoverController.close();
               if (

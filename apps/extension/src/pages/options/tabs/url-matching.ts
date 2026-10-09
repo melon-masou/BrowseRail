@@ -82,10 +82,10 @@ export function mountUrlMatchingTab(state: OptionsState) {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
-      deleteBtn.className = "remove-item-btn menu-remove-btn";
+      deleteBtn.className = "remove-item-btn";
       deleteBtn.title = t("common.delete");
       deleteBtn.setAttribute("aria-label", t("common.delete"));
-      setIconContent(deleteBtn, removeIcon(), t("common.delete"));
+      setIconContent(deleteBtn, removeIcon());
       deleteBtn.addEventListener("click", () => {
         state.removeUrlRule(ws.uid);
       });

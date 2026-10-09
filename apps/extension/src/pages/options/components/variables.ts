@@ -17,7 +17,7 @@ export function mountVariables(state: OptionsState, showStatus: (message: string
   function removeButton(key: string): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "remove-item-btn menu-remove-btn";
+    button.className = "remove-item-btn";
     button.title = t("common.delete");
     button.ariaLabel = `${t("common.delete")} ${key}`;
     setIconContent(button, removeIcon());
