@@ -10,15 +10,24 @@ export interface ColorValue {
   readonly dockColor?: string;
   readonly cycleColors?: readonly string[];
 }
+export type ColorField = "color" | "dockColor";
+export interface ColorFieldOption {
+  field: ColorField;
+  label: string;
+  defaultColor: string;
+}
 export interface ColorBinding {
   read(): ColorValue;
-  setColor(color: string | undefined): void;
+  setColor(field: ColorField, color: string | undefined): void;
   setCycleColors(colors: readonly string[]): void;
   onClose(): void;
   onChange(): void;
   defaultColor: string;
   title: string;
-  field: "color" | "dockColor";
+  /** The field the anchor swatch displays; the popover opens on it. */
+  field: ColorField;
+  /** When set, the header switches between these fields instead of showing the title. */
+  fields?: readonly ColorFieldOption[];
 }
 const PALETTE_COLORS = [
   "#2563eb", // Blue
@@ -76,9 +85,11 @@ export function createColorPopover(overlays: Overlays) {
   const colorPopoverCycleToggle = element<HTMLInputElement>("color-popover-cycle-toggle");
   const colorPopoverCycleSection = element<HTMLDivElement>("color-popover-cycle-section");
   const colorPopoverCycleList = element<HTMLDivElement>("color-popover-cycle-list");
+  const colorPopoverFields = element<HTMLDivElement>("color-popover-fields");
   let binding: ColorBinding | null = null;
   let activeColorTarget: ColorValue | null = null;
-  let activeColorField: "color" | "dockColor" = "color";
+  let activeColorField: ColorField = "color";
+  let activeDefaultColor = DEFAULT_COLOR;
   let activeColorSwatchElement: HTMLElement | null = null;
   let selectedCycleIndex = -1;
   const home = colorPopover.parentElement!;
@@ -87,7 +98,7 @@ export function createColorPopover(overlays: Overlays) {
     return binding?.read() ?? null;
   }
   function writeColor(value: string | undefined): void {
-    binding?.setColor(value);
+    binding?.setColor(activeColorField, value);
     activeColorTarget = resolveColorTarget();
     binding?.onChange();
   }
@@ -155,7 +166,7 @@ export function createColorPopover(overlays: Overlays) {
 
           colorPopoverCycleSection.style.display = "none";
           selectedCycleIndex = -1;
-          colorPicker.setValue(undefined, binding?.defaultColor ?? DEFAULT_COLOR);
+          colorPicker.setValue(undefined, activeDefaultColor);
         }
         updateActiveTargetSwatch();
       },
@@ -195,7 +206,7 @@ export function createColorPopover(overlays: Overlays) {
               colorPopoverCycleToggle.checked = false;
               colorPopoverCycleSection.style.display = "none";
               selectedCycleIndex = -1;
-              colorPicker.setValue(undefined, binding?.defaultColor ?? DEFAULT_COLOR);
+              colorPicker.setValue(undefined, activeDefaultColor);
             }
             updateActiveTargetSwatch();
 
@@ -203,7 +214,7 @@ export function createColorPopover(overlays: Overlays) {
           }
         }
         writeColor(undefined);
-        colorPicker.setValue(undefined, binding?.defaultColor ?? DEFAULT_COLOR);
+        colorPicker.setValue(undefined, activeDefaultColor);
         updateActiveTargetSwatch();
       },
       { signal: scope.signal },
@@ -276,7 +287,7 @@ export function createColorPopover(overlays: Overlays) {
           colorPopoverCycleToggle.checked = false;
           colorPopoverCycleSection.style.display = "none";
           selectedCycleIndex = -1;
-          colorPicker.setValue(undefined, binding?.defaultColor ?? DEFAULT_COLOR);
+          colorPicker.setValue(undefined, activeDefaultColor);
         } else {
           renderPopoverCycleList();
           colorPicker.setValue(colors[selectedCycleIndex] ?? DEFAULT_COLOR);
@@ -349,11 +360,31 @@ export function createColorPopover(overlays: Overlays) {
         activeColorSwatchElement.title = t("item.cycleColorsEmpty");
       }
     } else {
-      updateSwatchAppearance(
-        activeColorSwatchElement,
-        (activeColorTarget as ColorValue)[activeColorField],
-      );
+      updateSwatchAppearance(activeColorSwatchElement, (activeColorTarget as ColorValue)[binding!.field]);
     }
+  }
+
+  function renderFieldSwitch(): void {
+    const options = binding?.fields ?? [];
+    colorPopoverFields.style.display = options.length ? "flex" : "none";
+    colorPopoverFields.replaceChildren(
+      ...options.map((option) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "color-popover-field-btn";
+        button.classList.toggle("is-active", option.field === activeColorField);
+        button.setAttribute("aria-pressed", String(option.field === activeColorField));
+        button.textContent = option.label;
+        button.addEventListener("click", () => {
+          if (option.field === activeColorField) return;
+          activeColorField = option.field;
+          activeDefaultColor = option.defaultColor;
+          colorPicker.setValue(activeColorTarget?.[activeColorField], activeDefaultColor);
+          renderFieldSwitch();
+        });
+        return button;
+      }),
+    );
   }
 
   scope.add(overlays.register("color", closeColorPopover));
@@ -363,7 +394,7 @@ export function createColorPopover(overlays: Overlays) {
       return binding !== null;
     },
     open(next: ColorBinding, swatch: HTMLElement): void {
-      if (binding && activeColorSwatchElement === swatch && next.field === activeColorField) {
+      if (binding && activeColorSwatchElement === swatch) {
         closeColorPopover();
         return;
       }
@@ -377,11 +408,13 @@ export function createColorPopover(overlays: Overlays) {
       binding = next;
       activeColorTarget = next.read();
       activeColorField = next.field;
+      activeDefaultColor = next.defaultColor;
       activeColorSwatchElement = swatch;
       const flatten = activeColorTarget.type === "flattenFolder";
       colorPopoverCycleRow.style.display = flatten ? "flex" : "none";
-      colorPopoverTitle.style.display = flatten ? "none" : "block";
+      colorPopoverTitle.style.display = flatten || next.fields?.length ? "none" : "block";
       colorPopoverTitle.textContent = next.title;
+      renderFieldSwitch();
       const colors = flatten ? activeColorTarget.cycleColors : undefined;
       colorPopoverCycleToggle.checked = Boolean(colors?.length);
       colorPopoverCycleSection.style.display = colors?.length ? "block" : "none";
@@ -389,7 +422,7 @@ export function createColorPopover(overlays: Overlays) {
       if (colors?.length) {
         renderPopoverCycleList();
         colorPicker.setValue(colors[0]);
-      } else colorPicker.setValue(activeColorTarget[next.field], next.defaultColor);
+      } else colorPicker.setValue(activeColorTarget[activeColorField], activeDefaultColor);
       positionPopover(colorPopover, rect, 220);
     },
     close: closeColorPopover,
@@ -397,6 +430,7 @@ export function createColorPopover(overlays: Overlays) {
       closeColorPopover();
       scope.destroy();
       colorPopoverCycleList.replaceChildren();
+      colorPopoverFields.replaceChildren();
       colorPopoverPresets.replaceChildren();
     },
   };

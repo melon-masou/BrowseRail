@@ -1204,6 +1204,31 @@ output {
   color: #0f172a;
 }
 
+.color-popover-fields {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #f1f5f9;
+}
+
+.color-popover-field-btn {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+}
+
+.color-popover-field-btn.is-active {
+  color: #0f172a;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 15%);
+}
+
 .color-popover-cycle-row {
   display: flex;
   align-items: center;
@@ -1796,13 +1821,6 @@ output {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.menu-setting-color-swatch {
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  box-sizing: border-box;
 }
 
 .menu-setting-color-value {

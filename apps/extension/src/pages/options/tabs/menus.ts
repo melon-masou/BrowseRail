@@ -69,7 +69,6 @@ export function mountMenusTab(
     const menu = state.settings.menus[activeMenuSettingsIndex];
     if (menu) state.setMenuName(menu.uid, menuSettingName.value);
   }, { signal: scope.signal });
-  const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
   const menuSettingCssClass = element<HTMLInputElement>("menu-setting-css-class");
   menuSettingCssClass.addEventListener("input", () => {
     const menu = state.settings.menus[activeMenuSettingsIndex];
@@ -120,12 +119,10 @@ export function mountMenusTab(
     { signal: scope.signal },
   );
 
-  function updateMenuColorSwatch(swatch: HTMLElement, menu: ReadonlyData<StoredMenu>, field: "color" | "dockColor"): void {
-    const color = menu[field];
+  function updateMenuColorSwatch(swatch: HTMLElement, menu: ReadonlyData<StoredMenu>): void {
+    const color = menu.color;
     updateSwatchAppearance(swatch, color);
-    swatch.title = field === "dockColor"
-      ? color ? t("menu.dockColorSwatchSet", { color }) : t("menu.dockColorSwatchEmpty")
-      : color ? t("menu.colorSwatchSet", { color }) : t("menu.colorSwatchEmpty");
+    swatch.title = color ? t("menu.colorSwatchSet", { color }) : t("menu.colorSwatchEmpty");
     swatch.setAttribute("aria-label", swatch.title);
   }
 
@@ -138,15 +135,6 @@ export function mountMenusTab(
       (event) => {
         event.preventDefault();
         closeMenuSettingsDialog();
-      },
-      { signal: scope.signal },
-    );
-
-    menuSettingDockColor.addEventListener(
-      "click",
-      () => {
-        const menu = state.settings.menus[activeMenuSettingsIndex];
-        if (menu) openMenuColor(menu, menuSettingDockColor, "dockColor");
       },
       { signal: scope.signal },
     );
@@ -164,7 +152,6 @@ export function mountMenusTab(
     menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
     menuSettingName.value = menu.name ?? "";
     menuSettingName.placeholder = t("menu.title", { n: menuIndex + 1 });
-    updateMenuColorSwatch(menuSettingDockColor, menu, "dockColor");
     menuSettingCssClass.value = menu.cssClass ?? "";
     renderMenuUrlRulesContent(menu);
 
@@ -799,9 +786,9 @@ export function mountMenusTab(
         const defaultColorBtn = document.createElement("button");
         defaultColorBtn.type = "button";
         defaultColorBtn.className = "item-color-swatch";
-        updateMenuColorSwatch(defaultColorBtn, menu, "color");
+        updateMenuColorSwatch(defaultColorBtn, menu);
         defaultColorBtn.addEventListener("click", () => {
-          openMenuColor(menu, defaultColorBtn, "color");
+          openMenuColor(menu, defaultColorBtn);
         });
 
         const resetPositionBtn = document.createElement("button");
@@ -1168,47 +1155,46 @@ export function mountMenusTab(
   function openMenuColor(
     target: ReadonlyData<StoredMenu | StoredMenuItem>,
     swatch: HTMLElement,
-    field: "color" | "dockColor" = "color",
   ): void {
     const menuUid =
       "items" in target
         ? target.uid
         : state.settings.menus.find((menu) => menu.items.some((item) => item.uid === target.uid))!
             .uid;
-    const id: ColorId =
-      "items" in target
+    const isMenu = "items" in target;
+    const colorId = (field: "color" | "dockColor"): ColorId =>
+      isMenu
         ? { kind: "menu", uid: target.uid, field }
         : { kind: "item", menuUid, uid: target.uid };
     const read = () =>
-      id.kind === "menu"
-        ? state.settings.menus.find((menu) => menu.uid === id.uid)!
+      isMenu
+        ? state.settings.menus.find((menu) => menu.uid === target.uid)!
         : state.settings.menus
-            .find((menu) => menu.uid === id.menuUid)!
-            .items.find((item) => item.uid === id.uid)!;
+            .find((menu) => menu.uid === menuUid)!
+            .items.find((item) => item.uid === target.uid)!;
     colorPopoverController.open(
       {
         read,
-        setColor: (color) => state.setColor(id, color),
+        setColor: (field, color) => state.setColor(colorId(field), color),
         setCycleColors: (colors) => {
+          const id = colorId("color");
           if (id.kind !== "item") throw new Error("Not a folder color");
           state.setCycleColors(id, colors);
         },
-        field,
-        defaultColor:
-          field === "dockColor"
-            ? DEFAULT_DOCK_COLOR
-            : "items" in target
-              ? DEFAULT_MENU_COLOR
-              : DEFAULT_COLOR,
-        title:
-          field === "dockColor"
-            ? t("menuSettings.dockColor")
-            : "items" in target
-              ? t("menuSettings.defaultColor")
-              : t("color.title"),
+        field: "color",
+        defaultColor: isMenu ? DEFAULT_MENU_COLOR : DEFAULT_COLOR,
+        title: isMenu ? t("menuSettings.defaultColor") : t("color.title"),
+        ...(isMenu
+          ? {
+              fields: [
+                { field: "color", label: t("menuSettings.defaultColor"), defaultColor: DEFAULT_MENU_COLOR },
+                { field: "dockColor", label: t("menuSettings.dockColor"), defaultColor: DEFAULT_DOCK_COLOR },
+              ],
+            }
+          : {}),
         onChange: () => {
           const current = read();
-          if ("items" in current) updateMenuColorSwatch(swatch, current, field);
+          if ("items" in current) updateMenuColorSwatch(swatch, current);
         },
         onClose: () => {
           colorOpen = false;

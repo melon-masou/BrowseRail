@@ -373,8 +373,6 @@ export const en = {
   "menu.removeItem": "Remove item",
   "menu.colorSwatchSet": "Menu default color: {color} (click to edit)",
   "menu.colorSwatchEmpty": "Set menu default color",
-  "menu.dockColorSwatchSet": "Bar background color: {color} (click to edit)",
-  "menu.dockColorSwatchEmpty": "Set bar background color",
   "item.renameBadge": "Rename: {name}",
   "item.renameBadgeTitle": "Custom rename: {name} (click to edit)",
   "item.followMenuColor": "Follows menu default color ({color}), click to customize",
@@ -858,8 +856,6 @@ export const zhCN: Record<MessageKey, string> = {
   "menu.removeItem": "删除项目",
   "menu.colorSwatchSet": "菜单默认颜色：{color}（点击修改）",
   "menu.colorSwatchEmpty": "设置菜单默认颜色",
-  "menu.dockColorSwatchSet": "栏底色：{color}（点击修改）",
-  "menu.dockColorSwatchEmpty": "设置栏底色",
   "item.renameBadge": "重命名：{name}",
   "item.renameBadgeTitle": "自定义重命名：{name}（点击修改配置）",
 

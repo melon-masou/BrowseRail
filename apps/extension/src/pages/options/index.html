@@ -341,6 +341,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <span data-i18n="itemSettings.cycleColors">Cycle colors</span>
             </label>
           </div>
+          <div id="color-popover-fields" class="color-popover-fields" style="display: none;"></div>
           <span id="color-popover-title" class="color-popover-title" data-i18n="color.title">Color</span>
           <button type="button" id="color-popover-close" class="color-popover-close" data-i18n-title="common.close" title="Close">✕</button>
         </div>
@@ -401,10 +402,6 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
               <span class="menu-setting-label" data-i18n="menu.name">Name</span>
               <input type="text" id="menu-setting-name" />
             </label>
-            <div class="menu-setting-field">
-              <span class="menu-setting-label" data-i18n="menuSettings.dockColor">Bar background color</span>
-              <button type="button" id="menu-setting-dock-color" class="item-color-swatch menu-setting-color-swatch"></button>
-            </div>
             <label class="menu-setting-field">
               <span class="menu-setting-label">CSS class</span>
               <input type="text" id="menu-setting-css-class" data-i18n-ph="css.classHint" placeholder="Separate multiple classes with spaces" spellcheck="false" />
