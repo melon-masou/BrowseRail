@@ -41,6 +41,7 @@ import { canUseBookmarks } from "../../browser/bookmarks-capability";
 import { settingsFromConfig, type OptionsState, type SettingsDraft } from "./state";
 import type { BookmarkLibrary } from "./bookmark-library";
 import { createScope } from "./lifecycle";
+import { hasTransferGroup, mergeByKey, selectTransferData, type TransferOptions } from "./transfer";
 import { validateRewrite } from "../../dynamic/rewrite";
 import { loadExternalAuthorization, saveExternalAuthorization } from "../../config/external-authorization-store";
 export async function loadOptions() {
@@ -154,8 +155,8 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     await browser.runtime.sendMessage({ type: "configSaved" });
     return true;
   }
-  async function exportSettings(includeBars = false): Promise<ExportedSettingsData> {
-    if (!state.userVariablesValid) throw new Error(t("variables.invalidKeys"));
+  async function exportSettings(options: Partial<TransferOptions> = {}): Promise<ExportedSettingsData> {
+    if (options.bookmarks !== false && !state.userVariablesValid) throw new Error(t("variables.invalidKeys"));
     const {
       menus,
       globalCss,
@@ -173,7 +174,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     }
 
     // Runtime URLs/notes stay local; only definitions and references are portable.
-    const barConfigurations = includeBars ? await loadBarConfigurations() : undefined;
+    const barConfigurations = options.bars ? await loadBarConfigurations() : undefined;
     if (barConfigurations) {
       const uids = new Set(menus.map(menu => menu.uid));
       barConfigurations.native = Object.fromEntries(Object.entries(barConfigurations.native).filter(([uid]) => uids.has(uid)));
@@ -183,19 +184,15 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       version: EXPORT_SCHEMA_VERSION,
       ...(barConfigurations ? { barConfigurations } : {}),
       exportedAt: new Date().toISOString(),
-      ...(globalCss ? { globalCss } : {}),
-      ...(Object.keys(userVariables).length ? { userVariables } : {}),
-      ...(urlRules.length > 0 ? { urlRules: structuredClone(urlRules) } : {}),
+      globalCss: globalCss ?? {},
+      userVariables,
+      urlRules,
       ...(defaultUrlRuleUid ? { defaultUrlRuleUid } : {}),
-      ...(dynamicBookmarks.length > 0
-        ? { dynamicBookmarks: structuredClone(dynamicBookmarks) }
-        : {}),
-      ...(staticBookmarks.length > 0 ? { staticBookmarks: structuredClone(staticBookmarks) } : {}),
-      ...(temporaryBookmarks.length > 0
-        ? { temporaryBookmarks: structuredClone(temporaryBookmarks) }
-        : {}),
-      ...(shortcuts.length > 0 ? { shortcuts: structuredClone(shortcuts) } : {}),
-      ...(nativeShortcuts.length > 0 ? { nativeShortcuts: structuredClone(nativeShortcuts) } : {}),
+      dynamicBookmarks,
+      staticBookmarks,
+      temporaryBookmarks,
+      shortcuts,
+      nativeShortcuts,
       menus: menus.map((menu) => ({
         uid: menu.uid,
         ...(menu.name ? { name: menu.name } : {}),
@@ -284,19 +281,28 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       })),
     };
 
-    return exportData;
+    return selectTransferData(exportData, options);
   }
-  async function importSettings(text: string, includeBars = false, includeRewrites = false): Promise<void> {
-    const parsed = JSON.parse(text) as unknown;
-    if (!isExportedSettingsData(parsed)) {
+  async function importSettings(text: string, options: Partial<TransferOptions> = {}): Promise<void> {
+    const source = JSON.parse(text) as unknown;
+    if (!isExportedSettingsData(source)) {
       throw new Error(t("import.invalidJson"));
     }
 
+    const parsed = selectTransferData(source, { ...options, bars: options.bars ?? false });
+    const includeRewrites = options.includeRewrites ?? false;
+    const importsMenus = hasTransferGroup(parsed, "menus");
+    const importsBookmarks = hasTransferGroup(parsed, "bookmarks");
     const runtimeMenus = (await loadConfig()).panel.menus;
     const imported = structuredClone(state.settings) as SettingsDraft;
-    delete imported.barConfigurations;
-    if (includeBars && parsed.barConfigurations) imported.barConfigurations = normalizeBarConfigurations(parsed.barConfigurations);
-    const menusSource = parsed.menus;
+    if (parsed.barConfigurations) {
+      const incoming = normalizeBarConfigurations(parsed.barConfigurations);
+      imported.barConfigurations = {
+        native: { ...imported.barConfigurations?.native, ...incoming.native },
+        browser: { ...imported.barConfigurations?.browser, ...incoming.browser },
+      };
+    }
+    const menusSource = parsed.menus ?? [];
 
     // Rebuild each item from its portable fields.
     const importedMenus: StoredMenu[] = [];
@@ -402,29 +408,31 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     }
 
     // Installation settings stay local when importing portable bookmark definitions.
-    imported.menus = importedMenus;
-    const globalCss = { ...imported.globalCss, ...normalizeGlobalCss(parsed.globalCss) };
-    if (Object.keys(globalCss).length) imported.globalCss = globalCss;
-    else delete imported.globalCss;
-    imported.staticBookmarks = normalizeStaticBookmarks(parsed.staticBookmarks);
-    imported.temporaryBookmarks = normalizeTemporaryBookmarks(parsed.temporaryBookmarks);
-    imported.userVariables = normalizeUserVariables(parsed.userVariables);
+    if (importsMenus) {
+      const globalCss = { ...imported.globalCss, ...normalizeGlobalCss(parsed.globalCss) };
+      if (Object.keys(globalCss).length) imported.globalCss = globalCss;
+      else delete imported.globalCss;
+    }
+    if (importsBookmarks) {
+      imported.staticBookmarks = mergeByKey(imported.staticBookmarks, normalizeStaticBookmarks(parsed.staticBookmarks), bookmark => bookmark.uid);
+      imported.temporaryBookmarks = mergeByKey(imported.temporaryBookmarks, normalizeTemporaryBookmarks(parsed.temporaryBookmarks), bookmark => bookmark.uid);
+      imported.userVariables = { ...imported.userVariables, ...normalizeUserVariables(parsed.userVariables) };
+    }
 
     if (Array.isArray(parsed.urlRules)) {
-      imported.urlRules = normalizeUrlRules(parsed.urlRules);
+      imported.urlRules = mergeByKey(imported.urlRules, normalizeUrlRules(parsed.urlRules), rule => rule.uid);
     }
     if (
       typeof parsed.defaultUrlRuleUid === "string" &&
-      imported.urlRules.some((rule) => rule.uid === parsed.defaultUrlRuleUid)
-    )
-      imported.defaultUrlRuleUid = parsed.defaultUrlRuleUid;
-    else delete imported.defaultUrlRuleUid;
+      imported.urlRules.some(rule => rule.uid === parsed.defaultUrlRuleUid)
+    ) imported.defaultUrlRuleUid = parsed.defaultUrlRuleUid;
 
-    if (Array.isArray(parsed.dynamicBookmarks)) {
-      // A rule reference resolves only against rules in the same file: binding it to a
-      // local rule that happens to share the uid would widen the saved URL scope.
-      const fileRuleUids = new Set(Array.isArray(parsed.urlRules) ? imported.urlRules.map((rule) => rule.uid) : []);
-      imported.dynamicBookmarks = normalizeDynamicBookmarks(parsed.dynamicBookmarks).flatMap(({ urlRuleUid, ...db }) => {
+    if (importsBookmarks) {
+      // Retained local rules must match the file's scope; a shared uid alone is insufficient.
+      const fileRuleUids = new Set(normalizeUrlRules(source.urlRules)
+        .filter(rule => imported.urlRules.some(local => local.uid === rule.uid && JSON.stringify(local.patterns) === JSON.stringify(rule.patterns)))
+        .map(rule => rule.uid));
+      const incoming = normalizeDynamicBookmarks(parsed.dynamicBookmarks).flatMap(({ urlRuleUid, ...db }) => {
         if (!includeRewrites && db.type === "rewrite") return [];
         return [{
           ...db,
@@ -432,9 +440,12 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           ...(urlRuleUid && fileRuleUids.has(urlRuleUid) ? { urlRuleUid } : {}),
         }];
       });
+      imported.dynamicBookmarks = mergeByKey(imported.dynamicBookmarks, incoming, bookmark => bookmark.uid);
     }
+    let incomingShortcuts: StoredShortcut[] = [];
+    let incomingNativeShortcuts: StoredNativeShortcut[] = [];
     if (Array.isArray(parsed.shortcuts)) {
-      imported.shortcuts = parsed.shortcuts.flatMap((sc): StoredShortcut[] => {
+      incomingShortcuts = parsed.shortcuts.flatMap((sc): StoredShortcut[] => {
         if (typeof sc !== "object" || sc === null) return [];
         const record = sc as unknown as Record<string, unknown>;
         if (typeof record.slot !== "string") return [];
@@ -464,7 +475,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       });
     }
     if (Array.isArray(parsed.nativeShortcuts)) {
-      imported.nativeShortcuts = parsed.nativeShortcuts.flatMap((sc): StoredNativeShortcut[] => {
+      incomingNativeShortcuts = parsed.nativeShortcuts.flatMap((sc): StoredNativeShortcut[] => {
         if (typeof sc !== "object" || sc === null) return [];
         const record = sc as unknown as Record<string, unknown>;
         if (typeof record.id !== "string" || !record.id) return [];
@@ -497,10 +508,13 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     const importedDynamicUids = new Set(imported.dynamicBookmarks.map(db => db.uid));
     const keepReference = (item: StoredMenuItem | StoredShortcut | StoredNativeShortcut): boolean =>
       item.type !== "dynamic" || !!item.dynamicUid && importedDynamicUids.has(item.dynamicUid);
-    for (const menu of imported.menus) menu.items = menu.items.filter(keepReference);
-    imported.shortcuts = imported.shortcuts.filter(keepReference);
-    imported.nativeShortcuts = imported.nativeShortcuts.filter(keepReference);
-    state.importSettings(imported);
+    if (parsed.menus) {
+      if (importsBookmarks) for (const menu of importedMenus) menu.items = menu.items.filter(keepReference);
+      imported.menus = mergeByKey(imported.menus, importedMenus, menu => menu.uid);
+    }
+    if (parsed.shortcuts) imported.shortcuts = mergeByKey(imported.shortcuts, importsBookmarks ? incomingShortcuts.filter(keepReference) : incomingShortcuts, shortcut => shortcut.slot);
+    if (parsed.nativeShortcuts) imported.nativeShortcuts = mergeByKey(imported.nativeShortcuts, importsBookmarks ? incomingNativeShortcuts.filter(keepReference) : incomingNativeShortcuts, shortcut => shortcut.id);
+    state.importSettings(imported, parsed.userVariables !== undefined);
   }
 
   const changed = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {

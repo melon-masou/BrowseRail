@@ -297,10 +297,12 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       settingsDirty = !userVariablesValid() || JSON.stringify(settingsDraft) !== JSON.stringify(savedSettings);
       publish(["dirty"], false, false);
     },
-    importSettings(imported: SettingsDraft): void {
+    importSettings(imported: SettingsDraft, importVariables = true): void {
       settingsDraft = structuredClone(imported);
-      userVariableDrafts = variableRows(settingsDraft.userVariables);
-      userVariableSnapshot = freeze(structuredClone(userVariableDrafts));
+      if (importVariables) {
+        userVariableDrafts = variableRows(settingsDraft.userVariables);
+        userVariableSnapshot = freeze(structuredClone(userVariableDrafts));
+      }
       publish(["menus", "rules", "bookmarks", "shortcuts", "variables"], true, true, true);
     },
     receiveStoredConfig(stored: ExtensionConfig, previous: ExtensionConfig): void {

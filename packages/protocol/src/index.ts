@@ -318,7 +318,7 @@ export interface ExportedSettingsData {
   version: typeof EXPORT_SCHEMA_VERSION;
   exportedAt: string;
   barConfigurations?: import("./bar").BarConfigurations;
-  menus: ExportedMenu[];
+  menus?: ExportedMenu[];
   urlRules?: UrlRule[];
   defaultUrlRuleUid?: string;
   dynamicBookmarks?: ExportedDynamicBookmark[];
@@ -336,7 +336,9 @@ export function isExportedSettingsData(value: unknown): value is ExportedSetting
   return (
     value.version === EXPORT_SCHEMA_VERSION &&
     typeof value.exportedAt === "string" &&
-    Array.isArray(value.menus)
+    ["menus", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "shortcuts", "nativeShortcuts"].every(key => value[key] === undefined || Array.isArray(value[key])) &&
+    ["globalCss", "userVariables", "barConfigurations"].every(key => value[key] === undefined || isRecord(value[key])) &&
+    ["menus", "globalCss", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "userVariables", "shortcuts", "nativeShortcuts", "barConfigurations"].some(key => value[key] !== undefined)
   );
 }
 

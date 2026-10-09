@@ -594,3 +594,44 @@ it("inserts source-qualified references at the URL selection and saves the templ
   await save();
   expect((await savedConfig()).staticBookmarks[0]!.url).toBe(template);
 });
+
+
+it("shows counts and defaults all available transfer groups on; imports only selected groups", async () => {
+  const { chooseTransferOptions } = await import("./components/transfer-options");
+  const { defaultBarSettings, defaultNativeBarSettings } = await import("@browserail/protocol");
+  const { defaultMenuPlacement } = await import("../../config");
+  const data = {
+    version: 2 as const, exportedAt: "2026-10-09T00:00:00.000Z",
+    menus: [{ uid: "bar", items: [] }],
+    urlRules: [{ uid: "site", name: "Site", patterns: ["example.com"] }],
+    staticBookmarks: [{ uid: "one", name: "One", url: "https://example.com" }],
+    temporaryBookmarks: [{ uid: "later", name: "Later" }],
+    dynamicBookmarks: [{ uid: "api", name: "API", type: "external" as const, urlRuleUid: "site" }],
+    shortcuts: [{ slot: "slot_1", type: "static" as const, staticUid: "one" }],
+    nativeShortcuts: [{ id: "key", key: "F1", type: "static" as const, staticUid: "one" }],
+    barConfigurations: {
+      native: { bar: { ...defaultNativeBarSettings(), placement: defaultMenuPlacement(), gapRatio: 0, extraGaps: {} } },
+      browser: { bar: { ...defaultBarSettings(), placement: defaultMenuPlacement(), gapRatio: 0, extraGaps: {} } },
+    },
+  };
+  const result = chooseTransferOptions("import", data);
+  const dialog = document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  const choices = [...dialog.querySelectorAll("label")];
+  expect(choices.map(label => label.textContent)).toEqual(["Menus (1)", "URL matching (1)", "Custom bookmarks (3)", "Shortcuts (2)", "Bar style and position (2)"]);
+  expect(choices.every(label => label.querySelector("input")!.checked)).toBe(true);
+  const confirm = dialog.querySelector<HTMLButtonElement>(".save-btn")!;
+  for (const label of choices) label.querySelector<HTMLInputElement>("input")!.click();
+  expect(confirm.disabled).toBe(true);
+  choices[2]!.querySelector<HTMLInputElement>("input")!.click();
+  expect(confirm.disabled).toBe(false);
+  confirm.click();
+  expect(await result).toEqual({ menus: false, urlRules: false, bookmarks: true, shortcuts: false, bars: false, includeRewrites: false });
+
+  const partial = chooseTransferOptions("import", { version: 2, exportedAt: data.exportedAt, urlRules: [] });
+  const partialDialog = document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  const available = [...partialDialog.querySelectorAll<HTMLInputElement>("input")].filter(input => !input.disabled);
+  expect(available).toHaveLength(1);
+  expect(available[0]!.checked).toBe(true);
+  partialDialog.querySelector<HTMLButtonElement>(".save-btn")!.click();
+  expect(await partial).toMatchObject({ menus: false, urlRules: true, bookmarks: false, shortcuts: false, bars: false });
+});

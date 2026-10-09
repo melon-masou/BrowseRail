@@ -37,11 +37,6 @@ export async function saveBarLayout(uid: string, mode: DisplayMode, placement: M
 }
 export async function importBarConfigurations(imported: BarConfigurations, menuUids: string[]): Promise<void> {
   const current = await loadBarConfigurations();
-  for (const mode of ["native", "browser"] as const) {
-    for (const uid of menuUids) {
-      delete current[mode][uid];
-    }
-  }
   for (const uid of menuUids) {
     if (imported.native[uid]) current.native[uid] = imported.native[uid]!;
     if (imported.browser[uid]) current.browser[uid] = imported.browser[uid]!;

@@ -9,6 +9,7 @@ import {
 } from "@browserail/i18n";
 import { isExportedSettingsData } from "@browserail/protocol";
 import { chooseTransferOptions } from "./components/transfer-options";
+import { selectTransferData } from "./transfer";
 import { createOptionsState } from "./state";
 import { loadOptions, createPersistence } from "./persistence";
 import { createBookmarkLibrary } from "./bookmark-library";
@@ -201,11 +202,11 @@ export async function mountOptionsPage() {
         const hasRewrites = normalizeDynamicBookmarks(data.dynamicBookmarks).some(db => db.type === "rewrite");
         let includeRewrites = false;
         if (hasRewrites) {
-          const options = await chooseTransferOptions("cloudDownload", false, true);
+          const options = await chooseTransferOptions("cloudDownload", data);
           if (!options || scope.signal.aborted) return;
           includeRewrites = options.includeRewrites;
         } else if (!window.confirm(t("cloud.downloadConfirm"))) return;
-        await persistence.importSettings(JSON.stringify(data), false, includeRewrites);
+        await persistence.importSettings(JSON.stringify(data), { includeRewrites });
         if (!validateSettings()) return;
         const rules = await persistence.saveSettings();
         authorization.refresh(rules);
@@ -267,9 +268,10 @@ export async function mountOptionsPage() {
         flash(t("export.saveFirst"), 3000);
         return;
       }
-      const options = await chooseTransferOptions("export");
+      const complete = await persistence.exportSettings({ bars: true });
+      const options = await chooseTransferOptions("export", complete);
       if (!options || scope.signal.aborted) return;
-      const data = await persistence.exportSettings(options.includeBars);
+      const data = selectTransferData(complete, options);
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
       );
@@ -306,10 +308,9 @@ export async function mountOptionsPage() {
           if (scope.signal.aborted) return;
           const parsed: unknown = JSON.parse(text);
           if (!isExportedSettingsData(parsed)) throw new Error(t("import.invalidJson"));
-          const hasRewrites = normalizeDynamicBookmarks(parsed.dynamicBookmarks).some(db => db.type === "rewrite");
-          const options = await chooseTransferOptions("import", parsed.barConfigurations !== undefined, hasRewrites);
+          const options = await chooseTransferOptions("import", parsed);
           if (!options || scope.signal.aborted) return;
-          await persistence.importSettings(text, options.includeBars, options.includeRewrites);
+          await persistence.importSettings(text, options);
           flash(t("import.savedOk"), 3000);
         })
         .catch((error) => showStatus(t("import.failed", { error: String(error) })));

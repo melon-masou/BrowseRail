@@ -53,7 +53,7 @@ it("saves external grants only with the instance and excludes them from portable
   expect(await loadExternalAuthorization()).toEqual({ extensionsEnabled: true, extensionIds: ["provider@example.com"], userscriptEnabled: true, token });
   const loaded = await loadOptions();
   expect(loaded.instance.externalAuthorization).toEqual(await loadExternalAuthorization());
-  const exported = await persistence.exportSettings(true);
+  const exported = await persistence.exportSettings({ bars: true });
   expect(JSON.stringify(exported)).not.toContain(token);
   expect(JSON.stringify(exported)).not.toContain("provider@example.com");
   await persistence.importSettings(JSON.stringify(exported));
@@ -95,7 +95,7 @@ it("preserves CSS classes for every item type through save and portable import, 
   }
   await persistence.saveSettings();
   const exported = await persistence.exportSettings();
-  expect(exported.menus[0]!.items.map(item => item.cssClass)).toEqual(sources.map(() => "icon-home compact"));
+  expect(exported.menus![0]!.items.map(item => item.cssClass)).toEqual(sources.map(() => "icon-home compact"));
   state.removeMenuItem("bar", "bookmark");
   await persistence.importSettings(JSON.stringify(exported));
   await persistence.saveSettings();
@@ -109,12 +109,12 @@ it("preserves CSS classes for every item type through save and portable import, 
 it("exports shared colors and bindings; optionally includes both modes without runtime or instance data", async () => {
   const { persistence } = await fixture(); await saveLayouts();
   const portable = await persistence.exportSettings();
-  expect(portable.menus[0]).toMatchObject({ uid: "bar", color: "#336699aa", dockColor: "#223344bb" });
+  expect(portable.menus![0]).toMatchObject({ uid: "bar", color: "#336699aa", dockColor: "#223344bb" });
   expect(portable.shortcuts).toEqual([{ slot: "1", type: "static", staticUid: "link" }]);
-  expect(portable.menus[0]).not.toHaveProperty("enabled");
+  expect(portable.menus![0]).not.toHaveProperty("enabled");
   expect(portable).not.toHaveProperty("instanceLabel");
   expect(portable).not.toHaveProperty("barConfigurations");
-  const complete = await persistence.exportSettings(true);
+  const complete = await persistence.exportSettings({ bars: true });
   expect(complete.barConfigurations).toEqual(await loadBarConfigurations());
   expect(complete.barConfigurations!.native.bar!.autoHideRange).toEqual({ start: .1, end: .3 });
   expect(complete.barConfigurations!.browser.bar!.autoHideRange).toEqual({ start: .7, end: 1 });
@@ -128,7 +128,7 @@ it("preserves tag folder and flattened references through save and import even w
   state.addMenuItem("bar", { ...group, uid: "flat", type: "flattenStaticTag" });
   await persistence.saveSettings();
   const exported = await persistence.exportSettings();
-  expect(exported.menus[0]!.items).toEqual([group, { ...group, uid: "flat", type: "flattenStaticTag" }]);
+  expect(exported.menus![0]!.items).toEqual([group, { ...group, uid: "flat", type: "flattenStaticTag" }]);
   state.removeMenuItem("bar", "group");
   await persistence.importSettings(JSON.stringify(exported));
   await persistence.saveSettings();
@@ -145,7 +145,7 @@ it("exports the shortcut toggle definition without the instance switch and prese
   await saveShortcutsEnabled(false);
   const disabledExport = await persistence.exportSettings();
   expect({ ...disabledExport, exportedAt: enabledExport.exportedAt }).toEqual(enabledExport);
-  expect(disabledExport.menus[0]!.items).toEqual([action]);
+  expect(disabledExport.menus![0]!.items).toEqual([action]);
   state.removeMenuItem("bar", "keys");
   await persistence.importSettings(JSON.stringify(disabledExport));
   await persistence.saveSettings();
@@ -198,7 +198,8 @@ it("preserves static bookmark tags and order through save, reload, export and im
 });
 
 it("drops menu and item open modes on import and save while preserving shortcut choices", async () => {
-  const { persistence } = await fixture();
+  const { state, persistence } = await fixture();
+  state.removeShortcut({ kind: "slot", slot: "1" });
   const data = await persistence.exportSettings();
   const shortcuts = [{ slot: "slot_1", type: "static", staticUid: "link", tabMode: "newTab" }];
   const nativeShortcuts = [{ id: "native-link", key: "Ctrl+A", type: "static", staticUid: "link", tabMode: "newTab" }];
@@ -213,7 +214,7 @@ it("drops menu and item open modes on import and save while preserving shortcut 
   await persistence.saveSettings();
   const saved = await loadConfig();
   const portable = await persistence.exportSettings();
-  for (const menu of [saved.panel.menus[0]!, portable.menus[0]!]) {
+  for (const menu of [saved.panel.menus[0]!, portable.menus![0]!]) {
     expect(menu).not.toHaveProperty("tabMode");
     for (const item of menu.items) expect(item).not.toHaveProperty("tabMode");
   }
@@ -227,7 +228,7 @@ it("drops menu and item open modes on import and save while preserving shortcut 
 it("imports shared data without changing existing bar layouts, runtime enablement or the instance", async () => {
   const { state, persistence } = await fixture(); await saveLayouts();
   const before = await loadBarConfigurations();
-  const data = await persistence.exportSettings(true);
+  const data = await persistence.exportSettings({ bars: true });
   data.staticBookmarks![0]!.name = "Imported";
   await persistence.importSettings(JSON.stringify(data));
   await persistence.saveSettings();
@@ -242,13 +243,13 @@ it("imports shared data without changing existing bar layouts, runtime enablemen
 
 it("stages both modes until Save, then consumes the import so future saves preserve later bar edits", async () => {
   const { state, persistence } = await fixture(); await saveLayouts();
-  const data = await persistence.exportSettings(true);
+  const data = await persistence.exportSettings({ bars: true });
   const before = await loadBarConfigurations();
   data.barConfigurations!.browser.bar!.popupFontSize = 24;
   data.barConfigurations!.native.bar!.buttonFontSize = 21;
   data.barConfigurations!.browser.bar!.fontFamily = "Arial";
   data.barConfigurations!.native.bar!.fontFamily = "Microsoft YaHei";
-  await persistence.importSettings(JSON.stringify(data), true);
+  await persistence.importSettings(JSON.stringify(data), { bars: true });
   expect(await loadBarConfigurations()).toEqual(before);
   expect(state.dirty.settings).toBe(true);
   await persistence.saveSettings();
@@ -315,10 +316,10 @@ it("does not let an imported dynamic bookmark borrow a local URL rule that only 
   state.addUrlRule({ uid: "docs", name: "Local", patterns: ["*"] });
   const script = { uid: "external", name: "External", type: "external", urlRuleUid: "docs" };
   const withoutRules = { version: 2, exportedAt: "2026-10-04T00:00:00.000Z", menus: [], dynamicBookmarks: [script] };
-  await persistence.importSettings(JSON.stringify(withoutRules), false, true);
+  await persistence.importSettings(JSON.stringify(withoutRules), { includeRewrites: true });
   expect(state.settings.dynamicBookmarks[0]).not.toHaveProperty("urlRuleUid");
   const withRules = { ...withoutRules, urlRules: [{ uid: "docs", name: "Docs", patterns: ["example.com"] }] };
-  await persistence.importSettings(JSON.stringify(withRules), false, true);
+  await persistence.importSettings(JSON.stringify(withRules), { includeRewrites: true });
   expect(state.settings.dynamicBookmarks[0]!.urlRuleUid).toBe("docs");
   persistence.destroy();
 });
@@ -329,7 +330,7 @@ it("round-trips rule and external definitions with commented exclusion rules", a
   state.addBookmark("dynamic", { uid: "rule", name: "Rule", type: "rule", urlRuleUid: "docs" });
   state.addBookmark("dynamic", { uid: "external", name: "External", type: "external", urlRuleUid: "docs" });
   const exported = await persistence.exportSettings();
-  await persistence.importSettings(JSON.stringify(exported), false, true);
+  await persistence.importSettings(JSON.stringify(exported), { includeRewrites: true });
   await persistence.saveSettings();
   const saved = await loadConfig();
   expect(saved.dynamicBookmarks).toEqual(exported.dynamicBookmarks);
@@ -345,7 +346,7 @@ it.each([false, true])("imports external definitions normally and rewrites only 
   const script = { uid: "script", name: "Script", type: "external" as const, urlRuleUid: "docs" };
   const rewrite = { uid: "rewrite", name: "Rewrite", type: "rewrite" as const, rewrite: 'replace "/article/" "/reader/"', urlRuleUid: "docs" };
   data.dynamicBookmarks = [rule, script, rewrite];
-  data.menus[0]!.items = [
+  data.menus![0]!.items = [
     { uid: "rule-item", type: "dynamic", dynamicUid: rule.uid },
     { uid: "script-item", type: "dynamic", dynamicUid: script.uid },
     { uid: "static-item", type: "static", staticUid: "link" },
@@ -363,7 +364,7 @@ it.each([false, true])("imports external definitions normally and rewrites only 
     { id: "static-key", key: "F3", type: "static", staticUid: "link" },
     { id: "rewrite-key", key: "F4", type: "dynamic", dynamicUid: rewrite.uid },
   ];
-  if (includeRewrites) await persistence.importSettings(JSON.stringify(data), false, true);
+  if (includeRewrites) await persistence.importSettings(JSON.stringify(data), { includeRewrites: true });
   else await persistence.importSettings(JSON.stringify(data));
   expect(state.settings.dynamicBookmarks).toEqual(includeRewrites ? [rule, script, rewrite] : [rule, script]);
   await persistence.saveSettings();
@@ -448,7 +449,7 @@ it("saves and exports shared CSS without bar layouts, stages imports, and remove
   expect((await loadConfig()).globalCss).toBeUndefined();
   await persistence.saveSettings();
   expect((await loadConfig()).panel.menus[0]!.cssClass).toBe(cssClass);
-  delete exported.globalCss; delete exported.menus[0]!.cssClass;
+  delete exported.globalCss; delete exported.menus![0]!.cssClass;
   await persistence.importSettings(JSON.stringify(exported));
   await persistence.saveSettings();
   expect((await loadConfig()).globalCss).toEqual(globalCss);
@@ -477,5 +478,110 @@ it("merges global CSS by key on import, replaces matching keys and preserves abs
   delete exported.globalCss;
   await persistence.importSettings(JSON.stringify(exported));
   expect(state.settings.globalCss).toEqual({ ...expected, shared: "" });
+  persistence.destroy();
+});
+
+
+it("imports matching record keys and retains local-only menus, rules, bookmarks, variables and shortcuts", async () => {
+  const { state, persistence } = await fixture();
+  state.addMenu({ uid: "local-bar", name: "Local bar", items: [] });
+  state.addUrlRule({ uid: "site", name: "Old site", patterns: ["old.example"] });
+  state.addUrlRule({ uid: "local-site", name: "Local site", patterns: ["local.example"] });
+  state.addGlobalCss("local");
+  state.setGlobalCss("local", ".local {}");
+  state.addGlobalCss("shared");
+  state.setGlobalCss("shared", ".old {}");
+  state.addBookmark("static", { uid: "local-link", name: "Local link", url: "https://local.example" });
+  state.addBookmark("temporary", { uid: "local-temp", name: "Local temporary" });
+  state.addBookmark("dynamic", { uid: "local-dynamic", name: "Local dynamic", type: "external" });
+  state.addNativeShortcut({ id: "local-key", key: "F1", type: "browserAction", browserAction: "back" });
+  const variable = state.addUserVariable();
+  state.editUserVariable(variable, { key: "local", value: "keep" });
+  const sharedVariable = state.addUserVariable();
+  state.editUserVariable(sharedVariable, { key: "shared", value: "old" });
+  const local = structuredClone(state.settings);
+  const file = {
+    version: 2, exportedAt: "2026-10-09T00:00:00.000Z",
+    menus: [{ uid: "bar", name: "Imported", items: [] }, { uid: "new-bar", items: [] }],
+    urlRules: [{ uid: "site", name: "New site", patterns: ["example.com"] }],
+    staticBookmarks: [{ uid: "link", name: "Imported link", url: "https://example.org" }],
+    temporaryBookmarks: [{ uid: "new-temp", name: "New temporary" }],
+    dynamicBookmarks: [{ uid: "new-dynamic", name: "New dynamic", type: "external", urlRuleUid: "site" }],
+    shortcuts: [{ slot: "1", type: "browserAction", browserAction: "reload" }],
+    nativeShortcuts: [{ id: "local-key", key: "F2", type: "browserAction", browserAction: "forward" }],
+    userVariables: { shared: "new", added: "new" },
+    globalCss: { shared: ".new {}" },
+  };
+  await persistence.importSettings(JSON.stringify(file));
+  expect(state.settings.menus.map(menu => menu.uid)).toEqual(["bar", "new-bar", "local-bar"]);
+  expect(state.settings.menus.find(menu => menu.uid === "bar")?.name).toBe("Imported");
+  expect(state.settings.menus.find(menu => menu.uid === "local-bar")).toEqual(local.menus[1]);
+  expect(state.settings.urlRules).toEqual([file.urlRules[0], local.urlRules[1]]);
+  expect(state.settings.staticBookmarks).toEqual([file.staticBookmarks[0], local.staticBookmarks[1]]);
+  expect(state.settings.temporaryBookmarks).toEqual([...file.temporaryBookmarks, ...local.temporaryBookmarks]);
+  expect(state.settings.dynamicBookmarks).toEqual([...file.dynamicBookmarks, ...local.dynamicBookmarks]);
+  expect(state.settings.shortcuts).toEqual(file.shortcuts);
+  expect(state.settings.nativeShortcuts).toEqual(file.nativeShortcuts);
+  expect(state.settings.userVariables).toEqual({ local: "keep", shared: "new", added: "new" });
+  expect(state.settings.globalCss).toEqual({ local: ".local {}", shared: ".new {}" });
+  await persistence.importSettings(JSON.stringify({ ...file, menus: [], urlRules: [], staticBookmarks: [], temporaryBookmarks: [], dynamicBookmarks: [], shortcuts: [], nativeShortcuts: [], userVariables: {}, globalCss: {} }));
+  expect(state.settings.menus).toHaveLength(3);
+  expect(state.settings.staticBookmarks).toHaveLength(2);
+  expect(state.settings.userVariables).toEqual({ local: "keep", shared: "new", added: "new" });
+  persistence.destroy();
+});
+
+it("exports only selected groups and leaves unselected drafts and invalid variable rows intact on import", async () => {
+  const { state, persistence } = await fixture();
+  state.addGlobalCss("theme");
+  state.setGlobalCss("theme", ".theme {}");
+  state.addUrlRule({ uid: "local-site", name: "Local site", patterns: ["local.example"] });
+  const variable = state.addUserVariable();
+  state.editUserVariable(variable, { key: "local", value: "keep" });
+  const onlyBookmarks = { menus: false, urlRules: false, bookmarks: true, shortcuts: false, bars: false };
+  const file = await persistence.exportSettings(onlyBookmarks);
+  expect(Object.keys(file).sort()).toEqual(["version", "exportedAt", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "userVariables"].sort());
+  const before = structuredClone(state.settings);
+  const invalid = state.addUserVariable();
+  const variableRows = structuredClone(state.userVariables);
+  await persistence.importSettings(JSON.stringify({ version: 2, exportedAt: file.exportedAt, menus: [{ uid: "bar", name: "Ignored", items: [] }], urlRules: [{ uid: "imported-site", name: "Imported", patterns: ["example.com"] }], staticBookmarks: [], shortcuts: [], userVariables: { local: "overwrite" } }), { menus: false, bookmarks: false, shortcuts: false });
+  expect(state.settings.menus).toEqual(before.menus);
+  expect(state.settings.globalCss).toEqual(before.globalCss);
+  expect(state.settings.staticBookmarks).toEqual(before.staticBookmarks);
+  expect(state.settings.shortcuts).toEqual(before.shortcuts);
+  expect(state.settings.userVariables).toEqual(before.userVariables);
+  expect(state.userVariables).toEqual(variableRows);
+  expect(state.userVariablesValid).toBe(false);
+  expect(state.settings.urlRules.map(rule => rule.uid)).toEqual(["imported-site", "local-site"]);
+  state.removeUserVariable(invalid);
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.staticBookmarks).toEqual(before.staticBookmarks);
+  expect(saved.panel.menus).toEqual(before.menus);
+  persistence.destroy();
+});
+
+it("merges bar-only imports by mode and menu uid without resetting other layouts or definitions", async () => {
+  const { state, persistence } = await fixture();
+  state.addMenu({ uid: "local-bar", items: [] });
+  await persistence.saveSettings();
+  await saveLayouts();
+  await saveBarLayout("local-bar", "native", defaultMenuPlacement(), { gapRatio: .4, extraGaps: {} }, defaultNativeBarSettings());
+  const before = await loadBarConfigurations();
+  const file = { version: 2, exportedAt: "2026-10-09T00:00:00.000Z", barConfigurations: { native: {}, browser: { bar: { ...before.browser.bar!, popupFontSize: 24 } } } };
+  await persistence.importSettings(JSON.stringify(file), { bars: true });
+  await persistence.saveSettings();
+  expect(await loadBarConfigurations()).toEqual({ native: before.native, browser: { ...before.browser, bar: file.barConfigurations.browser.bar } });
+  expect((await loadConfig()).panel.menus.map(menu => menu.uid)).toEqual(["bar", "local-bar"]);
+  persistence.destroy();
+});
+
+it("does not bind dynamic bookmarks to a conflicting local rule when URL rules are deselected", async () => {
+  const { state, persistence } = await fixture();
+  state.addUrlRule({ uid: "site", name: "Local", patterns: ["*"] });
+  const file = { version: 2, exportedAt: "2026-10-09T00:00:00.000Z", urlRules: [{ uid: "site", name: "Site", patterns: ["example.com"] }], dynamicBookmarks: [{ uid: "api", name: "API", type: "external", urlRuleUid: "site" }] };
+  await persistence.importSettings(JSON.stringify(file), { urlRules: false });
+  expect(state.settings.urlRules[0]?.patterns).toEqual(["*"]);
+  expect(state.settings.dynamicBookmarks[0]).not.toHaveProperty("urlRuleUid");
   persistence.destroy();
 });
