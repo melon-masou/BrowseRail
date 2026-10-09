@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 async function mount() {
-  await import("./index");
+  await import("./entry");
   await vi.advanceTimersByTimeAsync(60);
   const host = document.querySelector("browserail-menus");
   const shadow: unknown = shadows.mock.results[0]?.value;
@@ -57,7 +57,7 @@ it("keeps bars and buttons mounted while idle without communicating with the bac
   expect(document.querySelector("browserail-menus")).toBe(host);
   expect(shadow.querySelector("button")).toBe(button);
   // Re-executing the registered file must not refresh an already rendered document.
-  vi.resetModules(); await import("./index");
+  vi.resetModules(); await import("./entry");
   expect(mock.send).not.toHaveBeenCalled();
   expect(document.querySelector("browserail-menus")).toBe(host);
 });
@@ -101,7 +101,7 @@ it("restores the existing bars after page rendering removes them, without readin
 
 it("does not create an overlay or keep checking when no menus are available", async () => {
   mock.send.mockResolvedValue({ type: "state", menus: [] });
-  await import("./index");
+  await import("./entry");
   await vi.advanceTimersByTimeAsync(120_000);
   expect(document.querySelector("browserail-menus")).toBeNull();
   expect(mock.send).toHaveBeenCalledOnce();

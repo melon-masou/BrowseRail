@@ -68,7 +68,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "../content/src/bar/index.ts"),
+      entry: resolve(root, "../content/src/bar/entry.ts"),
       fileName: () => "content.js",
       formats: ["iife"],
       name: "BrowseRailContent",
@@ -83,7 +83,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "../content/src/bridge/index.ts"),
+      entry: resolve(root, "../content/src/bridge/entry.ts"),
       fileName: () => "external-updates.js",
       formats: ["iife"],
       name: "BrowseRailExternalUpdates",
