@@ -59,7 +59,10 @@ export function createCssEditor(closed: () => void) {
   select.addEventListener("change", () => { selectedKey = select.value; renderCollection(); }, options);
   add.addEventListener("click", () => {
     if (!collection) return;
-    nameInput.value = ""; nameInput.setCustomValidity(""); nameDialog.showModal(); nameInput.focus();
+    const styles = collection.read();
+    let number = 1;
+    while (Object.hasOwn(styles, `css_${number}`)) number++;
+    nameInput.value = `css_${number}`; nameInput.setCustomValidity(""); nameDialog.showModal(); nameInput.focus(); nameInput.select();
   }, options);
   nameInput.addEventListener("input", () => nameInput.setCustomValidity(""), options);
   nameForm.addEventListener("submit", event => {
