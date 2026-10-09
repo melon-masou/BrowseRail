@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi, type MockInstance } from "vitest";
 import type { Runtime } from "webextension-polyfill";
-import type { BrowserMenu, BrowserMenuState, MenuReply } from "./messages";
+import type { BrowserMenu, BrowserMenuState, MenuReply } from "@browserail/protocol/content";
 
 const mock = vi.hoisted(() => ({
   send: vi.fn<(message: unknown) => Promise<BrowserMenuState | MenuReply>>(),

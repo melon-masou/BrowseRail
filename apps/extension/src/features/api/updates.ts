@@ -8,7 +8,7 @@ import { hasWebsitePermission } from "../../lib/browser/site-permissions";
 import { createExternalUpdateHandler, type ExternalSource } from "./handler";
 import { createExternalInjection } from "../injection/bridge";
 import type { ExternalUpdateResult } from "@browserail/protocol/api";
-import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE } from "../../content/bridge/messages";
+import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RECEIVER_REFRESH, EXTERNAL_RELAY_MESSAGE } from "@browserail/protocol/content";
 
 function userscriptSource(sender: Runtime.MessageSender, token: string): ExternalSource | undefined {
   if (sender.id !== browser.runtime.id || typeof sender.tab?.id !== "number" || sender.frameId !== 0 || typeof sender.url !== "string") return;
@@ -78,8 +78,16 @@ export function initExternalUpdates(requestSync: () => void): void {
   const reconcile = (): void => {
     reconciliation = reconciliation.then(() => injection.reconcile()).catch(error => console.error("BrowseRail external updates:", error));
   };
+  // Bridges cannot read extension storage, so open pages are told to fetch the token again.
+  const refreshBridges = async (): Promise<void> => {
+    for (const tab of await browser.tabs.query({})) {
+      if (tab.id !== undefined) void browser.tabs.sendMessage(tab.id, { type: EXTERNAL_RECEIVER_REFRESH }, { frameId: 0 }).catch(() => {});
+    }
+  };
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) reconcile();
+    if (area !== "local" || !changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) return;
+    reconcile();
+    void refreshBridges().catch(error => console.error("BrowseRail external updates:", error));
   });
   browser.permissions.onAdded.addListener(reconcile);
   browser.permissions.onRemoved.addListener(reconcile);

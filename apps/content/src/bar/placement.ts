@@ -1,4 +1,4 @@
-import type { BrowserMenuPlacement } from "../../lib/config";
+import type { BrowserMenuPlacement } from "@browserail/protocol/content";
 
 export function placementPoint(placement: BrowserMenuPlacement, width: number, height: number, viewportWidth: number, viewportHeight: number) {
   const right = placement.anchor.endsWith("Right");

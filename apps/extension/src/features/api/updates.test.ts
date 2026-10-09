@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({
   internal: undefined as Listener | undefined,
   origins: [] as string[],
   failNextWrite: false,
+  storageChanged: undefined as ((changes: Record<string, unknown>, area: string) => void) | undefined,
+  sendToTab: vi.fn(async () => undefined),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
   storage: {
@@ -18,8 +20,9 @@ vi.mock("webextension-polyfill", () => ({ default: {
         Object.assign(api.stored, structuredClone(values));
       },
     },
-    onChanged: { addListener: vi.fn() },
+    onChanged: { addListener: (listener: (changes: Record<string, unknown>, area: string) => void) => { api.storageChanged = listener; } },
   },
+  tabs: { query: async () => [{ id: 7 }, { id: 8 }], sendMessage: api.sendToTab },
   runtime: {
     id: "browserail-test",
     onMessageExternal: { addListener: (listener: Listener) => { api.external = listener; } },
@@ -186,4 +189,14 @@ it("keeps the saved URL and records the storage error message when an update can
     source: provider.id, error: "storageFailed", errmsg: "Error: Storage quota exceeded",
   });
   expect(sync).not.toHaveBeenCalled();
+});
+
+it("asks bridges in open pages to fetch the token again when userscript access changes", async () => {
+  await start();
+  api.sendToTab.mockClear();
+  // Bridges cannot read extension storage, so a revoked or regenerated token reaches them only this way.
+  api.storageChanged!({ external_authorization: { newValue: {} } }, "local");
+  await vi.waitFor(() => expect(api.sendToTab).toHaveBeenCalledTimes(2));
+  expect(api.sendToTab).toHaveBeenCalledWith(7, { type: "externalReceiverRefresh" }, { frameId: 0 });
+  expect(api.sendToTab).toHaveBeenCalledWith(8, { type: "externalReceiverRefresh" }, { frameId: 0 });
 });

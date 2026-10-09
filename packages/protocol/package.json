@@ -7,7 +7,9 @@
     ".": "./src/index.ts",
     "./menu": "./src/menu.ts",
     "./native": "./src/native.ts",
-    "./api": "./src/api.ts"
+    "./api": "./src/api.ts",
+    "./content": "./src/content.ts",
+    "./userscript-client": "./src/userscript-client.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

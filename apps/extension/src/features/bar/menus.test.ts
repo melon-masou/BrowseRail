@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Runtime } from "webextension-polyfill";
 import { defaultBarSettings, defaultNativeBarSettings, type MenuView } from "@browserail/protocol";
-import type { MenuRequest, MenuReply } from "../../content/bar/messages";
+import type { MenuRequest, MenuReply } from "@browserail/protocol/content";
 
 const mocks = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,

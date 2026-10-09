@@ -1,7 +1,8 @@
 import browser from "webextension-polyfill";
-import { EXTERNAL_AUTHORIZATION_STORAGE_KEY } from "../../lib/config/external-authorization";
 import { MAX_EXTERNAL_MESSAGE_BYTES } from "@browserail/protocol/api";
-import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE, EXTERNAL_RUN_MESSAGE } from "./messages";
+import {
+  EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RECEIVER_REFRESH, EXTERNAL_RELAY_MESSAGE, EXTERNAL_RUN_MESSAGE, userscriptUpdateEvent,
+} from "@browserail/protocol/content";
 
 export function createExternalReceiver(target: Document) {
   let token = "";
@@ -18,7 +19,10 @@ export function createExternalReceiver(target: Document) {
 
   // External actions: the background resolves the event name; the detail is the action's JSON text.
   function run(message: unknown): Promise<boolean> | undefined {
-    if (!message || typeof message !== "object" || (message as { type?: unknown }).type !== EXTERNAL_RUN_MESSAGE) return undefined;
+    if (!message || typeof message !== "object") return undefined;
+    // The extension announces userscript access changes; the token lives only in extension storage.
+    if ((message as { type?: unknown }).type === EXTERNAL_RECEIVER_REFRESH) { void refresh(); return undefined; }
+    if ((message as { type?: unknown }).type !== EXTERNAL_RUN_MESSAGE) return undefined;
     const { eventName, detail } = message as { eventName?: unknown; detail?: unknown };
     if (!token || typeof eventName !== "string" || !eventName || (detail !== null && typeof detail !== "string")) return Promise.resolve(false);
     target.dispatchEvent(new CustomEvent(eventName, { detail }));
@@ -27,9 +31,9 @@ export function createExternalReceiver(target: Document) {
 
   function setToken(next: string): void {
     if (next === token) return;
-    if (token) target.removeEventListener(`browserail:${token}`, receive);
+    if (token) target.removeEventListener(userscriptUpdateEvent(token), receive);
     token = next;
-    if (token) target.addEventListener(`browserail:${token}`, receive);
+    if (token) target.addEventListener(userscriptUpdateEvent(token), receive);
   }
 
   async function refresh(): Promise<void> {
@@ -44,10 +48,6 @@ export function createExternalReceiver(target: Document) {
     } catch { /* Extension unload or revoked website access. */ }
   }
 
-  const changed = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {
-    if (area === "local" && changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) void refresh();
-  };
-  browser.storage.onChanged.addListener(changed);
   browser.runtime.onMessage.addListener(run);
   return {
     refresh,
@@ -55,7 +55,6 @@ export function createExternalReceiver(target: Document) {
       destroyed = true;
       ++revision;
       setToken("");
-      browser.storage.onChanged.removeListener(changed);
       browser.runtime.onMessage.removeListener(run);
     },
   };

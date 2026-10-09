@@ -2,9 +2,12 @@ import browser, { type Runtime } from "webextension-polyfill";
 import { isBarSettings, isMenuSpacing, matchesUrlRule, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
   defaultMenuPlacement, loadConfig, loadDisplayMode, loadWidgetEnabled, loadBrowserEditing, loadBrowserPlacements, loadBrowserCollapsed, saveBarLayout, toggleBrowserCollapsed, menuUrlRules,
-  type BrowserMenuPlacement, type ExtensionConfig,
+  type ExtensionConfig,
 } from "../../lib/config";
-import type { BrowserMenu, BrowserMenuState, MenuRequest, MenuCommandResult } from "../../content/bar/messages";
+import {
+  BAR_COMMAND_MESSAGE, BAR_SNAPSHOT_MESSAGE,
+  type BrowserMenu, type BrowserMenuPlacement, type BrowserMenuState, type MenuRequest, type MenuCommandResult,
+} from "@browserail/protocol/content";
 import { executeMenuAction } from "../actions/execute-menu-action";
 import { captureTemporaryUrl } from "../capture/temporary";
 import { hasWebsitePermission } from "../../lib/browser/site-permissions";
@@ -51,14 +54,14 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
       return saveConfirmed(message, sender).then(() => ({ saved: true }), error => ({ error: String(error) }));
     }
     const type = (message as { type?: string } | null)?.type;
-    if (type !== "browserMenusSnapshot" && type !== "browserMenuCommand") return undefined;
+    if (type !== BAR_SNAPSHOT_MESSAGE && type !== BAR_COMMAND_MESSAGE) return undefined;
     if (sender.frameId !== 0 || sender.tab?.id === undefined) {
-      return Promise.resolve(type === "browserMenusSnapshot" ? { type: "state", menus: [] } : { error: "Invalid menu source" });
+      return Promise.resolve(type === BAR_SNAPSHOT_MESSAGE ? { type: "state", menus: [] } : { error: "Invalid menu source" });
     }
     const tabId = sender.tab.id;
     return (async () => {
       await changed();
-      if (type === "browserMenusSnapshot") return { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState;
+      if (type === BAR_SNAPSHOT_MESSAGE) return { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState;
       const result = await handle(tabId, (message as { command: MenuRequest }).command);
       await changed();
       return { ...(result !== undefined ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState };

@@ -1,5 +1,6 @@
 import { normalizeItemIcon, AUTO_FONT_SIZE, BROWSER_ACTION_KINDS, DEFAULT_MENU_COLOR, isAutoFontSize, customBookmarkReference, isShortcutActionType, type ShortcutAction } from "@browserail/protocol";
 import type { JsonValue } from "@browserail/protocol/api";
+import type { BrowserMenuPlacement } from "@browserail/protocol/content";
 import { normalizeUserVariables } from "./user-variables";
 export { normalizeUserVariables } from "./user-variables";
 import { normalizeStaticBookmarkTags } from "./static-bookmark-tags";
@@ -583,14 +584,6 @@ export async function loadBrowserEditing(): Promise<boolean> {
 
 export async function saveBrowserEditing(editing: boolean): Promise<void> {
   await browser.storage.local.set({ [BROWSER_EDITING_STORAGE_KEY]: editing });
-}
-
-export interface BrowserMenuPlacement {
-  anchor: MenuAnchor;
-  offsetX: number;
-  offsetY: number;
-  itemWidth: number;
-  itemHeight: number;
 }
 
 export async function loadDisplayMode(): Promise<DisplayMode> {

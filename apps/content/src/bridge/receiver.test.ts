@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createExternalReceiver } from "./receiver";
-import { sendUserscriptUpdate } from "./client";
+import { sendUserscriptUpdate } from "@browserail/protocol/userscript-client";
 
 const api = vi.hoisted(() => ({
   send: vi.fn<(message: unknown) => Promise<unknown>>(),
@@ -13,7 +13,6 @@ vi.mock("webextension-polyfill", () => ({ default: {
     sendMessage: api.send,
     onMessage: { addListener: (listener: (message: unknown) => unknown) => api.listeners.add(listener), removeListener: (listener: (message: unknown) => unknown) => api.listeners.delete(listener) },
   },
-  storage: { onChanged: { addListener() {}, removeListener() {} } },
 } }));
 let receiver: ReturnType<typeof createExternalReceiver> | undefined;
 const token = "a".repeat(16);
@@ -69,8 +68,10 @@ it("uses only the configured token channel and stops after revocation or destruc
   expect(relays()).toHaveLength(0);
   sendUserscriptUpdate(token, update);
   expect(relays()).toHaveLength(1);
+  // The extension announces revoked userscript access; the bridge fetches the token again.
   currentToken = "";
-  await receiver.refresh();
+  for (const listener of api.listeners) listener({ type: "externalReceiverRefresh" });
+  await vi.advanceTimersByTimeAsync(0);
   sendUserscriptUpdate(token, update);
   expect(relays()).toHaveLength(1);
   currentToken = token;

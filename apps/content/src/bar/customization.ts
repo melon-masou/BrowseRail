@@ -5,7 +5,7 @@ import {
   layoutCustomization, type ToolbarSide,
 } from "@browserail/menu-ui";
 import { barSettingsFromView, type BarSettings, type MenuSpacing } from "@browserail/protocol";
-import type { BrowserMenuPlacement } from "../../lib/config";
+import type { BrowserMenuPlacement } from "@browserail/protocol/content";
 import { placementAtPoint, placementPoint } from "./placement";
 
 export function mountBrowserCustomization(

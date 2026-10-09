@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import { defaultBarSettings, defaultNativeBarSettings, normalizeBarConfigurations, normalizeMenuSpacing, isBarSettings, isNativeBarSettings, isMenuSpacing, type BarConfigurations, type BarConfiguration, type NativeBarConfiguration, type BarSettings, type NativeBarSettings, type MenuPlacement, type MenuSpacing } from "@browserail/protocol";
-import { defaultMenuPlacement, normalizeBrowserPlacement, type BrowserMenuPlacement, type DisplayMode } from "./index";
+import type { BrowserMenuPlacement } from "@browserail/protocol/content";
+import { defaultMenuPlacement, normalizeBrowserPlacement, type DisplayMode } from "./index";
 import { loadConfig, loadBookmarkRootPrefix } from "./index";
 import { menuEntryIdentity } from "../bookmarks/identity";
 import { storeMenuSpacing } from "../bookmarks/spacing";

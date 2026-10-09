@@ -1,6 +1,6 @@
 import { t } from "@browserail/i18n";
 import { mountBar, resolveFontFamily, barSurfaceDimensions, barToggleOffset, type MenuActions, type PopupSession } from "@browserail/menu-ui";
-import type { BrowserMenu, MenuRequest, MenuCommandResult } from "./messages";
+import type { BrowserMenu, MenuRequest, MenuCommandResult } from "@browserail/protocol/content";
 import { openBrowserPopup } from "./popup";
 import { mountBrowserCustomization } from "./customization";
 import { placementPoint } from "./placement";

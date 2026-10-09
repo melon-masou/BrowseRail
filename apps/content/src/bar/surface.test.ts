@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mountBrowserMenu, type MenuCommand } from "./surface";
-import type { BrowserMenu, TemporaryConfirmationResult } from "./messages";
+import type { BrowserMenu, TemporaryConfirmationResult } from "@browserail/protocol/content";
 
 let mounted: ReturnType<typeof mountBrowserMenu> | undefined;
 beforeEach(() => {

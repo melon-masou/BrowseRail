@@ -1,5 +1,5 @@
 import browser, { type Runtime } from "webextension-polyfill";
-import type { TemporaryConfirmationResult } from "../../content/bar/messages";
+import type { TemporaryConfirmationResult } from "@browserail/protocol/content";
 
 interface ConfirmationSource {
   sourceTabId: number;

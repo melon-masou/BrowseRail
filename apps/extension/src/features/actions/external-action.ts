@@ -3,7 +3,7 @@ import { t } from "@browserail/i18n";
 import { ALL_URLS_RULE_UID, DEFAULT_EXTERNAL_EVENT_NAME, matchesUrlRule, type ExternalAction, type UrlRule } from "@browserail/protocol";
 import { loadExternalAuthorization } from "../../lib/config/external-authorization-store";
 import { hasWebsitePermission } from "../../lib/browser/site-permissions";
-import { EXTERNAL_RUN_MESSAGE } from "../../content/bridge/messages";
+import { EXTERNAL_RUN_MESSAGE } from "@browserail/protocol/content";
 
 /**
  * Runs an external action against the active tab. Only sending is checked; the extension's reply
