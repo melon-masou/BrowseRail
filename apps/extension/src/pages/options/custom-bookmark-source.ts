@@ -15,6 +15,7 @@ import {
   type DynamicBookmark,
   type StaticBookmark,
   type TemporaryBookmark,
+  type ExternalAction,
   type StoredMenuItem,
   type StoredShortcut,
   type StoredNativeShortcut,
@@ -29,12 +30,14 @@ export function createCustomBookmarkSource(state: OptionsState) {
   let dynamicValuesCache: DynamicValuesMap = {};
   function definitionsFor(
     type: CustomBookmarkType,
-  ): ReadonlyData<Array<StaticBookmark | TemporaryBookmark | DynamicBookmark>> {
+  ): ReadonlyData<Array<StaticBookmark | TemporaryBookmark | DynamicBookmark | ExternalAction>> {
     return type === "static"
       ? state.settings.staticBookmarks
       : type === "temporary"
         ? state.settings.temporaryBookmarks
-        : state.settings.dynamicBookmarks;
+        : type === "externalAction"
+          ? state.settings.externalActions
+          : state.settings.dynamicBookmarks;
   }
 
   function customTargetName(
@@ -53,11 +56,13 @@ export function createCustomBookmarkSource(state: OptionsState) {
       ? state.settings.staticBookmarks.find((entry) => entry.uid === uid)?.url
       : type === "temporary"
         ? temporaryValuesCache[uid]
-        : dynamicValuesCache[uid]?.url;
+        : type === "dynamic"
+          ? dynamicValuesCache[uid]?.url
+          : undefined;
   }
 
   function customTargetIcon(type: CustomBookmarkType): string {
-    return type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : "🔖";
+    return type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : type === "externalAction" ? "🔌" : "🔖";
   }
 
   async function refreshTemporaryValues(): Promise<void> {

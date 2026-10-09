@@ -15,8 +15,8 @@ function bookmarkChoices(type: CustomBookmarkType, definitions: readonly CustomB
   return definitions.map(bookmark => ({
     id: bookmark.uid,
     label: bookmark.name || t(`${type}.defaultName`),
-    icon: type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : "🔖",
-    ...(type !== "dynamic" ? { meta: bookmark.url || t("dynamic.noValueShort") } : {}),
+    icon: type === "temporary" ? "📌" : type === "dynamic" ? "🜂" : type === "externalAction" ? "🔌" : "🔖",
+    ...(type === "static" || type === "temporary" ? { meta: bookmark.url || t("dynamic.noValueShort") } : {}),
   }));
 }
 

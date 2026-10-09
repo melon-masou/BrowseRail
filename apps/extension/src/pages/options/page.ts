@@ -9,6 +9,7 @@ import {
 } from "@browserail/i18n";
 import { isExportedSettingsData } from "@browserail/protocol";
 import { chooseTransferOptions } from "./components/transfer-options";
+import { externalActionSaveError } from "./components/external-actions";
 import { selectTransferData } from "./transfer";
 import { createOptionsState } from "./state";
 import { loadOptions, createPersistence } from "./persistence";
@@ -57,8 +58,10 @@ export async function mountOptionsPage() {
   const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".menus-card-tab"));
   let activePanel = "start-panel";
   let saving = false;
-  const showStatus = (message: string) => {
-    if (!scope.signal.aborted) status.value = message;
+  const showStatus = (message: string, error = false) => {
+    if (scope.signal.aborted) return;
+    status.value = message;
+    status.dataset.state = error ? "error" : "";
   };
   const flash = (message: string, delay: number) => {
     showStatus(message);
@@ -156,9 +159,19 @@ export async function mountOptionsPage() {
   function validateSettings(): boolean {
     const unbound = state.settings.dynamicBookmarks.find((db) =>
       !state.settings.urlRules.some((rule) => rule.uid === db.urlRuleUid));
-    if (!unbound) return true;
-    showStatus(t("dynamic.saveNeedsRule", { name: unbound.name }));
-    return false;
+    if (unbound) {
+      showStatus(t("dynamic.saveNeedsRule", { name: unbound.name }), true);
+      return false;
+    }
+    const ruleUids = new Set(state.settings.urlRules.map(rule => rule.uid));
+    for (const action of state.settings.externalActions) {
+      const error = externalActionSaveError(action, ruleUids);
+      if (error) {
+        showStatus(error, true);
+        return false;
+      }
+    }
+    return true;
   }
   async function saveCurrent(): Promise<void> {
     if (saving || activePanel === "start-panel") return;
@@ -175,7 +188,7 @@ export async function mountOptionsPage() {
       if (instancePanel) await instance.refresh();
       flash(t("status.saved"), 1500);
     } catch (error) {
-      showStatus(t("status.saveFailed", { error: String(error) }));
+      showStatus(t("status.saveFailed", { error: String(error) }), true);
     } finally {
       saving = false;
       if (!scope.signal.aborted) updateSave();
@@ -213,7 +226,7 @@ export async function mountOptionsPage() {
         flash(t("cloud.downloaded"), 2000);
       }
     } catch (error) {
-      showStatus(t("cloud.failed", { error: String(error) }));
+      showStatus(t("cloud.failed", { error: String(error) }), true);
     } finally {
       saving = false;
       if (status.value === t("cloud.downloading") || status.value === t("cloud.uploading")) showStatus("");
@@ -313,7 +326,7 @@ export async function mountOptionsPage() {
           await persistence.importSettings(text, options);
           flash(t("import.savedOk"), 3000);
         })
-        .catch((error) => showStatus(t("import.failed", { error: String(error) })));
+        .catch((error) => showStatus(t("import.failed", { error: String(error) }), true));
     },
     { signal: scope.signal },
   );

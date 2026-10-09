@@ -497,6 +497,7 @@ export async function resolveMenuItems(
     temporaryNotes?: Record<string, string>;
     staticBookmarks?: Array<{ uid: string; name: string; tags?: string[] }>;
     temporaryBookmarks?: Array<{ uid: string; name: string }>;
+    externalActions?: Array<{ uid: string; name: string }>;
     shortcutsEnabled?: boolean;
     // False when the browser exposes no bookmarks API: items backed by the
     // bookmark tree are omitted from the layout but stay in the stored config.
@@ -507,8 +508,9 @@ export async function resolveMenuItems(
   const dynamicResolve = context.dynamicResolve ?? (() => undefined);
   const staticByUid = new Map(context.staticBookmarks?.map(entry => [entry.uid, entry]));
   const temporaryByUid = new Map(context.temporaryBookmarks?.map(entry => [entry.uid, entry]));
+  const externalActionByUid = new Map(context.externalActions?.map(entry => [entry.uid, entry]));
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, staticTag, temporaryUid, expandOnHover, includeFolders, browserAction }): Promise<LayoutEntry[]> => {
+    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, staticTag, temporaryUid, externalActionUid, expandOnHover, includeFolders, browserAction }): Promise<LayoutEntry[]> => {
       if (type === "menuFold") {
         const entry: LayoutEntry = {
           kind: "menuFold",
@@ -576,6 +578,14 @@ export async function resolveMenuItems(
         if (!definition) return [];
         return [{ kind: "bookmark", uid: actionUid("static", menuItemIdentity(uid)),
           label: rename || definition.name || t("static.defaultName"), ...(color || menuColor ? { color: (color || menuColor) as string } : {}) }];
+      }
+
+      if (type === "externalAction") {
+        const definition = externalActionUid ? externalActionByUid.get(externalActionUid) : undefined;
+        if (!definition) return [];
+        // An action button: it has no URL, so the bar offers no new-tab alternative.
+        return [{ kind: "browserAction", uid: actionUid("externalAction", menuItemIdentity(uid)),
+          label: rename || definition.name || t("externalAction.defaultName"), ...(color || menuColor ? { color: (color || menuColor) as string } : {}) }];
       }
 
       if (type === "temporary") {

@@ -31,6 +31,7 @@ function initialSettings(): SettingsDraft {
     staticBookmarks: [{ uid: "static", name: "Static", url: "https://example.com" }],
     userVariables: {},
     temporaryBookmarks: [{ uid: "temporary", name: "Temporary" }],
+    externalActions: [],
     dynamicBookmarks: [
       { uid: "dynamic", name: "Dynamic", type: "external", urlRuleUid: "removed-rule" },
     ],

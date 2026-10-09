@@ -54,6 +54,7 @@ export function mountShortcutsTab(
   const shortcutPickDynamicBtn = element<HTMLButtonElement>("shortcut-pick-dynamic-btn");
   const shortcutPickStaticBtn = element<HTMLButtonElement>("shortcut-pick-static-btn");
   const shortcutPickTemporaryBtn = element<HTMLButtonElement>("shortcut-pick-temporary-btn");
+  const shortcutPickExternalActionBtn = element<HTMLButtonElement>("shortcut-pick-external-action-btn");
   const shortcutPickActionBtn = element<HTMLButtonElement>("shortcut-pick-action-btn");
   let activeRecordingKeyId: string | null = null;
   let activeShortcutSettingsTarget: ReadonlyData<StoredShortcut | StoredNativeShortcut> | null =
@@ -133,6 +134,7 @@ export function mountShortcutsTab(
     shortcutPickDynamicBtn.hidden = state.settings.dynamicBookmarks.length === 0;
     shortcutPickStaticBtn.hidden = state.settings.staticBookmarks.length === 0;
     shortcutPickTemporaryBtn.hidden = state.settings.temporaryBookmarks.length === 0;
+    shortcutPickExternalActionBtn.hidden = state.settings.externalActions.length === 0;
 
     positionPopover(shortcutPickPopover, anchorEl.getBoundingClientRect(), 180, "right");
   }
@@ -304,6 +306,7 @@ export function mountShortcutsTab(
       [shortcutPickStaticBtn, "static"],
       [shortcutPickTemporaryBtn, "temporary"],
       [shortcutPickDynamicBtn, "dynamic"],
+      [shortcutPickExternalActionBtn, "externalAction"],
     ] as const) {
       button.addEventListener(
         "click",
@@ -466,7 +469,7 @@ export function mountShortcutsTab(
 
       // Actions left→right: delete, settings (only when a target is set), change (always rightmost).
       actionsCol.append(deleteBtn);
-      if (hasTarget && !isShortcutActionType(item.type)) {
+      if (hasTarget && !isShortcutActionType(item.type) && item.type !== "externalAction") {
         const settingsBtn = document.createElement("button");
         settingsBtn.type = "button";
         settingsBtn.className = "item-settings-btn";
@@ -594,7 +597,7 @@ export function mountShortcutsTab(
 
         // Actions left→right: clear, settings, change.
         actionsCol.append(clearBtn);
-        if (!isShortcutActionType(target.type)) actionsCol.append(settingsBtn);
+        if (!isShortcutActionType(target.type) && target.type !== "externalAction") actionsCol.append(settingsBtn);
       } else {
         const emptyLabel = document.createElement("span");
         emptyLabel.className = "shortcut-empty-label";

@@ -3,9 +3,16 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createExternalReceiver } from "./receiver";
 import { sendUserscriptUpdate } from "./client";
 
-const api = vi.hoisted(() => ({ send: vi.fn<(message: unknown) => Promise<unknown>>() }));
+const api = vi.hoisted(() => ({
+  send: vi.fn<(message: unknown) => Promise<unknown>>(),
+  listeners: new Set<(message: unknown) => unknown>(),
+}));
 vi.mock("webextension-polyfill", () => ({ default: {
-  runtime: { id: "browserail-test", sendMessage: api.send },
+  runtime: {
+    id: "browserail-test",
+    sendMessage: api.send,
+    onMessage: { addListener: (listener: (message: unknown) => unknown) => api.listeners.add(listener), removeListener: (listener: (message: unknown) => unknown) => api.listeners.delete(listener) },
+  },
   storage: { onChanged: { addListener() {}, removeListener() {} } },
 } }));
 let receiver: ReturnType<typeof createExternalReceiver> | undefined;
@@ -71,4 +78,27 @@ it("uses only the configured token channel and stops after revocation or destruc
   receiver.destroy();
   sendUserscriptUpdate(token, update);
   expect(relays()).toHaveLength(1);
+});
+
+it("dispatches external action events only while the receiver holds a token", async () => {
+  api.send.mockImplementation(async message => (message as { type?: string }).type === "externalReceiverConfig" ? { token } : { ok: true });
+  receiver = createExternalReceiver(document);
+  const run = (message: unknown) => Promise.all([...api.listeners].map(listener => listener(message)));
+  const action = { type: "externalRunAction", eventName: `browserail:run:${token}`, detail: '{"command":"translate"}' };
+  const details: unknown[] = [];
+  const observe = (event: Event) => details.push((event as CustomEvent<unknown>).detail);
+  document.addEventListener(action.eventName, observe);
+  try {
+    // Before the token arrives (or after revocation) the page sees nothing and the background is told so.
+    expect(await run(action)).toEqual([false]);
+    await receiver.refresh();
+    expect(await run(action)).toEqual([true]);
+    // The detail is the action's JSON text as-is, so userscripts in any world can read it.
+    expect(details).toEqual(['{"command":"translate"}']);
+    receiver.destroy();
+    receiver = undefined;
+    expect(api.listeners.size).toBe(0);
+  } finally {
+    document.removeEventListener(action.eventName, observe);
+  }
 });

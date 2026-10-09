@@ -656,7 +656,7 @@ async function syncOnce(): Promise<void> {
         const settings = mode === "native" ? resolveBarConfiguration(barConfigs, "native", menu.uid, index) : resolveBarConfiguration(barConfigs, "browser", menu.uid, index);
         const items = await resolveMenuItems(menu.items, menu.color, settings.expandDirection, rootPrefix, {
           tree: bookmarkTree as BookmarkNode[],
-          dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks,
+          dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks, externalActions: config.externalActions,
           bookmarksAvailable, shortcutsEnabled,
         });
         return { uid: menu.uid, items: await resolveItemIcons(items), ...barSettingsFromView(settings), ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),

@@ -9,6 +9,7 @@ import {
   normalizeBarConfigurations,
   type ExportedSettingsData,
   type ExportedMenuItem,
+  ALL_URLS_RULE_UID,
 } from "@browserail/protocol";
 import {
   loadBookmarkRootPrefix,
@@ -26,6 +27,7 @@ import {
   normalizeDynamicBookmarks,
   normalizeStaticBookmarks,
   normalizeTemporaryBookmarks,
+  normalizeExternalActions,
   normalizeUserVariables,
   normalizeGlobalCss,
   normalizeMenu,
@@ -101,6 +103,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
+      externalActions,
       userVariables,
       shortcuts,
       nativeShortcuts,
@@ -129,6 +132,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
+      externalActions,
       userVariables,
       shortcuts,
       nativeShortcuts,
@@ -166,6 +170,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
+      externalActions,
       userVariables,
       shortcuts,
       nativeShortcuts,
@@ -192,6 +197,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       dynamicBookmarks,
       staticBookmarks,
       temporaryBookmarks,
+      externalActions,
       shortcuts,
       nativeShortcuts,
       menus: menus.map((menu) => ({
@@ -248,7 +254,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             } satisfies ExportedMenuItem;
           }
 
-          if (item.type === "temporary" || item.type === "static") {
+          if (item.type === "temporary" || item.type === "static" || item.type === "externalAction") {
             return {
               uid: item.uid,
               ...(item.cssClass ? { cssClass: item.cssClass } : {}),
@@ -256,6 +262,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
               type: item.type,
               ...(item.staticUid ? { staticUid: item.staticUid } : {}),
               ...(item.temporaryUid ? { temporaryUid: item.temporaryUid } : {}),
+              ...(item.externalActionUid ? { externalActionUid: item.externalActionUid } : {}),
               ...(item.rename ? { rename: item.rename } : {}),
               ...(item.color ? { color: item.color } : {}),
             } satisfies ExportedMenuItem;
@@ -353,7 +360,8 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
           type === "static" ||
           type === "staticTag" ||
           type === "flattenStaticTag" ||
-          type === "temporary"
+          type === "temporary" ||
+          type === "externalAction"
         ) {
           const action = normalizeStoredMenuItem(itemRecord);
           if (action) items.push(action);
@@ -451,6 +459,11 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         }];
       });
       imported.dynamicBookmarks = mergeByKey(imported.dynamicBookmarks, incoming, bookmark => bookmark.uid);
+      const actions = normalizeExternalActions(parsed.externalActions).map(({ urlRuleUid, ...action }) => ({
+        ...action,
+        ...(urlRuleUid && (urlRuleUid === ALL_URLS_RULE_UID || fileRuleUids.has(urlRuleUid)) ? { urlRuleUid } : {}),
+      }));
+      imported.externalActions = mergeByKey(imported.externalActions, actions, action => action.uid);
     }
     let incomingShortcuts: StoredShortcut[] = [];
     let incomingNativeShortcuts: StoredNativeShortcut[] = [];
@@ -477,6 +490,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             ...(typeof record.temporaryUid === "string"
               ? { temporaryUid: record.temporaryUid }
               : {}),
+            ...(typeof record.externalActionUid === "string" ? { externalActionUid: record.externalActionUid } : {}),
             ...(record.tabMode === "newTab" || record.tabMode === "replace"
               ? { tabMode: record.tabMode }
               : {}),
@@ -508,6 +522,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
             ...(typeof record.temporaryUid === "string"
               ? { temporaryUid: record.temporaryUid }
               : {}),
+            ...(typeof record.externalActionUid === "string" ? { externalActionUid: record.externalActionUid } : {}),
             ...(record.tabMode === "newTab" || record.tabMode === "replace"
               ? { tabMode: record.tabMode }
               : {}),

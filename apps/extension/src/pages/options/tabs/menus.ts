@@ -112,6 +112,7 @@ export function mountMenusTab(
   const addPopoverDynamicBtn = element<HTMLButtonElement>("add-popover-dynamic-btn");
   const addPopoverStaticBtn = element<HTMLButtonElement>("add-popover-static-btn");
   const addPopoverTemporaryBtn = element<HTMLButtonElement>("add-popover-temporary-btn");
+  const addPopoverExternalActionBtn = element<HTMLButtonElement>("add-popover-external-action-btn");
   const menuSettingUrlRulesList = element<HTMLDivElement>("menu-setting-url-rules-list");
   let activeMenuSettingsIndex = -1;
   let activeItemSettings: { menuIndex: number; itemIndex: number } | null = null;
@@ -498,8 +499,8 @@ export function mountMenusTab(
       return;
     }
 
-    if (item.type === "temporary" || item.type === "static") {
-      itemSettingsTitle.textContent = `${source.icon(item.type === "static" ? "static" : "temporary")} ${item.rename || source.name(item)}`;
+    if (item.type === "temporary" || item.type === "static" || item.type === "externalAction") {
+      itemSettingsTitle.textContent = `${source.icon(item.type === "static" ? "static" : item.type === "temporary" ? "temporary" : "externalAction")} ${item.rename || source.name(item)}`;
       itemSettingRename.value = item.rename ?? "";
       itemSettingsFolderControls.style.display = "none";
       positionPopover(itemSettingsPopover, rect, 250);
@@ -651,6 +652,7 @@ export function mountMenusTab(
       [addPopoverStaticBtn, "static"],
       [addPopoverTemporaryBtn, "temporary"],
       [addPopoverDynamicBtn, "dynamic"],
+      [addPopoverExternalActionBtn, "externalAction"],
     ] as const) {
       button.addEventListener(
         "click",
@@ -959,7 +961,9 @@ export function mountMenusTab(
                     ? "menu.addStatic"
                     : item.type === "temporary"
                       ? "menu.addTemporary"
-                      : "section.dynamic",
+                      : item.type === "externalAction"
+                        ? "section.externalActions"
+                        : "section.dynamic",
                 );
               }
               label.appendChild(dynamicTag);

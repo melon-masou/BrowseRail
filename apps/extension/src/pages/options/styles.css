@@ -438,6 +438,10 @@ output {
   color: #237a45;
 }
 
+output[data-state="error"] {
+  color: #a52a2a;
+}
+
 .state-card {
   display: flex;
   align-items: center;
@@ -2285,6 +2289,18 @@ output {
   .picker-actions { flex: 1 1 auto; }
   .picker-options { flex: 1 1 auto; align-items: stretch; }
   .picker-flatten-check { white-space: nowrap; flex-shrink: 0; }
+}
+
+.external-action-data {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.external-action-data[aria-invalid="true"] {
+  border-color: #dc2626;
 }
 
 .picker-import-tag {

@@ -553,7 +553,7 @@ it("exports only selected groups and leaves unselected drafts and invalid variab
   state.editUserVariable(variable, { key: "local", value: "keep" });
   const onlyBookmarks = { menus: false, urlRules: false, bookmarks: true, shortcuts: false, bars: false };
   const file = await persistence.exportSettings(onlyBookmarks);
-  expect(Object.keys(file).sort()).toEqual(["version", "exportedAt", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "userVariables"].sort());
+  expect(Object.keys(file).sort()).toEqual(["version", "exportedAt", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "userVariables"].sort());
   const before = structuredClone(state.settings);
   const invalid = state.addUserVariable();
   const variableRows = structuredClone(state.userVariables);

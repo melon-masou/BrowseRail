@@ -150,7 +150,7 @@
                 <button id="configure-external-extensions" type="button" class="action-btn" data-i18n="externalAuthorization.extensions">Extension allowlist</button>
               </div>
               <div class="instance-access-row">
-                <span id="external-userscript-label" data-i18n="externalAuthorization.userscript">Allow userscripts to update data</span>
+                <span id="external-userscript-label" data-i18n="externalAuthorization.userscript">Allow interaction with userscripts</span>
                 <label class="switch-toggle">
                   <input type="checkbox" id="external-userscript-enabled" aria-labelledby="external-userscript-label" />
                   <span class="switch-slider"></span>
@@ -207,6 +207,7 @@
                 <button type="button" id="static-tab" class="shortcuts-subtab-btn is-active" role="tab" aria-selected="true" aria-controls="static-panel" data-custom-bookmark-panel="static-panel" data-i18n="section.static">Static bookmarks</button>
                 <button type="button" id="temporary-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="temporary-panel" data-custom-bookmark-panel="temporary-panel" data-i18n="section.temporary">Temporary bookmarks</button>
                 <button type="button" id="dynamic-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="dynamic-panel" data-custom-bookmark-panel="dynamic-panel" data-i18n="section.dynamic">Dynamic bookmarks</button>
+                <button type="button" id="external-actions-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="external-actions-panel" data-custom-bookmark-panel="external-actions-panel" data-i18n="section.externalActions">External actions</button>
                 <button type="button" id="variables-tab" class="shortcuts-subtab-btn" role="tab" aria-selected="false" aria-controls="variables-panel" data-custom-bookmark-panel="variables-panel" data-i18n="variables.tab">Variables</button>
               </div>
               <section id="static-panel" role="tabpanel" aria-labelledby="static-tab">
@@ -232,6 +233,13 @@
                   <button id="add-dynamic-btn" class="menu-action-btn add-dynamic-btn add-toolbar-action" type="button" data-i18n="dynamic.add">+ Add</button>
                 </div>
                 <div id="dynamic-list" class="dynamic-list"></div>
+              </section>
+              <section id="external-actions-panel" role="tabpanel" aria-labelledby="external-actions-tab" hidden>
+                <div class="dynamic-toolbar">
+                  <span class="url-rules-hint" data-i18n="externalAction.hint">Send a message to an extension, or dispatch an event on pages that match the URL rule.</span>
+                  <button id="add-external-action-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="customBookmarks.add">+ Add</button>
+                </div>
+                <div id="external-action-list" class="dynamic-list"></div>
               </section>
               <section id="variables-panel" role="tabpanel" aria-labelledby="variables-tab" hidden>
                 <section class="variables-section">
@@ -502,6 +510,10 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
           <span class="add-popover-icon">🜂</span>
           <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
         </button>
+        <button type="button" id="shortcut-pick-external-action-btn" class="add-popover-item">
+          <span class="add-popover-icon">🔌</span>
+          <span class="add-popover-text" data-i18n="menu.addExternalAction">External action</span>
+        </button>
         <button type="button" id="shortcut-pick-action-btn" class="add-popover-item">
           <span class="add-popover-icon">⚡</span>
           <span class="add-popover-text" data-i18n="menu.action">Action</span>
@@ -525,6 +537,10 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
         <button type="button" id="add-popover-dynamic-btn" class="add-popover-item">
           <span class="add-popover-icon">🜂</span>
           <span class="add-popover-text" data-i18n="menu.addDynamic">Dynamic bookmark</span>
+        </button>
+        <button type="button" id="add-popover-external-action-btn" class="add-popover-item">
+          <span class="add-popover-icon">🔌</span>
+          <span class="add-popover-text" data-i18n="menu.addExternalAction">External action</span>
         </button>
 
         <button type="button" id="add-popover-action-btn" class="add-popover-item">

@@ -14,7 +14,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Menu Items and Options Enum Typings
-export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "staticTag", "flattenStaticTag", "menuFold", "menusToggle", "browserAction", "shortcutsToggle", "static", "dynamic", "temporary"] as const;
+export const MENU_ITEM_TYPES = ["bookmark", "folder", "flattenFolder", "staticTag", "flattenStaticTag", "menuFold", "menusToggle", "browserAction", "shortcutsToggle", "static", "dynamic", "temporary", "externalAction"] as const;
 export type MenuItemType = (typeof MENU_ITEM_TYPES)[number] | (string & {});
 export const BROWSER_ACTION_KINDS = ["back", "forward", "reload"] as const;
 export type BrowserActionKind = (typeof BROWSER_ACTION_KINDS)[number];
@@ -47,6 +47,7 @@ export interface StoredMenuItem {
   staticUid?: string;
   staticTag?: string;
   temporaryUid?: string;
+  externalActionUid?: string;
   expandOnHover?: boolean;
   // For flattenFolder items: also emit the folder's sub-folders (as folders
   // inheriting this item's folder options), not just its bookmarks. Default off.
@@ -55,7 +56,7 @@ export interface StoredMenuItem {
   targetMenuUids?: string[];
 }
 
-export type CustomBookmarkType = "static" | "temporary" | "dynamic";
+export type CustomBookmarkType = "static" | "temporary" | "dynamic" | "externalAction";
 
 export interface BookmarkTarget {
   type?: "bookmark" | CustomBookmarkType;
@@ -65,19 +66,30 @@ export interface BookmarkTarget {
   dynamicUid?: string;
   staticUid?: string;
   temporaryUid?: string;
+  externalActionUid?: string;
   tabMode?: TabMode;
 }
 
 export function isCustomBookmarkType(type: unknown): type is CustomBookmarkType {
-  return type === "static" || type === "temporary" || type === "dynamic";
+  return type === "static" || type === "temporary" || type === "dynamic" || type === "externalAction";
 }
 
-export function customBookmarkUid(target: { type?: string; dynamicUid?: string; staticUid?: string; temporaryUid?: string }): string | undefined {
-  return target.type === "static" ? target.staticUid : target.type === "temporary" ? target.temporaryUid : target.type === "dynamic" ? target.dynamicUid : undefined;
+export function customBookmarkUid(target: { type?: string; dynamicUid?: string; staticUid?: string; temporaryUid?: string; externalActionUid?: string }): string | undefined {
+  return target.type === "static" ? target.staticUid
+    : target.type === "temporary" ? target.temporaryUid
+    : target.type === "dynamic" ? target.dynamicUid
+    : target.type === "externalAction" ? target.externalActionUid
+    : undefined;
 }
 
 export function customBookmarkReference(type: CustomBookmarkType, uid: string) {
-  return { type, ...(type === "static" ? { staticUid: uid } : type === "temporary" ? { temporaryUid: uid } : { dynamicUid: uid }) };
+  return {
+    type,
+    ...(type === "static" ? { staticUid: uid }
+      : type === "temporary" ? { temporaryUid: uid }
+      : type === "externalAction" ? { externalActionUid: uid }
+      : { dynamicUid: uid }),
+  };
 }
 
 export type ShortcutAction =
@@ -281,6 +293,7 @@ export interface ExportedMenuItem {
   staticUid?: string;
   staticTag?: string;
   temporaryUid?: string;
+  externalActionUid?: string;
   browserAction?: BrowserActionKind;
   targetMenuUids?: string[];
 }
@@ -306,6 +319,27 @@ export interface TemporaryBookmark {
   name: string;
 }
 
+/** Binds an external action to every URL instead of one URL rule. */
+export const ALL_URLS_RULE_UID = "*";
+export const DEFAULT_EXTERNAL_EVENT_NAME = "browserail:run:${token}";
+
+/**
+ * Sends a message to another extension or dispatches a DOM event in the active tab. It runs only
+ * when the active tab matches its URL rule; the target's reply is ignored.
+ */
+export interface ExternalAction {
+  uid: string;
+  name: string;
+  /** A URL rule uid or ALL_URLS_RULE_UID; an unbound action cannot be saved. */
+  urlRuleUid?: string;
+  target: "extension" | "event";
+  extensionId?: string;
+  /** `${token}` is replaced with the userscript API token when the event is dispatched. */
+  eventName?: string;
+  /** Events receive the text as-is; extensions receive it parsed as JSON. Empty means null. */
+  data?: string;
+}
+
 export interface ExportedMenu {
   name?: string;
   style?: BarStyle;
@@ -328,6 +362,7 @@ export interface ExportedSettingsData {
   dynamicBookmarks?: ExportedDynamicBookmark[];
   staticBookmarks?: StaticBookmark[];
   temporaryBookmarks?: TemporaryBookmark[];
+  externalActions?: ExternalAction[];
   userVariables?: Record<string, JsonValue>;
   shortcuts?: StoredShortcut[];
   nativeShortcuts?: StoredNativeShortcut[];
@@ -340,9 +375,9 @@ export function isExportedSettingsData(value: unknown): value is ExportedSetting
   return (
     value.version === EXPORT_SCHEMA_VERSION &&
     typeof value.exportedAt === "string" &&
-    ["menus", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "shortcuts", "nativeShortcuts"].every(key => value[key] === undefined || Array.isArray(value[key])) &&
+    ["menus", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "shortcuts", "nativeShortcuts"].every(key => value[key] === undefined || Array.isArray(value[key])) &&
     ["globalCss", "userVariables", "barConfigurations"].every(key => value[key] === undefined || isRecord(value[key])) &&
-    ["menus", "globalCss", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "userVariables", "shortcuts", "nativeShortcuts", "barConfigurations"].some(key => value[key] !== undefined)
+    ["menus", "globalCss", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "shortcuts", "nativeShortcuts", "barConfigurations"].some(key => value[key] !== undefined)
   );
 }
 

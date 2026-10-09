@@ -1,7 +1,7 @@
 import browser from "webextension-polyfill";
 import { EXTERNAL_AUTHORIZATION_STORAGE_KEY } from "../config/external-authorization";
 import { MAX_EXTERNAL_MESSAGE_BYTES } from "@browserail/protocol/api";
-import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE } from "./messages";
+import { EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RELAY_MESSAGE, EXTERNAL_RUN_MESSAGE } from "./messages";
 
 export function createExternalReceiver(target: Document) {
   let token = "";
@@ -14,6 +14,15 @@ export function createExternalReceiver(target: Document) {
     let message: unknown;
     try { message = JSON.parse(detail); } catch { return; }
     void browser.runtime.sendMessage({ type: EXTERNAL_RELAY_MESSAGE, token, message }).catch(() => {});
+  }
+
+  // External actions: the background resolves the event name; the detail is the action's JSON text.
+  function run(message: unknown): Promise<boolean> | undefined {
+    if (!message || typeof message !== "object" || (message as { type?: unknown }).type !== EXTERNAL_RUN_MESSAGE) return undefined;
+    const { eventName, detail } = message as { eventName?: unknown; detail?: unknown };
+    if (!token || typeof eventName !== "string" || !eventName || (detail !== null && typeof detail !== "string")) return Promise.resolve(false);
+    target.dispatchEvent(new CustomEvent(eventName, { detail }));
+    return Promise.resolve(true);
   }
 
   function setToken(next: string): void {
@@ -39,6 +48,7 @@ export function createExternalReceiver(target: Document) {
     if (area === "local" && changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) void refresh();
   };
   browser.storage.onChanged.addListener(changed);
+  browser.runtime.onMessage.addListener(run);
   return {
     refresh,
     destroy(): void {
@@ -46,6 +56,7 @@ export function createExternalReceiver(target: Document) {
       ++revision;
       setToken("");
       browser.storage.onChanged.removeListener(changed);
+      browser.runtime.onMessage.removeListener(run);
     },
   };
 }

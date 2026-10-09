@@ -13,7 +13,7 @@ export function parseMenuItemIdentity(identity: string): { itemUid: string; book
 export function menuEntryIdentity(uid: string): { itemUid: string; bookmarkId?: string } {
   const separator = uid.indexOf(":");
   const kind = uid.slice(0, separator);
-  if (separator < 0 || !["bookmark", "folder", "static", "dynamic", "temporary", "noop", "browserAction", "menusToggle", "shortcutsToggle"].includes(kind)) return { itemUid: uid };
+  if (separator < 0 || !["bookmark", "folder", "static", "dynamic", "temporary", "externalAction", "noop", "browserAction", "menusToggle", "shortcutsToggle"].includes(kind)) return { itemUid: uid };
   const identity = decodeURIComponent(uid.slice(separator + 1).split("?")[0]!);
   return kind === "browserAction" || kind === "menusToggle" || kind === "shortcutsToggle" ? { itemUid: identity } : parseMenuItemIdentity(identity);
 }

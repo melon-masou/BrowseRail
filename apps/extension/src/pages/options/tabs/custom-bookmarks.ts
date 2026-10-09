@@ -14,6 +14,7 @@ import { createDynamicTester } from "../components/dynamic-test";
 import { DEFAULT_REWRITE } from "../../../dynamic/rewrite";
 import { mountVariables } from "../components/variables";
 import { createStaticBookmarksList } from "../components/static-bookmarks";
+import { createExternalAction, createExternalActionsList } from "../components/external-actions";
 
 export function mountCustomBookmarksTab(
   state: OptionsState,
@@ -38,6 +39,8 @@ export function mountCustomBookmarksTab(
     showStatus,
   );
   scope.add(staticBookmarks.destroy);
+  const externalActionList = element<HTMLDivElement>("external-action-list");
+  const externalActions = createExternalActionsList(state, externalActionList, uid => removeCustomDefinition("externalAction", uid));
   const temporaryList = element<HTMLDivElement>("temporary-list");
   const addDynamicBtn = element<HTMLButtonElement>("add-dynamic-btn");
   function removeCustomDefinition(type: CustomBookmarkType, uid: string): void {
@@ -449,6 +452,12 @@ export function mountCustomBookmarksTab(
     return card;
   }
 
+  element<HTMLButtonElement>("add-external-action-btn").addEventListener(
+    "click",
+    () => externalActions.add(createExternalAction()),
+    { signal: scope.signal },
+  );
+
   function initDynamicPanel(): void {
     addDynamicBtn.addEventListener(
       "click",
@@ -472,10 +481,12 @@ export function mountCustomBookmarksTab(
   const renderSimple = () =>
     renderPreservingFocus(element("custom-bookmarks-panel"), renderSimpleBookmarks);
   const renderDynamic = () => renderPreservingFocus(dynamicList, renderDynamicList);
+  const renderExternalActions = () => renderPreservingFocus(externalActionList, externalActions.render);
   const render = () => {
     variables.render();
     renderSimple();
     renderDynamic();
+    renderExternalActions();
   };
   for (const bookmark of state.settings.dynamicBookmarks) collapsedDynamicUids.add(bookmark.uid);
   scope.add(
@@ -489,6 +500,7 @@ export function mountCustomBookmarksTab(
   scope.add(state.subscribe(["rules"], () => {
     for (const bookmark of state.settings.dynamicBookmarks) tester.reset(bookmark.uid);
     renderDynamic();
+    renderExternalActions();
   }));
   scope.add(
     source.subscribe((type) => {
@@ -506,6 +518,7 @@ export function mountCustomBookmarksTab(
       staticList.replaceChildren();
       temporaryList.replaceChildren();
       dynamicList.replaceChildren();
+      externalActionList.replaceChildren();
     },
   };
 }

@@ -32,7 +32,10 @@ export async function resolveMenuBookmarkTarget(config: ExtensionConfig, menuUid
     return target;
   }
   if (item.type !== type) throw new Error("Invalid bookmark action");
-  const target = type === "temporary" ? item.temporaryUid : type === "dynamic" ? item.dynamicUid : item.staticUid;
+  const target = type === "temporary" ? item.temporaryUid
+    : type === "dynamic" ? item.dynamicUid
+    : type === "externalAction" ? item.externalActionUid
+    : item.staticUid;
   if (!target) throw new Error("The bookmark no longer exists");
   return target;
 }

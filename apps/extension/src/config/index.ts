@@ -18,6 +18,7 @@ import type {
   UrlRule,
   StaticBookmark,
   TemporaryBookmark,
+  ExternalAction,
   ExportedDynamicBookmark,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
@@ -71,6 +72,7 @@ export type {
   UrlRule,
   StaticBookmark,
   TemporaryBookmark,
+  ExternalAction,
 };
 
 // Definitions are shared config; the saved URL/title/note stay in local storage.
@@ -110,6 +112,7 @@ export interface ExtensionConfig {
   dynamicBookmarks: DynamicBookmark[];
   staticBookmarks: StaticBookmark[];
   temporaryBookmarks: TemporaryBookmark[];
+  externalActions: ExternalAction[];
   userVariables: Record<string, JsonValue>;
   shortcuts: StoredShortcut[];
   nativeShortcuts: StoredNativeShortcut[];
@@ -148,6 +151,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   dynamicBookmarks: [],
   staticBookmarks: [],
   temporaryBookmarks: [],
+  externalActions: [],
   userVariables: {},
   shortcuts: [],
   nativeShortcuts: [],
@@ -272,7 +276,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
       const action = normalizeShortcutAction(sc);
       return action ? [{ slot: sc.slot, ...action }] : [];
     }
-    const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" ? sc.type : "bookmark";
+    const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" || sc.type === "externalAction" ? sc.type : "bookmark";
     const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
     const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
@@ -280,6 +284,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     if (type === "dynamic" && (!dynamicUid || !dynamicUids.has(dynamicUid))) return [];
     const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
     const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
+    const externalActionUid = typeof sc.externalActionUid === "string" && sc.externalActionUid ? sc.externalActionUid : undefined;
     const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
     return [
       {
@@ -291,6 +296,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         ...(dynamicUid ? { dynamicUid } : {}),
         ...(staticUid ? { staticUid } : {}),
         ...(temporaryUid ? { temporaryUid } : {}),
+        ...(externalActionUid ? { externalActionUid } : {}),
         ...(tabMode ? { tabMode } : {}),
       },
     ];
@@ -305,7 +311,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
       const action = normalizeShortcutAction(sc);
       return action ? [{ id: sc.id, key, ...action }] : [];
     }
-    const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" ? sc.type : "bookmark";
+    const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" || sc.type === "externalAction" ? sc.type : "bookmark";
     const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
     const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
@@ -313,6 +319,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     if (type === "dynamic" && (!dynamicUid || !dynamicUids.has(dynamicUid))) return [];
     const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
     const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
+    const externalActionUid = typeof sc.externalActionUid === "string" && sc.externalActionUid ? sc.externalActionUid : undefined;
     const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
     return [
       {
@@ -325,6 +332,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
         ...(dynamicUid ? { dynamicUid } : {}),
         ...(staticUid ? { staticUid } : {}),
         ...(temporaryUid ? { temporaryUid } : {}),
+        ...(externalActionUid ? { externalActionUid } : {}),
         ...(tabMode ? { tabMode } : {}),
       },
     ];
@@ -349,6 +357,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     dynamicBookmarks,
     staticBookmarks: normalizeStaticBookmarks(value.staticBookmarks),
     temporaryBookmarks: normalizeTemporaryBookmarks(value.temporaryBookmarks),
+    externalActions: normalizeExternalActions(value.externalActions),
     userVariables: normalizeUserVariables(value.userVariables),
     ...(Object.keys(globalCss).length ? { globalCss } : {}),
     shortcuts,
@@ -368,6 +377,26 @@ export function normalizeTemporaryBookmarks(value: unknown): TemporaryBookmark[]
   return (Array.isArray(value) ? value : []).flatMap((entry): TemporaryBookmark[] => {
     if (!isRecord(entry) || typeof entry.uid !== "string" || !entry.uid) return [];
     return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "" }];
+  });
+}
+
+export function normalizeExternalActions(value: unknown): ExternalAction[] {
+  const text = (field: unknown): string | undefined => typeof field === "string" && field.trim() ? field.trim() : undefined;
+  return (Array.isArray(value) ? value : []).flatMap((entry): ExternalAction[] => {
+    if (!isRecord(entry) || typeof entry.uid !== "string" || !entry.uid) return [];
+    const urlRuleUid = text(entry.urlRuleUid);
+    const extensionId = text(entry.extensionId);
+    const eventName = text(entry.eventName);
+    const data = text(entry.data);
+    return [{
+      uid: entry.uid,
+      name: typeof entry.name === "string" ? entry.name.trim() : "",
+      ...(urlRuleUid ? { urlRuleUid } : {}),
+      target: entry.target === "extension" ? "extension" : "event",
+      ...(extensionId ? { extensionId } : {}),
+      ...(eventName ? { eventName } : {}),
+      ...(data ? { data } : {}),
+    }];
   });
 }
 
@@ -485,12 +514,12 @@ export function normalizeStoredMenuItem(value: unknown): StoredMenuItem | undefi
     return { ...classes, uid, type: rawType, staticTag, ...(rename ? { rename } : {}), ...(color ? { color } : {}), ...(expandOnHover !== undefined ? { expandOnHover } : {}) };
   }
 
-  if (rawType === "temporary" || rawType === "static") {
-    const targetUid = rawType === "temporary" ? value.temporaryUid : value.staticUid;
+  if (rawType === "temporary" || rawType === "static" || rawType === "externalAction") {
+    const targetUid = rawType === "temporary" ? value.temporaryUid : rawType === "static" ? value.staticUid : value.externalActionUid;
     if (typeof targetUid !== "string" || !targetUid) return undefined;
     const rename = typeof value.rename === "string" && value.rename ? value.rename : undefined;
     const color = typeof value.color === "string" && value.color ? value.color : undefined;
-    return { ...classes, uid, ...customBookmarkReference(rawType === "static" ? "static" : "temporary", targetUid), ...(rename ? { rename } : {}), ...(color ? { color } : {}) };
+    return { ...classes, uid, ...customBookmarkReference(rawType === "static" ? "static" : rawType === "temporary" ? "temporary" : "externalAction", targetUid), ...(rename ? { rename } : {}), ...(color ? { color } : {}) };
   }
 
   const path = Array.isArray(value.path) && value.path.every((p) => typeof p === "string")

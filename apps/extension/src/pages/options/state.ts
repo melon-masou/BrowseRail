@@ -1,4 +1,5 @@
 import {
+  ALL_URLS_RULE_UID,
   customBookmarkReference,
   customBookmarkUid,
   DEFAULT_MENU_COLOR,
@@ -21,6 +22,7 @@ import type {
   UrlRule,
   StaticBookmark,
   TemporaryBookmark,
+  ExternalAction,
 } from "../../config";
 import { normalizeStaticBookmarkTags } from "../../config/static-bookmark-tags";
 import { createExternalToken, type ExternalAuthorization } from "../../config/external-authorization";
@@ -48,6 +50,7 @@ export interface SettingsDraft {
   dynamicBookmarks: DynamicBookmark[];
   staticBookmarks: StaticBookmark[];
   temporaryBookmarks: TemporaryBookmark[];
+  externalActions: ExternalAction[];
   userVariables: Record<string, JsonValue>;
   shortcuts: StoredShortcut[];
   nativeShortcuts: StoredNativeShortcut[];
@@ -112,6 +115,7 @@ export function settingsFromConfig(config: ExtensionConfig): SettingsDraft {
     dynamicBookmarks: config.dynamicBookmarks,
     staticBookmarks: config.staticBookmarks,
     temporaryBookmarks: config.temporaryBookmarks,
+    externalActions: config.externalActions,
     userVariables: config.userVariables,
     shortcuts: config.shortcuts,
     nativeShortcuts: config.nativeShortcuts,
@@ -172,12 +176,14 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
   }
   function definitions(
     type: CustomBookmarkType,
-  ): (StaticBookmark | TemporaryBookmark | DynamicBookmark)[] {
+  ): (StaticBookmark | TemporaryBookmark | DynamicBookmark | ExternalAction)[] {
     return type === "static"
       ? settingsDraft.staticBookmarks
       : type === "temporary"
         ? settingsDraft.temporaryBookmarks
-        : settingsDraft.dynamicBookmarks;
+        : type === "externalAction"
+          ? settingsDraft.externalActions
+          : settingsDraft.dynamicBookmarks;
   }
   function definition(type: CustomBookmarkType, uid: string) {
     return requireTarget(
@@ -487,11 +493,11 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     addBookmark(
       type: CustomBookmarkType,
-      value: StaticBookmark | TemporaryBookmark | DynamicBookmark,
+      value: StaticBookmark | TemporaryBookmark | DynamicBookmark | ExternalAction,
     ): void {
       if (definitions(type).some((existing) => existing.uid === value.uid))
         throw new Error(`Duplicate bookmark ${value.uid}`);
-      if ((type === "static" && !("url" in value)) || (type === "dynamic" && !("type" in value)))
+      if ((type === "static" && !("url" in value)) || (type === "dynamic" && !("type" in value)) || (type === "externalAction" && !("target" in value)))
         throw new Error("Invalid bookmark definition");
       definitions(type).push(structuredClone(value));
       publish(["bookmarks"], true);
@@ -542,6 +548,12 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       setOptional(requireTarget(settingsDraft.dynamicBookmarks.find(value => value.uid === uid), `dynamic bookmark ${uid}`), { urlRuleUid: ruleUid });
       publish(["bookmarks"]);
     },
+    editExternalAction(uid: string, values: Editable<Pick<ExternalAction, "urlRuleUid" | "target" | "extensionId" | "eventName" | "data">>): void {
+      const target = requireTarget(settingsDraft.externalActions.find(value => value.uid === uid), `external action ${uid}`);
+      if (values.urlRuleUid && values.urlRuleUid !== ALL_URLS_RULE_UID) ruleUids([values.urlRuleUid]);
+      setOptional(target, structuredClone(values));
+      publish(["bookmarks"], "target" in values);
+    },
     removeBookmark(type: CustomBookmarkType, uid: string): void {
       definition(type, uid);
       if (type === "static")
@@ -552,6 +564,8 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
         settingsDraft.temporaryBookmarks = settingsDraft.temporaryBookmarks.filter(
           (value) => value.uid !== uid,
         );
+      else if (type === "externalAction")
+        settingsDraft.externalActions = settingsDraft.externalActions.filter((value) => value.uid !== uid);
       else
         settingsDraft.dynamicBookmarks = settingsDraft.dynamicBookmarks.filter(
           (value) => value.uid !== uid,
@@ -566,6 +580,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
           delete target.dynamicUid;
           delete target.staticUid;
           delete target.temporaryUid;
+          delete target.externalActionUid;
         }
       }
       publish(["bookmarks", "menus", "shortcuts"], true);
@@ -605,7 +620,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       );
       settingsDraft.urlRules = settingsDraft.urlRules.filter((rule) => rule.uid !== uid);
       if (settingsDraft.defaultUrlRuleUid === uid) delete settingsDraft.defaultUrlRuleUid;
-      for (const bookmark of settingsDraft.dynamicBookmarks) {
+      for (const bookmark of [...settingsDraft.dynamicBookmarks, ...settingsDraft.externalActions]) {
         if (bookmark.urlRuleUid === uid) delete bookmark.urlRuleUid;
       }
       for (const target of settingsDraft.menus) {
@@ -654,6 +669,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       delete target.dynamicUid;
       delete target.staticUid;
       delete target.temporaryUid;
+      delete target.externalActionUid;
       delete target.browserAction;
       delete target.targetMenuUids;
       delete target.menuUid;

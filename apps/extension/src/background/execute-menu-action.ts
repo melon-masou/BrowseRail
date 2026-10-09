@@ -5,6 +5,7 @@ import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues, loadShor
 import { navigateBookmark, navigateToUrl } from "../browser/navigation";
 import { captureTemporaryUrl } from "./temporary";
 import { runTabAction, toggleTargetMenus } from "./menu-actions";
+import { runExternalAction } from "./external-action";
 import { resolveStaticBookmarkUrl } from "../bookmarks/variables";
 import { resolveMenuBookmarkTarget } from "../bookmarks/menu-target";
 
@@ -31,6 +32,11 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     } else if (action?.type === "browserAction" && action.browserAction) {
       await runTabAction(browser.tabs, targetWindowUid, action.browserAction);
     }
+  } else if (actionUid.startsWith("externalAction:")) {
+    const identity = decodeURIComponent(actionUid.slice("externalAction:".length).split("?")[0]!);
+    const target = await targetUid(identity, "externalAction");
+    const action = config.externalActions.find(entry => entry.uid === target);
+    if (action) await runExternalAction(action, config.urlRules, targetWindowUid);
   } else if (actionUid.startsWith("static:")) {
     const { uid, tabMode } = parseStaticAction(actionUid);
     const target = await targetUid(uid, "static");

@@ -8,7 +8,7 @@ export interface TransferOptions extends TransferSelection { includeRewrites: bo
 const fields = {
   menus: ["menus", "globalCss"],
   urlRules: ["urlRules", "defaultUrlRuleUid"],
-  bookmarks: ["staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "userVariables"],
+  bookmarks: ["staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "userVariables"],
   shortcuts: ["shortcuts", "nativeShortcuts"],
   bars: ["barConfigurations"],
 } as const;
@@ -21,7 +21,7 @@ export function transferCounts(data: ExportedSettingsData): Record<TransferGroup
   return {
     menus: data.menus?.length ?? 0,
     urlRules: data.urlRules?.length ?? 0,
-    bookmarks: (data.staticBookmarks?.length ?? 0) + (data.dynamicBookmarks?.length ?? 0) + (data.temporaryBookmarks?.length ?? 0),
+    bookmarks: (data.staticBookmarks?.length ?? 0) + (data.dynamicBookmarks?.length ?? 0) + (data.temporaryBookmarks?.length ?? 0) + (data.externalActions?.length ?? 0),
     shortcuts: (data.shortcuts?.length ?? 0) + (data.nativeShortcuts?.length ?? 0),
     bars: Object.keys(data.barConfigurations?.native ?? {}).length + Object.keys(data.barConfigurations?.browser ?? {}).length,
   };
