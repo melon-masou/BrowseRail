@@ -337,6 +337,7 @@ export const en = {
 
   // Menu card
   "menu.title": "Menu {n}",
+  "menu.name": "Name",
   "menu.expand": "Expand menu",
   "menu.collapse": "Collapse menu",
   "menu.foldButton": "Fold",
@@ -821,6 +822,7 @@ export const zhCN: Record<MessageKey, string> = {
 
   // Menu card
   "menu.title": "菜单 {n}",
+  "menu.name": "名称",
   "menu.expand": "展开菜单",
   "menu.collapse": "收起菜单",
   "menu.foldButton": "折叠",

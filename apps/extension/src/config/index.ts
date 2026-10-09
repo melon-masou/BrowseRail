@@ -399,6 +399,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ...(dockColor !== undefined ? { dockColor } : {}),
     enabled, items,
     uid,
+    ...(typeof value.name === "string" && value.name.trim() ? { name: value.name.trim() } : {}),
     ...(typeof value.cssClass === "string" && value.cssClass.trim() ? { cssClass: value.cssClass.trim() } : {}),
     ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
   };

@@ -360,6 +360,10 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       setOptional(settingsDraft, { globalCss: entries.length ? Object.fromEntries(entries) : undefined });
       publish(["menus"]);
     },
+    setMenuName(uid: string, name: string): void {
+      setOptional(menu(uid), { name: name.trim() || undefined });
+      publish(["menus"]);
+    },
     setMenuCssClass(uid: string, cssClass: string): void {
       setOptional(menu(uid), { cssClass: cssClass.trim() || undefined });
       publish(["menus"]);

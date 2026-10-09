@@ -296,7 +296,7 @@ export function mountShortcutsTab(
       const target = activeShortcutPickTarget;
       closeShortcutPickPopover();
       if (!target) return;
-      const action = await actionPicker.pick(state.settings.menus.map(menu => menu.uid));
+      const action = await actionPicker.pick(state.settings.menus);
       if (action && !scope.signal.aborted) state.setShortcutTarget(target, action);
     }, { signal: scope.signal });
 
@@ -417,7 +417,7 @@ export function mountShortcutsTab(
 
         if (isShortcutActionType(item.type)) {
           icon.textContent = "⚡";
-          title.textContent = shortcutActionLabel(item, state.settings.menus.map(menu => menu.uid));
+          title.textContent = shortcutActionLabel(item, state.settings.menus);
           title.title = title.textContent;
         } else if (isCustomBookmarkType(item.type)) {
           icon.textContent = source.icon(item.type);
@@ -536,7 +536,7 @@ export function mountShortcutsTab(
 
         if (isShortcutActionType(target.type)) {
           icon.textContent = "⚡";
-          title.textContent = shortcutActionLabel(target, state.settings.menus.map(menu => menu.uid));
+          title.textContent = shortcutActionLabel(target, state.settings.menus);
           title.title = title.textContent;
         } else if (isCustomBookmarkType(target.type)) {
           icon.textContent = source.icon(target.type);

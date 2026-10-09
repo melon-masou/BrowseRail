@@ -117,6 +117,7 @@ export interface UrlRule {
 }
 
 export interface StoredMenu {
+  name?: string;
   cssClass?: string;
   color?: MenuColor;
   dockColor?: MenuColor;
@@ -303,6 +304,7 @@ export interface TemporaryBookmark {
 }
 
 export interface ExportedMenu {
+  name?: string;
   cssClass?: string;
   uid: string;
   color?: MenuColor;

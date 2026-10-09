@@ -198,6 +198,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       ...(nativeShortcuts.length > 0 ? { nativeShortcuts: structuredClone(nativeShortcuts) } : {}),
       menus: menus.map((menu) => ({
         uid: menu.uid,
+        ...(menu.name ? { name: menu.name } : {}),
         ...(menu.urlRuleUids && menu.urlRuleUids.length > 0
           ? { urlRuleUids: menu.urlRuleUids }
           : {}),

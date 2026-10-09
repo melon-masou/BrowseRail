@@ -16,11 +16,11 @@ export function actionChoices(): PickerItem[] {
 export function createShortcutActionPicker() {
   const picker = createItemPicker();
   return {
-    async pick(menuUids: readonly string[]): Promise<ShortcutAction | null> {
+    async pick(menuOptions: readonly { uid: string; name?: string }[]): Promise<ShortcutAction | null> {
       const kind = await picker.pick(t("menu.action"), actionChoices());
       if (!kind) return null;
       if (kind === "shortcutsToggle") return { type: kind };
-      const menus = menuUids.map((uid, index) => ({ id: uid, label: t("menu.title", { n: index + 1 }) }));
+      const menus = menuOptions.map((menu, index) => ({ id: menu.uid, label: menu.name ?? t("menu.title", { n: index + 1 }) }));
       if (kind === "menusToggle") {
         const targets = await picker.pickMany(t("menuAction.targets"), menus, t("menuAction.noTargets"));
         return targets === null ? null : { type: kind, targetMenuUids: targets };
@@ -35,10 +35,10 @@ export function createShortcutActionPicker() {
   };
 }
 
-export function shortcutActionLabel(action: { type?: string; browserAction?: string; menuUid?: string; targetMenuUids?: readonly string[] }, menuUids: readonly string[]): string {
+export function shortcutActionLabel(action: { type?: string; browserAction?: string; menuUid?: string; targetMenuUids?: readonly string[] }, menus: readonly { uid: string; name?: string }[]): string {
   const menuName = (uid: string) => {
-    const index = menuUids.indexOf(uid);
-    return index < 0 ? t("menuAction.noTargets") : t("menu.title", { n: index + 1 });
+    const index = menus.findIndex(menu => menu.uid === uid);
+    return index < 0 ? t("menuAction.noTargets") : menus[index]!.name ?? t("menu.title", { n: index + 1 });
   };
   if (action.type === "menuFold") return `${t("menu.addMenuFold")} · ${menuName(action.menuUid ?? "")}`;
   if (action.type === "menusToggle") return `${t("menuAction.menusToggle")} · ${(action.targetMenuUids ?? []).map(menuName).join(", ")}`;

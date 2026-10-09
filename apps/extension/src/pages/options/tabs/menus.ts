@@ -64,6 +64,11 @@ export function mountMenusTab(
   const menuSettingsDialog = element<HTMLDialogElement>("menu-settings-dialog");
   const menuSettingsDialogTitle = element<HTMLSpanElement>("menu-settings-dialog-title");
   const menuSettingsClose = element<HTMLButtonElement>("menu-settings-close");
+  const menuSettingName = element<HTMLInputElement>("menu-setting-name");
+  menuSettingName.addEventListener("input", () => {
+    const menu = state.settings.menus[activeMenuSettingsIndex];
+    if (menu) state.setMenuName(menu.uid, menuSettingName.value);
+  }, { signal: scope.signal });
   const menuSettingDockColor = element<HTMLButtonElement>("menu-setting-dock-color");
   const menuSettingCssClass = element<HTMLInputElement>("menu-setting-css-class");
   menuSettingCssClass.addEventListener("input", () => {
@@ -157,6 +162,8 @@ export function mountMenusTab(
     if (!menu) return;
 
     menuSettingsDialogTitle.textContent = t("menu.settingsTitle");
+    menuSettingName.value = menu.name ?? "";
+    menuSettingName.placeholder = t("menu.title", { n: menuIndex + 1 });
     updateMenuColorSwatch(menuSettingDockColor, menu, "dockColor");
     menuSettingCssClass.value = menu.cssClass ?? "";
     renderMenuUrlRulesContent(menu);
@@ -575,7 +582,7 @@ export function mountMenusTab(
         onChange([...selected]);
       });
       const name = document.createElement("span");
-      name.textContent = t("menu.title", { n: index + 1 });
+      name.textContent = menu.name ?? t("menu.title", { n: index + 1 });
       label.append(checkbox, name);
       container.appendChild(label);
     });
@@ -748,7 +755,7 @@ export function mountMenusTab(
         });
 
         const title = document.createElement("strong");
-        title.textContent = t("menu.title", { n: menuIndex + 1 });
+        title.textContent = menu.name ?? t("menu.title", { n: menuIndex + 1 });
 
         const toggleLabel = document.createElement("label");
         toggleLabel.className = "switch-toggle";
@@ -1262,7 +1269,7 @@ export function mountMenusTab(
         uid: crypto.randomUUID(),
         ...reference,
       });
-      showStatus(t("dynamic.addedToMenu", { menu: t("menu.title", { n: menuIndex + 1 }) }));
+      showStatus(t("dynamic.addedToMenu", { menu: menu.name ?? t("menu.title", { n: menuIndex + 1 }) }));
     }
   }
   scope.add(overlays.register("menuSettings", closeMenuSettingsDialog));
