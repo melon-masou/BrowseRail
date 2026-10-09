@@ -141,6 +141,27 @@ function transferChoice(group: string, checked: boolean): void {
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+it.each(["Merge", "Replace"])("uses %s for file import, staging the result until Save", async mode => {
+  button("custom-bookmarks-tab").click(); button("add-static-btn").click(); await save();
+  const before = await savedConfig();
+  const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
+  const incoming = { uid: "incoming", name: "Imported", url: "https://example.com" };
+  const data = { version: EXPORT_SCHEMA_VERSION, exportedAt: "2026-10-09T00:00:00Z", staticBookmarks: [incoming] };
+  const files = new DataTransfer();
+  files.items.add(new File([JSON.stringify(data)], "settings.json", { type: "application/json" }));
+  input("import-file-input").files = files.files;
+  input("import-file-input").dispatchEvent(new Event("change", { bubbles: true }));
+  await vi.waitFor(() => expect(document.querySelector("dialog[open] .transfer-mode")).not.toBeNull());
+  const dialog = document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  expect(dialog.querySelector<HTMLButtonElement>('.transfer-mode button[aria-pressed="true"]')!.textContent).toBe("Merge");
+  [...dialog.querySelectorAll<HTMLButtonElement>(".transfer-mode button")].find(button => button.textContent === mode)!.click();
+  dialog.querySelector<HTMLButtonElement>(".space-bookmark-dialog-actions .save-btn")!.click();
+  await vi.waitFor(() => expect([...document.querySelectorAll<HTMLInputElement>("#static-list .dynamic-name-input")].some(input => input.value === "Imported")).toBe(true));
+  expect((await savedConfig()).staticBookmarks).toEqual(before.staticBookmarks);
+  await save();
+  expect((await savedConfig()).staticBookmarks).toEqual(mode === "Merge" ? [incoming, ...before.staticBookmarks] : [incoming]);
+});
+
 it("previews cloud download before applying selected categories and preserves instance settings and unselected layout", async () => {
   const { uploadCloudSettings } = await import("../../config/cloud-storage");
   const { EXPORT_SCHEMA_VERSION, defaultBarSettings } = await import("@browserail/protocol");
@@ -162,6 +183,7 @@ it("previews cloud download before applying selected categories and preserves in
   expect([...document.querySelectorAll<HTMLInputElement>("#sync-dialog [data-transfer-group]")].every(input => input.checked)).toBe(true);
   button("sync-download").click();
   await vi.waitFor(() => expect(button("sync-download").textContent).toBe("Import"));
+  expect(document.querySelector<HTMLButtonElement>("#sync-dialog .transfer-mode button[aria-pressed=true]")!.textContent).toBe("Merge");
   expect(await savedConfig()).toEqual(saved);
   expect(document.getElementById("sync-dialog")!.textContent).toContain("Menus (1)");
   transferChoice("bars", false);
@@ -169,6 +191,25 @@ it("previews cloud download before applying selected categories and preserves in
   await vi.waitFor(() => expect(document.getElementById("sync-status")!.textContent).toBe("Downloaded"));
   expect(await savedConfig()).toMatchObject({ instanceLabel: saved.instanceLabel, desktopWidget: saved.desktopWidget, panel: { menus: [{ uid: "remote" }] }, staticBookmarks: [{ uid: "incoming" }] });
   expect(await loadBarConfigurations()).toEqual(layout);
+});
+
+it("replaces selected local data through a cloud download while retaining unselected data", async () => {
+  button("custom-bookmarks-tab").click(); button("add-static-btn").click(); await save();
+  const before = await savedConfig();
+  expect(before.staticBookmarks).toHaveLength(1);
+  const { uploadCloudSettings } = await import("../../config/cloud-storage");
+  const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
+  await uploadCloudSettings({ version: EXPORT_SCHEMA_VERSION, exportedAt: "2026-10-09T00:00:00Z", menus: [{ uid: "remote", items: [] }], staticBookmarks: [] });
+  await openSync(); button("sync-download").click();
+  await vi.waitFor(() => expect(button("sync-download").textContent).toBe("Import"));
+  transferChoice("menus", false);
+  const replace = [...document.querySelectorAll<HTMLButtonElement>("#sync-dialog .transfer-mode button")].find(button => button.textContent === "Replace")!;
+  replace.click(); button("sync-download").click();
+  await vi.waitFor(() => expect(document.getElementById("sync-status")!.textContent).toBe("Downloaded"));
+  const saved = await savedConfig();
+  expect(saved.staticBookmarks).toEqual([]);
+  expect(saved.panel.menus).toEqual(before.panel.menus);
+  expect(saved.instanceLabel).toBe(before.instanceLabel);
 });
 
 it("uploads saved selected categories after confirmation, retaining unselected remote data", async () => {
@@ -769,7 +810,7 @@ it("shows counts and defaults all available transfer groups on; imports only sel
   choices[2]!.querySelector<HTMLInputElement>("input")!.click();
   expect(confirm.disabled).toBe(false);
   confirm.click();
-  expect(await result).toEqual({ menus: false, urlRules: false, bookmarks: true, shortcuts: false, bars: false, includeRewrites: false });
+  expect(await result).toEqual({ menus: false, urlRules: false, bookmarks: true, shortcuts: false, bars: false, includeRewrites: false, mode: "merge" });
 
   const partial = chooseTransferOptions("import", { version: 2, exportedAt: data.exportedAt, urlRules: [] });
   const partialDialog = document.querySelector<HTMLDialogElement>("dialog[open]")!;

@@ -138,7 +138,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       shortcuts,
       nativeShortcutSets,
     });
-    if (saving.barConfigurations) await importBarConfigurations(saving.barConfigurations, menus.map(menu => menu.uid));
+    if (saving.barConfigurations) await importBarConfigurations(saving.barConfigurations, menus.map(menu => menu.uid), saving.replaceBarConfigurations === true);
     await pruneTemporaryValues(temporaryBookmarks);
     await browser.runtime.sendMessage({ type: "configSaved" });
     state.acceptSettingsSave(submitted);
@@ -311,9 +311,23 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     const importsBookmarks = hasTransferGroup(parsed, "bookmarks");
     const runtimeMenus = (await loadConfig()).panel.menus;
     const imported = structuredClone(state.settings) as SettingsDraft;
+    const replacing = options.mode === "replace";
+    if (replacing) {
+      if (importsMenus) { imported.menus = []; delete imported.globalCss; }
+      if (hasTransferGroup(parsed, "urlRules")) { imported.urlRules = []; delete imported.defaultUrlRuleUid; }
+      if (importsBookmarks) {
+        imported.staticBookmarks = [];
+        imported.dynamicBookmarks = [];
+        imported.temporaryBookmarks = [];
+        imported.externalActions = [];
+        imported.userVariables = {};
+      }
+      if (hasTransferGroup(parsed, "shortcuts")) { imported.shortcuts = []; imported.nativeShortcutSets = []; }
+    }
     if (parsed.barConfigurations) {
       const incoming = normalizeBarConfigurations(parsed.barConfigurations);
-      imported.barConfigurations = {
+      if (replacing) imported.replaceBarConfigurations = true;
+      imported.barConfigurations = replacing ? incoming : {
         native: { ...imported.barConfigurations?.native, ...incoming.native },
         browser: { ...imported.barConfigurations?.browser, ...incoming.browser },
       };
@@ -514,7 +528,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       }));
       imported.nativeShortcutSets = mergeByKey(imported.nativeShortcutSets, incoming, set => set.uid);
     }
-    state.importSettings(imported, parsed.userVariables !== undefined);
+    state.importSettings(imported, parsed.userVariables !== undefined || replacing && importsBookmarks);
   }
 
   const changed = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {

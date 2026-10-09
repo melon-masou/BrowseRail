@@ -46,6 +46,7 @@ export interface InstanceSettings {
 export interface SettingsDraft {
   globalCss?: Record<string, string>;
   barConfigurations?: BarConfigurations;
+  replaceBarConfigurations?: true;
   menus: StoredMenu[];
   urlRules: UrlRule[];
   defaultUrlRuleUid?: string;
@@ -300,8 +301,12 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     acceptSettingsSave(saved: ReadonlyData<SettingsDraft>): void {
       savedSettings = clone<SettingsDraft>(saved);
-      if (JSON.stringify(settingsDraft.barConfigurations) === JSON.stringify(savedSettings.barConfigurations)) delete settingsDraft.barConfigurations;
+      if (JSON.stringify(settingsDraft.barConfigurations) === JSON.stringify(savedSettings.barConfigurations) && settingsDraft.replaceBarConfigurations === savedSettings.replaceBarConfigurations) {
+        delete settingsDraft.barConfigurations;
+        delete settingsDraft.replaceBarConfigurations;
+      }
       delete savedSettings.barConfigurations;
+      delete savedSettings.replaceBarConfigurations;
       settingsSnapshot = freeze(structuredClone(settingsDraft));
       settingsDirty = !userVariablesValid() || JSON.stringify(settingsDraft) !== JSON.stringify(savedSettings);
       publish(["dirty"], false, false);

@@ -3,7 +3,8 @@ import type { ExportedSettingsData } from "@browserail/protocol";
 export const transferGroups = ["menus", "urlRules", "bookmarks", "shortcuts", "bars"] as const;
 export type TransferGroup = typeof transferGroups[number];
 export type TransferSelection = Record<TransferGroup, boolean>;
-export interface TransferOptions extends TransferSelection { includeRewrites: boolean }
+export type ImportMode = "merge" | "replace";
+export interface TransferOptions extends TransferSelection { includeRewrites: boolean; mode?: ImportMode }
 
 const fields = {
   menus: ["menus", "globalCss"],

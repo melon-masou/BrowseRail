@@ -35,8 +35,8 @@ export async function saveBarLayout(uid: string, mode: DisplayMode, placement: M
   const clean = normalizeBarConfigurations(current);
   await browser.storage.local.set({ [BAR_CONFIGURATIONS_STORAGE_KEY]: clean });
 }
-export async function importBarConfigurations(imported: BarConfigurations, menuUids: string[]): Promise<void> {
-  const current = await loadBarConfigurations();
+export async function importBarConfigurations(imported: BarConfigurations, menuUids: string[], replace = false): Promise<void> {
+  const current: BarConfigurations = replace ? { native: {}, browser: {} } : await loadBarConfigurations();
   for (const uid of menuUids) {
     if (imported.native[uid]) current.native[uid] = imported.native[uid]!;
     if (imported.browser[uid]) current.browser[uid] = imported.browser[uid]!;

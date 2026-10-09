@@ -575,7 +575,7 @@ it("imports matching record keys and retains local-only menus, rules, bookmarks,
   persistence.destroy();
 });
 
-it("exports only selected groups and leaves unselected drafts and invalid variable rows intact on import", async () => {
+it.each(["merge", "replace"] as const)("leaves unselected drafts and invalid variable rows intact during %s imports", async mode => {
   const { state, persistence } = await fixture();
   state.addGlobalCss("theme");
   state.setGlobalCss("theme", ".theme {}");
@@ -588,7 +588,7 @@ it("exports only selected groups and leaves unselected drafts and invalid variab
   const before = structuredClone(state.settings);
   const invalid = state.addUserVariable();
   const variableRows = structuredClone(state.userVariables);
-  await persistence.importSettings(JSON.stringify({ version: 2, exportedAt: file.exportedAt, menus: [{ uid: "bar", name: "Ignored", items: [] }], urlRules: [{ uid: "imported-site", name: "Imported", patterns: ["example.com"] }], staticBookmarks: [], shortcuts: [], userVariables: { local: "overwrite" } }), { menus: false, bookmarks: false, shortcuts: false });
+  await persistence.importSettings(JSON.stringify({ version: 2, exportedAt: file.exportedAt, menus: [{ uid: "bar", name: "Ignored", items: [] }], urlRules: [{ uid: "imported-site", name: "Imported", patterns: ["example.com"] }], staticBookmarks: [], shortcuts: [], userVariables: { local: "overwrite" } }), { menus: false, bookmarks: false, shortcuts: false, mode });
   expect(state.settings.menus).toEqual(before.menus);
   expect(state.settings.globalCss).toEqual(before.globalCss);
   expect(state.settings.staticBookmarks).toEqual(before.staticBookmarks);
@@ -596,12 +596,117 @@ it("exports only selected groups and leaves unselected drafts and invalid variab
   expect(state.settings.userVariables).toEqual(before.userVariables);
   expect(state.userVariables).toEqual(variableRows);
   expect(state.userVariablesValid).toBe(false);
-  expect(state.settings.urlRules.map(rule => rule.uid)).toEqual(["imported-site", "local-site"]);
+  expect(state.settings.urlRules.map(rule => rule.uid)).toEqual(mode === "replace" ? ["imported-site"] : ["imported-site", "local-site"]);
   state.removeUserVariable(invalid);
   await persistence.saveSettings();
   const saved = await loadConfig();
   expect(saved.staticBookmarks).toEqual(before.staticBookmarks);
   expect(saved.panel.menus).toEqual(before.menus);
+  persistence.destroy();
+});
+
+it("replaces available categories, clearing their associated CSS, variables and omitted collections", async () => {
+  const { state, persistence } = await fixture();
+  state.addMenu({ uid: "local-bar", items: [] });
+  state.addGlobalCss("local"); state.setGlobalCss("local", ".local {}");
+  state.addUrlRule({ uid: "old-rule", name: "Old", patterns: ["example.com"] });
+  state.setDefaultRule("old-rule");
+  state.addBookmark("temporary", { uid: "old-temp", name: "Old" });
+  state.addBookmark("dynamic", { uid: "old-dynamic", name: "Old", type: "external", urlRuleUid: "old-rule" });
+  state.addNativeShortcutSet({ uid: "old-keys", name: "Old", shortcuts: [{ id: "key", key: "F1", type: "browserAction", browserAction: "back" }] });
+  const variable = state.addUserVariable(); state.editUserVariable(variable, { key: "old", value: "value" });
+  await saveLayouts();
+  const layouts = await loadBarConfigurations();
+  const file = { version: 2, exportedAt: "2026-10-09T00:00:00Z", menus: [{ uid: "bar", name: "Imported", items: [] }], urlRules: [], staticBookmarks: [{ uid: "new-link", name: "New", url: "https://example.org" }], shortcuts: [] };
+  await persistence.importSettings(JSON.stringify(file), { mode: "replace" });
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.panel.menus.map(menu => menu.uid)).toEqual(["bar"]);
+  expect(saved.panel.menus[0]).toMatchObject({ name: "Imported", enabled: false });
+  expect(saved.globalCss).toBeUndefined();
+  expect(saved.urlRules).toEqual([]);
+  expect(saved.defaultUrlRuleUid).toBeUndefined();
+  expect(saved.staticBookmarks).toEqual(file.staticBookmarks);
+  expect(saved.dynamicBookmarks).toEqual([]);
+  expect(saved.temporaryBookmarks).toEqual([]);
+  expect(saved.externalActions).toEqual([]);
+  expect(saved.userVariables).toEqual({});
+  expect(saved.shortcuts).toEqual([]);
+  expect(saved.nativeShortcutSets).toEqual([]);
+  expect(saved.instanceLabel).toBe("Local instance");
+  expect(await loadBarConfigurations()).toEqual(layouts);
+  expect(state.dirty.settings).toBe(false);
+  persistence.destroy();
+});
+
+it("clears an empty selected bookmark category without clearing absent menu, rule or shortcut categories", async () => {
+  const { state, persistence } = await fixture();
+  state.removeShortcut({ kind: "slot", slot: "1" });
+  state.setShortcutTarget({ kind: "slot", slot: "slot_1" }, { type: "static", uid: "link" });
+  state.addUrlRule({ uid: "site", name: "Site", patterns: ["example.com"] });
+  state.setDefaultRule("site");
+  state.addUserVariable();
+  expect(state.userVariablesValid).toBe(false);
+  const before = structuredClone(state.settings);
+  await persistence.importSettings(JSON.stringify({ version: 2, exportedAt: "2026-10-09T00:00:00Z", staticBookmarks: [] }), { mode: "replace" });
+  expect(state.userVariablesValid).toBe(true);
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.staticBookmarks).toEqual([]);
+  expect(saved.panel.menus).toEqual(before.menus);
+  expect(saved.urlRules).toEqual(before.urlRules);
+  expect(saved.defaultUrlRuleUid).toBe("site");
+  expect(saved.shortcuts).toEqual(before.shortcuts);
+  persistence.destroy();
+});
+
+it("defers layout replacement until Save and preserves subsequent live layout edits on later saves", async () => {
+  const { state, persistence } = await fixture();
+  await saveLayouts();
+  const before = await loadBarConfigurations();
+  const incoming = { native: {}, browser: { bar: { ...before.browser.bar!, popupFontSize: 24 } } };
+  await persistence.importSettings(JSON.stringify({ version: 2, exportedAt: "2026-10-09T00:00:00Z", barConfigurations: incoming }), { mode: "replace", bars: true });
+  expect(await loadBarConfigurations()).toEqual(before);
+  await persistence.saveSettings();
+  expect(await loadBarConfigurations()).toEqual(incoming);
+  expect(state.dirty.settings).toBe(false);
+  await saveBarLayout("bar", "native", defaultMenuPlacement(), { gapRatio: .4, extraGaps: {} }, defaultNativeBarSettings());
+  const edited = await loadBarConfigurations();
+  state.renameBookmark("static", "link", "Later edit");
+  await persistence.saveSettings();
+  expect(await loadBarConfigurations()).toEqual(edited);
+  persistence.destroy();
+});
+
+it("keeps unselected menu and shortcut references editable when replacing their dynamic bookmark definitions", async () => {
+  const { state, persistence } = await fixture();
+  state.addBookmark("dynamic", { uid: "live", name: "Live", type: "external" });
+  state.addMenuItem("bar", { uid: "live-item", type: "dynamic", dynamicUid: "live" });
+  state.removeShortcut({ kind: "slot", slot: "1" });
+  state.setShortcutTarget({ kind: "slot", slot: "slot_1" }, { type: "dynamic", uid: "live" });
+  state.addNativeShortcutSet({ uid: "keys", name: "Keys", shortcuts: [{ id: "live-key", key: "F1", type: "dynamic", dynamicUid: "live" }] });
+  await persistence.saveSettings();
+  const before = await loadConfig();
+  await persistence.importSettings(JSON.stringify({ version: 2, exportedAt: "2026-10-09T00:00:00Z", dynamicBookmarks: [] }), { mode: "replace", menus: false, shortcuts: false });
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.dynamicBookmarks).toEqual([]);
+  expect(saved.panel.menus).toEqual(before.panel.menus);
+  expect(saved.shortcuts).toEqual(before.shortcuts);
+  expect(saved.nativeShortcutSets).toEqual(before.nativeShortcutSets);
+  persistence.destroy();
+});
+
+it("combines a staged layout replacement with a later merge without restoring discarded layouts", async () => {
+  const { persistence } = await fixture();
+  await saveLayouts();
+  const before = await loadBarConfigurations();
+  const metadata = { version: 2, exportedAt: "2026-10-09T00:00:00Z" };
+  await persistence.importSettings(JSON.stringify({ ...metadata, barConfigurations: { native: {}, browser: {} } }), { mode: "replace", bars: true });
+  const incoming = { native: {}, browser: { bar: before.browser.bar! } };
+  await persistence.importSettings(JSON.stringify({ ...metadata, barConfigurations: incoming }), { bars: true });
+  await persistence.saveSettings();
+  expect(await loadBarConfigurations()).toEqual(incoming);
   persistence.destroy();
 });
 

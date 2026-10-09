@@ -1,7 +1,7 @@
 import { t } from "@browserail/i18n";
 import type { ExportedSettingsData } from "@browserail/protocol";
 import { normalizeDynamicBookmarks } from "../../../config";
-import { hasTransferGroup, transferCounts, transferGroups, type TransferGroup, type TransferOptions } from "../transfer";
+import { hasTransferGroup, transferCounts, transferGroups, type ImportMode, type TransferGroup, type TransferOptions } from "../transfer";
 
 export function chooseTransferOptions(kind: "import" | "export", data: ExportedSettingsData): Promise<TransferOptions | undefined> {
   const action = kind === "import" ? "btn.import" : "btn.export";
@@ -41,6 +41,7 @@ export function chooseTransferOptions(kind: "import" | "export", data: ExportedS
 export function createTransferChoices(data: ExportedSettingsData, importing: boolean, selection?: Partial<TransferOptions>) {
   const element = document.createElement("div");
   element.className = "transfer-choices";
+  let mode = selection?.mode ?? "merge";
   const counts = transferCounts(data);
   const inputs = new Map<TransferGroup, HTMLInputElement>();
   const labels = { menus: "section.menus", urlRules: "section.urlRules", bookmarks: "section.customBookmarks", shortcuts: "section.shortcuts", bars: "transfer.barConfiguration" } as const;
@@ -66,6 +67,28 @@ export function createTransferChoices(data: ExportedSettingsData, importing: boo
     inputs.get("bookmarks")!.addEventListener("change", update);
     update();
   }
+  if (importing) {
+    const modes = document.createElement("div");
+    modes.className = "shortcuts-subtabs transfer-mode";
+    modes.setAttribute("role", "group");
+    modes.ariaLabel = t("transfer.mode");
+    const buttons = new Map<ImportMode, HTMLButtonElement>();
+    const render = () => {
+      for (const [value, button] of buttons) {
+        button.classList.toggle("is-active", value === mode);
+        button.setAttribute("aria-pressed", String(value === mode));
+      }
+    };
+    for (const value of ["merge", "replace"] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "shortcuts-subtab-btn";
+      button.textContent = t(value === "merge" ? "transfer.merge" : "transfer.replace");
+      button.addEventListener("click", () => { mode = value; render(); });
+      buttons.set(value, button); modes.append(button);
+    }
+    render(); element.append(modes);
+  }
   return {
     element,
     hasSelection: () => [...inputs.values()].some(input => input.checked),
@@ -76,6 +99,7 @@ export function createTransferChoices(data: ExportedSettingsData, importing: boo
       shortcuts: inputs.get("shortcuts")!.checked,
       bars: inputs.get("bars")!.checked,
       includeRewrites: !!rewrites?.checked && !rewrites.disabled,
+      ...(importing ? { mode } : {}),
     }),
   };
 }

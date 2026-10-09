@@ -3670,6 +3670,11 @@ span.icon-picker-preview {
   gap: 12px;
 }
 
+.transfer-mode {
+  justify-self: start;
+  margin-bottom: 0;
+}
+
 .sync-providers {
   justify-self: start;
   margin-bottom: 0;

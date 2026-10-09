@@ -311,8 +311,11 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
 
   const dynamicBookmarks = normalizeDynamicBookmarks(value.dynamicBookmarks);
   const dynamicUids = new Set(dynamicBookmarks.map(bookmark => bookmark.uid));
+  // Keep missing references editable; discard references only to rejected definitions.
+  const rejectedDynamicUids = new Set((Array.isArray(value.dynamicBookmarks) ? value.dynamicBookmarks : [])
+    .flatMap(db => isRecord(db) && typeof db.uid === "string" && !dynamicUids.has(db.uid) ? [db.uid] : []));
   for (const menu of menus)
-    menu.items = menu.items.filter(item => item.type !== "dynamic" || !!item.dynamicUid && dynamicUids.has(item.dynamicUid));
+    menu.items = menu.items.filter(item => item.type !== "dynamic" || !!item.dynamicUid && !rejectedDynamicUids.has(item.dynamicUid));
 
   const rawShortcuts = Array.isArray(value.shortcuts) ? value.shortcuts : [];
   const shortcuts: StoredShortcut[] = rawShortcuts.flatMap((sc): StoredShortcut[] => {
@@ -327,7 +330,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
     const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
     const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
-    if (type === "dynamic" && (!dynamicUid || !dynamicUids.has(dynamicUid))) return [];
+    if (type === "dynamic" && (!dynamicUid || rejectedDynamicUids.has(dynamicUid))) return [];
     const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
     const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
     const externalActionUid = typeof sc.externalActionUid === "string" && sc.externalActionUid ? sc.externalActionUid : undefined;
@@ -349,7 +352,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
   });
 
   const nativeShortcutSets = normalizeNativeShortcutSets(value.nativeShortcutSets).map(set => ({
-    ...set, shortcuts: set.shortcuts.filter(sc => sc.type !== "dynamic" || !!sc.dynamicUid && dynamicUids.has(sc.dynamicUid)),
+    ...set, shortcuts: set.shortcuts.filter(sc => sc.type !== "dynamic" || !!sc.dynamicUid && !rejectedDynamicUids.has(sc.dynamicUid)),
   }));
 
   return {
