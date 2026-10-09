@@ -1,7 +1,7 @@
 import { t } from "@browserail/i18n";
 import type { ItemIcon } from "@browserail/protocol";
-import type { IconCatalog } from "../../../icons/lucide";
-import { loadIconCatalog, loadIconTags, loadIconUrl, type IconFamily } from "../../../icons/item-icons";
+import type { IconCatalog } from "../../../lib/icons/lucide";
+import { loadIconCatalog, loadIconTags, loadIconUrl, type IconFamily } from "../../../lib/icons/item-icons";
 
 type IconTab = "default" | IconFamily | "text" | "initial";
 

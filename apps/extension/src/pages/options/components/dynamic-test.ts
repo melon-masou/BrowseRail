@@ -1,6 +1,6 @@
 import browser from "webextension-polyfill";
 import { t } from "@browserail/i18n";
-import type { DynamicEvaluation } from "../../../dynamic/evaluate";
+import type { DynamicEvaluation } from "../../../features/dynamic/evaluate";
 import type { OptionsState } from "../state";
 
 interface TestState {

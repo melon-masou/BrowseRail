@@ -11,8 +11,8 @@ import {
   createMenu,
   type StoredMenu,
   type StoredMenuItem,
-} from "../../../config";
-import { formatSpecialRootForDisplay } from "../../../bookmarks";
+} from "../../../lib/config";
+import { formatSpecialRootForDisplay } from "../../../lib/bookmarks";
 import { t } from "@browserail/i18n";
 import { positionPopover } from "../components/popover-position";
 import { DEFAULT_COLOR } from "../components/color-picker";

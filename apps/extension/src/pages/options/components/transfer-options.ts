@@ -1,6 +1,6 @@
 import { t } from "@browserail/i18n";
 import type { ExportedSettingsData } from "@browserail/protocol";
-import { normalizeDynamicBookmarks } from "../../../config";
+import { normalizeDynamicBookmarks } from "../../../lib/config";
 import { hasTransferGroup, transferCounts, transferGroups, type ImportMode, type TransferGroup, type TransferOptions } from "../transfer";
 
 export function chooseTransferOptions(kind: "import" | "export", data: ExportedSettingsData): Promise<TransferOptions | undefined> {

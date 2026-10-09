@@ -55,7 +55,7 @@ function changeLabel(value: string): void {
   input("instance-label").dispatchEvent(new Event("input", { bubbles: true }));
 }
 async function savedConfig() {
-  return (await import("../../config")).loadConfig();
+  return (await import("../../lib/config")).loadConfig();
 }
 async function save(): Promise<void> {
   const form = document.getElementById(button("save-btn").getAttribute("form")!);
@@ -74,7 +74,7 @@ beforeEach(async () => {
   mock.storageListeners = [];
   mock.requestPermission.mockReset().mockResolvedValue(true);
   mock.bookmarkTree = [{id: "0", title: "", children: []}];
-  const { loadConfig } = await import("../../config");
+  const { loadConfig } = await import("../../lib/config");
   const config = await loadConfig();
   config.instanceLabel = "Original instance";
   config.panel.menus = [];
@@ -163,9 +163,9 @@ it.each(["Merge", "Replace"])("uses %s for file import, staging the result until
 });
 
 it("previews cloud download before applying selected categories and preserves instance settings and unselected layout", async () => {
-  const { uploadCloudSettings } = await import("../../config/cloud-storage");
+  const { uploadCloudSettings } = await import("../../lib/config/cloud-storage");
   const { EXPORT_SCHEMA_VERSION, defaultBarSettings } = await import("@browserail/protocol");
-  const { saveBarLayout, loadBarConfigurations, defaultMenuPlacement } = await import("../../config");
+  const { saveBarLayout, loadBarConfigurations, defaultMenuPlacement } = await import("../../lib/config");
   const saved = await savedConfig();
   await saveBarLayout("local", "browser", defaultMenuPlacement(), { gapRatio: .3, extraGaps: {} }, defaultBarSettings());
   const layout = await loadBarConfigurations();
@@ -197,7 +197,7 @@ it("replaces selected local data through a cloud download while retaining unsele
   button("custom-bookmarks-tab").click(); button("add-static-btn").click(); await save();
   const before = await savedConfig();
   expect(before.staticBookmarks).toHaveLength(1);
-  const { uploadCloudSettings } = await import("../../config/cloud-storage");
+  const { uploadCloudSettings } = await import("../../lib/config/cloud-storage");
   const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
   await uploadCloudSettings({ version: EXPORT_SCHEMA_VERSION, exportedAt: "2026-10-09T00:00:00Z", menus: [{ uid: "remote", items: [] }], staticBookmarks: [] });
   await openSync(); button("sync-download").click();
@@ -213,7 +213,7 @@ it("replaces selected local data through a cloud download while retaining unsele
 });
 
 it("uploads saved selected categories after confirmation, retaining unselected remote data", async () => {
-  const { downloadCloudSettings, uploadCloudSettings } = await import("../../config/cloud-storage");
+  const { downloadCloudSettings, uploadCloudSettings } = await import("../../lib/config/cloud-storage");
   const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
   const remote = { version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(), menus: [{ uid: "remote", items: [] }], globalCss: { remote: "& {}" }, staticBookmarks: [{ uid: "remote-bookmark", name: "Remote", url: "https://example.com" }] };
   await uploadCloudSettings(remote);
@@ -399,7 +399,7 @@ it("refreshes a dynamic bookmark's current URL while retaining unsaved edits", a
   if (!card?.dataset.recordId || !name) throw new Error("Missing dynamic bookmark");
   name.value = "Unsaved name";
   name.dispatchEvent(new Event("input", { bubbles: true }));
-  const { DYNAMIC_VALUE_STORAGE_PREFIX, saveDynamicValue } = await import("../../config");
+  const { DYNAMIC_VALUE_STORAGE_PREFIX, saveDynamicValue } = await import("../../lib/config");
   const key = DYNAMIC_VALUE_STORAGE_PREFIX + card.dataset.recordId;
   await saveDynamicValue(card.dataset.recordId, { url: "https://example.com/updated", updatedAt: 1 });
   for (const listener of mock.storageListeners) listener({ [key]: { newValue: mock.storage[key] } }, "local");
@@ -416,7 +416,7 @@ it("shows an API bookmark's source and raw failure text, then clears the failure
   mode.click();
   const card = document.querySelector<HTMLElement>("#dynamic-list article");
   if (!card?.dataset.recordId) throw new Error("Missing dynamic bookmark");
-  const { DYNAMIC_VALUE_STORAGE_PREFIX, saveDynamicValue } = await import("../../config");
+  const { DYNAMIC_VALUE_STORAGE_PREFIX, saveDynamicValue } = await import("../../lib/config");
   const key = DYNAMIC_VALUE_STORAGE_PREFIX + card.dataset.recordId;
   await saveDynamicValue(card.dataset.recordId, {
     updatedAt: 0, source: "provider@example.com", error: "outsideUrlRule", errmsg: "URL does not match the selected rule.",
@@ -784,7 +784,7 @@ it("inserts source-qualified references at the URL selection and saves the templ
 it("shows counts and defaults all available transfer groups on; imports only selected groups", async () => {
   const { chooseTransferOptions } = await import("./components/transfer-options");
   const { defaultBarSettings, defaultNativeBarSettings } = await import("@browserail/protocol");
-  const { defaultMenuPlacement } = await import("../../config");
+  const { defaultMenuPlacement } = await import("../../lib/config");
   const data = {
     version: 2 as const, exportedAt: "2026-10-09T00:00:00.000Z",
     menus: [{ uid: "bar", items: [] }],

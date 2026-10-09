@@ -1,5 +1,5 @@
-import { nativeShortcutSetMatches, nativeShortcutsForWindows } from "./native-shortcuts";
-import { resolveItemIcons } from "../icons/item-icons";
+import { nativeShortcutSetMatches, nativeShortcutsForWindows } from "../features/actions/native-shortcuts";
+import { resolveItemIcons } from "../lib/icons/item-icons";
 import {
   isNativeMessage,
   barSettingsFromView,
@@ -23,9 +23,9 @@ import {
   combineRootAndItemPath,
   findBookmarkNodeByPath,
   resolveMenuItems,
-} from "../bookmarks";
-import { projectMenuSpacing } from "../bookmarks/spacing";
-import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../browser/windows";
+} from "../lib/bookmarks";
+import { projectMenuSpacing } from "../lib/bookmarks/spacing";
+import { browserKind, listBrowserWindows, type BrowserWindowCandidate } from "../lib/browser/windows";
 import {
   loadBookmarkRootPrefix,
   loadConfig,
@@ -46,22 +46,22 @@ import {
   removeMenuPlacements,
   saveWidgetEnabled,
   BAR_CONFIGURATIONS_STORAGE_KEY,
-} from "../config";
-import { loadInstanceUid } from "../config/instance-identity";
-import { EXTERNAL_DATA_STORAGE_PREFIX } from "../config/external-data";
-import { ExtensionStateMachine, type ExtensionConnectionState } from "../native/state-machine";
-import { navigateToUrl } from "../browser/navigation";
-import { canUseBookmarks } from "../browser/bookmarks-capability";
-import { initDynamicBookmarks } from "./dynamic";
-import { initExternalUpdates } from "./external-updates";
-import { executeMenuAction } from "./execute-menu-action";
-import { canExecuteShortcut, executeShortcutAction } from "./shortcut-actions";
-import { autoHideEnabled, reconcileAutoHideOverrides } from "./auto-hide-runtime";
+} from "../lib/config";
+import { loadInstanceUid } from "../lib/config/instance-identity";
+import { EXTERNAL_DATA_STORAGE_PREFIX } from "../lib/config/external-data";
+import { ExtensionStateMachine, type ExtensionConnectionState } from "../features/desktop/state-machine";
+import { navigateToUrl } from "../lib/browser/navigation";
+import { canUseBookmarks } from "../lib/browser/bookmarks-capability";
+import { initDynamicBookmarks } from "../features/dynamic/updater";
+import { initExternalUpdates } from "../features/api/updates";
+import { executeMenuAction } from "../features/actions/execute-menu-action";
+import { canExecuteShortcut, executeShortcutAction } from "../features/actions/shortcut-actions";
+import { autoHideEnabled, reconcileAutoHideOverrides } from "../features/bar/auto-hide";
 
-import { createBrowserMenus, menuVisibleForUrl as isMenuVisibleForUrl } from "./browser-menus";
-import { createBrowserEditingMenu } from "./browser-editing";
-import { createBrowserInjection } from "./browser-injection";
-import { requestBrowserMenuRefresh } from "./browser-menu-refresh";
+import { createBrowserMenus, menuVisibleForUrl as isMenuVisibleForUrl } from "../features/bar/menus";
+import { createBrowserEditingMenu } from "../features/toolbar/menu";
+import { createBrowserInjection } from "../features/injection/bar";
+import { requestBrowserMenuRefresh } from "../features/bar/refresh";
 
 const browserMenus = createBrowserMenus(requestSync);
 const browserInjection = createBrowserInjection();

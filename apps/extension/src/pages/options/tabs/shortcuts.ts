@@ -6,8 +6,8 @@ import {
   isShortcutActionType,
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
-import { type StoredShortcut, type StoredNativeShortcut } from "../../../config";
-import { type BookmarkNode, combineRootAndItemPath, findBookmarkNodeByPath } from "../../../bookmarks";
+import { type StoredShortcut, type StoredNativeShortcut } from "../../../lib/config";
+import { type BookmarkNode, combineRootAndItemPath, findBookmarkNodeByPath } from "../../../lib/bookmarks";
 import { t } from "@browserail/i18n";
 import { positionPopover } from "../components/popover-position";
 import { renderPreservingFocus } from "../components/render-focus";

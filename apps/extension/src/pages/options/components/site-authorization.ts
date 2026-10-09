@@ -1,7 +1,7 @@
 import { createScope } from "../lifecycle";
 import browser from "webextension-polyfill";
 import { onLanguageChange, t } from "@browserail/i18n";
-import type { DisplayMode, UrlRule } from "../../../config";
+import type { DisplayMode, UrlRule } from "../../../lib/config";
 import {
   ALL_WEBSITE_ORIGINS,
   incompleteRuleUids,
@@ -9,7 +9,7 @@ import {
   revokeWebsitePermissions,
   ruleSites,
   type RuleSites,
-} from "../../../browser/site-permissions";
+} from "../../../lib/browser/site-permissions";
 
 export function createSiteAuthorization(options: {
   root: HTMLElement;

@@ -1,10 +1,10 @@
 import browser from "webextension-polyfill";
-import { probeDesktopConnection } from "../../native/connection";
+import { probeDesktopConnection } from "../../lib/desktop/connection";
 import {
   loadWidgetEnabled, saveWidgetEnabled, loadShortcutsEnabled, saveShortcutsEnabled,
   WIDGET_ENABLED_STORAGE_KEY, SHORTCUTS_ENABLED_STORAGE_KEY,
-} from "../../config";
-import { browserKind } from "../../browser/windows";
+} from "../../lib/config";
+import { browserKind } from "../../lib/browser/windows";
 
 type RuntimeState = { enabled: boolean; shortcutsEnabled: boolean };
 

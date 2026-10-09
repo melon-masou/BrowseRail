@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({ sendMessage: vi.fn(async (_message: unknown) => ({ saved: true })) }));
 vi.mock("webextension-polyfill", () => ({ default: { runtime: { sendMessage: mock.sendMessage } } }));
-vi.mock("../../config", () => ({ loadConfig: async () => ({ staticBookmarks: [{ tags: ["work", "gbf"] }, { tags: ["gbf"] }] }) }));
+vi.mock("../../lib/config", () => ({ loadConfig: async () => ({ staticBookmarks: [{ tags: ["work", "gbf"] }, { tags: ["gbf"] }] }) }));
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.replaceChildren(); });
 

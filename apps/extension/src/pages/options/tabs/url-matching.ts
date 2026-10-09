@@ -1,5 +1,5 @@
 import { activeUrlPatterns } from "@browserail/protocol";
-import { type UrlRule } from "../../../config";
+import { type UrlRule } from "../../../lib/config";
 import { t } from "@browserail/i18n";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";

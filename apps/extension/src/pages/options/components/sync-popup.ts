@@ -1,8 +1,8 @@
 import { t } from "@browserail/i18n";
 import type { ExportedSettingsData } from "@browserail/protocol";
-import { cloudStorageAvailable, readCloudSettings, uploadCloudSettings } from "../../../config/cloud-storage";
-import { loadSyncSettings, saveSyncSettings, type SyncSettings } from "../../../config/sync-settings";
-import { authorizeWebDav, readWebDavSettings, uploadWebDavSettings } from "../../../config/webdav";
+import { cloudStorageAvailable, readCloudSettings, uploadCloudSettings } from "../../../lib/config/cloud-storage";
+import { loadSyncSettings, saveSyncSettings, type SyncSettings } from "../../../lib/config/sync-settings";
+import { authorizeWebDav, readWebDavSettings, uploadWebDavSettings } from "../../../lib/config/webdav";
 import { mergeTransferData, type TransferOptions } from "../transfer";
 import { createTransferChoices } from "./transfer-options";
 

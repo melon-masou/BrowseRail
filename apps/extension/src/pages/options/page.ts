@@ -31,7 +31,7 @@ import { mountShortcutsTab } from "./tabs/shortcuts";
 import { mountUrlMatchingTab } from "./tabs/url-matching";
 import { element } from "./dom";
 import { createScope } from "./lifecycle";
-import type { UrlRule } from "../../config";
+import type { UrlRule } from "../../lib/config";
 import { createSyncPopup } from "./components/sync-popup";
 
 export async function mountOptionsPage() {

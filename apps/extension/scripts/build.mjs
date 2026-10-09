@@ -68,7 +68,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/page-operations/index.ts"),
+      entry: resolve(root, "src/content/bar/index.ts"),
       fileName: () => "content.js",
       formats: ["iife"],
       name: "BrowseRailContent",
@@ -83,7 +83,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/external-updates/index.ts"),
+      entry: resolve(root, "src/content/bridge/index.ts"),
       fileName: () => "external-updates.js",
       formats: ["iife"],
       name: "BrowseRailExternalUpdates",
@@ -97,7 +97,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/external-updates/client.ts"),
+      entry: resolve(root, "src/content/bridge/client.ts"),
       fileName: () => "userscript-client.js",
       formats: ["iife"],
       name: "BrowseRailExternalClient",
@@ -112,7 +112,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/pages/offscreen/index.ts"),
+      entry: resolve(root, "src/background/offscreen.ts"),
       fileName: () => "offscreen.js",
       formats: ["iife"],
       name: "BrowseRailOffscreen",
@@ -126,7 +126,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/dynamic/rewrite-worker.ts"),
+      entry: resolve(root, "src/background/rewrite-worker.ts"),
       fileName: () => "rewrite-worker.js",
       formats: ["iife"],
       name: "BrowseRailRewrite",
@@ -160,7 +160,7 @@ if (target === "chrome") {
 await writeFile(resolve(outDir, "manifest.json"), JSON.stringify(manifestJson, null, 2), "utf8");
 
 await cp(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
-await cp(resolve(root, "src/pages/offscreen/index.html"), resolve(outDir, "offscreen.html"));
+await cp(resolve(root, "src/background/offscreen.html"), resolve(outDir, "offscreen.html"));
 
 const lucide = resolve(root, "node_modules/lucide-static");
 const lucideOut = resolve(outDir, "icons/lucide");

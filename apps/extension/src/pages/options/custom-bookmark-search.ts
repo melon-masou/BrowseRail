@@ -1,5 +1,5 @@
 import type { CustomBookmarkType } from "@browserail/protocol";
-import type { StaticBookmark, TemporaryBookmark, DynamicBookmark, ExternalAction, UrlRule } from "../../config";
+import type { StaticBookmark, TemporaryBookmark, DynamicBookmark, ExternalAction, UrlRule } from "../../lib/config";
 import type { CustomBookmarkSource } from "./custom-bookmark-source";
 import type { ReadonlyData } from "./state";
 

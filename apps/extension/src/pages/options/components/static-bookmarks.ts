@@ -1,9 +1,9 @@
 import browser from "webextension-polyfill";
-import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData } from "../../../config/external-data";
+import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData } from "../../../lib/config/external-data";
 import { createScope } from "../lifecycle";
-import { staticBookmarkReferenceErrors, variableReference } from "../../../bookmarks/variables";
+import { staticBookmarkReferenceErrors, variableReference } from "../../../lib/bookmarks/variables";
 import { t } from "@browserail/i18n";
-import type { StaticBookmark } from "../../../config";
+import type { StaticBookmark } from "../../../lib/config";
 import type { OptionsState, ReadonlyData } from "../state";
 import { renderPreservingFocus } from "./render-focus";
 import { addIcon, removeIcon, setIconContent } from "./icons";

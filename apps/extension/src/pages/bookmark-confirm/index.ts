@@ -1,8 +1,8 @@
 import browser from "webextension-polyfill";
 import { t } from "@browserail/i18n";
 import { mountBookmarkConfirmation, mountTemporaryConfirmation } from "@browserail/menu-ui";
-import { loadConfig } from "../../config";
-import { normalizeStaticBookmarkTags } from "../../config/static-bookmark-tags";
+import { loadConfig } from "../../lib/config";
+import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
 import "@browserail/menu-ui/temporary-confirm.css";
 
 const query = new URLSearchParams(location.search);

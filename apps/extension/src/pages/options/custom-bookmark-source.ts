@@ -19,7 +19,7 @@ import {
   type StoredMenuItem,
   type StoredShortcut,
   type StoredNativeShortcut,
-} from "../../config";
+} from "../../lib/config";
 import type { OptionsState, ReadonlyData } from "./state";
 import { createScope } from "./lifecycle";
 export function createCustomBookmarkSource(state: OptionsState) {

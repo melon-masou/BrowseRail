@@ -40,14 +40,14 @@ import {
   type StoredNativeShortcut,
   normalizeNativeShortcutSets,
   type UrlRule,
-} from "../../config";
-import { canUseBookmarks } from "../../browser/bookmarks-capability";
+} from "../../lib/config";
+import { canUseBookmarks } from "../../lib/browser/bookmarks-capability";
 import { settingsFromConfig, type OptionsState, type SettingsDraft } from "./state";
 import type { BookmarkLibrary } from "./bookmark-library";
 import { createScope } from "./lifecycle";
 import { hasTransferGroup, mergeByKey, selectTransferData, type TransferOptions } from "./transfer";
-import { validateRewrite } from "../../dynamic/rewrite";
-import { loadExternalAuthorization, saveExternalAuthorization } from "../../config/external-authorization-store";
+import { validateRewrite } from "../../lib/rewrite/rewrite";
+import { loadExternalAuthorization, saveExternalAuthorization } from "../../lib/config/external-authorization-store";
 export async function loadOptions() {
   const bookmarksAvailable = await canUseBookmarks();
   const [config, enabled, tree, rootPrefix, displayMode, externalAuthorization] = await Promise.all([

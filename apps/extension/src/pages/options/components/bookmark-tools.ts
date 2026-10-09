@@ -1,16 +1,16 @@
-import { type DynamicBookmark, type StaticBookmark } from "../../../config";
+import { type DynamicBookmark, type StaticBookmark } from "../../../lib/config";
 import {
   buildTemporaryDirectiveUrl,
   type BookmarkNode,
   findBookmarkNodeByPath,
   SPECIAL_ROOT_PLACEHOLDERS,
-} from "../../../bookmarks";
+} from "../../../lib/bookmarks";
 import { t } from "@browserail/i18n";
 import { type ReadonlyData, type OptionsState } from "../state";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
 import { type BookmarkLibrary } from "../bookmark-library";
-import { type BookmarkPicker } from "../components/bookmark-picker";
+import { type BookmarkPicker } from "./bookmark-picker";
 
 /**
  * Static bookmarks for the bookmarks in a browser folder, optionally including nested folders.

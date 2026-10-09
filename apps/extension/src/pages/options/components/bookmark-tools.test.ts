@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import type { BookmarkNode } from "../../../bookmarks";
+import type { BookmarkNode } from "../../../lib/bookmarks";
 
 vi.mock("webextension-polyfill", () => ({ default: {} }));
 

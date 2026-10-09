@@ -1,6 +1,6 @@
-import { type DisplayMode } from "../../../config";
-import { isLocalDesktopUrl } from "../../../native/connection";
-import { createRandomInstanceLabel } from "../../../config/instance-label";
+import { type DisplayMode } from "../../../lib/config";
+import { isLocalDesktopUrl } from "../../../lib/desktop/connection";
+import { createRandomInstanceLabel } from "../../../lib/config/instance-label";
 import { t } from "@browserail/i18n";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";

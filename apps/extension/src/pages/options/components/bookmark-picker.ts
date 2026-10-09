@@ -6,9 +6,9 @@ import {
   getSpecialRootTypeFromNode,
   SPECIAL_ROOT_PLACEHOLDERS,
   type BookmarkNode,
-} from "../../../bookmarks";
+} from "../../../lib/bookmarks";
 import { type BookmarkLibrary } from "../bookmark-library";
-import { normalizeStaticBookmarkTags } from "../../../config/static-bookmark-tags";
+import { normalizeStaticBookmarkTags } from "../../../lib/config/static-bookmark-tags";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
 export interface BookmarkPickOptions {

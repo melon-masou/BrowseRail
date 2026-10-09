@@ -1,6 +1,6 @@
 import browser from "webextension-polyfill";
 import { t } from "@browserail/i18n";
-import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData, removeExternalData } from "../../../config/external-data";
+import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData, removeExternalData } from "../../../lib/config/external-data";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
 import type { OptionsState } from "../state";

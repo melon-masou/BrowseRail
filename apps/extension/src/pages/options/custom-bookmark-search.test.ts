@@ -3,7 +3,7 @@ import {
   filterCustomBookmarks,
   matchesSearchQuery,
 } from "./custom-bookmark-search";
-import type { StaticBookmark, TemporaryBookmark, DynamicBookmark, ExternalAction, UrlRule } from "../../config";
+import type { StaticBookmark, TemporaryBookmark, DynamicBookmark, ExternalAction, UrlRule } from "../../lib/config";
 import type { CustomBookmarkSource } from "./custom-bookmark-source";
 
 describe("custom-bookmark-search", () => {

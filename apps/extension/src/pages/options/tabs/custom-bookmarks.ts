@@ -1,5 +1,5 @@
 import { type CustomBookmarkType } from "@browserail/protocol";
-import { type DynamicBookmark, type TemporaryBookmark } from "../../../config";
+import { type DynamicBookmark, type TemporaryBookmark } from "../../../lib/config";
 import { t } from "@browserail/i18n";
 import { type ReadonlyData, type OptionsState } from "../state";
 import { element } from "../dom";
@@ -11,7 +11,7 @@ import { type BookmarkTools } from "../components/bookmark-tools";
 import { addIcon, checkIcon, copyIcon, removeIcon, setIconContent } from "../components/icons";
 import { renderPreservingFocus } from "../components/render-focus";
 import { createDynamicTester } from "../components/dynamic-test";
-import { DEFAULT_REWRITE } from "../../../dynamic/rewrite";
+import { DEFAULT_REWRITE } from "../../../lib/rewrite/rewrite";
 import { mountVariables } from "../components/variables";
 import { createStaticBookmarksList } from "../components/static-bookmarks";
 import { createExternalAction, createExternalActionsList } from "../components/external-actions";

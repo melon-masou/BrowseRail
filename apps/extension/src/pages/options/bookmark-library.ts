@@ -1,6 +1,6 @@
 import browser from "webextension-polyfill";
 import { isCustomBookmarkType } from "@browserail/protocol";
-import type { StoredMenuItem } from "../../config";
+import type { StoredMenuItem } from "../../lib/config";
 import type { ReadonlyData } from "./state";
 import {
   combineRootAndItemPath,
@@ -11,7 +11,7 @@ import {
   resolveBookmarkNodeByPath,
   SPECIAL_ROOT_PLACEHOLDERS,
   type BookmarkNode,
-} from "../../bookmarks";
+} from "../../lib/bookmarks";
 export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
   let tree: browser.Bookmarks.BookmarkTreeNode[] = [];
   let available = false;

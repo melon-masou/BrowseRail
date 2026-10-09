@@ -12,11 +12,11 @@ vi.mock("webextension-polyfill", () => ({ default: {
   },
   runtime: { sendMessage: async () => {} },
 } }));
-import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu, saveShortcutsEnabled, loadShortcutsEnabled, type StoredMenuItem } from "../../config";
+import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu, saveShortcutsEnabled, loadShortcutsEnabled, type StoredMenuItem } from "../../lib/config";
 import { createOptionsState, settingsFromConfig } from "./state";
 import { createBookmarkLibrary } from "./bookmark-library";
 import { createPersistence, loadOptions } from "./persistence";
-import { loadExternalAuthorization } from "../../config/external-authorization-store";
+import { loadExternalAuthorization } from "../../lib/config/external-authorization-store";
 
 beforeEach(() => { local.values = {}; });
 

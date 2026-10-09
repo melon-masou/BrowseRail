@@ -25,9 +25,9 @@ import type {
   StaticBookmark,
   TemporaryBookmark,
   ExternalAction,
-} from "../../config";
-import { normalizeStaticBookmarkTags } from "../../config/static-bookmark-tags";
-import { createExternalToken, type ExternalAuthorization } from "../../config/external-authorization";
+} from "../../lib/config";
+import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
+import { createExternalToken, type ExternalAuthorization } from "../../lib/config/external-authorization";
 
 export type ReadonlyData<T> = T extends string | number | boolean | null | undefined
   ? T

@@ -1,6 +1,6 @@
 import { t } from "@browserail/i18n";
-import { listExternalData } from "../../../config/external-data";
-import type { VariableSource } from "../../../bookmarks/variables";
+import { listExternalData } from "../../../lib/config/external-data";
+import type { VariableSource } from "../../../lib/bookmarks/variables";
 import { createScope } from "../lifecycle";
 import type { OptionsState } from "../state";
 import { createItemPicker } from "./item-picker";
