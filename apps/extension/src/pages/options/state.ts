@@ -20,6 +20,7 @@ import type {
   StoredMenuItem,
   StoredShortcut,
   StoredNativeShortcut,
+  StoredNativeShortcutSet,
   UrlRule,
   StaticBookmark,
   TemporaryBookmark,
@@ -54,7 +55,7 @@ export interface SettingsDraft {
   externalActions: ExternalAction[];
   userVariables: Record<string, JsonValue>;
   shortcuts: StoredShortcut[];
-  nativeShortcuts: StoredNativeShortcut[];
+  nativeShortcutSets: StoredNativeShortcutSet[];
 }
 export interface UserVariable {
   uid: string;
@@ -119,7 +120,7 @@ export function settingsFromConfig(config: ExtensionConfig): SettingsDraft {
     externalActions: config.externalActions,
     userVariables: config.userVariables,
     shortcuts: config.shortcuts,
-    nativeShortcuts: config.nativeShortcuts,
+    nativeShortcutSets: config.nativeShortcutSets,
   });
 }
 
@@ -199,7 +200,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
           `shortcut ${id.slot}`,
         )
       : requireTarget(
-          settingsDraft.nativeShortcuts.find((value) => value.id === id.id),
+          settingsDraft.nativeShortcutSets.flatMap(set => set.shortcuts).find((value) => value.id === id.id),
           `native shortcut ${id.id}`,
         );
   }
@@ -612,7 +613,7 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
         target.items = target.items.filter(
           (value) => value.type !== type || customBookmarkUid(value) !== uid,
         );
-      for (const target of [...settingsDraft.shortcuts, ...settingsDraft.nativeShortcuts]) {
+      for (const target of [...settingsDraft.shortcuts, ...settingsDraft.nativeShortcutSets.flatMap(set => set.shortcuts)]) {
         if (target.type === type && customBookmarkUid(target) === uid) {
           delete target.type;
           delete target.dynamicUid;
@@ -667,18 +668,37 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       }
       publish(["rules", "menus", "bookmarks"], true);
     },
-    addNativeShortcut(value: StoredNativeShortcut): void {
-      if (settingsDraft.nativeShortcuts.some((target) => target.id === value.id))
+    addNativeShortcutSet(value: StoredNativeShortcutSet): void {
+      if (settingsDraft.nativeShortcutSets.some(set => set.uid === value.uid))
+        throw new Error(`Duplicate shortcut set ${value.uid}`);
+      settingsDraft.nativeShortcutSets.push(structuredClone(value));
+      publish(["shortcuts"], true);
+    },
+    renameNativeShortcutSet(uid: string, name: string): void {
+      requireTarget(settingsDraft.nativeShortcutSets.find(set => set.uid === uid), `shortcut set ${uid}`).name = name;
+      publish(["shortcuts"]);
+    },
+    setNativeShortcutRules(uid: string, uids: readonly string[]): void {
+      const set = requireTarget(settingsDraft.nativeShortcutSets.find(set => set.uid === uid), `shortcut set ${uid}`);
+      for (const ruleUid of uids)
+        if (!set.urlRuleUids?.includes(ruleUid)) ruleUids([ruleUid]);
+      const selected = [...new Set(uids)];
+      setOptional(set, { urlRuleUids: selected.length ? selected : undefined });
+      publish(["shortcuts"]);
+    },
+    removeNativeShortcutSet(uid: string): void {
+      requireTarget(settingsDraft.nativeShortcutSets.find(set => set.uid === uid), `shortcut set ${uid}`);
+      settingsDraft.nativeShortcutSets = settingsDraft.nativeShortcutSets.filter(set => set.uid !== uid);
+      publish(["shortcuts"], true);
+    },
+    addNativeShortcut(setUid: string, value: StoredNativeShortcut): void {
+      if (settingsDraft.nativeShortcutSets.some(set => set.shortcuts.some(target => target.id === value.id)))
         throw new Error(`Duplicate shortcut ${value.id}`);
-      settingsDraft.nativeShortcuts.push(structuredClone(value));
+      requireTarget(settingsDraft.nativeShortcutSets.find(set => set.uid === setUid), `shortcut set ${setUid}`).shortcuts.push(structuredClone(value));
       publish(["shortcuts"], true);
     },
     setNativeKey(id: string, key: string): void {
-      shortcut({ kind: "native", id });
-      requireTarget(
-        settingsDraft.nativeShortcuts.find((value) => value.id === id),
-        `native shortcut ${id}`,
-      ).key = key;
+      (shortcut({ kind: "native", id }) as StoredNativeShortcut).key = key;
       publish(["shortcuts"]);
     },
     setShortcutTabMode(id: ShortcutId, tabMode: TabMode): void {
@@ -690,9 +710,8 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       if (id.kind === "slot")
         settingsDraft.shortcuts = settingsDraft.shortcuts.filter((value) => value.slot !== id.slot);
       else
-        settingsDraft.nativeShortcuts = settingsDraft.nativeShortcuts.filter(
-          (value) => value.id !== id.id,
-        );
+        for (const set of settingsDraft.nativeShortcutSets)
+          set.shortcuts = set.shortcuts.filter(value => value.id !== id.id);
       publish(["shortcuts"], true);
     },
     setShortcutTarget(id: ShortcutId, selection: ShortcutTarget): void {

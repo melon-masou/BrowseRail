@@ -3053,6 +3053,32 @@ button.item-tag {
   margin-bottom: 12px;
 }
 
+.native-shortcut-set {
+  padding: 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.native-shortcut-set-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.native-shortcut-set-header .url-rule-name-input { flex: 1; min-width: 0; }
+.native-shortcut-rules { position: relative; }
+.native-shortcut-rules summary { cursor: pointer; font-size: 12px; white-space: nowrap; }
+.native-shortcut-rules .menu-setting-url-rules-list {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 240px;
+  box-shadow: 0 6px 20px #0002;
+}
+
 .shortcut-row {
   display: flex;
   align-items: center;

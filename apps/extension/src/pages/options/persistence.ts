@@ -38,6 +38,7 @@ import {
   type StoredMenuItemType,
   type StoredShortcut,
   type StoredNativeShortcut,
+  normalizeNativeShortcutSets,
   type UrlRule,
 } from "../../config";
 import { canUseBookmarks } from "../../browser/bookmarks-capability";
@@ -106,7 +107,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       externalActions,
       userVariables,
       shortcuts,
-      nativeShortcuts,
+      nativeShortcutSets,
     } = saving;
     for (const bookmark of dynamicBookmarks) {
       if (bookmark.type !== "rewrite") continue;
@@ -135,7 +136,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       externalActions,
       userVariables,
       shortcuts,
-      nativeShortcuts,
+      nativeShortcutSets,
     });
     if (saving.barConfigurations) await importBarConfigurations(saving.barConfigurations, menus.map(menu => menu.uid));
     await pruneTemporaryValues(temporaryBookmarks);
@@ -173,7 +174,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       externalActions,
       userVariables,
       shortcuts,
-      nativeShortcuts,
+      nativeShortcutSets,
     } = structuredClone(state.settings) as SettingsDraft;
     for (const menu of menus) {
       library.enrich(menu.items, library.tree);
@@ -199,7 +200,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       temporaryBookmarks,
       externalActions,
       shortcuts,
-      nativeShortcuts,
+      nativeShortcutSets,
       menus: menus.map((menu) => ({
         uid: menu.uid,
         ...(menu.style ? { style: menu.style } : {}),
@@ -468,7 +469,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       imported.externalActions = mergeByKey(imported.externalActions, actions, action => action.uid);
     }
     let incomingShortcuts: StoredShortcut[] = [];
-    let incomingNativeShortcuts: StoredNativeShortcut[] = [];
     if (Array.isArray(parsed.shortcuts)) {
       incomingShortcuts = parsed.shortcuts.flatMap((sc): StoredShortcut[] => {
         if (typeof sc !== "object" || sc === null) return [];
@@ -500,38 +500,6 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         ];
       });
     }
-    if (Array.isArray(parsed.nativeShortcuts)) {
-      incomingNativeShortcuts = parsed.nativeShortcuts.flatMap((sc): StoredNativeShortcut[] => {
-        if (typeof sc !== "object" || sc === null) return [];
-        const record = sc as unknown as Record<string, unknown>;
-        if (typeof record.id !== "string" || !record.id) return [];
-        if (isShortcutActionType(record.type)) {
-          const action = normalizeShortcutAction(record);
-          return action ? [{ id: record.id, key: typeof record.key === "string" ? record.key : "", ...action }] : [];
-        }
-        return [
-          {
-            id: record.id,
-            key: typeof record.key === "string" ? record.key : "",
-            type: isCustomBookmarkType(record.type) ? record.type : "bookmark",
-            ...(Array.isArray(record.path)
-              ? { path: record.path.filter((p): p is string => typeof p === "string") }
-              : {}),
-            ...(typeof record.url === "string" ? { url: record.url } : {}),
-            ...(typeof record.title === "string" ? { title: record.title } : {}),
-            ...(typeof record.dynamicUid === "string" ? { dynamicUid: record.dynamicUid } : {}),
-            ...(typeof record.staticUid === "string" ? { staticUid: record.staticUid } : {}),
-            ...(typeof record.temporaryUid === "string"
-              ? { temporaryUid: record.temporaryUid }
-              : {}),
-            ...(typeof record.externalActionUid === "string" ? { externalActionUid: record.externalActionUid } : {}),
-            ...(record.tabMode === "newTab" || record.tabMode === "replace"
-              ? { tabMode: record.tabMode }
-              : {}),
-          },
-        ];
-      });
-    }
     const importedDynamicUids = new Set(imported.dynamicBookmarks.map(db => db.uid));
     const keepReference = (item: StoredMenuItem | StoredShortcut | StoredNativeShortcut): boolean =>
       item.type !== "dynamic" || !!item.dynamicUid && importedDynamicUids.has(item.dynamicUid);
@@ -540,7 +508,12 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       imported.menus = mergeByKey(imported.menus, importedMenus, menu => menu.uid);
     }
     if (parsed.shortcuts) imported.shortcuts = mergeByKey(imported.shortcuts, importsBookmarks ? incomingShortcuts.filter(keepReference) : incomingShortcuts, shortcut => shortcut.slot);
-    if (parsed.nativeShortcuts) imported.nativeShortcuts = mergeByKey(imported.nativeShortcuts, importsBookmarks ? incomingNativeShortcuts.filter(keepReference) : incomingNativeShortcuts, shortcut => shortcut.id);
+    if (parsed.nativeShortcutSets) {
+      const incoming = normalizeNativeShortcutSets(parsed.nativeShortcutSets).map(set => ({
+        ...set, shortcuts: importsBookmarks ? set.shortcuts.filter(keepReference) : set.shortcuts,
+      }));
+      imported.nativeShortcutSets = mergeByKey(imported.nativeShortcutSets, incoming, set => set.uid);
+    }
     state.importSettings(imported, parsed.userVariables !== undefined);
   }
 

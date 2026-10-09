@@ -91,12 +91,12 @@ impl SessionRegistry {
             return Ok(None);
         }
 
-        let previous_window_uids = window_uids(session.menus.values());
+        let previous_window_uids = window_uids(session.menus.values(), &session.native_shortcuts);
         let next = menus
             .iter()
             .map(|synced| (menu_key(synced), synced.clone()))
             .collect::<HashMap<_, _>>();
-        let next_window_uids = window_uids(next.values());
+        let next_window_uids = window_uids(next.values(), &native_shortcuts);
         let removed_window_uids = previous_window_uids
             .difference(&next_window_uids)
             .cloned()
@@ -211,6 +211,7 @@ impl SessionRegistry {
     pub fn find_shortcut_by_key(
         &self,
         instance_uid: &str,
+        window_uid: &str,
         key: &str,
     ) -> Option<SyncedNativeShortcut> {
         let sessions = self.sessions.read().ok()?;
@@ -218,28 +219,21 @@ impl SessionRegistry {
         session
             .native_shortcuts
             .iter()
-            .find(|s| s.key.eq_ignore_ascii_case(key))
+            .find(|s| s.window_uid == window_uid && s.key.eq_ignore_ascii_case(key))
             .cloned()
     }
 
-    pub fn active_shortcut_keys_by_instance(&self) -> HashMap<String, HashSet<String>> {
-        self.sessions
-            .read()
-            .map(|sessions| {
-                sessions
-                    .iter()
-                    .filter(|(_, s)| s.outgoing.is_some() && !s.native_shortcuts.is_empty())
-                    .map(|(uid, s)| {
-                        let keys = s
-                            .native_shortcuts
-                            .iter()
-                            .map(|sc| sc.key.to_ascii_lowercase())
-                            .collect();
-                        (uid.clone(), keys)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+    pub fn active_shortcut_keys_by_window(&self) -> HashMap<(String, String), HashSet<String>> {
+        let mut keys: HashMap<(String, String), HashSet<String>> = HashMap::new();
+        if let Ok(sessions) = self.sessions.read() {
+            for (uid, session) in sessions.iter().filter(|(_, session)| session.outgoing.is_some()) {
+                for shortcut in &session.native_shortcuts {
+                    keys.entry((uid.clone(), shortcut.window_uid.clone()))
+                        .or_default().insert(shortcut.key.to_ascii_lowercase());
+                }
+            }
+        }
+        keys
     }
 
     pub fn menu(
@@ -287,7 +281,9 @@ impl SessionRegistry {
     }
 
     pub fn has_window(&self, instance_uid: &str, window_uid: &str) -> bool {
-        !self.window_menus(instance_uid, window_uid).is_empty()
+        self.sessions.read().ok().and_then(|sessions| sessions.get(instance_uid)
+            .map(|session| window_uids(session.menus.values(), &session.native_shortcuts).contains(window_uid)))
+            .unwrap_or(false)
     }
 
     pub fn menu_snapshots(&self) -> Vec<(String, Vec<SyncedMenu>)> {
@@ -377,7 +373,7 @@ impl SessionRegistry {
         session.outgoing = None;
         Some((
             session.instance.uid.clone(),
-            window_uids(session.menus.values()).into_iter().collect(),
+            window_uids(session.menus.values(), &session.native_shortcuts).into_iter().collect(),
         ))
     }
 
@@ -401,7 +397,7 @@ impl SessionRegistry {
                     .map(|(instance_uid, session)| {
                         (
                             instance_uid,
-                            window_uids(session.menus.values()).into_iter().collect(),
+                            window_uids(session.menus.values(), &session.native_shortcuts).into_iter().collect(),
                         )
                     })
                     .collect()
@@ -440,7 +436,7 @@ impl SessionRegistry {
                         instance_uid: s.instance.uid.clone(),
                         browser: s.instance.browser.clone(),
                         label: s.instance.label.clone(),
-                        windows_count: window_uids(s.menus.values()).len(),
+                        windows_count: window_uids(s.menus.values(), &s.native_shortcuts).len(),
                     })
                     .collect()
             })
@@ -455,9 +451,10 @@ fn menu_key(synced: &SyncedMenu) -> (Option<String>, String) {
     )
 }
 
-fn window_uids<'a>(menus: impl Iterator<Item = &'a SyncedMenu>) -> HashSet<String> {
+fn window_uids<'a>(menus: impl Iterator<Item = &'a SyncedMenu>, shortcuts: &[SyncedNativeShortcut]) -> HashSet<String> {
     menus
         .filter_map(|synced| synced.bound_window().map(|window| window.uid.clone()))
+        .chain(shortcuts.iter().map(|shortcut| shortcut.window_uid.clone()))
         .collect()
 }
 
@@ -489,6 +486,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 vec![SyncedNativeShortcut {
+                    window_uid: "window-a".into(),
                     id: "shortcut-a".into(),
                     key: "C".into(),
                 }],
@@ -501,27 +499,62 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 vec![SyncedNativeShortcut {
+                    window_uid: "window-b".into(),
                     id: "shortcut-b".into(),
                     key: "D".into(),
                 }],
             )
             .unwrap();
 
-        let keys = registry.active_shortcut_keys_by_instance();
-        assert!(keys["instance-a"].contains("c"));
-        assert!(!keys["instance-a"].contains("d"));
-        assert!(keys["instance-b"].contains("d"));
-        assert!(!keys["instance-b"].contains("c"));
+        let keys = registry.active_shortcut_keys_by_window();
+        assert!(keys[&("instance-a".into(), "window-a".into())].contains("c"));
+        assert!(!keys[&("instance-a".into(), "window-a".into())].contains("d"));
+        assert!(keys[&("instance-b".into(), "window-b".into())].contains("d"));
+        assert!(!keys[&("instance-b".into(), "window-b".into())].contains("c"));
 
         registry
             .sync(connection_a, 2, Vec::new(), Vec::new(), Vec::new())
             .unwrap();
-        let keys = registry.active_shortcut_keys_by_instance();
-        assert!(!keys.contains_key("instance-a"));
-        assert!(keys["instance-b"].contains("d"));
+        let keys = registry.active_shortcut_keys_by_window();
+        assert!(!keys.contains_key(&("instance-a".into(), "window-a".into())));
+        assert!(keys[&("instance-b".into(), "window-b".into())].contains("d"));
 
         registry.disconnect(connection_b);
-        assert!(registry.active_shortcut_keys_by_instance().is_empty());
+        assert!(registry.active_shortcut_keys_by_window().is_empty());
+    }
+
+    #[test]
+    fn routes_the_same_key_by_window_and_releases_out_of_scope_bindings_on_sync() {
+        let registry = SessionRegistry::default();
+        let connection = Uuid::new_v4();
+        let (sender, mut receiver) = unbounded_channel();
+        registry.register(connection, instance("instance"), sender);
+        let bindings = vec![
+            SyncedNativeShortcut { window_uid: "a".into(), id: "github".into(), key: "C".into() },
+            SyncedNativeShortcut { window_uid: "b".into(), id: "game".into(), key: "C".into() },
+            SyncedNativeShortcut { window_uid: "b".into(), id: "other".into(), key: "D".into() },
+        ];
+        registry.sync(connection, 1, Vec::new(), Vec::new(), bindings.clone()).unwrap();
+        assert!(registry.has_window("instance", "a"));
+        assert!(registry.has_window("instance", "b"));
+        assert_eq!(registry.find_shortcut_by_key("instance", "a", "c").unwrap().id, "github");
+        let target = registry.find_shortcut_by_key("instance", "b", "c").unwrap();
+        assert_eq!(target.id, "game");
+        registry.invoke_shortcut("instance", Some("b".into()), &target.id).unwrap();
+        match receiver.try_recv().unwrap() {
+            NativeMessage::Invoke { window_uid, action_uid, .. } => {
+                assert_eq!(window_uid.as_deref(), Some("b"));
+                assert_eq!(action_uid, "shortcut:game");
+            }
+            _ => panic!("Expected a shortcut invocation"),
+        }
+        let keys = registry.active_shortcut_keys_by_window();
+        assert!(!keys[&("instance".into(), "a".into())].contains("d"));
+        assert!(keys[&("instance".into(), "b".into())].contains("d"));
+        registry.sync(connection, 2, Vec::new(), Vec::new(), bindings[1..].to_vec()).unwrap();
+        assert!(registry.find_shortcut_by_key("instance", "a", "c").is_none());
+        assert!(!registry.active_shortcut_keys_by_window().contains_key(&("instance".into(), "a".into())));
+        assert_eq!(registry.find_shortcut_by_key("instance", "b", "c").unwrap().id, "game");
     }
 
     #[test]

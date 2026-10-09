@@ -21,7 +21,7 @@ import { isMenuSpacing, type MenuSpacing } from "./menu";
 import type { MenuView } from "./menu";
 import type { SyncedNativeShortcut } from "./index";
 
-export const PROTOCOL_VERSION = 2 as const;
+export const PROTOCOL_VERSION = 3 as const;
 export const DEFAULT_PORT = 17654 as const;
 export const DEFAULT_WS_URL = "ws://127.0.0.1:17654" as const;
 export const DEFAULT_HTTP_URL = "http://127.0.0.1:17654" as const;

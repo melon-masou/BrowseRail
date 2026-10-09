@@ -1,3 +1,4 @@
+import { nativeShortcutSetMatches, nativeShortcutsForWindows } from "./native-shortcuts";
 import { resolveItemIcons } from "../icons/item-icons";
 import {
   isNativeMessage,
@@ -13,7 +14,6 @@ import {
   type ExtensionMessage,
   type MenuView,
   type SyncedMenu,
-  type SyncedNativeShortcut,
 } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 import browser from "webextension-polyfill";
@@ -757,18 +757,8 @@ async function syncOnce(): Promise<void> {
     `syncOnce: totalWindows=${windows.length}, menus=${menuStates.length}, free=${syncedFreeMenus.length}, lastFocused=${lastFocusedWindowUid}, rev=${revision + 1}`,
   );
 
-  const rawNativeShortcuts = shortcutsEnabled ? config.nativeShortcuts ?? [] : [];
-  const nativeShortcuts: SyncedNativeShortcut[] = rawNativeShortcuts
-    .filter(
-      (s) =>
-        s.key &&
-        s.key.trim().length > 0 &&
-        (isShortcutActionType(s.type) || (s.type && s.type !== "bookmark" ? Boolean(customBookmarkUid(s)) : bookmarksAvailable && Boolean(s.path || s.url))),
-    )
-    .map((s) => ({
-      id: s.id,
-      key: s.key.trim(),
-    }));
+  const nativeShortcuts = nativeShortcutsForWindows(config.nativeShortcutSets, config.urlRules, windows,
+    shortcutsEnabled && mode === "native", bookmarksAvailable);
 
   send({
     type: "sync",
@@ -779,12 +769,13 @@ async function syncOnce(): Promise<void> {
   });
   resetMenuUids.clear();
 
-  if (hasActiveAttachment) {
-    const windowUids = new Set(
-      syncedBoundMenus
+  if (hasActiveAttachment || nativeShortcuts.length) {
+    const windowUids = new Set([
+      ...nativeShortcuts.filter(shortcut => shortcut.windowUid === lastFocusedWindowUid).map(shortcut => shortcut.windowUid),
+      ...syncedBoundMenus
         .filter(({ target }) => target.kind === "window" && (target.window.focused || hasAllAttachment))
         .map(({ target }) => (target.kind === "window" ? target.window.uid : "")),
-    );
+    ]);
     for (const windowUid of windowUids) {
       requestWindowPairing(windowUid);
     }
@@ -977,10 +968,15 @@ browser.commands.onCommand.addListener(async (command) => {
 
 async function executeNativeShortcut(shortcutId: string, targetWindowUid?: string): Promise<void> {
   const config = await loadConfig();
-  const target = config.nativeShortcuts?.find((s) => s.id === shortcutId);
-  if (!target || !await canExecuteShortcut(target.type)) return;
+  const set = config.nativeShortcutSets.find(set => set.shortcuts.some(shortcut => shortcut.id === shortcutId));
+  const target = set?.shortcuts.find(shortcut => shortcut.id === shortcutId);
+  if (!set || !target || !await canExecuteShortcut(target.type)) return;
   const targetWindow = targetWindowUid ?? lastFocusedWindowUid ?? (await browser.windows.getLastFocused())?.id;
   if (!targetWindow) return;
+  if (set.urlRuleUids?.length) {
+    const [tab] = await browser.tabs.query({ active: true, windowId: Number(targetWindow) });
+    if (!nativeShortcutSetMatches(set, config.urlRules, tab?.url)) return;
+  }
   if (isShortcutActionType(target.type)) {
     await runShortcutAction(target, config, String(targetWindow));
     return;

@@ -384,6 +384,37 @@ it("saves the instance separately, and freely switches other tabs before saving 
 
 afterEach(() => { window.dispatchEvent(new Event("pagehide")); });
 
+it("creates Native shortcut sets with separate rule selections and records keys inside the selected set", async () => {
+  button("url-rules-tab").click();
+  button("add-url-rule-btn").click();
+  button("shortcuts-tab").click();
+  button("shortcuts-subtab-native").click();
+  button("add-native-shortcut-btn").click();
+  const firstName = document.querySelector<HTMLInputElement>(".native-shortcut-set input[type=text]")!;
+  firstName.focus(); firstName.value = "Site keys";
+  firstName.dispatchEvent(new Event("input", { bubbles: true }));
+  expect((document.activeElement as HTMLInputElement).value).toBe("Site keys");
+  const selectedRule = document.querySelectorAll<HTMLInputElement>(".native-shortcut-set .menu-setting-url-rule-item input")[1]!;
+  selectedRule.click();
+  document.querySelector<HTMLButtonElement>(".native-shortcut-set-header .menu-action-btn")!.click();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "c", code: "KeyC", bubbles: true, cancelable: true }));
+  document.querySelector<HTMLButtonElement>(".native-shortcut-set .shortcut-change-btn")!.click();
+  button("shortcut-pick-action-btn").click();
+  const back = [...document.querySelectorAll<HTMLButtonElement>(".item-picker-dialog .pick-menu-item")].find(item => item.textContent?.includes("Back"))!;
+  back.click();
+  await vi.waitFor(() => expect(document.querySelector(".native-shortcut-set .shortcut-target-title")!.textContent).toBe("Back"));
+  button("add-native-shortcut-btn").click();
+  await save();
+  const config = await savedConfig();
+  expect(config.nativeShortcutSets).toHaveLength(2);
+  expect(config.nativeShortcutSets[0]).toMatchObject({ name: "Site keys", urlRuleUids: [config.urlRules[0]!.uid], shortcuts: [{ key: "c", type: "browserAction", browserAction: "back" }] });
+  expect(config.nativeShortcutSets[1]!.urlRuleUids).toBeUndefined();
+  expect(config.nativeShortcutSets[1]!.shortcuts).toEqual([]);
+  document.querySelector<HTMLButtonElement>(".native-shortcut-set-header .remove-item-btn")!.click();
+  await save();
+  expect((await savedConfig()).nativeShortcutSets.map(set => set.uid)).toEqual([config.nativeShortcutSets[1]!.uid]);
+});
+
 it.each([
   { type: "rule", includeRewrites: false },
   { type: "external", includeRewrites: false },
@@ -623,7 +654,7 @@ it("shows counts and defaults all available transfer groups on; imports only sel
     temporaryBookmarks: [{ uid: "later", name: "Later" }],
     dynamicBookmarks: [{ uid: "api", name: "API", type: "external" as const, urlRuleUid: "site" }],
     shortcuts: [{ slot: "slot_1", type: "static" as const, staticUid: "one" }],
-    nativeShortcuts: [{ id: "key", key: "F1", type: "static" as const, staticUid: "one" }],
+    nativeShortcutSets: [{ uid: "keys", name: "Keys", shortcuts: [{ id: "key", key: "F1", type: "static" as const, staticUid: "one" }] }],
     barConfigurations: {
       native: { bar: { ...defaultNativeBarSettings(), placement: defaultMenuPlacement(), gapRatio: 0, extraGaps: {} } },
       browser: { bar: { ...defaultBarSettings(), placement: defaultMenuPlacement(), gapRatio: 0, extraGaps: {} } },

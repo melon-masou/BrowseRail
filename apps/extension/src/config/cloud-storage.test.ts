@@ -42,6 +42,7 @@ function snapshot(): ExportedSettingsData {
     staticBookmarks: [{ uid: "docs", name: "Docs", url: "https://example.com" }],
     globalCss: { icons: "& { --icon: none; }" },
     shortcuts: [{ slot: "slot_1", type: "static", staticUid: "docs" }],
+    nativeShortcutSets: [{ uid: "docs-keys", name: "Docs", urlRuleUids: ["docs"], shortcuts: [{ id: "docs-key", key: "F1", type: "static", staticUid: "docs" }] }],
   };
 }
 
@@ -70,7 +71,7 @@ it("an empty downloaded collection replaces the previous collection instead of r
   const data = snapshot();
   await uploadCloudSettings(data);
   await uploadCloudSettings({ version: data.version, exportedAt: data.exportedAt, menus: [] });
-  expect(await downloadCloudSettings()).toMatchObject({ menus: [], staticBookmarks: [], dynamicBookmarks: [], temporaryBookmarks: [], urlRules: [], shortcuts: [], nativeShortcuts: [], userVariables: {}, globalCss: {} });
+  expect(await downloadCloudSettings()).toMatchObject({ menus: [], staticBookmarks: [], dynamicBookmarks: [], temporaryBookmarks: [], urlRules: [], shortcuts: [], nativeShortcutSets: [], userVariables: {}, globalCss: {} });
 });
 
 it("failed uploads preserve both the previous cloud snapshot and local settings", async () => {
@@ -97,4 +98,17 @@ it("does not automatically restore the old cloud format", async () => {
   mocks.cloud.sync_menus = { menus: [{ uid: "old", items: [] }] };
   await expect(downloadCloudSettings()).rejects.toThrow();
   expect((await loadConfig()).panel.menus).toEqual([]);
+});
+
+it("keeps the other cloud settings while discarding old flat Native bindings", async () => {
+  const data = snapshot();
+  await uploadCloudSettings(data);
+  const manifest = mocks.cloud["cloud:index"] as { fields: Record<string, string[]> };
+  delete manifest.fields.nativeShortcutSets;
+  manifest.fields.nativeShortcuts = ["cloud:nativeShortcuts:old:0"];
+  mocks.cloud["cloud:nativeShortcuts:old:0"] = JSON.stringify([{ id: "old", key: "c", type: "browserAction", browserAction: "back" }]);
+  const downloaded = await downloadCloudSettings();
+  expect(downloaded.menus).toEqual(data.menus);
+  expect(downloaded.shortcuts).toEqual(data.shortcuts);
+  expect(downloaded.nativeShortcutSets ?? []).toEqual([]);
 });

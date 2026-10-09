@@ -4,11 +4,11 @@ import { createOptionsState, type SettingsDraft } from "./state";
 it("replaces bookmark and action targets without leaving old payloads or losing the Native key", () => {
   const state = createState();
   state.setShortcutTarget({ kind: "native", id: "native" }, { type: "menusToggle", targetMenuUids: ["menu"] });
-  expect(state.settings.nativeShortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "menusToggle", targetMenuUids: ["menu"] });
+  expect(state.settings.nativeShortcutSets[0]!.shortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "menusToggle", targetMenuUids: ["menu"] });
   state.setShortcutTarget({ kind: "native", id: "native" }, { type: "browserAction", browserAction: "reload" });
-  expect(state.settings.nativeShortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "browserAction", browserAction: "reload" });
+  expect(state.settings.nativeShortcutSets[0]!.shortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "browserAction", browserAction: "reload" });
   state.setShortcutTarget({ kind: "native", id: "native" }, { type: "static", uid: "static" });
-  expect(state.settings.nativeShortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "static", staticUid: "static" });
+  expect(state.settings.nativeShortcutSets[0]!.shortcuts[0]).toEqual({ id: "native", key: "Ctrl+A", type: "static", staticUid: "static" });
 });
 
 function initialSettings(): SettingsDraft {
@@ -36,9 +36,9 @@ function initialSettings(): SettingsDraft {
       { uid: "dynamic", name: "Dynamic", type: "external", urlRuleUid: "removed-rule" },
     ],
     shortcuts: [{ slot: "slot_1", type: "static", staticUid: "static", tabMode: "newTab" }],
-    nativeShortcuts: [
+    nativeShortcutSets: [{ uid: "set", name: "Keys", shortcuts: [
       { id: "native", key: "Ctrl+A", type: "static", staticUid: "static", tabMode: "replace" },
-    ],
+    ] }],
   };
 }
 function createState(settings = initialSettings()) {
@@ -53,6 +53,23 @@ function createState(settings = initialSettings()) {
     settings,
   );
 }
+
+it("edits and deletes Native sets independently, retaining their scope after a referenced rule is removed", () => {
+  const state = createState();
+  state.addNativeShortcutSet({ uid: "other-set", name: "Other", shortcuts: [] });
+  state.addNativeShortcut("other-set", { id: "other-key", key: "Ctrl+A", type: "browserAction", browserAction: "back" });
+  state.renameNativeShortcutSet("other-set", "Sites");
+  state.setNativeShortcutRules("other-set", ["removed-rule", "kept-rule"]);
+  state.setNativeKey("other-key", "F1");
+  expect(state.settings.nativeShortcutSets[0]!.shortcuts[0]!.key).toBe("Ctrl+A");
+  state.removeUrlRule("removed-rule");
+  expect(state.settings.nativeShortcutSets[1]).toMatchObject({ name: "Sites", urlRuleUids: ["removed-rule", "kept-rule"] });
+  state.setNativeShortcutRules("other-set", ["kept-rule"]);
+  state.removeShortcut({ kind: "native", id: "other-key" });
+  expect(state.settings.nativeShortcutSets[1]!.shortcuts).toEqual([]);
+  state.removeNativeShortcutSet("other-set");
+  expect(state.settings.nativeShortcutSets.map(set => set.uid)).toEqual(["set"]);
+});
 
 it("discards draft external grants and token rotation without changing the saved userscript switch", () => {
   const state = createState();
@@ -82,14 +99,14 @@ it("removes a bookmark and its menu and shortcut references before notifying rea
       !state.settings.staticBookmarks.length &&
         state.settings.menus[0]!.items.every((item) => item.staticUid !== "static") &&
         state.settings.shortcuts[0]!.type === undefined &&
-        state.settings.nativeShortcuts[0]!.type === undefined,
+        state.settings.nativeShortcutSets[0]!.shortcuts[0]!.type === undefined,
     );
   });
   state.removeBookmark("static", "static");
   expect(seen).toEqual([true]);
   expect(state.settings.menus[0]!.items.map((item) => item.uid)).toEqual(["other-item"]);
   expect(state.settings.shortcuts[0]!.tabMode).toBe("newTab");
-  expect(state.settings.nativeShortcuts[0]!.key).toBe("Ctrl+A");
+  expect(state.settings.nativeShortcutSets[0]!.shortcuts[0]!.key).toBe("Ctrl+A");
   expect(state.dirty.settings).toBe(true);
 });
 

@@ -9,7 +9,7 @@ const fields = {
   menus: ["menus", "globalCss"],
   urlRules: ["urlRules", "defaultUrlRuleUid"],
   bookmarks: ["staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "userVariables"],
-  shortcuts: ["shortcuts", "nativeShortcuts"],
+  shortcuts: ["shortcuts", "nativeShortcutSets"],
   bars: ["barConfigurations"],
 } as const;
 
@@ -22,7 +22,7 @@ export function transferCounts(data: ExportedSettingsData): Record<TransferGroup
     menus: data.menus?.length ?? 0,
     urlRules: data.urlRules?.length ?? 0,
     bookmarks: (data.staticBookmarks?.length ?? 0) + (data.dynamicBookmarks?.length ?? 0) + (data.temporaryBookmarks?.length ?? 0) + (data.externalActions?.length ?? 0),
-    shortcuts: (data.shortcuts?.length ?? 0) + (data.nativeShortcuts?.length ?? 0),
+    shortcuts: (data.shortcuts?.length ?? 0) + (data.nativeShortcutSets?.reduce((count, set) => count + (Array.isArray(set?.shortcuts) ? set.shortcuts.length : 0), 0) ?? 0),
     bars: Object.keys(data.barConfigurations?.native ?? {}).length + Object.keys(data.barConfigurations?.browser ?? {}).length,
   };
 }

@@ -119,7 +119,15 @@ export interface StoredNativeShortcut extends ShortcutTarget {
   key: string;
 }
 
+export interface StoredNativeShortcutSet {
+  uid: string;
+  name: string;
+  urlRuleUids?: string[];
+  shortcuts: StoredNativeShortcut[];
+}
+
 export interface SyncedNativeShortcut {
+  windowUid: string;
   id: string;
   key: string;
 }
@@ -366,7 +374,7 @@ export interface ExportedSettingsData {
   externalActions?: ExternalAction[];
   userVariables?: Record<string, JsonValue>;
   shortcuts?: StoredShortcut[];
-  nativeShortcuts?: StoredNativeShortcut[];
+  nativeShortcutSets?: StoredNativeShortcutSet[];
 }
 
 export function isExportedSettingsData(value: unknown): value is ExportedSettingsData {
@@ -376,9 +384,9 @@ export function isExportedSettingsData(value: unknown): value is ExportedSetting
   return (
     value.version === EXPORT_SCHEMA_VERSION &&
     typeof value.exportedAt === "string" &&
-    ["menus", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "shortcuts", "nativeShortcuts"].every(key => value[key] === undefined || Array.isArray(value[key])) &&
+    ["menus", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "shortcuts", "nativeShortcutSets"].every(key => value[key] === undefined || Array.isArray(value[key])) &&
     ["globalCss", "userVariables", "barConfigurations"].every(key => value[key] === undefined || isRecord(value[key])) &&
-    ["menus", "globalCss", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "shortcuts", "nativeShortcuts", "barConfigurations"].some(key => value[key] !== undefined)
+    ["menus", "globalCss", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "shortcuts", "nativeShortcutSets", "barConfigurations"].some(key => value[key] !== undefined)
   );
 }
 

@@ -87,7 +87,7 @@ it("toggles only the instance shortcut switch, keeps bindings and ordinary click
   const config = await loadConfig();
   config.staticBookmarks = [{ uid: "docs", name: "Docs", url: "https://docs.example" }];
   config.shortcuts = [{ slot: "slot_1", type: "static", staticUid: "docs" }];
-  config.nativeShortcuts = [{ id: "docs-key", key: "F1", type: "static", staticUid: "docs" }];
+  config.nativeShortcutSets = [{ uid: "docs-set", name: "Docs", shortcuts: [{ id: "docs-key", key: "F1", type: "static", staticUid: "docs" }] }];
   config.panel.menus = [{ uid: "menu", items: [{ uid: "keys/#", type: "shortcutsToggle" }] }];
   await saveConfig(config);
   const saved = await loadConfig();

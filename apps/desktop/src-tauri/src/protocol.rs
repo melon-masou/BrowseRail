@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
@@ -233,7 +233,9 @@ where
 // MenuNativeProps / MenuTarget). These structs mirror those TypeScript types.
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncedNativeShortcut {
+    pub window_uid: String,
     pub id: String,
     pub key: String,
 }

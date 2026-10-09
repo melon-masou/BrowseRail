@@ -20,6 +20,35 @@ import { loadExternalAuthorization } from "../../config/external-authorization-s
 
 beforeEach(() => { local.values = {}; });
 
+it("discards old flat Native bindings without changing browser shortcuts or other settings", async () => {
+  const config = await loadConfig();
+  config.shortcuts = [{ slot: "slot_1", type: "browserAction", browserAction: "back" }];
+  local.values.config = { ...config, nativeShortcuts: [{ id: "old", key: "c", type: "browserAction", browserAction: "back" }] };
+  const saved = await loadConfig();
+  expect(saved.nativeShortcutSets).toEqual([]);
+  expect(saved.shortcuts).toEqual(config.shortcuts);
+  await saveConfig(saved);
+  expect(local.values.config).not.toHaveProperty("nativeShortcuts");
+});
+
+it("merges imported Native sets by UID while retaining other groups, URL scope and targets", async () => {
+  const { state, persistence } = await fixture();
+  state.addUrlRule({ uid: "site", name: "Site", patterns: ["example.com"] });
+  state.addNativeShortcutSet({ uid: "local", name: "Local", shortcuts: [{ id: "local-key", key: "F1", type: "browserAction", browserAction: "back" }] });
+  state.addNativeShortcutSet({ uid: "shared", name: "Old", shortcuts: [{ id: "old", key: "F2", type: "browserAction", browserAction: "back" }] });
+  const data = { version: 2, exportedAt: "2026-10-09T00:00:00.000Z", nativeShortcutSets: [
+    { uid: "shared", name: "New", urlRuleUids: ["site"], shortcuts: [{ id: "new", key: "F3", type: "browserAction", browserAction: "reload" }] },
+  ] };
+  await persistence.importSettings(JSON.stringify(data));
+  await persistence.saveSettings();
+  const saved = await loadConfig();
+  expect(saved.nativeShortcutSets[0]).toEqual(data.nativeShortcutSets[0]);
+  expect(saved.nativeShortcutSets[1]!.uid).toBe("local");
+  expect((await persistence.exportSettings()).nativeShortcutSets).toEqual(saved.nativeShortcutSets);
+  expect((await persistence.exportSettings({ shortcuts: false })).nativeShortcutSets).toBeUndefined();
+  persistence.destroy();
+});
+
 it("removes legacy code bookmarks and their menu and shortcut references without converting them", async () => {
   const config = await loadConfig();
   const external = { uid: "external", name: "External", type: "external", urlRuleUid: "site" };
@@ -37,7 +66,7 @@ it("removes legacy code bookmarks and their menu and shortcut references without
   expect(saved.dynamicBookmarks).toEqual([external]);
   expect(saved.panel.menus[0]!.items.map(item => item.uid)).toEqual(["external-item"]);
   expect(saved.shortcuts).toEqual([]);
-  expect(saved.nativeShortcuts).toEqual([]);
+  expect(saved.nativeShortcutSets).toEqual([]);
 });
 
 it("saves external grants only with the instance and excludes them from portable settings", async () => {
@@ -171,17 +200,18 @@ it("saves and imports independent shortcut actions without a bar action button",
   state.setShortcutTarget({ kind: "slot", slot: "slot_2" }, { type: "menusToggle", targetMenuUids: ["bar"] });
   state.setShortcutTarget({ kind: "slot", slot: "slot_3" }, { type: "shortcutsToggle" });
   state.setShortcutTarget({ kind: "slot", slot: "slot_4" }, { type: "autoHideToggle", menuUid: "bar" });
-  state.addNativeShortcut({ id: "reload", key: "F1" });
+  state.addNativeShortcutSet({ uid: "keys", name: "Keys", shortcuts: [] });
+  state.addNativeShortcut("keys", { id: "reload", key: "F1" });
   state.setShortcutTarget({ kind: "native", id: "reload" }, { type: "browserAction", browserAction: "reload" });
   await persistence.saveSettings();
   const saved = await loadConfig();
   const file = await persistence.exportSettings();
   expect(file.shortcuts).toEqual(saved.shortcuts);
-  expect(file.nativeShortcuts).toEqual(saved.nativeShortcuts);
+  expect(file.nativeShortcutSets).toEqual(saved.nativeShortcutSets);
   await persistence.importSettings(JSON.stringify(file));
   await persistence.saveSettings();
   expect((await loadConfig()).shortcuts).toEqual(saved.shortcuts);
-  expect((await loadConfig()).nativeShortcuts).toEqual(saved.nativeShortcuts);
+  expect((await loadConfig()).nativeShortcutSets).toEqual(saved.nativeShortcutSets);
   expect((await loadConfig()).panel.menus[0]!.items).toEqual([]);
   persistence.destroy();
 });
@@ -213,14 +243,14 @@ it("drops menu and item open modes on import and save while preserving shortcut 
   state.removeShortcut({ kind: "slot", slot: "1" });
   const data = await persistence.exportSettings();
   const shortcuts = [{ slot: "slot_1", type: "static", staticUid: "link", tabMode: "newTab" }];
-  const nativeShortcuts = [{ id: "native-link", key: "Ctrl+A", type: "static", staticUid: "link", tabMode: "newTab" }];
+  const nativeShortcutSets = [{ uid: "keys", name: "Keys", shortcuts: [{ id: "native-link", key: "Ctrl+A", type: "static", staticUid: "link", tabMode: "newTab" }] }];
   await persistence.importSettings(JSON.stringify({
     ...data,
     menus: [{ uid: "bar", tabMode: "newTab", items: [
       { uid: "static", type: "static", staticUid: "link", tabMode: "newTab" },
       { uid: "folder", type: "folder", path: ["Docs"], tabMode: "newTab" },
     ] }],
-    shortcuts, nativeShortcuts,
+    shortcuts, nativeShortcutSets,
   }));
   await persistence.saveSettings();
   const saved = await loadConfig();
@@ -230,9 +260,9 @@ it("drops menu and item open modes on import and save while preserving shortcut 
     for (const item of menu.items) expect(item).not.toHaveProperty("tabMode");
   }
   expect(saved.shortcuts).toEqual(shortcuts);
-  expect(saved.nativeShortcuts).toEqual(nativeShortcuts);
+  expect(saved.nativeShortcutSets).toEqual(nativeShortcutSets);
   expect(portable.shortcuts).toEqual(shortcuts);
-  expect(portable.nativeShortcuts).toEqual(nativeShortcuts);
+  expect(portable.nativeShortcutSets).toEqual(nativeShortcutSets);
   persistence.destroy();
 });
 
@@ -369,12 +399,12 @@ it.each([false, true])("imports external definitions normally and rewrites only 
     { slot: "slot_3", type: "static", staticUid: "link" },
     { slot: "slot_4", type: "dynamic", dynamicUid: rewrite.uid },
   ];
-  data.nativeShortcuts = [
+  data.nativeShortcutSets = [{ uid: "keys", name: "Keys", shortcuts: [
     { id: "rule-key", key: "F1", type: "dynamic", dynamicUid: rule.uid },
     { id: "script-key", key: "F2", type: "dynamic", dynamicUid: script.uid },
     { id: "static-key", key: "F3", type: "static", staticUid: "link" },
     { id: "rewrite-key", key: "F4", type: "dynamic", dynamicUid: rewrite.uid },
-  ];
+  ] }];
   if (includeRewrites) await persistence.importSettings(JSON.stringify(data), { includeRewrites: true });
   else await persistence.importSettings(JSON.stringify(data));
   expect(state.settings.dynamicBookmarks).toEqual(includeRewrites ? [rule, script, rewrite] : [rule, script]);
@@ -383,7 +413,7 @@ it.each([false, true])("imports external definitions normally and rewrites only 
   expect(saved.dynamicBookmarks).toEqual(includeRewrites ? [rule, script, rewrite] : [rule, script]);
   expect(saved.panel.menus[0]!.items.map(item => item.uid)).toEqual(includeRewrites ? ["rule-item", "script-item", "static-item", "rewrite-item"] : ["rule-item", "script-item", "static-item"]);
   expect(saved.shortcuts.map(shortcut => shortcut.slot)).toEqual(includeRewrites ? ["slot_1", "slot_2", "slot_3", "slot_4"] : ["slot_1", "slot_2", "slot_3"]);
-  expect(saved.nativeShortcuts.map(shortcut => shortcut.id)).toEqual(includeRewrites ? ["rule-key", "script-key", "static-key", "rewrite-key"] : ["rule-key", "script-key", "static-key"]);
+  expect(saved.nativeShortcutSets.flatMap(set => set.shortcuts).map(shortcut => shortcut.id)).toEqual(includeRewrites ? ["rule-key", "script-key", "static-key", "rewrite-key"] : ["rule-key", "script-key", "static-key"]);
   persistence.destroy();
 });
 
@@ -508,7 +538,7 @@ it("imports matching record keys and retains local-only menus, rules, bookmarks,
   state.addBookmark("static", { uid: "local-link", name: "Local link", url: "https://local.example" });
   state.addBookmark("temporary", { uid: "local-temp", name: "Local temporary" });
   state.addBookmark("dynamic", { uid: "local-dynamic", name: "Local dynamic", type: "external" });
-  state.addNativeShortcut({ id: "local-key", key: "F1", type: "browserAction", browserAction: "back" });
+  state.addNativeShortcutSet({ uid: "local-set", name: "Local", shortcuts: [{ id: "local-key", key: "F1", type: "browserAction", browserAction: "back" }] });
   const variable = state.addUserVariable();
   state.editUserVariable(variable, { key: "local", value: "keep" });
   const sharedVariable = state.addUserVariable();
@@ -522,7 +552,7 @@ it("imports matching record keys and retains local-only menus, rules, bookmarks,
     temporaryBookmarks: [{ uid: "new-temp", name: "New temporary" }],
     dynamicBookmarks: [{ uid: "new-dynamic", name: "New dynamic", type: "external", urlRuleUid: "site" }],
     shortcuts: [{ slot: "1", type: "browserAction", browserAction: "reload" }],
-    nativeShortcuts: [{ id: "local-key", key: "F2", type: "browserAction", browserAction: "forward" }],
+    nativeShortcutSets: [{ uid: "local-set", name: "Imported", shortcuts: [{ id: "local-key", key: "F2", type: "browserAction", browserAction: "forward" }] }],
     userVariables: { shared: "new", added: "new" },
     globalCss: { shared: ".new {}" },
   };
@@ -535,10 +565,10 @@ it("imports matching record keys and retains local-only menus, rules, bookmarks,
   expect(state.settings.temporaryBookmarks).toEqual([...file.temporaryBookmarks, ...local.temporaryBookmarks]);
   expect(state.settings.dynamicBookmarks).toEqual([...file.dynamicBookmarks, ...local.dynamicBookmarks]);
   expect(state.settings.shortcuts).toEqual(file.shortcuts);
-  expect(state.settings.nativeShortcuts).toEqual(file.nativeShortcuts);
+  expect(state.settings.nativeShortcutSets).toEqual(file.nativeShortcutSets);
   expect(state.settings.userVariables).toEqual({ local: "keep", shared: "new", added: "new" });
   expect(state.settings.globalCss).toEqual({ local: ".local {}", shared: ".new {}" });
-  await persistence.importSettings(JSON.stringify({ ...file, menus: [], urlRules: [], staticBookmarks: [], temporaryBookmarks: [], dynamicBookmarks: [], shortcuts: [], nativeShortcuts: [], userVariables: {}, globalCss: {} }));
+  await persistence.importSettings(JSON.stringify({ ...file, menus: [], urlRules: [], staticBookmarks: [], temporaryBookmarks: [], dynamicBookmarks: [], shortcuts: [], nativeShortcutSets: [], userVariables: {}, globalCss: {} }));
   expect(state.settings.menus).toHaveLength(3);
   expect(state.settings.staticBookmarks).toHaveLength(2);
   expect(state.settings.userVariables).toEqual({ local: "keep", shared: "new", added: "new" });

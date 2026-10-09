@@ -1304,7 +1304,7 @@ impl NativeReactor {
             return;
         };
 
-        if let Some(shortcut) = self.registry.find_shortcut_by_key(&instance_uid, key) {
+        if let Some(shortcut) = self.registry.find_shortcut_by_key(&instance_uid, target_window.as_deref().unwrap_or_default(), key) {
             crate::debug::log(
                 "Native:Shortcut",
                 format!("Invoking shortcut id={} for instance={}", shortcut.id, instance_uid),
@@ -1321,10 +1321,10 @@ impl NativeReactor {
     fn sync_window_shortcuts(&self) {
         let mut shortcuts = HashMap::new();
         if self.enable_shortcuts.load(Ordering::Relaxed) {
-            let by_instance = self.registry.active_shortcut_keys_by_instance();
+            let by_window = self.registry.active_shortcut_keys_by_window();
             if let Ok(handles) = self.browser_window_handles.lock() {
-                for ((instance_uid, _), hwnd) in handles.iter() {
-                    if let Some(keys) = by_instance.get(instance_uid) {
+                for (window, hwnd) in handles.iter() {
+                    if let Some(keys) = by_window.get(window) {
                         shortcuts.insert(*hwnd, keys.clone());
                     }
                 }

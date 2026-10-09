@@ -14,6 +14,7 @@ import type {
   StoredMenuItemType,
   StoredShortcut,
   StoredNativeShortcut,
+  StoredNativeShortcutSet,
   TabMode,
   UrlRule,
   StaticBookmark,
@@ -39,6 +40,50 @@ export function normalizeShortcutAction(value: unknown): ShortcutAction | undefi
   if (value.type === "menusToggle" && Array.isArray(value.targetMenuUids))
     return { type: "menusToggle", targetMenuUids: [...new Set(value.targetMenuUids.filter((uid): uid is string => typeof uid === "string" && !!uid))] };
   return undefined;
+}
+
+export function normalizeNativeShortcutSets(value: unknown): StoredNativeShortcutSet[] {
+  return (Array.isArray(value) ? value : []).flatMap((set): StoredNativeShortcutSet[] => {
+    if (!isRecord(set) || typeof set.uid !== "string" || !set.uid) return [];
+    const urlRuleUids = Array.isArray(set.urlRuleUids)
+      ? [...new Set(set.urlRuleUids.filter((uid): uid is string => typeof uid === "string" && !!uid))]
+      : [];
+    const shortcuts = (Array.isArray(set.shortcuts) ? set.shortcuts : []).flatMap((sc): StoredNativeShortcut[] => {
+      if (!isRecord(sc)) return [];
+      if (typeof sc.id !== "string" || !sc.id) return [];
+      const key = typeof sc.key === "string" ? sc.key.trim() : "";
+      if (isShortcutActionType(sc.type)) {
+        const action = normalizeShortcutAction(sc);
+        return action ? [{ id: sc.id, key, ...action }] : [];
+      }
+      const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" || sc.type === "externalAction" ? sc.type : "bookmark";
+      const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
+      const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
+      const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
+      const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
+      const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
+      const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
+      const externalActionUid = typeof sc.externalActionUid === "string" && sc.externalActionUid ? sc.externalActionUid : undefined;
+      const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
+      return [
+        {
+          id: sc.id,
+          key,
+          type,
+          ...(path !== undefined ? { path } : {}),
+          ...(url ? { url } : {}),
+          ...(title ? { title } : {}),
+          ...(dynamicUid ? { dynamicUid } : {}),
+          ...(staticUid ? { staticUid } : {}),
+          ...(temporaryUid ? { temporaryUid } : {}),
+          ...(externalActionUid ? { externalActionUid } : {}),
+          ...(tabMode ? { tabMode } : {}),
+        },
+      ];
+    });
+    return [{ uid: set.uid, name: typeof set.name === "string" ? set.name : "",
+      ...(urlRuleUids.length ? { urlRuleUids } : {}), shortcuts }];
+  });
 }
 
 export function normalizeUrlRules(value: unknown): UrlRule[] {
@@ -69,6 +114,7 @@ export type {
   StoredMenu,
   StoredShortcut,
   StoredNativeShortcut,
+  StoredNativeShortcutSet,
   UrlRule,
   StaticBookmark,
   TemporaryBookmark,
@@ -115,7 +161,7 @@ export interface ExtensionConfig {
   externalActions: ExternalAction[];
   userVariables: Record<string, JsonValue>;
   shortcuts: StoredShortcut[];
-  nativeShortcuts: StoredNativeShortcut[];
+  nativeShortcutSets: StoredNativeShortcutSet[];
 }
 
 export const DEFAULT_FONT_SIZE = 13;
@@ -154,7 +200,7 @@ const DEFAULT_CONFIG: Omit<ExtensionConfig, "instanceLabel"> = {
   externalActions: [],
   userVariables: {},
   shortcuts: [],
-  nativeShortcuts: [],
+  nativeShortcutSets: [],
 };
 
 export const DEFAULT_ITEM_WIDTH = 84;
@@ -302,41 +348,9 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     ];
   });
 
-  const rawNativeShortcuts = Array.isArray(value.nativeShortcuts) ? value.nativeShortcuts : [];
-  const nativeShortcuts: StoredNativeShortcut[] = rawNativeShortcuts.flatMap((sc): StoredNativeShortcut[] => {
-    if (!isRecord(sc)) return [];
-    if (typeof sc.id !== "string" || !sc.id) return [];
-    const key = typeof sc.key === "string" ? sc.key.trim() : "";
-    if (isShortcutActionType(sc.type)) {
-      const action = normalizeShortcutAction(sc);
-      return action ? [{ id: sc.id, key, ...action }] : [];
-    }
-    const type = sc.type === "dynamic" || sc.type === "static" || sc.type === "temporary" || sc.type === "externalAction" ? sc.type : "bookmark";
-    const path = Array.isArray(sc.path) ? sc.path.filter((p): p is string => typeof p === "string") : undefined;
-    const url = typeof sc.url === "string" && sc.url ? sc.url : undefined;
-    const title = typeof sc.title === "string" && sc.title ? sc.title : undefined;
-    const dynamicUid = typeof sc.dynamicUid === "string" && sc.dynamicUid ? sc.dynamicUid : undefined;
-    if (type === "dynamic" && (!dynamicUid || !dynamicUids.has(dynamicUid))) return [];
-    const staticUid = typeof sc.staticUid === "string" && sc.staticUid ? sc.staticUid : undefined;
-    const temporaryUid = typeof sc.temporaryUid === "string" && sc.temporaryUid ? sc.temporaryUid : undefined;
-    const externalActionUid = typeof sc.externalActionUid === "string" && sc.externalActionUid ? sc.externalActionUid : undefined;
-    const tabMode = sc.tabMode === "newTab" || sc.tabMode === "replace" ? sc.tabMode : undefined;
-    return [
-      {
-        id: sc.id,
-        key,
-        type,
-        ...(path !== undefined ? { path } : {}),
-        ...(url ? { url } : {}),
-        ...(title ? { title } : {}),
-        ...(dynamicUid ? { dynamicUid } : {}),
-        ...(staticUid ? { staticUid } : {}),
-        ...(temporaryUid ? { temporaryUid } : {}),
-        ...(externalActionUid ? { externalActionUid } : {}),
-        ...(tabMode ? { tabMode } : {}),
-      },
-    ];
-  });
+  const nativeShortcutSets = normalizeNativeShortcutSets(value.nativeShortcutSets).map(set => ({
+    ...set, shortcuts: set.shortcuts.filter(sc => sc.type !== "dynamic" || !!sc.dynamicUid && dynamicUids.has(sc.dynamicUid)),
+  }));
 
   return {
     desktopWidget: {
@@ -361,7 +375,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
     userVariables: normalizeUserVariables(value.userVariables),
     ...(Object.keys(globalCss).length ? { globalCss } : {}),
     shortcuts,
-    nativeShortcuts,
+    nativeShortcutSets,
   };
 }
 

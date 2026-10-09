@@ -5,7 +5,7 @@ import { t } from "@browserail/i18n";
 const PREFIX = "cloud:";
 const MANIFEST_KEY = `${PREFIX}index`;
 const CHUNK_BYTES = 6000;
-const fields = ["menus", "urlRules", "defaultUrlRuleUid", "dynamicBookmarks", "staticBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "globalCss", "shortcuts", "nativeShortcuts"] as const;
+const fields = ["menus", "urlRules", "defaultUrlRuleUid", "dynamicBookmarks", "staticBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "globalCss", "shortcuts", "nativeShortcutSets"] as const;
 type Field = typeof fields[number];
 interface Manifest {
   version: number;
@@ -57,7 +57,7 @@ export async function uploadCloudSettings(data: ExportedSettingsData): Promise<v
     userVariables: data.userVariables ?? {},
     globalCss: data.globalCss ?? {},
     shortcuts: data.shortcuts ?? [],
-    nativeShortcuts: data.nativeShortcuts ?? [],
+    nativeShortcutSets: data.nativeShortcutSets ?? [],
   };
   const manifest: Manifest = { version: data.version, exportedAt: data.exportedAt, fields: {} as Record<Field, string[]> };
   const values: Record<string, unknown> = {};
@@ -91,6 +91,7 @@ export async function downloadCloudSettings(): Promise<ExportedSettingsData> {
   const data: Record<string, unknown> = { version: manifest.version, exportedAt: manifest.exportedAt };
   for (const field of fields) {
     const keys = manifest.fields[field];
+    if (field === "nativeShortcutSets" && keys === undefined) continue;
     if (!Array.isArray(keys) || !keys.length || keys.some(key => typeof key !== "string" || !key.startsWith(`${PREFIX}${field}:`) || typeof stored[key] !== "string"))
       throw new Error(t("cloud.incomplete"));
     try { data[field] = JSON.parse(keys.map(key => stored[key]).join("")) as unknown; }

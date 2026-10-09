@@ -10,6 +10,7 @@ import { type StoredShortcut, type StoredNativeShortcut } from "../../../config"
 import { type BookmarkNode, combineRootAndItemPath, findBookmarkNodeByPath } from "../../../bookmarks";
 import { t } from "@browserail/i18n";
 import { positionPopover } from "../components/popover-position";
+import { renderPreservingFocus } from "../components/render-focus";
 import { type ReadonlyData, type OptionsState } from "../state";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
@@ -56,6 +57,8 @@ export function mountShortcutsTab(
   const shortcutPickTemporaryBtn = element<HTMLButtonElement>("shortcut-pick-temporary-btn");
   const shortcutPickExternalActionBtn = element<HTMLButtonElement>("shortcut-pick-external-action-btn");
   const shortcutPickActionBtn = element<HTMLButtonElement>("shortcut-pick-action-btn");
+  const openRuleSets = new Set<string>();
+  const nativeShortcuts = () => state.settings.nativeShortcutSets.flatMap(set => set.shortcuts);
   let activeRecordingKeyId: string | null = null;
   let activeShortcutSettingsTarget: ReadonlyData<StoredShortcut | StoredNativeShortcut> | null =
     null;
@@ -183,13 +186,7 @@ export function mountShortcutsTab(
     addNativeShortcutBtn.addEventListener(
       "click",
       () => {
-        const newId = crypto.randomUUID();
-        state.addNativeShortcut({
-          id: newId,
-          key: "",
-          tabMode: "replace",
-        });
-        activeRecordingKeyId = newId;
+        state.addNativeShortcutSet({ uid: crypto.randomUUID(), name: t("shortcuts.defaultSetName"), shortcuts: [] });
         renderNativeShortcuts();
       },
       { signal: scope.signal },
@@ -237,7 +234,7 @@ export function mountShortcutsTab(
 
         parts.push(keyName);
         const recorded = parts.join("+");
-        const target = state.settings.nativeShortcuts.find((s) => s.id === activeRecordingKeyId);
+        const target = nativeShortcuts().find((s) => s.id === activeRecordingKeyId);
         if (target) {
           state.setNativeKey(target.id, recorded);
         }
@@ -356,7 +353,7 @@ export function mountShortcutsTab(
   function renderNativeShortcuts(): void {
     nativeShortcutsList.replaceChildren();
 
-    if (state.settings.nativeShortcuts.length === 0) {
+    if (state.settings.nativeShortcutSets.length === 0) {
       const emptyRow = document.createElement("div");
       emptyRow.className = "shortcut-row";
       const emptyLabel = document.createElement("span");
@@ -367,124 +364,168 @@ export function mountShortcutsTab(
       return;
     }
 
-    for (const item of state.settings.nativeShortcuts) {
-      const row = document.createElement("div");
-      row.className = "shortcut-row";
-
-      // Key col
-      const keyCol = document.createElement("div");
-      keyCol.className = "shortcut-slot-col";
-
-      const keyBtn = document.createElement("button");
-      keyBtn.type = "button";
-      const isRecording = activeRecordingKeyId === item.id;
-      if (isRecording) {
-        keyBtn.className = "key-recorder-btn is-recording";
-        keyBtn.textContent = t("shortcuts.pressKey");
-      } else if (item.key && item.key.trim().length > 0) {
-        keyBtn.className = "key-recorder-btn";
-        keyBtn.textContent = item.key;
-      } else {
-        keyBtn.className = "key-recorder-btn is-unset";
-        keyBtn.textContent = t("shortcuts.pressKey");
-      }
-
-      keyBtn.addEventListener("click", () => {
-        if (activeRecordingKeyId === item.id) {
-          activeRecordingKeyId = null;
-        } else {
-          activeRecordingKeyId = item.id;
-        }
-        renderNativeShortcuts();
-      });
-
-      keyCol.append(keyBtn);
-
-      // Target col
-      const targetCol = document.createElement("div");
-      targetCol.className = "shortcut-target-col";
-
-      const actionsCol = document.createElement("div");
-      actionsCol.className = "shortcut-actions-col";
-
-      const hasTarget = isShortcutActionType(item.type) || (isCustomBookmarkType(item.type)
-        ? Boolean(customBookmarkUid(item))
-        : Boolean(item.path || item.url));
-
-      if (hasTarget) {
-        const icon = document.createElement("span");
-        icon.className = "shortcut-target-icon";
-
-        const title = document.createElement("span");
-        title.className = "shortcut-target-title";
-
-        if (isShortcutActionType(item.type)) {
-          icon.textContent = "⚡";
-          title.textContent = shortcutActionLabel(item, state.settings.menus);
-          title.title = title.textContent;
-        } else if (isCustomBookmarkType(item.type)) {
-          icon.textContent = source.icon(item.type);
-          title.textContent = source.name(item);
-        } else {
-          icon.textContent = "🔖";
-          let displayTitle = item.title || "";
-          if (item.path) {
-            const rootPrefix = [...state.instance.rootPrefix];
-            const effectivePath = combineRootAndItemPath(rootPrefix, [...item.path]);
-            const node = findBookmarkNodeByPath(
-              library.tree as BookmarkNode[],
-              [...effectivePath],
-              item.url,
-            );
-            if (node?.title) displayTitle = node.title;
-          }
-          title.textContent =
-            displayTitle ||
-            (item.path ? item.path[item.path.length - 1] || "Bookmark" : "Bookmark");
-        }
-
-        targetCol.append(icon, title);
-      } else {
-        const emptyLabel = document.createElement("span");
-        emptyLabel.className = "shortcut-empty-label";
-        emptyLabel.textContent = t("shortcuts.emptyTarget");
-        targetCol.append(emptyLabel);
-      }
-
-      // Delete button (matches menu item remove-item-btn)
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "remove-item-btn";
-      deleteBtn.title = deleteBtn.ariaLabel = t("common.delete");
-      setIconContent(deleteBtn, removeIcon());
-      deleteBtn.addEventListener("click", () => {
-        const idx = state.settings.nativeShortcuts.findIndex((s) => s.id === item.id);
-        if (idx !== -1) {
-          state.removeShortcut({ kind: "native", id: item.id });
-          if (activeRecordingKeyId === item.id) activeRecordingKeyId = null;
-          if (activeShortcutSettingsTarget === item) closeShortcutSettingsPopover();
-          renderNativeShortcuts();
-        }
-      });
-
-      // Actions left→right: delete, settings (only when a target is set), change (always rightmost).
-      actionsCol.append(deleteBtn);
-      if (hasTarget && !isShortcutActionType(item.type) && item.type !== "externalAction") {
-        const settingsBtn = document.createElement("button");
-        settingsBtn.type = "button";
-        settingsBtn.className = "item-settings-btn";
-        settingsBtn.title = settingsBtn.ariaLabel = t("itemSettings.title");
-        setIconContent(settingsBtn, settingsIcon());
-        settingsBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openShortcutSettingsPopover(item, item.key || t("itemSettings.title"), settingsBtn);
+    for (const set of state.settings.nativeShortcutSets) {
+      const card = document.createElement("section"); card.className = "native-shortcut-set";
+      card.dataset.recordId = set.uid;
+      const header = document.createElement("header"); header.className = "native-shortcut-set-header";
+      const name = document.createElement("input"); name.type = "text"; name.value = set.name;
+      name.className = "url-rule-name-input"; name.ariaLabel = t("shortcuts.setName");
+      name.addEventListener("input", () => state.renameNativeShortcutSet(set.uid, name.value));
+      const rules = document.createElement("details"); rules.className = "native-shortcut-rules";
+      rules.open = openRuleSets.has(set.uid);
+      rules.addEventListener("toggle", () => { if (rules.open) openRuleSets.add(set.uid); else openRuleSets.delete(set.uid); });
+      const summary = document.createElement("summary");
+      const selected = set.urlRuleUids ?? [];
+      summary.textContent = selected.length ? t("shortcuts.ruleCount", { n: String(selected.length) }) : t("shortcuts.allPages");
+      const list = document.createElement("div"); list.className = "menu-setting-url-rules-list";
+      function ruleOption(uid: string | undefined, text: string, checked: boolean, patterns?: readonly string[]): void {
+        const label = document.createElement("label"); label.className = "menu-setting-url-rule-item";
+        const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = checked;
+        checkbox.addEventListener("change", () => {
+          openRuleSets.add(set.uid);
+          const current = state.settings.nativeShortcutSets.find(value => value.uid === set.uid)!.urlRuleUids ?? [];
+          state.setNativeShortcutRules(set.uid, !uid ? [] : checkbox.checked ? [...current, uid] : current.filter(value => value !== uid));
         });
-        actionsCol.append(settingsBtn);
+        const caption = document.createElement("span"); caption.textContent = text;
+        if (patterns) caption.title = patterns.join("\n");
+        label.append(checkbox, caption); list.append(label);
       }
-      actionsCol.append(buildChangeButton({ kind: "native", id: item.id }));
+      ruleOption(undefined, t("shortcuts.allPages"), !selected.length);
+      for (const rule of state.settings.urlRules) ruleOption(rule.uid, rule.name, selected.includes(rule.uid), rule.patterns);
+      for (const uid of selected.filter(uid => !state.settings.urlRules.some(rule => rule.uid === uid)))
+        ruleOption(uid, t("shortcuts.missingRule"), true);
+      rules.append(summary, list);
+      const add = document.createElement("button"); add.type = "button"; add.className = "menu-action-btn";
+      add.textContent = t("shortcuts.addNative");
+      add.addEventListener("click", () => {
+        const id = crypto.randomUUID(); activeRecordingKeyId = id;
+        state.addNativeShortcut(set.uid, { id, key: "", tabMode: "replace" });
+      });
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "remove-item-btn";
+      remove.title = remove.ariaLabel = t("common.delete"); setIconContent(remove, removeIcon());
+      remove.addEventListener("click", () => { openRuleSets.delete(set.uid); state.removeNativeShortcutSet(set.uid); });
+      header.append(name, rules, add, remove); card.append(header);
+      const bindings = document.createElement("div"); bindings.className = "shortcuts-list"; card.append(bindings);
+      nativeShortcutsList.append(card);
+      for (const item of set.shortcuts) {
+        const row = document.createElement("div");
+        row.className = "shortcut-row";
 
-      row.append(keyCol, targetCol, actionsCol);
-      nativeShortcutsList.append(row);
+        // Key col
+        const keyCol = document.createElement("div");
+        keyCol.className = "shortcut-slot-col";
+
+        const keyBtn = document.createElement("button");
+        keyBtn.type = "button";
+        const isRecording = activeRecordingKeyId === item.id;
+        if (isRecording) {
+          keyBtn.className = "key-recorder-btn is-recording";
+          keyBtn.textContent = t("shortcuts.pressKey");
+        } else if (item.key && item.key.trim().length > 0) {
+          keyBtn.className = "key-recorder-btn";
+          keyBtn.textContent = item.key;
+        } else {
+          keyBtn.className = "key-recorder-btn is-unset";
+          keyBtn.textContent = t("shortcuts.pressKey");
+        }
+
+        keyBtn.addEventListener("click", () => {
+          if (activeRecordingKeyId === item.id) {
+            activeRecordingKeyId = null;
+          } else {
+            activeRecordingKeyId = item.id;
+          }
+          renderNativeShortcuts();
+        });
+
+        keyCol.append(keyBtn);
+
+        // Target col
+        const targetCol = document.createElement("div");
+        targetCol.className = "shortcut-target-col";
+
+        const actionsCol = document.createElement("div");
+        actionsCol.className = "shortcut-actions-col";
+
+        const hasTarget = isShortcutActionType(item.type) || (isCustomBookmarkType(item.type)
+          ? Boolean(customBookmarkUid(item))
+          : Boolean(item.path || item.url));
+
+        if (hasTarget) {
+          const icon = document.createElement("span");
+          icon.className = "shortcut-target-icon";
+
+          const title = document.createElement("span");
+          title.className = "shortcut-target-title";
+
+          if (isShortcutActionType(item.type)) {
+            icon.textContent = "⚡";
+            title.textContent = shortcutActionLabel(item, state.settings.menus);
+            title.title = title.textContent;
+          } else if (isCustomBookmarkType(item.type)) {
+            icon.textContent = source.icon(item.type);
+            title.textContent = source.name(item);
+          } else {
+            icon.textContent = "🔖";
+            let displayTitle = item.title || "";
+            if (item.path) {
+              const rootPrefix = [...state.instance.rootPrefix];
+              const effectivePath = combineRootAndItemPath(rootPrefix, [...item.path]);
+              const node = findBookmarkNodeByPath(
+                library.tree as BookmarkNode[],
+                [...effectivePath],
+                item.url,
+              );
+              if (node?.title) displayTitle = node.title;
+            }
+            title.textContent =
+              displayTitle ||
+              (item.path ? item.path[item.path.length - 1] || "Bookmark" : "Bookmark");
+          }
+
+          targetCol.append(icon, title);
+        } else {
+          const emptyLabel = document.createElement("span");
+          emptyLabel.className = "shortcut-empty-label";
+          emptyLabel.textContent = t("shortcuts.emptyTarget");
+          targetCol.append(emptyLabel);
+        }
+
+        // Delete button (matches menu item remove-item-btn)
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "remove-item-btn";
+        deleteBtn.title = deleteBtn.ariaLabel = t("common.delete");
+        setIconContent(deleteBtn, removeIcon());
+        deleteBtn.addEventListener("click", () => {
+          const idx = nativeShortcuts().findIndex((s) => s.id === item.id);
+          if (idx !== -1) {
+            state.removeShortcut({ kind: "native", id: item.id });
+            if (activeRecordingKeyId === item.id) activeRecordingKeyId = null;
+            if (activeShortcutSettingsTarget === item) closeShortcutSettingsPopover();
+            renderNativeShortcuts();
+          }
+        });
+
+        // Actions left→right: delete, settings (only when a target is set), change (always rightmost).
+        actionsCol.append(deleteBtn);
+        if (hasTarget && !isShortcutActionType(item.type) && item.type !== "externalAction") {
+          const settingsBtn = document.createElement("button");
+          settingsBtn.type = "button";
+          settingsBtn.className = "item-settings-btn";
+          settingsBtn.title = settingsBtn.ariaLabel = t("itemSettings.title");
+          setIconContent(settingsBtn, settingsIcon());
+          settingsBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openShortcutSettingsPopover(item, item.key || t("itemSettings.title"), settingsBtn);
+          });
+          actionsCol.append(settingsBtn);
+        }
+        actionsCol.append(buildChangeButton({ kind: "native", id: item.id }));
+
+        row.append(keyCol, targetCol, actionsCol);
+        bindings.append(row);
+      }
     }
   }
 
@@ -616,7 +657,7 @@ export function mountShortcutsTab(
     const existing =
       target.kind === "slot"
         ? state.settings.shortcuts.find((item) => item.slot === target.slot)
-        : state.settings.nativeShortcuts.find((item) => item.id === target.id);
+        : nativeShortcuts().find((item) => item.id === target.id);
     const node = existing?.path
       ? findBookmarkNodeByPath(
           library.tree as BookmarkNode[],
@@ -666,18 +707,18 @@ export function mountShortcutsTab(
   }
   const render = () => {
     renderShortcuts();
-    renderNativeShortcuts();
+    renderPreservingFocus(nativeShortcutsList, renderNativeShortcuts);
   };
   scope.add(overlays.register("shortcutSettings", closeShortcutSettingsPopover));
   scope.add(overlays.register("shortcutPick", closeShortcutPickPopover));
   scope.add(
-    state.subscribe(["shortcuts", "bookmarks", "instance", "menus"], (change) => {
+    state.subscribe(["shortcuts", "bookmarks", "instance", "menus", "rules"], (change) => {
       if (change.structural) {
         closeShortcutSettingsPopover();
         closeShortcutPickPopover();
         if (
           activeRecordingKeyId &&
-          !state.settings.nativeShortcuts.some((item) => item.id === activeRecordingKeyId)
+          !nativeShortcuts().some((item) => item.id === activeRecordingKeyId)
         )
           activeRecordingKeyId = null;
       }
