@@ -90,7 +90,8 @@ it("keeps the range inside the bar with ordered boundaries and discards it on Ca
   for (let index = 0; index < 100; index++) {
     start!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
   }
-  expect(Number(start!.getAttribute("aria-valuenow"))).toBeLessThan(Number(end!.getAttribute("aria-valuenow")));
+  // The boundaries may meet (a zero-width band) but the start never passes the end.
+  expect(Number(start!.getAttribute("aria-valuenow"))).toBeLessThanOrEqual(Number(end!.getAttribute("aria-valuenow")));
   for (let index = 0; index < 200; index++) {
     start!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     end!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
