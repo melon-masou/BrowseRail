@@ -16,9 +16,15 @@ export interface PressHandlers {
 export function attachPress(button: HTMLElement, handlers: PressHandlers, signal: AbortSignal): void {
   button.addEventListener("pointerdown", event => {
     if (!handlers.enabled()) return;
+    // A pen's barrel button reports as the right button and acts like a mouse right click.
+    if (event.button === 2) {
+      if (handlers.alternate) { event.preventDefault(); event.stopPropagation(); handlers.alternate(); }
+      return;
+    }
+    if (event.button !== 0) return;
     if (event.pointerType !== "touch" && event.pointerType !== "pen") {
-      if (event.button === 0) { event.preventDefault(); handlers.primary(); }
-      else if (event.button === 2 && handlers.alternate) { event.preventDefault(); event.stopPropagation(); handlers.alternate(); }
+      event.preventDefault();
+      handlers.primary();
       return;
     }
     if (!event.isPrimary) return;
@@ -42,5 +48,7 @@ export function attachPress(button: HTMLElement, handlers: PressHandlers, signal
       if (!settled) handlers.primary();
     }, options);
     button.addEventListener("pointercancel", next => { if (next.pointerId === pointerId) finish(); }, options);
+    // Without capture the release may never reach the button, so the hold must not fire on its own.
+    button.addEventListener("lostpointercapture", next => { if (next.pointerId === pointerId) finish(); }, options);
   }, { signal });
 }

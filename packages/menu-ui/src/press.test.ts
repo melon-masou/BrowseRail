@@ -46,6 +46,21 @@ it("does nothing when the finger moves away, as when scrolling", () => {
   expect(alternate).not.toHaveBeenCalled();
 });
 
+it("does nothing when another element takes the finger before it lifts", () => {
+  pointer("pointerdown");
+  pointer("lostpointercapture");
+  vi.advanceTimersByTime(HOLD_MS);
+  expect(primary).not.toHaveBeenCalled();
+  expect(alternate).not.toHaveBeenCalled();
+});
+
+it("treats a pen's barrel button as the right button", () => {
+  pointer("pointerdown", { pointerType: "pen", button: 2 });
+  expect(alternate).toHaveBeenCalledOnce();
+  pointer("pointerup", { pointerType: "pen", button: 2 });
+  expect(primary).not.toHaveBeenCalled();
+});
+
 it("keeps mouse presses immediate, with the right button as the alternate", () => {
   pointer("pointerdown", { pointerType: "mouse", button: 0 });
   expect(primary).toHaveBeenCalledOnce();
