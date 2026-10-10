@@ -17,6 +17,13 @@ function createPageController() {
   let rendering = Promise.resolve();
   let stateRevision = 0;
 
+  // Pages that scale themselves with `zoom` on <html> or <body> would scale the bar and its viewport-sized host too.
+  function cancelPageZoom(): void {
+    const parent = host?.parentElement;
+    if (host && parent) host.style.setProperty("zoom", String(1 / parent.currentCSSZoom), "important");
+  }
+  window.addEventListener("resize", cancelPageZoom);
+
   function clearSurface(): void {
     // surfaceObserver?.disconnect(); surfaceObserver = undefined;
     for (const menu of menus.values()) menu.destroy();
@@ -117,6 +124,7 @@ function createPageController() {
         // nodes during document initialization. Mount recovery is disabled for now.
         // maintainSurface(host, body);
       }
+      cancelPageZoom();
       for (const menu of message.menus) {
         if (suspended || revision !== stateRevision) return;
         const mounted = menus.get(menu.view.uid);
