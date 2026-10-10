@@ -179,7 +179,9 @@
   .hide-range-dim { position: absolute; background: rgb(0 0 0 / 60%); }
   .hide-range-band { position: absolute; outline: 2px solid #7aa2ff; outline-offset: -1px; }
   .hide-range-sensor { position: absolute; outline: 2px dashed #7aa2ff; outline-offset: -1px; background: rgb(122 162 255 / 12%); }
-  .hide-range-label {
+  .spacing-label { z-index: 5; pointer-events: none; }
+  .spacing-label[hidden] { display: none; }
+  .hide-range-label, .spacing-label {
     position: absolute; top: 0; left: 0; max-width: 100%; box-sizing: border-box;
     padding: 2px 4px; border-radius: 3px; background: #263347; color: #fff;
     font: 11px/1.4 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

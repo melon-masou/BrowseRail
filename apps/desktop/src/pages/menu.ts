@@ -257,9 +257,7 @@ export async function initializeSurface(
     });
 
     const spacingButton = controlButton(document, createSpacingIcon(document));
-    spacingButton.title = t("customize.adjustSpacing");
-    spacingButton.setAttribute("aria-pressed", "false");
-    const spacingEditor = mountSpacingEditor(railContainer, menu, stateFor(menu).itemSize, (draft, itemSize) => {
+    const spacingEditor = mountSpacingEditor(railContainer, menu, stateFor(menu).itemSize, spacingButton, (draft, itemSize) => {
       const fromAnchor = elementOrigin(railContainer);
       const dimensions = barDimensions(draft, itemSize);
       targetWidth = dimensions.width;
@@ -276,12 +274,11 @@ export async function initializeSurface(
     spacingButton.addEventListener("click", () => {
       stopActiveResize?.();
       hideRangeEditor.close();
-      spacingEditor.setEnabled(!spacingEditor.enabled);
-      spacingButton.setAttribute("aria-pressed", String(spacingEditor.enabled));
+      spacingEditor.cycle();
     });
     hideRangeButton.addEventListener("click", () => {
       stopActiveResize?.();
-      spacingEditor.setEnabled(false); spacingButton.setAttribute("aria-pressed", "false");
+      spacingEditor.close();
       hideRangeEditor.cycle();
     });
     const orientationControl = createOrientationControl(document, settings.orientation, orientation => {

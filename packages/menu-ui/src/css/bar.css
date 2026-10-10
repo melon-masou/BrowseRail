@@ -194,6 +194,8 @@
     box-shadow: none;
     cursor: pointer;
     user-select: none;
+    /* A hold is the touch alternate to the right button; iOS would otherwise open its link callout. */
+    -webkit-touch-callout: none;
     font: inherit;
   }
 

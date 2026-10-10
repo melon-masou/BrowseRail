@@ -8,8 +8,8 @@ export { calculateColumnWidth, createTextMeasure, popupEnvelope, planFolderPopup
 export { createLifetime } from "./lifetime";
 export { attachTemporaryBookmarkButton } from "./temporary-bookmark";
 export { mountBookmarkConfirmation, mountTemporaryConfirmation } from "./confirmation";
-export { createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createMoveIcon, createSpacingIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel } from "./bar/customization";
-export { mountSpacingEditor } from "./bar/spacing-editor";
+export { createCustomizationRail, controlButton, createOrientationControl, createAnchorIcon, createMoveIcon, createSaveIcon, createCancelIcon, nextAnchor, anchorLabel } from "./bar/customization";
+export { mountSpacingEditor, createSpacingIcon, type SpacingMode } from "./bar/spacing-editor";
 export { mountHideRangeEditor, createHideRangeIcon } from "./bar/hide-range-editor";
 export { layoutCustomization } from "./bar/customization";
 export { placeCustomizationToolbar, type ToolbarSide } from "./bar/customization-position";

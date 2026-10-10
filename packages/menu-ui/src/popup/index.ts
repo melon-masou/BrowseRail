@@ -2,6 +2,7 @@ import { invertNavigationActionUid, type ExpandDirection, type LayoutEntry } fro
 import { applyMenuColor, applyFolderPin, menuButton } from "../appearance";
 import { calculateColumnWidth as columnWidth, createTextMeasure, submenuHeightLimit } from "./layout";
 import { createLifetime, showMenuError, type Lifetime } from "../lifetime";
+import { attachPress } from "../press";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
 import type { PopupController, PopupHost, PopupState, Rect, FolderPin } from "../types";
 
@@ -278,19 +279,20 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
                 : HOVER_OPEN_DELAY_MS,
             );
           }
-          button.addEventListener("pointerdown", (event) => {
-            if (event.button !== 0 && event.button !== 2) return;
-            event.preventDefault();
-            if (event.button === 2 || entry.expandOnHover !== false || pins.get(level + 1) === "locked") {
-              openChild(event.button === 2 ? "locked" : "temporary", true);
-            } else if (expandedUids[level] === entry.uid) {
-              if (lockedFrom(level + 1)) return;
-              const changed = pins.size;
-              for (const depth of pins.keys()) if (depth > level) pins.delete(depth);
-              if (changed !== pins.size) publishPin();
-              trimLevels(level + 1);
-            } else openChild(undefined, true);
-          }, { signal: columnLifetime.signal });
+          attachPress(button, {
+            enabled: () => true,
+            primary: () => {
+              if (entry.expandOnHover !== false || pins.get(level + 1) === "locked") openChild("temporary", true);
+              else if (expandedUids[level] === entry.uid) {
+                if (lockedFrom(level + 1)) return;
+                const changed = pins.size;
+                for (const depth of pins.keys()) if (depth > level) pins.delete(depth);
+                if (changed !== pins.size) publishPin();
+                trimLevels(level + 1);
+              } else openChild(undefined, true);
+            },
+            alternate: () => openChild("locked", true),
+          }, columnLifetime.signal);
         } else {
           button.addEventListener("pointerenter", () => {
             setPopupPointerInside(true);
@@ -315,16 +317,11 @@ export function mountFolderPopup(root: HTMLElement, initial: PopupState, host: P
             );
             columnLifetime.onDestroy(dispose);
           } else {
-            button.addEventListener("pointerdown", (event) => {
-              if (event.button === 0) {
-                event.preventDefault();
-                dispatchAction(entry.uid);
-              } else if (event.button === 2 && state.editingLocked) {
-                event.preventDefault();
-                event.stopPropagation();
-                dispatchAction(invertNavigationActionUid(entry.uid));
-              }
-            }, { signal: columnLifetime.signal });
+            attachPress(button, {
+              enabled: () => true,
+              primary: () => dispatchAction(entry.uid),
+              alternate: () => { if (state.editingLocked) dispatchAction(invertNavigationActionUid(entry.uid)); },
+            }, columnLifetime.signal);
           }
         }
         column.appendChild(button);

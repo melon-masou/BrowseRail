@@ -29,60 +29,69 @@ it("scales gaps along the button axis, follows reordered buttons, and keeps the 
   expect(barDimensions(view, size)).toEqual({ width: 100, height: 448 });
 });
 
-it.each(["row", "column"] as const)("edits %s gaps without changing button size or the original config, and stops on destruction", orientation => {
+it.each(["row", "column"] as const)("cycles %s gap editing through all gaps, one gap and off without changing button size or the original config", orientation => {
   const view = menu(orientation);
   const size = { width: 100, height: 40 };
   const rail = document.createElement("div");
-  document.body.append(rail);
+  const button = document.createElement("button");
+  document.body.append(rail, button);
   const changed = vi.fn();
-  const editor = mountSpacingEditor(rail, view, size, changed);
-  editor.setEnabled(true);
+  const editor = mountSpacingEditor(rail, view, size, button, changed);
   const handles = rail.querySelectorAll<HTMLElement>(".gap-handle");
   for (const handle of handles) {
     handle.setPointerCapture = vi.fn();
     handle.hasPointerCapture = () => false;
   }
   const handle = handles[0]!;
-  const pointer = (type: string, button: number, distance: number): void => {
-    handle.dispatchEvent(new PointerEvent(type, {
-      bubbles: true, cancelable: true, pointerId: 1, button,
-      screenX: orientation === "row" ? distance : 0,
-      screenY: orientation === "column" ? distance : 0,
-    }));
+  const drag = (distance: number): void => {
+    for (const [type, at] of [["pointerdown", 0], ["pointermove", distance], ["pointerup", distance]] as const) {
+      handle.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerId: 1, button: 0,
+        screenX: orientation === "row" ? at : 0,
+        screenY: orientation === "column" ? at : 0,
+      }));
+    }
   };
   const dimension = orientation === "row" ? size.width : size.height;
-  pointer("pointerdown", 0, 0);
-  pointer("pointermove", 0, dimension * 0.5);
-  pointer("pointerup", 0, dimension * 0.5);
-  expect(editor.spacing.gapRatio).toBe(0.1);
-  expect(editor.spacing.extraGaps.first).toBeCloseTo(0.7);
-  expect(editor.itemSize).toEqual(size);
-  expect(view.extraGaps!.first).toBe(0.2);
-  const beforeGlobal = barDimensions(editor.menu, editor.itemSize);
-  pointer("pointerdown", 2, 0);
-  pointer("pointermove", 2, dimension * 0.3);
-  pointer("pointerup", 2, dimension * 0.3);
-  const afterGlobal = barDimensions(editor.menu, editor.itemSize);
-  expect(orientation === "row" ? afterGlobal.width - beforeGlobal.width : afterGlobal.height - beforeGlobal.height)
-    .toBeCloseTo(dimension * 0.3);
+  const length = (): number => { const bar = barDimensions(editor.menu, editor.itemSize); return orientation === "row" ? bar.width : bar.height; };
+
+  expect(handle.hidden).toBe(true);
+  editor.cycle();
+  expect(editor.mode).toBe("all");
+  expect(button.getAttribute("aria-pressed")).toBe("true");
+  const beforeAll = length();
+  drag(dimension * 0.3);
+  // A drag in all-gaps mode changes the bar length once, spread across every gap.
+  expect(length() - beforeAll).toBeCloseTo(dimension * 0.3);
   expect(editor.spacing.gapRatio).toBeGreaterThan(0.1);
-  expect(editor.spacing.extraGaps.first).toBeCloseTo(0.7);
+  expect(editor.spacing.extraGaps.first).toBeCloseTo(0.2);
+
+  editor.cycle();
+  expect(editor.mode).toBe("single");
   const globalRatio = editor.spacing.gapRatio;
+  drag(dimension * 0.5);
+  expect(editor.spacing.extraGaps.first).toBeCloseTo(0.7);
+  expect(editor.spacing.gapRatio).toBe(globalRatio);
   handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
   expect(editor.spacing.extraGaps.first).toBeUndefined();
-  expect(editor.spacing.gapRatio).toBe(globalRatio);
-  pointer("pointerdown", 0, 0);
-  pointer("pointermove", 0, -dimension);
+  drag(-dimension);
   expect(editor.spacing.extraGaps.first).toBeUndefined();
-  pointer("pointerup", 0, -dimension);
+  expect(editor.itemSize).toEqual(size);
+  expect(view.extraGaps!.first).toBe(0.2);
+
+  editor.cycle();
+  expect(editor.mode).toBe("off");
+  expect(handle.hidden).toBe(true);
+  expect(button.getAttribute("aria-pressed")).toBe("false");
+  const calls = changed.mock.calls.length;
+  drag(dimension);
+  expect(changed).toHaveBeenCalledTimes(calls);
+
+  editor.cycle();
   editor.setItemSize({ width: 200, height: 80 });
   expect(barItemSize(editor.menu, barDimensions(editor.menu, editor.itemSize))).toEqual(editor.itemSize);
-  pointer("pointerdown", 2, 0);
-  pointer("pointermove", 2, -1000);
-  expect(editor.spacing.gapRatio).toBe(0);
   editor.destroy();
-  const calls = changed.mock.calls.length;
-  pointer("pointermove", 2, 1000);
+  drag(dimension);
   expect(changed).toHaveBeenCalledTimes(calls);
-  rail.remove();
+  rail.remove(); button.remove();
 });

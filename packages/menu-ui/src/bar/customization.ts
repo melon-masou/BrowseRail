@@ -207,14 +207,3 @@ export function anchorLabel(anchor: MenuAnchor): string {
   return t(`anchor.${anchor}`);
 }
 
-export function createSpacingIcon(doc: Document): SVGSVGElement {
-  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  const path = doc.createElementNS(svg.namespaceURI, "path");
-  path.setAttribute("d", "M3 4v16M21 4v16M6 12h12M9 9l-3 3 3 3M15 9l3 3-3 3");
-  svg.append(path);
-  return svg;
-}

@@ -34,8 +34,6 @@ export function mountBrowserCustomization(
   const cancelButton = controlButton(doc, createCancelIcon(doc)); cancelButton.title = t("customize.cancel");
   const saveButton = controlButton(doc, createSaveIcon(doc)); saveButton.title = t("customize.savePlacement");
   const spacingButton = controlButton(doc, createSpacingIcon(doc));
-  spacingButton.title = t("customize.adjustSpacing");
-  spacingButton.setAttribute("aria-pressed", "false");
   const hideRangeButton = controlButton(doc, createHideRangeIcon(doc));
   hideRangeButton.title = t("customize.hideRange");
   hideRangeButton.setAttribute("aria-pressed", "false");
@@ -51,7 +49,7 @@ export function mountBrowserCustomization(
   content.append(rail, toolbar);
   root.replaceChildren(content);
 
-  const spacingEditor = mountSpacingEditor(rail, state.menu, state.itemSize, (menu, itemSize) => {
+  const spacingEditor = mountSpacingEditor(rail, state.menu, state.itemSize, spacingButton, (menu, itemSize) => {
     size = barDimensions(menu, itemSize);
     layout();
   });
@@ -62,12 +60,11 @@ export function mountBrowserCustomization(
   spacingButton.addEventListener("click", () => {
     stopGesture?.();
     hideRangeEditor.close();
-    spacingEditor.setEnabled(!spacingEditor.enabled);
-    spacingButton.setAttribute("aria-pressed", String(spacingEditor.enabled));
+    spacingEditor.cycle();
   }, options);
   hideRangeButton.addEventListener("click", () => {
     stopGesture?.();
-    spacingEditor.setEnabled(false); spacingButton.setAttribute("aria-pressed", "false");
+    spacingEditor.close();
     hideRangeEditor.cycle();
   }, options);
   const settingsPopup = doc.createElement("div"); settingsPopup.className = "bar-settings-popup"; settingsPopup.hidden = true;

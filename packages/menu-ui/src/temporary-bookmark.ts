@@ -2,8 +2,7 @@ import { invertTemporaryActionUid, parseTemporaryAction, type BookmarkEntry } fr
 import { t } from "@browserail/i18n";
 import type { MenuActions } from "./types";
 
-const HOLD_MS = 500;
-const MOVE_TOLERANCE_PX = 8;
+import { HOLD_MS, MOVE_TOLERANCE_PX } from "./press";
 
 export function attachTemporaryBookmarkButton(
   button: HTMLButtonElement,

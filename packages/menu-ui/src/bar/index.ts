@@ -3,6 +3,7 @@ import { t } from "@browserail/i18n";
 import { applyActionError, applyBarTheme, applyFolderPin, menuButton, menuFill, menuInk } from "../appearance";
 import { applyBarLayout } from "../layout";
 import { createLifetime, showMenuError } from "../lifetime";
+import { attachPress } from "../press";
 import { attachTemporaryBookmarkButton } from "../temporary-bookmark";
 import type { BarHost, BarState, BarController, PopupSession, PopupPin, FolderPin } from "../types";
 import { createBarAutoHide } from "./auto-hide";
@@ -237,13 +238,11 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): B
         });
         renderLifetime.onDestroy(dispose);
       } else {
-        button.addEventListener("pointerdown", event => {
-          if (!state.editingLocked) return;
-          if (event.button === 0) { event.preventDefault(); dispatch(entry.uid); }
-          else if (event.button === 2) {
-            event.preventDefault(); event.stopPropagation(); dispatch(invertNavigationActionUid(entry.uid));
-          }
-        }, options);
+        attachPress(button, {
+          enabled: () => state.editingLocked,
+          primary: () => dispatch(entry.uid),
+          alternate: () => dispatch(invertNavigationActionUid(entry.uid)),
+        }, renderLifetime.signal);
       }
     } else {
       if (entry.expandOnHover !== false) {
@@ -253,14 +252,11 @@ export function mountBar(root: HTMLElement, initial: BarState, host: BarHost): B
           cancelClose(); if (entry.children.length) run(openPopup(entry, button));
         }, options);
       }
-      button.addEventListener("pointerdown", event => {
-        if (!state.editingLocked || (event.button !== 0 && event.button !== 2)) return;
-        event.preventDefault();
-        if (entry.children.length) {
-          const pin = event.button === 2 ? "locked" : entry.expandOnHover === false ? undefined : "temporary";
-          run(openPopup(entry, button, pin, true));
-        }
-      }, options);
+      attachPress(button, {
+        enabled: () => state.editingLocked,
+        primary: () => { if (entry.children.length) run(openPopup(entry, button, entry.expandOnHover === false ? undefined : "temporary", true)); },
+        alternate: () => { if (entry.children.length) run(openPopup(entry, button, "locked", true)); },
+      }, renderLifetime.signal);
     }
     return button;
   }
