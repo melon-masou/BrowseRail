@@ -154,7 +154,12 @@ export function mountMenusTab(
   addMenu.addEventListener(
     "click",
     () => {
-      state.addMenu(createMenu());
+      const menu = createMenu();
+      state.addMenu(menu);
+      // The new card lands at the end of the list, often below the fold.
+      [...menusContainer.querySelectorAll<HTMLElement>(".menu-card")]
+        .find(card => card.dataset.recordId === menu.uid)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     },
     { signal: scope.signal },
   );
