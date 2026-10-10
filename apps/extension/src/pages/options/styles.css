@@ -60,6 +60,14 @@ main {
   color: #172033;
 }
 
+.page-brand .language-select {
+  width: auto;
+  min-height: 28px;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
 form {
   display: grid;
   gap: 18px;
@@ -187,7 +195,7 @@ form {
 }
 
 .connection-preferences-row {
-  grid-template-columns: 1.8fr 1fr;
+  grid-template-columns: 1fr;
 }
 
 .connection-primary-row > :last-child {
@@ -459,6 +467,7 @@ output[data-state="error"] {
 
 .state-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   padding: 14px 18px;
@@ -467,7 +476,6 @@ output[data-state="error"] {
   border: 1px solid #dce1eb;
   background: white;
   box-shadow: 0 4px 16px rgb(26 35 54 / 5%);
-  flex-wrap: wrap;
   min-height: 72px;
   box-sizing: border-box;
 }
@@ -486,29 +494,30 @@ output[data-state="error"] {
   flex-direction: column;
   justify-content: center;
   gap: 3px;
+  flex: 1 1 12em;
   min-width: 0;
 }
 
 .state-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
 }
-  flex: 1 1 12em;
 
 .state-title {
+  white-space: nowrap;
   font-weight: 600;
   font-size: 14px;
   color: #172033;
-  flex-wrap: wrap;
 }
 
 .state-badge {
   font-size: 11px;
   font-weight: 700;
-  white-space: nowrap;
   padding: 2px 8px;
   border-radius: 999px;
+  white-space: nowrap;
   text-transform: uppercase;
   background: #f1f3f9;
   color: #5b6475;
@@ -517,7 +526,6 @@ output[data-state="error"] {
 .state-detail {
   font-size: 12px;
   color: #687287;
-  white-space: nowrap;
 }
 
 .resync-status {
