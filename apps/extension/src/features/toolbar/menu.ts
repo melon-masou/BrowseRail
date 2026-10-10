@@ -81,7 +81,8 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
     await saveBrowserEditing(editing);
     await refresh();
     const tabs = tabId === undefined ? await browser.tabs.query({}) : [{ id: tabId }];
-    await Promise.all(tabs.map(tab => tab.id === undefined ? undefined : requestBrowserMenuRefresh(tab.id)));
+    // Mobile browsers freeze background tabs, which then answer only once resumed; the toggle must not wait for them.
+    for (const tab of tabs) if (tab.id !== undefined) void requestBrowserMenuRefresh(tab.id);
   }
   browser.contextMenus?.onClicked?.addListener((info, tab) => {
     if (info.menuItemId === OPTIONS_MENU_ID) {
