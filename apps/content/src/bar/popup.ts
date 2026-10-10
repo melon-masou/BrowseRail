@@ -59,8 +59,14 @@ export async function openBrowserPopup(container: HTMLElement, bar: HTMLElement,
     await lifetime.settle();
     if (!lifetime.alive) return session;
     const right = anchor.endsWith("Right"), bottom = anchor.startsWith("bottom");
-    const width = container.clientWidth, height = container.clientHeight;
-    const { surface, state } = planFolderPopup(measure, request, { left: 0, top: 0, right: width, bottom: height });
+    const { width, height, available } = popupArea(container, bottom);
+    let { surface, state } = planFolderPopup(measure, request, available);
+    // Without some uncovered space nowhere is left to tap to dismiss the popup; keep it on the side away from the bar.
+    const freeX = Math.max(24, width * 0.1), freeY = Math.max(24, height * 0.1);
+    if (surface.left - available.left < freeX && available.right - surface.right < freeX
+      && surface.top - available.top < freeY && available.bottom - surface.bottom < freeY) {
+      ({ surface, state } = planFolderPopup(measure, request, right ? { ...available, left: available.left + freeX } : { ...available, right: available.right - freeX }));
+    }
     // Anchored to the same edges as the bar, so the two move together when the viewport changes.
     Object.assign(root.style, {
       left: right ? "auto" : `${surface.left}px`, right: right ? `${width - surface.right}px` : "auto",
@@ -83,3 +89,16 @@ export async function openBrowserPopup(container: HTMLElement, bar: HTMLElement,
   } catch (error) { await close(); throw error; }
 }
 
+/**
+ * Mobile toolbars cover the bottom of the viewport while shown, so popups are planned within the small viewport,
+ * taken from the edge they move with.
+ */
+function popupArea(container: HTMLElement, bottom: boolean) {
+  const probe = container.ownerDocument.createElement("div");
+  probe.style.cssText = "position:absolute;visibility:hidden;height:100svh;width:0";
+  container.append(probe);
+  const width = container.clientWidth, height = container.clientHeight;
+  const visible = Math.min(height, probe.getBoundingClientRect().height);
+  probe.remove();
+  return { width, height, available: { left: 0, right: width, top: bottom ? height - visible : 0, bottom: bottom ? height : visible } };
+}
