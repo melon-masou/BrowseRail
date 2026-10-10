@@ -19,7 +19,6 @@ vi.mock("webextension-polyfill", () => ({ default: {
     },
   },
   bookmarks: { getTree: vi.fn(async () => []) },
-  windows: { get: vi.fn(async () => ({})) },
   tabs: {
     query: vi.fn(async () => [{ id: 42 }]),
     update: vi.fn(async () => ({})),

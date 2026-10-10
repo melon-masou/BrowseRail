@@ -12,7 +12,6 @@ function createBrowser(): TabActionBrowser {
       query: vi.fn(async () => [{ id: 17 }]),
       update: vi.fn(async () => undefined),
     },
-    windows: { get: vi.fn(async () => ({})) },
   };
 }
 

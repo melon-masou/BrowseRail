@@ -15,9 +15,6 @@ export interface TabActionBrowser {
     query(query: { active: true; windowId: number }): Promise<Array<{ id?: number }>>;
     update(tabId: number, update: { url: string }): Promise<unknown>;
   };
-  windows: {
-    get(windowId: number): Promise<unknown>;
-  };
 }
 
 export async function navigateBookmark(
@@ -55,7 +52,6 @@ export async function navigateToUrl(
   if (!Number.isInteger(windowId)) {
     throw new Error("The bound browser window is invalid");
   }
-  await api.windows.get(windowId);
 
   if (tabMode === "newTab") {
     if (api.tabs.create) {

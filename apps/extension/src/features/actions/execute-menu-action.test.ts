@@ -22,7 +22,6 @@ vi.mock("webextension-polyfill", () => ({ default: {
     get: async (id: string) => mocks.tree.flatMap(folder => folder.children).filter(node => node.id === id),
   },
   tabs: { query: async () => [{ id: 17, url: "https://current.example" }], update: mocks.update, create: mocks.create },
-  windows: { get: async () => ({}) },
 } }));
 
 import { loadConfig, saveConfig, saveDisplayMode, saveDynamicValue, loadTemporaryValues, loadTemporaryNotes, saveBarLayout, loadBarConfigurations, importBarConfigurations, defaultMenuPlacement, loadShortcutsEnabled, type StoredMenuItem } from "../../lib/config";
