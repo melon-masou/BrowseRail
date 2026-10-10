@@ -193,6 +193,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       version: EXPORT_SCHEMA_VERSION,
       ...(barConfigurations ? { barConfigurations } : {}),
       exportedAt: new Date().toISOString(),
+      exportedBy: (await loadConfig()).instanceLabel,
       globalCss: globalCss ?? {},
       userVariables,
       urlRules,

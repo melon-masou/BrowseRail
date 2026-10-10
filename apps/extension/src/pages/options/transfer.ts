@@ -40,6 +40,8 @@ export function mergeTransferData(remote: ExportedSettingsData | undefined, loca
   const merged = structuredClone(remote ?? { version: local.version, exportedAt: local.exportedAt });
   merged.version = local.version;
   merged.exportedAt = local.exportedAt;
+  if (local.exportedBy === undefined) delete merged.exportedBy;
+  else merged.exportedBy = local.exportedBy;
   for (const group of transferGroups) {
     if (selection[group]) for (const field of fields[group]) delete merged[field];
   }

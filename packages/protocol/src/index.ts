@@ -359,6 +359,8 @@ export interface ExportedSettingsData {
   globalCss?: Record<string, string>;
   version: typeof EXPORT_SCHEMA_VERSION;
   exportedAt: string;
+  /** Instance label of the exporter, shown with `exportedAt` so a synced copy reveals where it came from. */
+  exportedBy?: string;
   barConfigurations?: import("./bar").BarConfigurations;
   menus?: ExportedMenu[];
   urlRules?: UrlRule[];
@@ -379,6 +381,7 @@ export function isExportedSettingsData(value: unknown): value is ExportedSetting
   return (
     value.version === EXPORT_SCHEMA_VERSION &&
     typeof value.exportedAt === "string" &&
+    (value.exportedBy === undefined || typeof value.exportedBy === "string") &&
     ["menus", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "shortcuts", "nativeShortcutSets"].every(key => value[key] === undefined || Array.isArray(value[key])) &&
     ["globalCss", "userVariables", "barConfigurations"].every(key => value[key] === undefined || isRecord(value[key])) &&
     ["menus", "globalCss", "urlRules", "staticBookmarks", "dynamicBookmarks", "temporaryBookmarks", "externalActions", "userVariables", "shortcuts", "nativeShortcutSets", "barConfigurations"].some(key => value[key] !== undefined)

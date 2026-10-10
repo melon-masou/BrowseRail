@@ -193,15 +193,18 @@ it("previews cloud download before applying selected categories and preserves in
   expect(await loadBarConfigurations()).toEqual(layout);
 });
 
-it("replaces selected local data through a cloud download while retaining unselected data", async () => {
+it("previews a cloud download with its source, then replaces selected local data while retaining unselected data", async () => {
   button("custom-bookmarks-tab").click(); button("add-static-btn").click(); await save();
   const before = await savedConfig();
   expect(before.staticBookmarks).toHaveLength(1);
   const { uploadCloudSettings } = await import("../../lib/config/cloud-storage");
   const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
-  await uploadCloudSettings({ version: EXPORT_SCHEMA_VERSION, exportedAt: "2026-10-09T00:00:00Z", menus: [{ uid: "remote", items: [] }], staticBookmarks: [] });
-  await openSync(); button("sync-download").click();
+  await uploadCloudSettings({ version: EXPORT_SCHEMA_VERSION, exportedAt: "2026-10-09T00:00:00Z", exportedBy: "Desktop", menus: [{ uid: "remote", items: [] }], staticBookmarks: [] });
+  await openSync();
+  expect(document.getElementById("sync-copy-source")!.textContent).toBe("");
+  button("sync-download").click();
   await vi.waitFor(() => expect(button("sync-download").textContent).toBe("Import"));
+  expect(document.getElementById("sync-copy-source")!.textContent).toMatch(/^Sync copy: Desktop · /);
   transferChoice("menus", false);
   const replace = [...document.querySelectorAll<HTMLButtonElement>("#sync-dialog .transfer-mode button")].find(button => button.textContent === "Replace")!;
   replace.click(); button("sync-download").click();
@@ -212,15 +215,19 @@ it("replaces selected local data through a cloud download while retaining unsele
   expect(saved.instanceLabel).toBe(before.instanceLabel);
 });
 
-it("uploads saved selected categories after confirmation, retaining unselected remote data", async () => {
+it("uploads saved selected categories after confirming against the stored copy's source, retaining unselected remote data", async () => {
   const { downloadCloudSettings, uploadCloudSettings } = await import("../../lib/config/cloud-storage");
   const { EXPORT_SCHEMA_VERSION } = await import("@browserail/protocol");
-  const remote = { version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(), menus: [{ uid: "remote", items: [] }], globalCss: { remote: "& {}" }, staticBookmarks: [{ uid: "remote-bookmark", name: "Remote", url: "https://example.com" }] };
+  const remote = { version: EXPORT_SCHEMA_VERSION, exportedAt: new Date().toISOString(), exportedBy: "Desktop", menus: [{ uid: "remote", items: [] }], globalCss: { remote: "& {}" }, staticBookmarks: [{ uid: "remote-bookmark", name: "Remote", url: "https://example.com" }] };
   await uploadCloudSettings(remote);
   await openSync();
   for (const group of ["menus", "urlRules", "shortcuts", "bars"]) transferChoice(group, false);
-  vi.mocked(window.confirm).mockReturnValue(false);
+  vi.mocked(window.confirm).mockClear().mockReturnValue(false);
   button("sync-upload").click();
+  await vi.waitFor(() => expect(window.confirm).toHaveBeenCalled());
+  const prompt = vi.mocked(window.confirm).mock.calls[0]![0]!;
+  expect(prompt).toContain("Sync copy: Desktop · ");
+  expect(prompt).toContain(`This device: ${(await savedConfig()).instanceLabel} · `);
   expect(await downloadCloudSettings()).toEqual(remote);
   vi.mocked(window.confirm).mockReturnValue(true);
   button("sync-upload").click();

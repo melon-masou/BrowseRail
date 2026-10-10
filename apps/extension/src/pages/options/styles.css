@@ -3721,6 +3721,26 @@ span.icon-picker-preview {
   grid-column: 1 / -1;
 }
 
+.sync-copy-info {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.sync-copy-info p {
+  margin: 0;
+}
+
+#sync-copy-source {
+  color: #334155;
+}
+
+.sync-copy-info p:empty,
+.sync-copy-info:not(:has(p:not([hidden]):not(:empty))) {
+  display: none;
+}
+
 #sync-status {
   font-size: 13px;
   overflow-wrap: anywhere;

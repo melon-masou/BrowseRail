@@ -113,3 +113,9 @@ it("keeps the other cloud settings while discarding old flat Native bindings", a
   expect(downloaded.shortcuts).toEqual(data.shortcuts);
   expect(downloaded.nativeShortcutSets ?? []).toEqual([]);
 });
+
+it("keeps which instance exported the copy and when, so the receiving device can show its source", async () => {
+  const data = { ...snapshot(), exportedAt: "2026-10-09T14:31:00.000Z", exportedBy: "Laptop" };
+  await uploadCloudSettings(data);
+  expect(await downloadCloudSettings()).toMatchObject({ exportedAt: "2026-10-09T14:31:00.000Z", exportedBy: "Laptop" });
+});

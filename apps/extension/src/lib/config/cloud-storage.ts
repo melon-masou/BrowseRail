@@ -10,8 +10,10 @@ type Field = typeof fields[number];
 interface Manifest {
   version: number;
   exportedAt: string;
+  exportedBy?: string;
   fields: Partial<Record<Field, string[]>>;
 }
+
 
 export function cloudStorageAvailable(): boolean {
   return Boolean(browser.storage.sync);
@@ -46,7 +48,9 @@ async function hash(value: string): Promise<string> {
 export async function uploadCloudSettings(data: ExportedSettingsData): Promise<void> {
   const area = storage();
   const current = await area.get(null);
-  const manifest: Manifest = { version: data.version, exportedAt: data.exportedAt, fields: {} };
+  const manifest: Manifest = {
+    version: data.version, exportedAt: data.exportedAt, ...(data.exportedBy !== undefined ? { exportedBy: data.exportedBy } : {}), fields: {},
+  };
   const values: Record<string, unknown> = {};
   const retained = new Set([MANIFEST_KEY]);
   for (const field of fields) {
@@ -76,7 +80,9 @@ export async function readCloudSettings(): Promise<ExportedSettingsData | undefi
   if (manifest === undefined) return undefined;
   if (typeof manifest !== "object" || manifest === null || !manifest.fields || typeof manifest.fields !== "object")
     throw new Error(t("cloud.invalid"));
-  const data: Record<string, unknown> = { version: manifest.version, exportedAt: manifest.exportedAt };
+  const data: Record<string, unknown> = {
+    version: manifest.version, exportedAt: manifest.exportedAt, ...(manifest.exportedBy !== undefined ? { exportedBy: manifest.exportedBy } : {}),
+  };
   for (const field of fields) {
     const keys = manifest.fields[field];
     if (keys === undefined) continue;
