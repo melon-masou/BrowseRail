@@ -2,7 +2,7 @@
 // sides depend only on this contract, never on each other's code.
 import type { BarSettings } from "./bar";
 import type { MenuView, MenuSpacing } from "./menu";
-import type { MenuAnchor } from "./native";
+import type { MenuAnchor } from "./placement";
 import type { ExternalUpdateResult } from "./api";
 import type { Replies } from "./message";
 

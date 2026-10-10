@@ -1,5 +1,5 @@
 import { AUTO_FONT_SIZE, DEFAULT_AUTO_HIDE_PADDING, normalizeMenuSpacing, type BarAutoHide, type BarAutoHideRange, type MenuSpacing, type MenuOrientation, type ExpandDirection, type ExpandAlignment, type MenuView } from "./menu";
-import { isMenuPlacement, type MenuPlacement, type AttachmentMode, type OnTopMode } from "./native";
+import { isMenuPlacement, type MenuPlacement, type AttachmentMode, type OnTopMode } from "./placement";
 
 export interface BarSettings {
   orientation: MenuOrientation;

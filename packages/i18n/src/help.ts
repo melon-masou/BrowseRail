@@ -1,5 +1,5 @@
 // Start-page help lives with the translations and is rendered as DOM elements.
-import type { Lang } from ".";
+import type { Lang } from "./lang";
 
 interface HelpSection {
   readonly title: string;

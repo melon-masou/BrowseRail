@@ -8,11 +8,11 @@
 // synchronously at import — so getLanguage()/t() are correct from first use.
 
 import { en, zhCN, type MessageKey } from "./messages";
+import type { Lang } from "./lang";
 
 export { en, zhCN, type MessageKey } from "./messages";
 export { helpDoc } from "./help";
-
-export type Lang = "en" | "zh-CN";
+export type { Lang } from "./lang";
 
 export const LANGUAGES: readonly Lang[] = ["en", "zh-CN"];
 

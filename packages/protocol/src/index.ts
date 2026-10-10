@@ -3,6 +3,7 @@ import type { JsonValue } from "./api";
 
 export * from "./menu";
 export * from "./native";
+export * from "./placement";
 
 export * from "./bar";
 export * from "./api";
@@ -124,12 +125,6 @@ export interface StoredNativeShortcutSet {
   name: string;
   urlRuleUids?: string[];
   shortcuts: StoredNativeShortcut[];
-}
-
-export interface SyncedNativeShortcut {
-  windowUid: string;
-  id: string;
-  key: string;
 }
 
 export interface UrlRule {
