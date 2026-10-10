@@ -10,7 +10,7 @@ import {
 } from "@browserail/protocol";
 import browser from "webextension-polyfill";
 
-import type { StoredMenuItem } from "../config";
+import type { StoredMenuItem } from "../config/model";
 import { menuItemIdentity } from "./identity";
 
 export { actionUid, SPECIAL_ROOT_PLACEHOLDERS, type SpecialRootType };

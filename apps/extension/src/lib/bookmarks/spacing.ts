@@ -1,5 +1,5 @@
 import { normalizeMenuSpacing, type LayoutEntry, type MenuSpacing } from "@browserail/protocol";
-import type { StoredMenuItem } from "../config";
+import type { StoredMenuItem } from "../config/model";
 import { combineRootAndItemPath, findBookmarkNodeByPath, type BookmarkNode } from "./index";
 import { menuEntryIdentity } from "./identity";
 
