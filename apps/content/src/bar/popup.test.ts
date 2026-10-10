@@ -11,7 +11,7 @@ it("keeps a pinned popup on inside clicks and closes on an outside click without
   const container = document.createElement("div"); shadow.append(container);
   const bar = document.createElement("div"); container.append(bar);
   const actions = { invokeAction: vi.fn(async () => {}), requestTemporarySave: vi.fn(async () => {}), requestToggleFold: vi.fn(async () => {}) };
-  const session = await openBrowserPopup(container, bar, {
+  const session = await openBrowserPopup(container, bar, "topLeft", {
     folder: { kind: "folder", uid: "folder", label: "Folder", children: [{ kind: "bookmark", uid: "child", label: "Child" }] },
     anchor: { left: 0, top: 0, right: 84, bottom: 36 },
     theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction: "down", editingLocked: true, pin: "temporary",
@@ -36,7 +36,7 @@ it("resumes hover closing after a pinned root is unlocked", async () => {
   const container = document.createElement("div"); document.body.append(container);
   const bar = document.createElement("div"); container.append(bar);
   const changed = vi.fn();
-  const session = await openBrowserPopup(container, bar, {
+  const session = await openBrowserPopup(container, bar, "topLeft", {
     folder: { kind: "folder", uid: "folder", label: "Folder", children: [{ kind: "bookmark", uid: "child", label: "Child" }] },
     anchor: { left: 0, top: 0, right: 84, bottom: 36 },
     theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction: "down", editingLocked: true, pin: "temporary",
@@ -59,7 +59,7 @@ it.each(["temporary", "locked"] as const)("keeps a right-locked root through out
   const container = document.createElement("div"); document.body.append(container);
   const bar = document.createElement("div"); container.append(bar);
   const invokeAction = vi.fn(async () => {});
-  const session = await openBrowserPopup(container, bar, {
+  const session = await openBrowserPopup(container, bar, "topLeft", {
     folder: { kind: "folder", uid: "folder", label: "Folder", expandOnHover: false, children: [{ kind: "bookmark", uid: "child", label: "Child" }] },
     anchor: { left: 0, top: 0, right: 84, bottom: 36 },
     theme: { fontFamily: "sans-serif", fontSize: 13, itemHeight: 36 }, direction: "down", editingLocked: true, pin: "locked",

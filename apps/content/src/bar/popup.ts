@@ -2,8 +2,9 @@ import {
   mountFolderPopup, createLifetime, createTextMeasure, planFolderPopup,
   type MenuActions, type PopupRequest, type PopupSession, type PopupPin,
 } from "@browserail/menu-ui";
+import type { BrowserMenuPlacement } from "@browserail/protocol/content";
 
-export async function openBrowserPopup(container: HTMLElement, bar: HTMLElement, request: PopupRequest, actions: MenuActions, signal: AbortSignal, pointerInside: (inside: boolean) => void, onPinChanged: (pin: PopupPin, rootPin: PopupPin) => void): Promise<PopupSession> {
+export async function openBrowserPopup(container: HTMLElement, bar: HTMLElement, anchor: BrowserMenuPlacement["anchor"], request: PopupRequest, actions: MenuActions, signal: AbortSignal, pointerInside: (inside: boolean) => void, onPinChanged: (pin: PopupPin, rootPin: PopupPin) => void): Promise<PopupSession> {
   if (signal.aborted) throw new Error("Menu was removed");
   const doc = container.ownerDocument;
   const root = doc.createElement("div");
@@ -57,10 +58,13 @@ export async function openBrowserPopup(container: HTMLElement, bar: HTMLElement,
   try {
     await lifetime.settle();
     if (!lifetime.alive) return session;
-    const viewport = doc.compatMode === "CSS1Compat" ? doc.documentElement : doc.body;
-    const { surface, state } = planFolderPopup(measure, request, { left: 0, top: 0, right: viewport.clientWidth, bottom: viewport.clientHeight });
+    const right = anchor.endsWith("Right"), bottom = anchor.startsWith("bottom");
+    const width = container.clientWidth, height = container.clientHeight;
+    const { surface, state } = planFolderPopup(measure, request, { left: 0, top: 0, right: width, bottom: height });
+    // Anchored to the same edges as the bar, so the two move together when the viewport changes.
     Object.assign(root.style, {
-      left: `${surface.left}px`, top: `${surface.top}px`,
+      left: right ? "auto" : `${surface.left}px`, right: right ? `${width - surface.right}px` : "auto",
+      top: bottom ? "auto" : `${surface.top}px`, bottom: bottom ? `${height - surface.bottom}px` : "auto",
       width: `${surface.right - surface.left}px`, height: `${surface.bottom - surface.top}px`,
     });
     renderer = mountFolderPopup(root, state, {
@@ -78,3 +82,4 @@ export async function openBrowserPopup(container: HTMLElement, bar: HTMLElement,
     return session;
   } catch (error) { await close(); throw error; }
 }
+

@@ -3,7 +3,7 @@ import { mountBar, resolveFontFamily, barSurfaceDimensions, barToggleOffset, typ
 import type { BrowserMenu, MenuRequest, MenuCommandResult } from "@browserail/protocol/content";
 import { openBrowserPopup } from "./popup";
 import { mountBrowserCustomization } from "./customization";
-import { placementPoint } from "./placement";
+import { placementStyle } from "./placement";
 
 export type MenuCommand = MenuRequest;
 
@@ -60,6 +60,7 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
       editToken = token;
       if (lifetime.signal.aborted || state.editingLocked) { releaseEdit(); return; }
       renderer?.destroy(); renderer = undefined;
+      Object.assign(wrapper.style, { right: "", bottom: "" });
       editor = mountBrowserCustomization(wrapper, root, barState(), state.placement,
         async (placement, spacing, settings) => {
           await send({ type: "layout", token, settings, menuUid: state.view.uid, placement, spacing });
@@ -85,7 +86,7 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
       waitForFonts: () => doc.fonts.load(`13px ${resolveFontFamily(state.view.fontFamily, "sans-serif")}`),
       async openPopup(request, pointerInside, pinned) {
         await closePopup();
-        const opened = await openBrowserPopup(container, root, request, actions, lifetime.signal, pointerInside, pinned);
+        const opened = await openBrowserPopup(container, root, state.placement.anchor, request, actions, lifetime.signal, pointerInside, pinned);
         popup = opened;
         void opened.closed.then(() => { if (popup === opened) popup = undefined; });
         return opened;
@@ -101,16 +102,15 @@ export function mountBrowserMenu(container: HTMLElement, initial: BrowserMenu, s
     const size = dimensions();
     Object.assign(root.style, { flex: `0 0 ${size.width}px`, width: `${size.width}px`, height: `${size.height}px` });
     const fullSize = barSurfaceDimensions(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight });
-    const position = placementPoint(state.placement, fullSize.width, fullSize.height, viewport.innerWidth, viewport.innerHeight);
-    if (state.collapsed) {
-      const offset = barToggleOffset(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight });
-      position.x += offset.x;
-      position.y += offset.y;
-    }
-    wrapper.style.left = `${position.x}px`; wrapper.style.top = `${position.y}px`;
+    const toggle = state.collapsed ? barToggleOffset(state.view, { width: state.placement.itemWidth, height: state.placement.itemHeight }) : { x: 0, y: 0 };
+    Object.assign(wrapper.style, placementStyle(state.placement, fullSize, size, toggle));
   }
+  // Placement is pure CSS, so the browser keeps the bar in place through resizes and mobile toolbar
+  // animations. A popup is laid out for the width it opened in, so only a width change closes it.
+  let openWidth = container.clientWidth;
   viewport.addEventListener("resize", () => {
-    report(closePopup()); if (editor) editor.resize(); else layout();
+    if (container.clientWidth !== openWidth) { openWidth = container.clientWidth; report(closePopup()); }
+    editor?.resize();
   }, { signal: lifetime.signal });
   layout(); mountRenderer();
   return {
