@@ -32,7 +32,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
   },
   runtime: {
     getURL: (path: string) => `chrome-extension://browserail/${path}`,
-    getManifest: () => ({ version: "0.1.0" }),
+    getManifest: () => ({ version: "0.1.0" }), getPlatformInfo: async () => ({ os: "win" }),
     onMessage: { addListener: vi.fn(), removeListener: vi.fn() }, sendMessage: mock.sendMessage,
   },
   bookmarks: { getTree: async () => mock.bookmarkTree },

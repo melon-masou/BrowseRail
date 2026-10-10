@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ storage: {} as Record<string, unknown>, session: {} as Record<string, unknown>, back: vi.fn(), forward: vi.fn(), reload: vi.fn() }));
 vi.mock("webextension-polyfill", () => ({ default: {
+  runtime: { getPlatformInfo: async () => ({ os: "win" }), },
   storage: { session: {
     get: async (key: string) => ({ [key]: mocks.session[key] }),
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.session, values); },

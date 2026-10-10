@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("webextension-polyfill", () => ({ default: {
   runtime: {
     id: "browserail", getURL: (path: string) => `chrome-extension://browserail/${path}`,
-    sendMessage: mocks.broadcast,
+    sendMessage: mocks.broadcast, getPlatformInfo: async () => ({ os: "win" }),
     onMessage: { addListener: (listener: (message: unknown, sender: Runtime.MessageSender) => unknown) => { mocks.message = listener; } },
   },
   action: { setPopup: mocks.setPopup, openPopup: mocks.openPopup },

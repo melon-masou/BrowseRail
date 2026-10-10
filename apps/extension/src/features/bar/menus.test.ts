@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   tabUpdated: vi.fn(),
   message: vi.fn<(listener: (message: unknown, sender: Runtime.MessageSender) => unknown) => void>(),
   popupSupported: true,
+  os: "win",
   popupUrls: {} as Record<number, string>,
   setPopup: vi.fn(async (options: { tabId: number; popup: string }) => { mocks.popupUrls[options.tabId] = options.popup; }),
   openPopup: vi.fn(async (_options: { windowId: number }) => {}),
@@ -24,6 +25,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
   runtime: {
     id: "browserail", getURL: (path: string) => `chrome-extension://browserail/${path}`,
     onMessage: { addListener: mocks.message },
+    getPlatformInfo: async () => { if (mocks.os === "fail") throw new Error("unsupported"); return { os: mocks.os }; },
   },
   get action() { return { setPopup: mocks.setPopup, openPopup: mocks.popupSupported ? mocks.openPopup : undefined }; },
   permissions: { contains: mocks.permission },
@@ -106,6 +108,16 @@ it("publishes menu snapshots without sending unsolicited updates to webpages", a
   expect(page.posted).toEqual([]);
   expect(mocks.sendToTab).not.toHaveBeenCalled();
   expect(await page.snapshot()).toMatchObject({ type: "state", menus: [{ view: { uid: "source" } }] });
+});
+
+it("starts in native mode only on Windows, where the desktop app exists", async () => {
+  expect(await loadDisplayMode()).toBe("native");
+  mocks.os = "android";
+  try {
+    expect(await loadDisplayMode()).toBe("browser");
+    mocks.os = "fail";
+    expect(await loadDisplayMode()).toBe("browser");
+  } finally { mocks.os = "win"; }
 });
 
 it("keeps display mode and browser placements local when menu configuration is replaced", async () => {

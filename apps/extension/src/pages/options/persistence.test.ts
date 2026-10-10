@@ -10,7 +10,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
     },
     onChanged: { addListener() {}, removeListener() {} },
   },
-  runtime: { sendMessage: async () => {} },
+  runtime: { sendMessage: async () => {}, getPlatformInfo: async () => ({ os: "win" }), },
 } }));
 import { loadConfig, saveConfig, loadBarConfigurations, resolveBarConfiguration, saveBarLayout, defaultMenuPlacement, normalizeMenu, saveShortcutsEnabled, loadShortcutsEnabled, type StoredMenuItem } from "../../lib/config";
 import { createOptionsState, settingsFromConfig } from "./state";

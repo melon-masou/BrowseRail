@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(), create: vi.fn(),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
+  runtime: { getPlatformInfo: async () => ({ os: "win" }), },
   storage: { session: {
     get: async (key: string | null) => key === null ? { ...mocks.session } : { [key]: mocks.session[key] },
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.session, values); },

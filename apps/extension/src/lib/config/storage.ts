@@ -34,8 +34,11 @@ export async function saveBrowserEditing(editing: boolean): Promise<void> {
 }
 
 export async function loadDisplayMode(): Promise<DisplayMode> {
-  const stored = await browser.storage.local.get(DISPLAY_MODE_STORAGE_KEY);
-  return stored[DISPLAY_MODE_STORAGE_KEY] === "browser" ? "browser" : "native";
+  const stored = (await browser.storage.local.get(DISPLAY_MODE_STORAGE_KEY))[DISPLAY_MODE_STORAGE_KEY];
+  if (stored === "browser" || stored === "native") return stored;
+  // The desktop app only exists for Windows. Some mobile Chromium builds lack or break getPlatformInfo.
+  const os = await Promise.resolve().then(() => browser.runtime.getPlatformInfo()).then(info => info.os, () => undefined);
+  return os === "win" ? "native" : "browser";
 }
 
 export async function saveDisplayMode(mode: DisplayMode): Promise<void> {
