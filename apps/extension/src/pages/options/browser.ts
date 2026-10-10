@@ -7,10 +7,11 @@ import {
 import { browserKind } from "../../lib/browser/windows";
 import {
   DEBUG_INFO_REQUEST, DEBUG_LOGGING_SET, DESKTOP_RECONNECT, DESKTOP_RESYNC_WINDOWS, DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET,
-  isDesktopStateChanged, type DesktopDebugInfo, type DesktopRequest, type DesktopState, type ResyncResult,
+  isDesktopStateChanged, type DebugInfoRequest, type DebugLoggingSet, type DesktopReconnect, type DesktopResyncWindows,
+  type DesktopStateRequest, type WidgetEnabledSet,
 } from "../../features/desktop/messages";
 import {
-  EDITING_SET, EDITING_STATE_REQUEST, isEditingStateChanged, type EditingRequest, type EditingState,
+  EDITING_SET, EDITING_STATE_REQUEST, isEditingStateChanged, type EditingSet, type EditingState, type EditingStateRequest,
 } from "../../features/toolbar/messages";
 import { MENU_LAYOUT_RESET, type MenuLayoutReset } from "../../features/bar/messages";
 import { request } from "../../lib/messaging";
@@ -36,13 +37,13 @@ export const browserActions = {
   },
   async setWidgetEnabled(enabled: boolean): Promise<void> {
     await saveWidgetEnabled(enabled);
-    await request({ type: WIDGET_ENABLED_SET, enabled } satisfies DesktopRequest);
+    await request<WidgetEnabledSet>({ type: WIDGET_ENABLED_SET, enabled });
   },
-  reconnect: () => request<{ ok: true }>({ type: DESKTOP_RECONNECT } satisfies DesktopRequest),
-  resync: () => request<ResyncResult>({ type: DESKTOP_RESYNC_WINDOWS } satisfies DesktopRequest),
-  desktopState: () => request<DesktopState | undefined>({ type: DESKTOP_STATE_REQUEST } satisfies DesktopRequest),
-  menuEditingState: () => request<EditingState>({ type: EDITING_STATE_REQUEST } satisfies EditingRequest),
-  setMenuEditing: (editing: boolean) => request<EditingState>({ type: EDITING_SET, editing } satisfies EditingRequest),
+  reconnect: () => request<DesktopReconnect>({ type: DESKTOP_RECONNECT }),
+  resync: () => request<DesktopResyncWindows>({ type: DESKTOP_RESYNC_WINDOWS }),
+  desktopState: () => request<DesktopStateRequest>({ type: DESKTOP_STATE_REQUEST }),
+  menuEditingState: () => request<EditingStateRequest>({ type: EDITING_STATE_REQUEST }),
+  setMenuEditing: (editing: boolean) => request<EditingSet>({ type: EDITING_SET, editing }),
   onMenuEditingState(listener: (state: EditingState) => void): () => void {
     const receive = (message: unknown): void => {
       if (isEditingStateChanged(message)) listener({ enabled: message.enabled, editing: message.editing });
@@ -52,7 +53,7 @@ export const browserActions = {
   },
   commands: () => browser.commands.getAll(),
   probeDesktop: probeDesktopConnection,
-  resetMenuPosition: (menuUid: string) => request<{ ok: true }>({ type: MENU_LAYOUT_RESET, menuUid } satisfies MenuLayoutReset),
+  resetMenuPosition: (menuUid: string) => request<MenuLayoutReset>({ type: MENU_LAYOUT_RESET, menuUid }),
   async openShortcutSettings(): Promise<void> {
     const kind = browserKind();
     if (kind === "firefox") {
@@ -79,10 +80,10 @@ export const browserActions = {
   },
   async setDiagnosticsEnabled(enabled: boolean): Promise<void> {
     await browser.storage.local.set({ debugLoggingEnabled: enabled });
-    await request({ type: DEBUG_LOGGING_SET, enabled } satisfies DesktopRequest).catch(() => {});
+    await request<DebugLoggingSet>({ type: DEBUG_LOGGING_SET, enabled }).catch(() => {});
   },
   async debugInfo(): Promise<unknown> {
-    const extension = await request<DesktopDebugInfo>({ type: DEBUG_INFO_REQUEST } satisfies DesktopRequest)
+    const extension = await request<DebugInfoRequest>({ type: DEBUG_INFO_REQUEST })
       .catch((error) => ({ error: String(error) }));
     let desktop: unknown;
     try {

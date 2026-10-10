@@ -1,5 +1,6 @@
 import { createRewriteHost } from "../features/dynamic/rewrite-host";
-import { isRewriteRun } from "../features/dynamic/messages";
+import { dispatch } from "@browserail/protocol/message";
+import { REWRITE_RUN, isRewriteRun, type RewriteRun } from "../features/dynamic/messages";
 declare const chrome: {
   runtime: {
     id: string;
@@ -10,8 +11,7 @@ declare const chrome: {
 const rewrite = createRewriteHost(chrome.runtime.getURL("rewrite-worker.js"));
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id || sender.tab) return;
-  if (isRewriteRun(message)) {
-    void rewrite.run(message.source, message.url).then(respond);
-    return true;
-  }
+  if (!isRewriteRun(message)) return;
+  void dispatch<RewriteRun>({ [REWRITE_RUN]: ({ source, url }) => rewrite.run(source, url) }, message).then(respond);
+  return true;
 });

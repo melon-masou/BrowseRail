@@ -36,7 +36,8 @@ export async function runRewrite(source: string, url: string): Promise<RewriteRe
     }
     if (typeof chromeApi?.offscreen?.createDocument !== "function") return applyRewrite(source, url);
     await ensureOffscreen();
-    const result = await request<RewriteResult | undefined>({ type: REWRITE_RUN, source, url } satisfies RewriteRun);
+    // No reply arrives when the offscreen page has no listener yet.
+    const result: RewriteResult | undefined = await request<RewriteRun>({ type: REWRITE_RUN, source, url });
     if (typeof result?.ok === "boolean") return result;
     return { ok: false, error: "No rewrite response" };
   } catch (error) { return { ok: false, error: String(error) }; }

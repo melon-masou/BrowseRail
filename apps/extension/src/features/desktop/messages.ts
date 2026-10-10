@@ -1,4 +1,5 @@
 // Options page ⇄ background messages about the desktop connection, the on/off switch and debugging.
+import type { Replies } from "@browserail/protocol/message";
 import { isRecord, messageType } from "../../lib/messaging";
 import type { BrowserWindowCandidate } from "../../lib/browser/windows";
 import type { ExtensionDebugLogEntry } from "./debug-log";
@@ -12,14 +13,6 @@ export const DESKTOP_RESYNC_WINDOWS = "resyncWindows";
 export const WIDGET_ENABLED_SET = "setWidgetEnabled";
 export const DEBUG_INFO_REQUEST = "getDebugInfo";
 export const DEBUG_LOGGING_SET = "setDebugLogging";
-
-export type DesktopRequest =
-  | { type: typeof DESKTOP_STATE_REQUEST }
-  | { type: typeof DESKTOP_RECONNECT }
-  | { type: typeof DESKTOP_RESYNC_WINDOWS }
-  | { type: typeof WIDGET_ENABLED_SET; enabled: boolean }
-  | { type: typeof DEBUG_INFO_REQUEST }
-  | { type: typeof DEBUG_LOGGING_SET; enabled: boolean };
 
 export type DesktopState = { state: ExtensionConnectionState; detail?: string | undefined };
 export type DesktopStateChanged = DesktopState & { type: typeof DESKTOP_STATE_CHANGED };
@@ -36,6 +29,14 @@ export type DesktopDebugInfo = {
   browserWindows: BrowserWindowCandidate[];
   recentLogs: readonly ExtensionDebugLogEntry[];
 };
+
+export type DesktopStateRequest = { type: typeof DESKTOP_STATE_REQUEST } & Replies<DesktopState>;
+export type DesktopReconnect = { type: typeof DESKTOP_RECONNECT } & Replies<{ ok: true }>;
+export type DesktopResyncWindows = { type: typeof DESKTOP_RESYNC_WINDOWS } & Replies<ResyncResult>;
+export type WidgetEnabledSet = { type: typeof WIDGET_ENABLED_SET; enabled: boolean } & Replies<{ ok: true }>;
+export type DebugInfoRequest = { type: typeof DEBUG_INFO_REQUEST } & Replies<DesktopDebugInfo>;
+export type DebugLoggingSet = { type: typeof DEBUG_LOGGING_SET; enabled: boolean } & Replies<{ ok: true; debugLoggingEnabled: boolean }>;
+export type DesktopRequest = DesktopStateRequest | DesktopReconnect | DesktopResyncWindows | WidgetEnabledSet | DebugInfoRequest | DebugLoggingSet;
 
 export function isDesktopRequest(value: unknown): value is DesktopRequest {
   switch (messageType(value)) {

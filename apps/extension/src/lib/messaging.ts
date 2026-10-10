@@ -1,4 +1,5 @@
-import browser from "webextension-polyfill";
+import browser, { type Tabs } from "webextension-polyfill";
+import type { ReplyOf } from "@browserail/protocol/message";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -9,10 +10,11 @@ export function messageType(value: unknown): unknown {
   return isRecord(value) ? value.type : undefined;
 }
 
-/**
- * Sends an internal request whose reply type the receiving feature defines. The cast lives here
- * once instead of at every call site.
- */
-export function request<Reply>(message: { readonly type: string; readonly [field: string]: unknown }): Promise<Reply> {
-  return browser.runtime.sendMessage(message) as Promise<Reply>;
+/** Sends a request; name its type explicitly so the reply type follows from it. */
+export function request<Message extends { type: string }>(message: NoInfer<Message>): Promise<ReplyOf<Message>> {
+  return browser.runtime.sendMessage(message) as Promise<ReplyOf<Message>>;
+}
+
+export function requestTab<Message extends { type: string }>(tabId: number, message: NoInfer<Message>, options?: Tabs.SendMessageOptionsType): Promise<ReplyOf<Message>> {
+  return browser.tabs.sendMessage(tabId, message, options) as Promise<ReplyOf<Message>>;
 }

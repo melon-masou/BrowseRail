@@ -1,7 +1,8 @@
 import browser, { type Runtime } from "webextension-polyfill";
 import menuStyles from "@browserail/menu-ui/styles.css?inline";
 import hostStyles from "./styles.css?inline";
-import { BAR_COMMAND_MESSAGE, BAR_SNAPSHOT_MESSAGE, isBarRefresh, type BrowserMenuState, type MenuReply, type MenuCommandResult } from "@browserail/protocol/content";
+import { BAR_COMMAND_MESSAGE, BAR_SNAPSHOT_MESSAGE, isBarRefresh, type BarCommand, type BarSnapshotRequest, type BrowserMenuState, type MenuCommandResult } from "@browserail/protocol/content";
+import { request } from "../messaging";
 import { mountBrowserMenu, type MenuCommand } from "./surface";
 
 function createPageController() {
@@ -63,7 +64,7 @@ function createPageController() {
 
   async function send(command: MenuCommand): Promise<MenuCommandResult | undefined> {
     const revision = stateRevision;
-    const reply = await browser.runtime.sendMessage({ type: BAR_COMMAND_MESSAGE, command }) as MenuReply | undefined;
+    const reply = await request<BarCommand>({ type: BAR_COMMAND_MESSAGE, command });
     if (reply?.error) throw new Error(reply.error);
     if (!reply) throw new Error("Menu action received no reply");
     if (reply.state && !suspended && revision === stateRevision) await renderState(reply.state);
@@ -79,11 +80,11 @@ function createPageController() {
     if (checking) return checking;
     initialized = true;
     const revision = stateRevision;
-    const check = browser.runtime.sendMessage({ type: BAR_SNAPSHOT_MESSAGE }).then(async value => {
+    const check = request<BarSnapshotRequest>({ type: BAR_SNAPSHOT_MESSAGE }).then(async reply => {
       if (suspended || revision !== stateRevision) return;
-      const state = value as BrowserMenuState;
-      if (state?.type !== "state" || !Array.isArray(state.menus)) throw new Error("Invalid menu snapshot");
-      await renderState(state);
+      if (!reply) throw new Error("Menu snapshot received no reply");
+      if ("error" in reply) throw new Error(reply.error);
+      await renderState(reply);
     }).catch(error => { console.error("BrowseRail menu:", error); }).finally(() => { if (checking === check) checking = undefined; });
     checking = check;
     return check;

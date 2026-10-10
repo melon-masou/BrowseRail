@@ -3,6 +3,8 @@
 import type { BarSettings } from "./bar";
 import type { MenuView, MenuSpacing } from "./menu";
 import type { MenuAnchor } from "./native";
+import type { ExternalUpdateResult } from "./api";
+import type { Replies } from "./message";
 
 /** Browser-mode bar position inside the page viewport. */
 export interface BrowserMenuPlacement {
@@ -36,6 +38,7 @@ export type MenuRequest = { menuUid: string } & (
 export type TemporaryConfirmationResult = "opened" | "prompt";
 export type MenuCommandResult = TemporaryConfirmationResult | boolean;
 export interface MenuReply { error?: string; result?: MenuCommandResult; state?: BrowserMenuState }
+export type MenuError = { error: string };
 
 // Bridge: relays userscript events to the extension and external actions back to the page.
 export const EXTERNAL_RELAY_MESSAGE = "externalUpdate";
@@ -49,10 +52,15 @@ export function userscriptUpdateEvent(token: string): string {
   return `browserail:${token}`;
 }
 
-export type BarRequest = { type: typeof BAR_SNAPSHOT_MESSAGE } | { type: typeof BAR_COMMAND_MESSAGE; command: MenuRequest };
-export interface ExternalRelay { type: typeof EXTERNAL_RELAY_MESSAGE; token: string; message: unknown }
-export interface ExternalReceiverConfig { token: string }
-export interface ExternalRun { type: typeof EXTERNAL_RUN_MESSAGE; eventName: string; detail: string | null }
+export type BarSnapshotRequest = { type: typeof BAR_SNAPSHOT_MESSAGE } & Replies<BrowserMenuState | MenuError>;
+export type BarCommand = { type: typeof BAR_COMMAND_MESSAGE; command: MenuRequest } & Replies<MenuReply>;
+export type BarRequest = BarSnapshotRequest | BarCommand;
+export type ExternalRelay = { type: typeof EXTERNAL_RELAY_MESSAGE; token: string; message: unknown } & Replies<ExternalUpdateResult>;
+/** An empty token means the bridge must not listen for userscript events. */
+export type ExternalReceiverConfig = { token: string };
+export type ExternalReceiverConfigRequest = { type: typeof EXTERNAL_RECEIVER_CONFIG } & Replies<ExternalReceiverConfig>;
+/** Replies whether the bridge dispatched the event. */
+export type ExternalRun = { type: typeof EXTERNAL_RUN_MESSAGE; eventName: string; detail: string | null } & Replies<boolean>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

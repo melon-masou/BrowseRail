@@ -90,7 +90,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     });
     await saveDisplayMode(savingSettings.displayMode);
     await saveExternalAuthorization(structuredClone(savingSettings.externalAuthorization));
-    await request({ type: CONFIG_SAVED } satisfies ConfigSaved);
+    await request<ConfigSaved>({ type: CONFIG_SAVED });
     state.acceptInstanceSave(savingSettings);
     return currentConfig.urlRules;
   }
@@ -142,7 +142,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     });
     if (saving.barConfigurations) await importBarConfigurations(saving.barConfigurations, menus.map(menu => menu.uid), saving.replaceBarConfigurations === true);
     await pruneTemporaryValues(temporaryBookmarks);
-    await request({ type: CONFIG_SAVED } satisfies ConfigSaved);
+    await request<ConfigSaved>({ type: CONFIG_SAVED });
     state.acceptSettingsSave(submitted);
     return savedRules;
   }
@@ -160,7 +160,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         ),
       },
     });
-    await request({ type: CONFIG_SAVED } satisfies ConfigSaved);
+    await request<ConfigSaved>({ type: CONFIG_SAVED });
     return true;
   }
   async function exportSettings(options: Partial<TransferOptions> = {}): Promise<ExportedSettingsData> {

@@ -3,7 +3,7 @@ import { mountBookmarkConfirmation, mountTemporaryConfirmation } from "@browsera
 import { loadConfig } from "../../lib/config";
 import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
 import "@browserail/menu-ui/temporary-confirm.css";
-import { STATIC_SAVE_CONFIRMED, TEMPORARY_SAVE_CONFIRMED, type CaptureConfirmation, type CaptureResult } from "../../features/capture/messages";
+import { STATIC_SAVE_CONFIRMED, TEMPORARY_SAVE_CONFIRMED, type CaptureConfirmation } from "../../features/capture/messages";
 import { request } from "../../lib/messaging";
 
 const query = new URLSearchParams(location.search);
@@ -12,7 +12,7 @@ document.title = t(isStatic ? "static.confirmTitle" : "temporary.confirmTitle");
 const root = document.getElementById("app")!;
 const close = async (): Promise<void> => { window.close(); };
 async function save(message: CaptureConfirmation): Promise<void> {
-  const result = await request<CaptureResult | undefined>(message);
+  const result = await request<CaptureConfirmation>(message);
   if (result?.error) throw new Error(result.error);
   if (!result?.saved) throw new Error("Bookmark was not saved");
 }

@@ -9,6 +9,7 @@
     "./native": "./src/native.ts",
     "./api": "./src/api.ts",
     "./content": "./src/content.ts",
+    "./message": "./src/message.ts",
     "./userscript-client": "./src/userscript-client.ts"
   },
   "scripts": {

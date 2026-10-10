@@ -2,8 +2,10 @@ import browser from "webextension-polyfill";
 import { MAX_EXTERNAL_MESSAGE_BYTES } from "@browserail/protocol/api";
 import {
   EXTERNAL_RECEIVER_CONFIG, EXTERNAL_RECEIVER_REFRESH, EXTERNAL_RELAY_MESSAGE, EXTERNAL_RUN_MESSAGE, contentMessageType, isExternalRun,
-  userscriptUpdateEvent,
+  userscriptUpdateEvent, type ExternalReceiverConfigRequest, type ExternalRelay, type ExternalRun,
 } from "@browserail/protocol/content";
+import type { ReplyOf } from "@browserail/protocol/message";
+import { request } from "../messaging";
 
 export function createExternalReceiver(target: Document) {
   let token = "";
@@ -15,11 +17,11 @@ export function createExternalReceiver(target: Document) {
     if (typeof detail !== "string" || detail.length > MAX_EXTERNAL_MESSAGE_BYTES) return;
     let message: unknown;
     try { message = JSON.parse(detail); } catch { return; }
-    void browser.runtime.sendMessage({ type: EXTERNAL_RELAY_MESSAGE, token, message }).catch(() => {});
+    void request<ExternalRelay>({ type: EXTERNAL_RELAY_MESSAGE, token, message }).catch(() => {});
   }
 
   // External actions: the background resolves the event name; the detail is the action's JSON text.
-  function run(message: unknown): Promise<boolean> | undefined {
+  function run(message: unknown): Promise<ReplyOf<ExternalRun>> | undefined {
     // The extension announces userscript access changes; the token lives only in extension storage.
     const type = contentMessageType(message);
     if (type === EXTERNAL_RECEIVER_REFRESH) { void refresh(); return undefined; }
@@ -43,9 +45,9 @@ export function createExternalReceiver(target: Document) {
     // Drop the old listener while checking revocation or a changed token.
     setToken("");
     try {
-      const config: unknown = await browser.runtime.sendMessage({ type: EXTERNAL_RECEIVER_CONFIG });
+      const config = await request<ExternalReceiverConfigRequest>({ type: EXTERNAL_RECEIVER_CONFIG });
       if (destroyed || current !== revision) return;
-      if (config && typeof config === "object" && "token" in config && typeof config.token === "string") setToken(config.token);
+      setToken(config.token);
     } catch { /* Extension unload or revoked website access. */ }
   }
 

@@ -1,16 +1,12 @@
 import { matchesUrlRule } from "@browserail/protocol";
 import type { DynamicBookmark, UrlRule } from "../../lib/config";
 import { runRewrite } from "./runner";
+import type { DynamicEvaluation } from "./messages";
 
 export interface DynamicUpdate {
   newUrl: string;
   title?: string;
 }
-export type DynamicEvaluation =
-  | { ok: true; value: unknown }
-  | { ok: true; skipped: "inputRule" | "filtered" | "noUpdate"; line?: number }
-  | { ok: false; error: string };
-
 export async function evaluateDynamicBookmark(
   bookmark: DynamicBookmark,
   rule: UrlRule | undefined,

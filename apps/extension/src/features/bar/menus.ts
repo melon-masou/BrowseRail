@@ -5,9 +5,10 @@ import {
   type ExtensionConfig,
 } from "../../lib/config";
 import {
-  BAR_SNAPSHOT_MESSAGE, isBarRequest,
-  type BrowserMenu, type BrowserMenuPlacement, type BrowserMenuState, type MenuRequest, type MenuCommandResult,
+  BAR_COMMAND_MESSAGE, BAR_SNAPSHOT_MESSAGE, isBarRequest,
+  type BarRequest, type BrowserMenu, type BrowserMenuPlacement, type MenuRequest, type MenuCommandResult,
 } from "@browserail/protocol/content";
+import { dispatch } from "@browserail/protocol/message";
 import { executeMenuAction } from "../actions/execute-menu-action";
 import { captureTemporaryUrl } from "../capture/temporary";
 import { hasWebsitePermission } from "../../lib/browser/site-permissions";
@@ -15,7 +16,7 @@ import { openTemporaryConfirmation, temporaryConfirmationContext } from "../capt
 import { requestBrowserMenuRefresh } from "./refresh";
 import { createBrowserEditSession } from "./edit-session";
 import { resolveMenuBookmarkTarget } from "../actions/menu-target";
-import { isTemporarySaveConfirmed, type CaptureResult, type TemporarySaveConfirmed } from "../capture/messages";
+import { TEMPORARY_SAVE_CONFIRMED, isTemporarySaveConfirmed, type CaptureResult, type TemporarySaveConfirmed } from "../capture/messages";
 
 export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
@@ -52,21 +53,31 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
   }
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
     if (isTemporarySaveConfirmed(message)) {
-      return saveConfirmed(message, sender).then((): CaptureResult => ({ saved: true }), (error): CaptureResult => ({ error: String(error) }));
+      return dispatch<TemporarySaveConfirmed>({
+        [TEMPORARY_SAVE_CONFIRMED]: confirmed => saveConfirmed(confirmed, sender)
+          .then((): CaptureResult => ({ saved: true }), (error): CaptureResult => ({ error: String(error) })),
+      }, message);
     }
     if (!isBarRequest(message)) return undefined;
-    const type = message.type;
-    if (sender.frameId !== 0 || sender.tab?.id === undefined) {
-      return Promise.resolve(type === BAR_SNAPSHOT_MESSAGE ? { type: "state", menus: [] } : { error: "Invalid menu source" });
-    }
-    const tabId = sender.tab.id;
-    return (async () => {
-      await changed();
-      if (type === BAR_SNAPSHOT_MESSAGE) return { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState;
-      const result = await handle(tabId, message.command);
-      await changed();
-      return { ...(result !== undefined ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } satisfies BrowserMenuState };
-    })().catch(error => ({ error: String(error) }));
+    const tabId = sender.frameId === 0 ? sender.tab?.id : undefined;
+    return dispatch<BarRequest>({
+      [BAR_SNAPSHOT_MESSAGE]: async () => {
+        if (tabId === undefined) return { type: "state", menus: [] };
+        try {
+          await changed();
+          return { type: "state", menus: await forTab(tabId) };
+        } catch (error) { return { error: String(error) }; }
+      },
+      [BAR_COMMAND_MESSAGE]: async ({ command }) => {
+        if (tabId === undefined) return { error: "Invalid menu source" };
+        try {
+          await changed();
+          const result = await handle(tabId, command);
+          await changed();
+          return { ...(result !== undefined ? { result } : {}), state: { type: "state", menus: await forTab(tabId) } };
+        } catch (error) { return { error: String(error) }; }
+      },
+    }, message);
   });
   async function saveTemporary(config: ExtensionConfig, menuUid: string, uid: string, windowId: number, note: string): Promise<void> {
     const target = await resolveMenuBookmarkTarget(config, menuUid, uid, "temporary");

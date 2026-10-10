@@ -7,10 +7,12 @@ import {
 import { openStaticConfirmation, staticConfirmationContext } from "../capture/confirmation";
 import { requestBrowserMenuRefresh } from "../bar/refresh";
 import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
+import { dispatch } from "@browserail/protocol/message";
 import {
-  EDITING_STATE_CHANGED, EDITING_STATE_REQUEST, isEditingRequest, type EditingState, type EditingStateChanged,
+  EDITING_SET, EDITING_STATE_CHANGED, EDITING_STATE_REQUEST, isEditingRequest, type EditingRequest, type EditingState,
+  type EditingStateChanged,
 } from "./messages";
-import { isStaticSaveConfirmed, type CaptureResult, type StaticSaveConfirmed } from "../capture/messages";
+import { STATIC_SAVE_CONFIRMED, isStaticSaveConfirmed, type CaptureResult, type StaticSaveConfirmed } from "../capture/messages";
 
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
@@ -102,11 +104,16 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
   browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
     if (isEditingRequest(message)) {
       if (sender.id !== browser.runtime.id || sender.url?.split(/[?#]/)[0] !== browser.runtime.getURL("options.html")) return undefined;
-      if (message.type === EDITING_STATE_REQUEST) return getState();
-      return setEditing(message.editing).then(getState);
+      return dispatch<EditingRequest>({
+        [EDITING_STATE_REQUEST]: () => getState(),
+        [EDITING_SET]: ({ editing }) => setEditing(editing).then(getState),
+      }, message);
     }
     if (!isStaticSaveConfirmed(message)) return undefined;
-    return saveStaticConfirmed(message, sender).then((): CaptureResult => ({ saved: true }), (error): CaptureResult => ({ error: String(error) }));
+    return dispatch<StaticSaveConfirmed>({
+      [STATIC_SAVE_CONFIRMED]: confirmed => saveStaticConfirmed(confirmed, sender)
+        .then((): CaptureResult => ({ saved: true }), (error): CaptureResult => ({ error: String(error) })),
+    }, message);
   });
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes[BROWSER_EDITING_STORAGE_KEY]) {

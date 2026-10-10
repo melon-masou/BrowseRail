@@ -20,13 +20,13 @@ import { createBrowserInjection } from "../features/injection/bar";
 import { createMenuSync } from "../features/sync";
 import { createToolbarBadge } from "../features/toolbar/badge";
 import { createBrowserEditingMenu } from "../features/toolbar/menu";
+import { dispatch } from "@browserail/protocol/message";
 import {
   DEBUG_INFO_REQUEST, DEBUG_LOGGING_SET, DESKTOP_RECONNECT, DESKTOP_RESYNC_WINDOWS, DESKTOP_STATE_CHANGED,
-  DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET, isDesktopRequest, type DesktopDebugInfo, type DesktopState, type DesktopStateChanged,
+  DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET, isDesktopRequest, type DesktopRequest, type DesktopStateChanged,
 } from "../features/desktop/messages";
-import { isMenuLayoutReset } from "../features/bar/messages";
-import { messageType } from "../lib/messaging";
-import { CONFIG_SAVED } from "../lib/config/messages";
+import { MENU_LAYOUT_RESET, isMenuLayoutReset, type MenuLayoutReset } from "../features/bar/messages";
+import { CONFIG_SAVED, isConfigSaved, type ConfigSaved } from "../lib/config/messages";
 
 // Everything below registers synchronously at startup so browser events can wake the background.
 const log = createDebugLog();
@@ -163,47 +163,40 @@ browser.permissions.onAdded.addListener(requestSync);
 browser.permissions.onRemoved.addListener(requestSync);
 
 browser.runtime.onMessage.addListener((message: unknown) => {
-  if (isMenuLayoutReset(message)) {
-    const { menuUid } = message;
-    return (async () => {
+  if (!isMenuLayoutReset(message) && !isConfigSaved(message) && !isDesktopRequest(message)) return;
+  return dispatch<MenuLayoutReset | ConfigSaved | DesktopRequest>({
+    [MENU_LAYOUT_RESET]: async ({ menuUid }) => {
       if (await loadDisplayMode() === "browser") await removeBrowserPlacement(menuUid);
       else { await removeMenuPlacements(menuUid); sync.resetNativeLayout(menuUid); }
       void requestSync();
       return { ok: true };
-    })();
-  }
-  if (messageType(message) === CONFIG_SAVED) return reconcileConnection().then(() => ({ ok: true }));
-  if (!isDesktopRequest(message)) return;
-  switch (message.type) {
-    case DESKTOP_STATE_REQUEST:
-      return Promise.resolve({ state: desktop.state.getState(), detail: desktop.state.getDetail() } satisfies DesktopState);
-    case DEBUG_INFO_REQUEST:
-      return (async (): Promise<DesktopDebugInfo> => {
-        const windows = await listBrowserWindows().catch(() => []);
-        const connection = desktop.debugInfo();
-        return {
-          debugLoggingEnabled: log.enabled,
-          connected: connection.connected,
-          connectionState: desktop.state.getState(),
-          connectionDetail: desktop.state.getDetail(),
-          socketUrl: connection.socketUrl,
-          instanceLabel: connection.instanceLabel,
-          pairedWindowUids: connection.pairedWindowUids,
-          pendingWindowPairings: connection.pendingWindowPairings,
-          browserWindows: windows,
-          recentLogs: log.entries,
-        };
-      })();
-    case DEBUG_LOGGING_SET:
-      return log.setEnabled(message.enabled);
-    case DESKTOP_RECONNECT:
-      return reconcileConnection(true).then(() => ({ ok: true }));
-    case DESKTOP_RESYNC_WINDOWS:
-      return desktop.rebuildWindows();
-    case WIDGET_ENABLED_SET:
-      void applyWidgetEnabled(message.enabled);
-      return Promise.resolve({ ok: true });
-  }
+    },
+    [CONFIG_SAVED]: () => reconcileConnection().then(() => ({ ok: true })),
+    [DESKTOP_STATE_REQUEST]: async () => ({ state: desktop.state.getState(), detail: desktop.state.getDetail() }),
+    [DEBUG_INFO_REQUEST]: async () => {
+      const windows = await listBrowserWindows().catch(() => []);
+      const connection = desktop.debugInfo();
+      return {
+        debugLoggingEnabled: log.enabled,
+        connected: connection.connected,
+        connectionState: desktop.state.getState(),
+        connectionDetail: desktop.state.getDetail(),
+        socketUrl: connection.socketUrl,
+        instanceLabel: connection.instanceLabel,
+        pairedWindowUids: connection.pairedWindowUids,
+        pendingWindowPairings: connection.pendingWindowPairings,
+        browserWindows: windows,
+        recentLogs: log.entries,
+      };
+    },
+    [DEBUG_LOGGING_SET]: ({ enabled }) => log.setEnabled(enabled),
+    [DESKTOP_RECONNECT]: () => reconcileConnection(true).then(() => ({ ok: true })),
+    [DESKTOP_RESYNC_WINDOWS]: () => desktop.rebuildWindows(),
+    [WIDGET_ENABLED_SET]: async ({ enabled }) => {
+      void applyWidgetEnabled(enabled);
+      return { ok: true };
+    },
+  }, message);
 });
 
 // Clicking the toolbar icon toggles the widget on/off. Secondary clicks are
