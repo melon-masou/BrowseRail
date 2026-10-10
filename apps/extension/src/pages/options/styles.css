@@ -143,15 +143,18 @@ form {
 .settings-save-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 14px 20px;
   border-top: 1px solid #e2e8f0;
 }
 
+/* A short status stays beside the buttons; a long one takes its own row instead of being squeezed. */
 .settings-save-bar output {
   font-size: 13px;
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 4em;
+  max-width: 100%;
   overflow-wrap: anywhere;
 }
 
@@ -164,6 +167,7 @@ form {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .settings-save-bar[hidden],
@@ -258,6 +262,11 @@ button {
   background: white;
   color: inherit;
   font: inherit;
+}
+
+/* Button captions are short; breaking them reads worse than letting the row wrap. */
+button {
+  white-space: nowrap;
 }
 
 input:not([type="checkbox"]),
@@ -368,9 +377,14 @@ li span {
 .menu-title-row {
   display: flex;
   align-items: center;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex: 1 1 140px;
   gap: 8px;
+}
+
+.menu-title-row > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu-collapse-btn {
@@ -683,7 +697,7 @@ output[data-state="error"] {
 .menu-header-actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-shrink: 0;
   gap: 8px;
   margin-left: auto;
   /* Match the item row's right padding and border. */
@@ -867,7 +881,7 @@ output[data-state="error"] {
 }
 
 .menu-item-row .item-label {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   font-size: 13px;
   display: inline-flex;
   align-items: center;
@@ -902,9 +916,9 @@ output[data-state="error"] {
 .item-color-controls {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* Color swatch trigger */
@@ -2115,6 +2129,7 @@ output[data-state="error"] {
 .picker-nav {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 18px;
   background: #f8fafc;
@@ -2134,7 +2149,9 @@ output[data-state="error"] {
   gap: 4px;
   font-size: 13px;
   color: #475569;
-  flex: 1;
+  /* The path keeps its natural width; the select button wraps below when both do not fit. */
+  flex: 1 1 auto;
+  min-width: 8em;
 }
 
 .picker-select-current-btn {
@@ -2142,7 +2159,9 @@ output[data-state="error"] {
   min-height: 28px;
   font-size: 12px;
   white-space: nowrap;
-  flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-left: auto;
 }
 
@@ -2531,8 +2550,13 @@ output[data-state="error"] {
 .url-rules-global {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.url-rules-global > span {
+  white-space: nowrap;
 }
 
 .url-rules-global select {
@@ -2577,7 +2601,6 @@ output[data-state="error"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -2587,7 +2610,6 @@ output[data-state="error"] {
   gap: 10px;
   flex: 1 1 auto;
   min-width: 0;
-  flex-wrap: wrap;
 }
 
 .url-rule-name-input {
@@ -2599,7 +2621,7 @@ output[data-state="error"] {
   border-radius: 5px;
   background: #ffffff;
   flex: 0 1 240px;
-  min-width: 120px;
+  min-width: 80px;
   transition: border-color 0.15s ease;
 }
 
@@ -2609,6 +2631,8 @@ output[data-state="error"] {
 }
 
 .url-rule-count-pill {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
   color: #475569;
@@ -2741,10 +2765,9 @@ button.item-tag {
 .dynamic-card .menu-title-row {
   display: flex;
   align-items: center;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .dynamic-card.is-collapsed {
@@ -3230,6 +3253,8 @@ button.item-tag {
 
 .shortcuts-subtabs {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 4px;
   padding: 3px;
   border: 1px solid #e2e8f0;
@@ -3239,6 +3264,8 @@ button.item-tag {
 }
 
 .shortcuts-subtab-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 5px 14px;
   border: none;
   border-radius: 6px;
@@ -3705,4 +3732,106 @@ span.icon-picker-preview {
 
 #sync-status[data-state="error"] {
   color: #dc2626;
+}
+
+/* Narrow windows: keep each row on one line and give content the space padding took. */
+@media (max-width: 560px) {
+  main {
+    padding: 12px;
+  }
+
+  .settings-panel {
+    padding: 14px;
+  }
+
+  .runtime-controls {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    gap: 14px;
+  }
+
+  .menu-card ol {
+    padding-left: 0;
+  }
+
+  .static-tag-summary {
+    display: none;
+  }
+
+  .static-bookmark-card .dynamic-name-input {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+  }
+
+  .static-tag-summary + .move-item-buttons {
+    margin-left: auto;
+  }
+
+  .custom-bookmarks-search-row {
+    flex: 1 1 100%;
+  }
+
+  .custom-bookmarks-search-input {
+    flex: 1;
+    max-width: none;
+  }
+
+  .menus-card-tab {
+    padding: 6px 10px;
+  }
+
+  .shortcuts-subtab-btn {
+    padding: 5px 10px;
+  }
+
+  /* Toolbar hints take their own line so the actions after them stay together. */
+  :is(.dynamic-toolbar, .menus-toolbar, .shortcuts-toolbar) > .url-rules-hint {
+    flex-basis: 100%;
+  }
+
+  .native-shortcut-set-header {
+    flex-wrap: wrap;
+  }
+
+  .native-shortcut-set-header .url-rule-name-input {
+    flex-basis: 100%;
+  }
+
+  /* Picker entries show the URL under the name instead of splitting one line between them. */
+  .pick-menu-item {
+    flex-wrap: wrap;
+  }
+
+  .pick-menu-item-meta,
+  .item-picker-dialog .pick-menu-item-meta {
+    flex: 1 1 100%;
+    max-width: none;
+    padding-left: 24px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A name that does not fit pushes the controls onto their own line instead of being cut short. */
+  .menu-item-row .item-label {
+    flex: 1 1 auto;
+  }
+
+  /* Slot and actions share the first line; the bound bookmark gets its own line. */
+  .shortcut-slot-col {
+    min-width: 0;
+  }
+
+  .shortcut-actions-col {
+    flex-wrap: nowrap;
+  }
+
+  .shortcut-target-col {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .shortcut-target-title {
+    max-width: none;
+  }
 }
