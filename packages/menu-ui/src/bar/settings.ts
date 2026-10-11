@@ -1,20 +1,23 @@
 import { t } from "@browserail/i18n";
-import { AUTO_FONT_SIZE, type BarSettings, type NativeBarSettings } from "@browserail/protocol";
+import { AUTO_FONT_SIZE, type BarSettings, type BarStyle, type NativeBarSettings } from "@browserail/protocol";
 import { automaticButtonFontSize } from "../appearance";
 import { COMMON_FONT_FAMILIES } from "../fonts";
 import { showMenuError } from "../lifetime";
 
-export function mountBarSettings(root: HTMLElement, initial: BarSettings | NativeBarSettings, changed: (settings: BarSettings | NativeBarSettings) => void, itemHeight: number, installedFonts?: Promise<readonly string[]>) {
+export function mountBarSettings(root: HTMLElement, initial: BarSettings | NativeBarSettings, changed: (settings: BarSettings | NativeBarSettings) => void, itemHeight: number, installedFonts?: Promise<readonly string[]>, style?: BarStyle) {
   const doc = root.ownerDocument;
   const abort = new AbortController();
   const draft = structuredClone(initial);
   let autoFontSize = automaticButtonFontSize(itemHeight);
   let sectionRoot = root;
-  function section(key: Parameters<typeof t>[0]): void {
+  function section(key?: Parameters<typeof t>[0]): void {
     sectionRoot = doc.createElement("section"); sectionRoot.className = "bar-settings-section";
-    const header = doc.createElement("header");
-    const title = doc.createElement("strong"); title.textContent = t(key);
-    header.append(title); sectionRoot.append(header); root.append(sectionRoot);
+    if (key) {
+      const header = doc.createElement("header");
+      const title = doc.createElement("strong"); title.textContent = t(key);
+      header.append(title); sectionRoot.append(header);
+    }
+    root.append(sectionRoot);
   }
   root.classList.add("bar-settings");
   function notify(): void {
@@ -39,7 +42,7 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
     label(key, input);
     return input;
   }
-  section("bar.autoHide");
+  section();
   const autoHide = select("bar.autoHide", draft.autoHide ?? "off", [["off", "bar.autoHideOff"], ["start", "expandDirection.left"], ["end", "expandDirection.right"]], value => {
     draft.autoHide = value as NonNullable<BarSettings["autoHide"]>;
   });
@@ -55,6 +58,25 @@ export function mountBarSettings(root: HTMLElement, initial: BarSettings | Nativ
     }, { signal: abort.signal }); return input;
   }
   refreshAutoHide();
+  if (style === "icons" || style === "tiles") {
+    const control = doc.createElement("div"); control.className = "bar-settings-icon-size";
+    const slider = doc.createElement("input"); slider.type = "range"; slider.min = "1"; slider.max = "100"; slider.step = "1";
+    slider.ariaLabel = t("bar.iconSize");
+    const value = number(Math.round((draft.iconSizeRatio ?? (style === "tiles" ? .72 : 1)) * 100), percent => {
+      draft.iconSizeRatio = percent / 100; slider.value = String(percent);
+    });
+    value.max = "100"; value.ariaLabel = t("bar.iconSize"); slider.value = value.value;
+    slider.addEventListener("input", () => {
+      draft.iconSizeRatio = slider.valueAsNumber / 100; value.value = slider.value; notify();
+    }, { signal: abort.signal });
+    const reset = doc.createElement("button"); reset.type = "button"; reset.textContent = t("bar.iconSizeDefault");
+    reset.addEventListener("click", () => {
+      delete draft.iconSizeRatio; slider.value = value.value = style === "tiles" ? "72" : "100"; notify();
+    }, { signal: abort.signal });
+    const values = doc.createElement("div"); values.append(value, "%", reset);
+    control.append(values, slider); label("bar.iconSize", control);
+    control.parentElement!.classList.add("bar-settings-icon-size-field");
+  }
   section("settings.fontFamily");
   const fontFamilies = new Set<string>("attachmentMode" in draft ? COMMON_FONT_FAMILIES : []);
   const familyRow = doc.createElement("div"); familyRow.className = "bar-settings-family";

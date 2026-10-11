@@ -109,6 +109,7 @@ export function mountSpacingEditor(
     setSettings(next: import("@browserail/protocol").BarSettings): void {
       stopGesture?.();
       delete menu.expandDirection;
+      delete menu.iconSizeRatio;
       Object.assign(menu, next);
       row = menu.orientation === "row";
       rail.dataset.orientation = menu.orientation;

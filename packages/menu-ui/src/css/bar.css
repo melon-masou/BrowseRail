@@ -133,8 +133,8 @@
 .menu-bar:where(.bar-icons) {
   --bar-icon-display: inline-grid;
   --bar-background-pointer-events: none;
-  --icon-size: 100%;
-  --icon-font-size: var(--config-bar-item-height);
+  --icon-size: calc(100% * var(--config-bar-icon-size-ratio, 1));
+  --icon-font-size: calc(var(--config-bar-item-height) * var(--config-bar-icon-size-ratio, 1));
 
   /* Icons inherit each item's accent unless custom CSS supplies --icon-color. */
   .menu-button { --config-icon-color: var(--button-accent, currentColor); }
@@ -153,7 +153,7 @@
 .menu-bar:where(.bar-tiles) {
   --bar-background: var(--config-bar-background, var(--dock-surface));
   --bar-icon-display: inline-grid;
-  --tile-size: calc(min(var(--config-bar-item-width), var(--config-bar-item-height)) * 0.72);
+  --tile-size: calc(min(var(--config-bar-item-width), var(--config-bar-item-height)) * var(--config-bar-icon-size-ratio, 0.72));
   --icon-size: calc(var(--tile-size) * 0.6);
   --icon-font-size: calc(var(--tile-size) * 0.58);
 

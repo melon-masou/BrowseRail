@@ -836,6 +836,7 @@ mod tests {
                 expand_alignment: None,
                 button_font_size: None,
                 popup_font_size: None,
+                icon_size_ratio: None,
                 gap_ratio: None,
                 extra_gaps: Default::default(),
                 dock_color: None,

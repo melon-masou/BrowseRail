@@ -12,9 +12,10 @@ export function initializeBarSettings(root: HTMLElement, query: URLSearchParams)
   const parent = query.get("parent");
   const settings: unknown = JSON.parse(query.get("settings") ?? "null");
   const itemHeight = Number(query.get("itemHeight"));
+  const style: unknown = JSON.parse(query.get("style") ?? "null");
   const positioning: { anchor: Rect; bounds: Rect } = JSON.parse(query.get("positioning") ?? "null");
   if (!parent || !isNativeBarSettings(settings) || !Number.isFinite(itemHeight) || itemHeight <= 0 || !positioning) throw new Error("Bar settings are unavailable");
-  const controller = mountBarSettings(root, settings, draft => { void emitTo(parent, "bar-settings-draft", { settings: draft }); }, itemHeight, invoke<string[]>("installed_fonts"));
+  const controller = mountBarSettings(root, settings, draft => { void emitTo(parent, "bar-settings-draft", { settings: draft }); }, itemHeight, invoke<string[]>("installed_fonts"), style === "icons" || style === "tiles" ? style : undefined);
   void Promise.all([listen<number>("bar-settings-item-height", ({ payload }) => {
     if (Number.isFinite(payload) && payload > 0) controller.updateItemHeight(payload);
   }, { target: getCurrentWindow().label }), listen<"row" | "column">("bar-settings-orientation", ({ payload }) => {

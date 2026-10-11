@@ -15,7 +15,7 @@
 .bar-settings-section > header { grid-column: 1 / -1; }
 .bar-settings-field { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; }
 .bar-settings-field > :last-child { grid-column: 2 / -1; }
-.bar-settings select, .bar-settings input[type="number"], .bar-settings input[type="text"] {
+.bar-settings select, .bar-settings input[type="number"], .bar-settings input[type="text"], .bar-settings-icon-size button {
   box-sizing: border-box;
   height: 30px;
   border: 1px solid #c8d0dc;
@@ -32,3 +32,11 @@
 .bar-settings-family { display: flex; flex-direction: column; gap: 6px; }
 .bar-settings-family input[type="text"] { width: 155px; }
 .bar-settings-font label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.bar-settings-icon-size { display: grid; gap: 4px; }
+.bar-settings-icon-size-field { align-items: start; }
+.bar-settings-icon-size-field > span { line-height: 30px; }
+.bar-settings-icon-size input[type="range"] { width: 100%; min-width: 0; margin: 0; }
+.bar-settings-icon-size > div { display: flex; align-items: center; gap: 4px; }
+.bar-settings-icon-size input[type="number"] { width: 60px; }
+.bar-settings-icon-size button { margin-left: auto; cursor: pointer; }
+.bar-settings-icon-size button:hover { background: #edf1f8; }

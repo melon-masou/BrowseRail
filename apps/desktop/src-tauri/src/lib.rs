@@ -904,6 +904,7 @@ async fn open_bar_settings(
     window: tauri::WebviewWindow,
     instance_uid: String,
     settings: protocol::NativeBarSettings,
+    style: Option<protocol::BarStyle>,
     item_height: f64,
     title: String,
 ) -> Result<String, String> {
@@ -933,8 +934,9 @@ async fn open_bar_settings(
             "bottom": f64::from(area.position.y) + f64::from(area.size.height),
         },
     }).to_string();
-    let url = format!("index.html?view=barSettings&parent={}&settings={}&itemHeight={item_height}&positioning={}",
-        urlencoding::encode(window.label()), urlencoding::encode(&data), urlencoding::encode(&positioning));
+    let style_data = serde_json::to_string(&style).map_err(|error| error.to_string())?;
+    let url = format!("index.html?view=barSettings&parent={}&settings={}&style={}&itemHeight={item_height}&positioning={}",
+        urlencoding::encode(window.label()), urlencoding::encode(&data), urlencoding::encode(&style_data), urlencoding::encode(&positioning));
     let created = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
         .title(title)
         .owner(&window).map_err(|error| error.to_string())?

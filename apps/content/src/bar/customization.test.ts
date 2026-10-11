@@ -61,6 +61,49 @@ it("discards settings with toolbar Cancel and removes the settings popup on dest
   f.wrapper.remove();
 });
 
+it.each(["icons", "tiles"] as const)("keeps icon size in the draft and saves it with the other settings (%s)", style => {
+  const f = fixture({ style }); f.click(t("bar.settings"));
+  const slider = f.wrapper.querySelector<HTMLInputElement>('input[type="range"]')!;
+  slider.value = "100"; slider.dispatchEvent(new Event("input", { bubbles: true }));
+  f.changeFont();
+  expect(f.menu).toEqual(f.initial);
+  expect(f.saved).not.toHaveBeenCalled();
+  f.click(t("customize.savePlacement"));
+  expect(f.saved).toHaveBeenCalledWith(
+    expect.objectContaining({ itemWidth: 84, itemHeight: 36 }), expect.anything(),
+    expect.objectContaining({ iconSizeRatio: 1, fontFamily: "Arial" }),
+  );
+  f.editor.destroy(); f.wrapper.remove();
+});
+
+it.each(["text", "textIcon", "textColorIcon"] as const)("does not offer icon size in the %s style", style => {
+  const f = fixture({ style, iconSizeRatio: .85 }); f.click(t("bar.settings"));
+  expect(f.wrapper.querySelector('input[type="range"]')).toBeNull();
+  f.click(t("customize.savePlacement"));
+  expect(f.saved.mock.calls[0]![2].iconSizeRatio).toBe(.85);
+  f.editor.destroy(); f.wrapper.remove();
+});
+
+it("restores the style's default icon size and cancels changes without saving", () => {
+  const f = fixture({ style: "tiles", iconSizeRatio: .85 }); f.click(t("bar.settings"));
+  const slider = f.wrapper.querySelector<HTMLInputElement>('input[type="range"]')!;
+  expect(slider.value).toBe("85");
+  Array.from(f.wrapper.querySelectorAll("button")).find(button => button.textContent === t("bar.iconSizeDefault"))!.click();
+  expect(slider.value).toBe("72");
+  f.click(t("customize.cancel"));
+  expect(f.canceled).toHaveBeenCalled(); expect(f.saved).not.toHaveBeenCalled();
+  expect(f.menu).toEqual(f.initial);
+  f.editor.destroy(); f.wrapper.remove();
+});
+
+it("saves the restored default instead of the previous icon size", () => {
+  const f = fixture({ style: "tiles", iconSizeRatio: .85 }); f.click(t("bar.settings"));
+  Array.from(f.wrapper.querySelectorAll("button")).find(button => button.textContent === t("bar.iconSizeDefault"))!.click();
+  f.click(t("customize.savePlacement"));
+  expect(f.saved.mock.calls[0]![2].iconSizeRatio).toBeUndefined();
+  f.editor.destroy(); f.wrapper.remove();
+});
+
 it.each(["column", "row"] as const)("drags the hidden area's boundary and preserves it when changing another setting (%s)", async orientation => {
   const f = fixture({ orientation, autoHide: "start", autoHideRange: { start: .1, end: .3 } });
   f.click(t("customize.hideRange"));

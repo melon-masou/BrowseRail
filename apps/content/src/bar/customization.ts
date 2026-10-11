@@ -77,7 +77,7 @@ export function mountBrowserCustomization(
   const settingsController = mountBarSettings(settingsForm, settings, next => {
     stopGesture?.(); settings = next;
     spacingEditor.setSettings(next);
-  }, spacingEditor.itemSize.height);
+  }, spacingEditor.itemSize.height, undefined, state.menu.style);
   settingsPopup.classList.add("bar-settings");
   close.addEventListener("click", () => { settingsPopup.hidden = true; }, options);
   settingsButton.addEventListener("click", () => { settingsPopup.hidden = !settingsPopup.hidden; layout(); }, options);

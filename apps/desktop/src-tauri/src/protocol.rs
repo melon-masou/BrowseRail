@@ -298,6 +298,8 @@ pub struct MenuView {
     pub button_font_size: Option<f64>,
     #[serde(default)]
     pub popup_font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_size_ratio: Option<f64>,
     #[serde(default)]
     pub gap_ratio: Option<f64>,
     #[serde(default)]
@@ -347,6 +349,8 @@ pub struct NativeBarSettings {
     pub button_font_size: f64,
     pub popup_font_size: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_size_ratio: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expand_direction: Option<ExpandDirection>,
     pub expand_alignment: ExpandAlignment,
     pub attachment_mode: AttachmentMode,
@@ -358,6 +362,7 @@ impl NativeBarSettings {
             && self.auto_hide_range.as_ref().is_none_or(BarAutoHideRange::is_valid)
             && self.button_font_size.is_finite() && (self.button_font_size == -1.0 || self.button_font_size >= 1.0)
             && self.popup_font_size.is_finite() && (self.popup_font_size == -1.0 || self.popup_font_size >= 1.0)
+            && self.icon_size_ratio.is_none_or(|ratio| ratio.is_finite() && (0.01..=1.0).contains(&ratio))
             && (self.attachment_mode != AttachmentMode::Free || self.on_top_mode == OnTopMode::AlwaysOnTop)
     }
     pub fn apply_view(&self, view: &mut MenuView) {
@@ -368,6 +373,7 @@ impl NativeBarSettings {
         view.auto_hide_range = self.auto_hide_range;
         view.button_font_size = Some(self.button_font_size);
         view.popup_font_size = Some(self.popup_font_size);
+        view.icon_size_ratio = self.icon_size_ratio;
         view.expand_direction = self.expand_direction;
         view.expand_alignment = Some(self.expand_alignment);
     }
@@ -833,6 +839,27 @@ mod tests {
         BrowserWindowSnapshot, ExtensionMessage, LayoutEntry, MenuPlacement, MenuView, NativeMessage,
         SyncedMenu, compute_menu_geometry_for_state, free_menu_geometry_for_state,
     };
+
+    #[test]
+    fn preserves_icon_size_in_native_settings_and_rendered_views() {
+        let mut settings: super::NativeBarSettings = serde_json::from_value(serde_json::json!({
+            "orientation": "column", "buttonFontSize": -1, "popupFontSize": -1,
+            "expandAlignment": "edge", "attachmentMode": "lastFocused", "onTopMode": "aboveBrowser",
+            "iconSizeRatio": 0.85
+        })).unwrap();
+        assert!(settings.is_valid());
+        let mut view: MenuView = serde_json::from_value(serde_json::json!({ "uid": "tiles", "items": [], "style": "tiles" })).unwrap();
+        settings.apply_view(&mut view);
+        assert_eq!(serde_json::to_value(&view).unwrap()["iconSizeRatio"], 0.85);
+        assert_eq!(serde_json::to_value(&settings).unwrap()["iconSizeRatio"], 0.85);
+        settings.icon_size_ratio = None;
+        settings.apply_view(&mut view);
+        assert!(serde_json::to_value(&view).unwrap().get("iconSizeRatio").is_none());
+        for ratio in [0.0, -0.1, 1.01, f64::INFINITY, f64::NAN] {
+            settings.icon_size_ratio = Some(ratio);
+            assert!(!settings.is_valid());
+        }
+    }
 
     #[test]
     fn accepts_fully_hidden_bands_in_saved_native_settings() {

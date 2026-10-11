@@ -290,7 +290,7 @@ export async function initializeSurface(
     settingsButton.disabled = true;
     let settingsWindowLabel: string | undefined;
     settingsButton.addEventListener("click", () => {
-      report(invoke<string>("open_bar_settings", { instanceUid, settings, itemHeight: spacingEditor.itemSize.height, title: t("bar.settings") }).then(label => {
+      report(invoke<string>("open_bar_settings", { instanceUid, settings, style: menu.style, itemHeight: spacingEditor.itemSize.height, title: t("bar.settings") }).then(label => {
         if (!customizeAlive) return;
         settingsWindowLabel = label;
         return emitTo(label, "bar-settings-item-height", spacingEditor.itemSize.height);

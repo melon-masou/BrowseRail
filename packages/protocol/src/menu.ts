@@ -183,6 +183,8 @@ export interface MenuView {
   expandAlignment?: ExpandAlignment;
   buttonFontSize?: MenuFontSize;
   popupFontSize?: MenuFontSize;
+  /** Fraction of the button cell occupied by icons or tiles; other styles ignore it. */
+  iconSizeRatio?: number;
   gapRatio?: number;
   extraGaps?: Record<string, number>;
   // Dock strip (bar background) color, independent of `color` (the default item

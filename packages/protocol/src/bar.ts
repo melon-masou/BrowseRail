@@ -9,6 +9,7 @@ export interface BarSettings {
   fontFamily?: string;
   buttonFontSize: number;
   popupFontSize: number;
+  iconSizeRatio?: number;
   expandDirection?: ExpandDirection;
   expandAlignment: ExpandAlignment;
 }
@@ -40,6 +41,7 @@ export function barSettingsFromView(view: Pick<MenuView, keyof BarSettings>): Ba
     fontFamily: view.fontFamily ?? "",
     buttonFontSize: view.buttonFontSize ?? AUTO_FONT_SIZE,
     popupFontSize: view.popupFontSize ?? AUTO_FONT_SIZE,
+    ...(view.iconSizeRatio !== undefined ? { iconSizeRatio: view.iconSizeRatio } : {}),
     expandAlignment: view.expandAlignment ?? "edge",
     ...(view.expandDirection ? { expandDirection: view.expandDirection } : {}),
   };
@@ -60,6 +62,7 @@ export function isBarSettings(value: unknown): value is BarSettings {
     && (raw.fontFamily === undefined || typeof raw.fontFamily === "string")
     && typeof raw.buttonFontSize === "number" && (raw.buttonFontSize === AUTO_FONT_SIZE || Number.isFinite(raw.buttonFontSize) && raw.buttonFontSize >= 1)
     && typeof raw.popupFontSize === "number" && (raw.popupFontSize === AUTO_FONT_SIZE || Number.isFinite(raw.popupFontSize) && raw.popupFontSize >= 1)
+    && (raw.iconSizeRatio === undefined || typeof raw.iconSizeRatio === "number" && Number.isFinite(raw.iconSizeRatio) && raw.iconSizeRatio >= .01 && raw.iconSizeRatio <= 1)
     && (raw.expandDirection === undefined || ["up", "down", "left", "right"].includes(raw.expandDirection as string))
     && (raw.expandAlignment === "edge" || raw.expandAlignment === "center");
 }
@@ -86,6 +89,7 @@ export function normalizeBarConfigurations(value: unknown): BarConfigurations {
       if (placement.freePosition && ![placement.freePosition.x, placement.freePosition.y].every(Number.isFinite)) continue;
       const clean: BarConfiguration = {
         orientation: config.orientation, buttonFontSize: config.buttonFontSize, popupFontSize: config.popupFontSize,
+        ...(config.iconSizeRatio !== undefined ? { iconSizeRatio: config.iconSizeRatio } : {}),
         autoHide: config.autoHide ?? "off",
         autoHidePadding: config.autoHidePadding ?? DEFAULT_AUTO_HIDE_PADDING,
         ...(config.autoHideRange ? { autoHideRange: { start: config.autoHideRange.start, end: config.autoHideRange.end } } : {}),
