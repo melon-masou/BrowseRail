@@ -13,14 +13,16 @@ export function mountBrowserCustomization(
   save: (placement: BrowserMenuPlacement, spacing: MenuSpacing, settings: BarSettings) => Promise<void>, cancel: () => void,
 ) {
   const doc = root.ownerDocument;
-  const viewport = doc.defaultView!;
+  // CSS placement uses this container; innerWidth/innerHeight also include page scrollbars.
+  const container = wrapper.parentElement!;
+  const initialViewport = container.getBoundingClientRect();
   const lifetime = new AbortController();
   const options = { signal: lifetime.signal };
   let settings: BarSettings = barSettingsFromView(state.menu);
   let anchor = placement.anchor;
   let size = barDimensions(state.menu, state.itemSize);
   const initialSurface = barSurfaceDimensions(state.menu, state.itemSize);
-  let point = placementPoint(placement, initialSurface.width, initialSurface.height, viewport.innerWidth, viewport.innerHeight);
+  let point = placementPoint(placement, initialSurface.width, initialSurface.height, initialViewport.width, initialViewport.height);
   let stopGesture: (() => void) | undefined;
   let saving = false;
   let toolbarSide: ToolbarSide | undefined;
@@ -82,6 +84,7 @@ export function mountBrowserCustomization(
   close.addEventListener("click", () => { settingsPopup.hidden = true; }, options);
   settingsButton.addEventListener("click", () => { settingsPopup.hidden = !settingsPopup.hidden; layout(); }, options);
   function layout(): void {
+    const viewport = container.getBoundingClientRect();
     settingsController.updateOrientation(spacingEditor.menu.orientation);
     orientationControl.update(spacingEditor.menu.orientation);
     settingsController.updateItemHeight(spacingEditor.itemSize.height);
@@ -90,14 +93,14 @@ export function mountBrowserCustomization(
     const frame = barFrameInsets(spacingEditor.menu);
     const surfaceWidth = size.width + 2 * frame.x;
     const surfaceHeight = size.height + 2 * frame.y;
-    point.x = Math.max(0, Math.min(viewport.innerWidth - surfaceWidth, point.x));
-    point.y = Math.max(0, Math.min(viewport.innerHeight - surfaceHeight, point.y));
+    point.x = Math.max(0, Math.min(viewport.width - surfaceWidth, point.x));
+    point.y = Math.max(0, Math.min(viewport.height - surfaceHeight, point.y));
     rail.style.setProperty("--config-bar-width", `${size.width}px`);
     rail.style.setProperty("--config-bar-height", `${size.height}px`);
     hideRangeEditor.update({ ...spacingEditor.menu, ...settings }, spacingEditor.itemSize);
     const position = layoutCustomization(content, rail, toolbar,
       { left: point.x, top: point.y, right: point.x + surfaceWidth, bottom: point.y + surfaceHeight },
-      { left: 0, top: 0, right: viewport.innerWidth, bottom: viewport.innerHeight }, toolbarSide);
+      { left: 0, top: 0, right: viewport.width, bottom: viewport.height }, toolbarSide);
     toolbarSide = position.side;
     root.style.width = content.style.width;
     root.style.height = content.style.height;
@@ -107,7 +110,7 @@ export function mountBrowserCustomization(
     if (!settingsPopup.hidden) {
       const position = placeBarSettings(root.getBoundingClientRect(),
         { width: settingsPopup.offsetWidth, height: settingsPopup.offsetHeight },
-        { left: 8, top: 8, right: viewport.innerWidth - 8, bottom: viewport.innerHeight - 8 }, spacingEditor.menu.orientation);
+        { left: 8, top: 8, right: viewport.width - 8, bottom: viewport.height - 8 }, spacingEditor.menu.orientation);
       settingsPopup.style.left = `${position.x}px`;
       settingsPopup.style.top = `${position.y}px`;
     }
@@ -175,10 +178,11 @@ export function mountBrowserCustomization(
     saving = true; stopGesture?.(); spacingEditor.stopGesture(); hideRangeEditor.stopGesture(); rail.inert = true;
     for (const button of [anchorButton, orientationControl.button, spacingButton, hideRangeButton, settingsButton, cancelButton, saveButton]) button.disabled = true;
     const frame = barFrameInsets(spacingEditor.menu);
+    const viewport = container.getBoundingClientRect();
     const draft = placementAtPoint({ ...placement, anchor,
       itemWidth: spacingEditor.itemSize.width,
       itemHeight: spacingEditor.itemSize.height,
-    }, point.x, point.y, size.width + 2 * frame.x, size.height + 2 * frame.y, viewport.innerWidth, viewport.innerHeight);
+    }, point.x, point.y, size.width + 2 * frame.x, size.height + 2 * frame.y, viewport.width, viewport.height);
     settingsPopup.hidden = true;
     void save(draft, spacingEditor.spacing, settings).catch(error => {
       if (lifetime.signal.aborted) return;

@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { t } from "@browserail/i18n";
 import { defaultBarSettings, type MenuView } from "@browserail/protocol";
+import { barSurfaceDimensions } from "@browserail/menu-ui";
+import type { BrowserMenuPlacement } from "@browserail/protocol/content";
 import { mountBrowserCustomization } from "./customization";
 
-function fixture(overrides: Partial<MenuView> = {}) {
+afterEach(() => vi.restoreAllMocks());
+
+function fixture(overrides: Partial<MenuView> = {}, placementOverrides: Partial<BrowserMenuPlacement> = {}, viewportSize = { width: window.innerWidth, height: window.innerHeight }) {
+  vi.spyOn(document.body, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 0, viewportSize.width, viewportSize.height));
   const wrapper = document.createElement("div");
   const root = document.createElement("div"); wrapper.append(root); document.body.append(wrapper);
   const menu: MenuView = { ...defaultBarSettings(), uid: "bar", items: [
@@ -14,7 +19,7 @@ function fixture(overrides: Partial<MenuView> = {}) {
   const initial = structuredClone(menu);
   const saved = vi.fn<Parameters<typeof mountBrowserCustomization>[4]>(async () => {});
   const canceled = vi.fn();
-  const editor = mountBrowserCustomization(wrapper, root, { menu, itemSize: { width: 84, height: 36 }, collapsed: false, editingLocked: false, fontFamily: "sans-serif" }, { anchor: "topLeft", offsetX: 40, offsetY: 50, itemWidth: 84, itemHeight: 36 }, saved, canceled);
+  const editor = mountBrowserCustomization(wrapper, root, { menu, itemSize: { width: 84, height: 36 }, collapsed: false, editingLocked: false, fontFamily: "sans-serif" }, { anchor: "topLeft", offsetX: 40, offsetY: 50, itemWidth: 84, itemHeight: 36, ...placementOverrides }, saved, canceled);
   function click(title: string) {
     const button = Array.from(wrapper.querySelectorAll("button")).find(button => button.title === title);
     if (!button) throw new Error(`Missing control ${title}`);
@@ -59,6 +64,27 @@ it("discards settings with toolbar Cancel and removes the settings popup on dest
   f.editor.destroy();
   expect(f.wrapper.querySelector("select")).toBeNull();
   f.wrapper.remove();
+});
+
+it.each(["topRight", "bottomRight"] as const)("keeps the bar at its anchored offset when page scrollbars reduce the usable viewport (%s)", anchor => {
+  const viewport = { width: window.innerWidth - 17.25, height: window.innerHeight - 13.5 };
+  const f = fixture({}, { anchor }, viewport);
+  const surface = barSurfaceDimensions(f.menu, { width: 84, height: 36 });
+  expect(viewport.width - parseFloat(f.wrapper.style.left) - surface.width).toBeCloseTo(40);
+  if (anchor === "bottomRight") expect(viewport.height - parseFloat(f.wrapper.style.top) - surface.height).toBeCloseTo(50);
+  f.click(t("customize.savePlacement"));
+  expect(f.saved.mock.calls[0]![0]).toMatchObject({ anchor, offsetX: 40, offsetY: 50 });
+  f.editor.destroy(); f.wrapper.remove();
+});
+
+it("saves against the current container after the editing viewport changes", () => {
+  const viewport = { width: window.innerWidth - 17.25, height: window.innerHeight - 13.5 };
+  const f = fixture({}, { anchor: "bottomRight" }, viewport);
+  viewport.width -= 60; viewport.height -= 70;
+  f.editor.resize();
+  f.click(t("customize.savePlacement"));
+  expect(f.saved.mock.calls[0]![0]).toMatchObject({ anchor: "bottomRight", offsetX: 0, offsetY: 0 });
+  f.editor.destroy(); f.wrapper.remove();
 });
 
 it.each(["icons", "tiles"] as const)("keeps icon size in the draft and saves it with the other settings (%s)", style => {
