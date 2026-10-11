@@ -11,6 +11,8 @@ function createPageController() {
   // let surfaceObserver: MutationObserver | undefined;
   let host: HTMLElement | undefined;
   let container: HTMLElement | undefined;
+  let pageZoom: number | undefined;
+  let zoomFrame: number | undefined;
   let initialized = false;
   let suspended = false;
   const menus = new Map<string, ReturnType<typeof mountBrowserMenu>>();
@@ -20,11 +22,23 @@ function createPageController() {
   // Pages that scale themselves with `zoom` on <html> or <body> would scale the bar and its viewport-sized host too.
   function cancelPageZoom(): void {
     const parent = host?.parentElement;
-    if (host && parent) host.style.setProperty("zoom", String(1 / parent.currentCSSZoom), "important");
+    if (!host || !parent) return;
+    const zoom = parent.currentCSSZoom;
+    if (zoom === pageZoom) return;
+    host.style.setProperty("zoom", String(1 / zoom), "important");
+    pageZoom = zoom;
   }
   window.addEventListener("resize", cancelPageZoom);
 
+  function watchPageZoom(): void {
+    // Stylesheet loads, CSSOM edits and animations can change zoom without a resize or DOM mutation.
+    cancelPageZoom();
+    zoomFrame = window.requestAnimationFrame(watchPageZoom);
+  }
+
   function clearSurface(): void {
+    if (zoomFrame !== undefined) window.cancelAnimationFrame(zoomFrame);
+    zoomFrame = undefined; pageZoom = undefined;
     // surfaceObserver?.disconnect(); surfaceObserver = undefined;
     for (const menu of menus.values()) menu.destroy();
     menus.clear(); host?.remove(); host = undefined; container = undefined;
@@ -120,6 +134,7 @@ function createPageController() {
         shadow.adoptedStyleSheets.push(sheet);
         container = document.createElement("div"); container.className = "browser-menus"; shadow.append(container);
         body.append(host);
+        watchPageZoom();
         // Some React-based sites (e.g. GitHub repository pages) remove injected
         // nodes during document initialization. Mount recovery is disabled for now.
         // maintainSurface(host, body);
