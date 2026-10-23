@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime, extension } from "../../runtime";
 
 const STORAGE_KEY = "browser_bar_edit_session";
 interface Owner { tabId: number; menuUid: string; token: string }
@@ -11,21 +11,21 @@ export function createBrowserEditSession() {
     return result;
   }
   async function owner(): Promise<Owner | undefined> {
-    const stored = await browser.storage.session.get(STORAGE_KEY);
+    const stored = await runtime.storage.session.get(STORAGE_KEY);
     return stored[STORAGE_KEY] as Owner | undefined;
   }
   const releaseTab = (tabId: number): Promise<void> => serialized(async () => {
-    if ((await owner())?.tabId === tabId) await browser.storage.session.remove(STORAGE_KEY);
+    if ((await owner())?.tabId === tabId) await runtime.storage.session.remove(STORAGE_KEY);
   });
-  browser.tabs.onRemoved.addListener(tabId => { void releaseTab(tabId); });
-  browser.tabs.onUpdated.addListener((tabId, change) => {
+  extension.tabEvents.onRemoved.addListener(tabId => { void releaseTab(tabId); });
+  extension.tabEvents.onUpdated.addListener((tabId, change) => {
     if (change.status === "loading") void releaseTab(tabId);
   });
   return {
     begin(tabId: number, menuUid: string, token: string): Promise<boolean> {
       return serialized(async () => {
         if (await owner()) return false;
-        await browser.storage.session.set({ [STORAGE_KEY]: { tabId, menuUid, token } satisfies Owner });
+        await runtime.storage.session.set({ [STORAGE_KEY]: { tabId, menuUid, token } satisfies Owner });
         return true;
       });
     },
@@ -36,9 +36,9 @@ export function createBrowserEditSession() {
     end(tabId: number, token: string): Promise<void> {
       return serialized(async () => {
         const active = await owner();
-        if (active?.tabId === tabId && active.token === token) await browser.storage.session.remove(STORAGE_KEY);
+        if (active?.tabId === tabId && active.token === token) await runtime.storage.session.remove(STORAGE_KEY);
       });
     },
-    clear(): Promise<void> { return serialized(() => browser.storage.session.remove(STORAGE_KEY)); },
+    clear(): Promise<void> { return serialized(() => runtime.storage.session.remove(STORAGE_KEY)); },
   };
 }

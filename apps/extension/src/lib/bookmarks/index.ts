@@ -1,3 +1,5 @@
+import type { BookmarkTreeNode } from "@browserail/runtime-adapter";
+import { runtime } from "../../runtime";
 import { t } from "@browserail/i18n";
 import {
   actionUid,
@@ -8,7 +10,6 @@ import {
   SPECIAL_ROOT_PLACEHOLDERS,
   type SpecialRootType,
 } from "@browserail/protocol";
-import browser from "webextension-polyfill";
 
 import type { StoredMenuItem } from "../config/model";
 import { menuItemIdentity } from "./identity";
@@ -98,7 +99,7 @@ export function getSpecialRootPlaceholder(node: { id?: string; title?: string })
 
 export function formatSpecialRootForDisplay(
   segment: string,
-  tree?: BookmarkNode[] | browser.Bookmarks.BookmarkTreeNode[],
+  tree?: BookmarkNode[] | BookmarkTreeNode[],
 ): string {
   const special = getSpecialRootTypeFromTitle(segment);
   if (!special) return segment;
@@ -607,7 +608,7 @@ export async function resolveMenuItems(
       if (effectivePath.length > 0 || url) {
         if (!treeCache) {
           try {
-            treeCache = (await browser.bookmarks.getTree()) as BookmarkNode[];
+            treeCache = (await runtime.bookmarks.getTree()) as BookmarkNode[];
           } catch {
             treeCache = [];
           }

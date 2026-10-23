@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import type { IconCatalog } from "./lucide";
 
 interface PhosphorData {
@@ -8,7 +8,7 @@ interface PhosphorData {
 let catalog: Promise<IconCatalog> | undefined;
 
 export function loadPhosphorCatalog(): Promise<IconCatalog> {
-  return catalog ??= fetch(browser.runtime.getURL("icons/phosphor/icons.json")).then(async response => {
+  return catalog ??= fetch(runtime.resourceUrl("icons/phosphor/icons.json")).then(async response => {
     if (!response.ok) throw new Error("Unable to load Phosphor icons");
     const data = await response.json() as PhosphorData;
     const urls = new Map<string, string>();

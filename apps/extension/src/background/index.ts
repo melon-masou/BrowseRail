@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime, extension } from "../runtime";
 import { normalizeBarConfigurations } from "@browserail/protocol";
 import { listBrowserWindows } from "../lib/browser/windows";
 import {
@@ -67,7 +67,7 @@ desktop.state.subscribe((next, _prev, detail) => {
     void editingMenu.updateNativeEditing(undefined).catch(error => console.error("BrowseRail editing:", error));
   }
   badge.update(next, detail);
-  void browser.runtime.sendMessage({ type: DESKTOP_STATE_CHANGED, state: next, detail } satisfies DesktopStateChanged).catch(() => {});
+  void runtime.messaging.send({ type: DESKTOP_STATE_CHANGED, state: next, detail } satisfies DesktopStateChanged).catch(() => {});
 });
 badge.update(desktop.state.getState());
 
@@ -102,7 +102,7 @@ async function applyWidgetEnabled(enabled: boolean): Promise<void> {
 
 void reconcileConnection();
 
-browser.windows
+extension.windows
   .getLastFocused()
   .then((w) => {
     if (w && w.id !== undefined && (w.type === "normal" || w.type === undefined)) {
@@ -113,24 +113,24 @@ browser.windows
   })
   .catch(() => {});
 
-browser.windows.onFocusChanged.addListener((windowId) => {
+extension.windows.onFocusChanged.addListener((windowId) => {
   log.log("Window", `onFocusChanged: windowId=${windowId}`);
   if (windowId >= 0) {
     focus.set(String(windowId));
     void requestSync();
   }
 });
-browser.windows.onCreated.addListener(() => {
+extension.windows.onCreated.addListener(() => {
   log.log("Window", "onCreated");
   void requestSync();
 });
-browser.windows.onRemoved.addListener((windowId) => {
+extension.windows.onRemoved.addListener((windowId) => {
   log.log("Window", `onRemoved: windowId=${windowId}`);
   desktop.forgetWindow(String(windowId));
   void requestSync();
 });
 const boundsChanged = (
-  browser.windows as typeof browser.windows & {
+  extension.windows as typeof extension.windows & {
     onBoundsChanged?: {
       addListener(listener: () => void): void;
     };
@@ -138,19 +138,19 @@ const boundsChanged = (
 ).onBoundsChanged;
 boundsChanged?.addListener(requestSync);
 // Absent when the browser has no bookmarks API.
-browser.bookmarks?.onCreated.addListener(requestSync);
-browser.bookmarks?.onChanged.addListener(requestSync);
-browser.bookmarks?.onMoved.addListener(requestSync);
-browser.bookmarks?.onRemoved.addListener(requestSync);
-browser.tabs?.onActivated?.addListener(() => { void requestSync(); });
-browser.tabs?.onUpdated?.addListener(() => { void requestSync(); });
-browser.tabs?.onReplaced?.addListener(() => { void requestSync(); });
-browser.tabs?.onAttached?.addListener(() => { void requestSync(); });
-browser.tabs?.onDetached?.addListener(() => { void requestSync(); });
+extension.bookmarkEvents?.onCreated.addListener(requestSync);
+extension.bookmarkEvents?.onChanged.addListener(requestSync);
+extension.bookmarkEvents?.onMoved.addListener(requestSync);
+extension.bookmarkEvents?.onRemoved.addListener(requestSync);
+extension.tabEvents?.onActivated?.addListener(() => { void requestSync(); });
+extension.tabEvents?.onUpdated?.addListener(() => { void requestSync(); });
+extension.tabEvents?.onReplaced?.addListener(() => { void requestSync(); });
+extension.tabEvents?.onAttached?.addListener(() => { void requestSync(); });
+extension.tabEvents?.onDetached?.addListener(() => { void requestSync(); });
 initDynamicBookmarks(requestSync);
 initExternalUpdates(requestSync);
 
-browser.storage.onChanged.addListener(async (changes, areaName) => {
+runtime.storage.onChanged.addListener(async (changes, areaName) => {
   if (areaName === "local" && changes[BAR_CONFIGURATIONS_STORAGE_KEY]) {
     await reconcileAutoHideOverrides(normalizeBarConfigurations(changes[BAR_CONFIGURATIONS_STORAGE_KEY]!.newValue));
   }
@@ -159,10 +159,10 @@ browser.storage.onChanged.addListener(async (changes, areaName) => {
     scheduleReconcile();
   }
 });
-browser.permissions.onAdded.addListener(requestSync);
-browser.permissions.onRemoved.addListener(requestSync);
+extension.permissionEvents.onAdded.addListener(requestSync);
+extension.permissionEvents.onRemoved.addListener(requestSync);
 
-browser.runtime.onMessage.addListener((message: unknown) => {
+runtime.messaging.onMessage.addListener((message: unknown) => {
   if (!isMenuLayoutReset(message) && !isConfigSaved(message) && !isDesktopRequest(message)) return;
   return dispatch<MenuLayoutReset | ConfigSaved | DesktopRequest>({
     [MENU_LAYOUT_RESET]: async ({ menuUid }) => {
@@ -201,7 +201,7 @@ browser.runtime.onMessage.addListener((message: unknown) => {
 
 // Clicking the toolbar icon toggles the widget on/off. Secondary clicks are
 // ignored so the browser can show its built-in extension menu.
-browser.action.onClicked.addListener((tab, info) => {
+extension.action.onClicked.addListener((tab, info) => {
   if (info?.button !== undefined && info.button !== 0) return;
   void (async () => {
     await applyWidgetEnabled(!await loadWidgetEnabled());

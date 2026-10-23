@@ -1,6 +1,7 @@
+import type { MessageSender } from "@browserail/runtime-adapter";
+import { runtime, extension } from "../../runtime";
 // Updates matching rule/rewrite bookmarks on active-tab URL changes.
 import { matchesUrlRule } from "@browserail/protocol";
-import browser from "webextension-polyfill";
 
 import {
   type DynamicValue,
@@ -24,10 +25,10 @@ const lastVisitUrlByTab = new Map<number, string>();
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function initDynamicBookmarks(requestSync: () => void): void {
-  browser.runtime.onMessage.addListener((message: unknown, sender: browser.Runtime.MessageSender) => {
+  runtime.messaging.onMessage.addListener((message: unknown, sender: MessageSender) => {
     // The options page opens in a tab, so check that the sender is an extension page
     // rather than rejecting every sender with a tab (which also covers content scripts).
-    if (sender.id !== browser.runtime.id || !sender.url?.startsWith(browser.runtime.getURL(""))) return;
+    if (sender.id !== runtime.messaging.id || !sender.url?.startsWith(runtime.resourceUrl(""))) return;
     if (!isDynamicTest(message)) return;
     return dispatch<DynamicTest>({
       [DYNAMIC_TEST]: async (test) => {
@@ -38,14 +39,14 @@ export function initDynamicBookmarks(requestSync: () => void): void {
       },
     }, message);
   });
-  browser.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => {
+  extension.tabEvents?.onUpdated?.addListener((tabId, changeInfo, tab) => {
     const url = changeInfo.url;
     if (typeof url !== "string" || !url) return;
     if (lastVisitUrlByTab.get(tabId) === url) return;
     lastVisitUrlByTab.set(tabId, url);
     void handleNavigation(tabId, url, Boolean(tab.active), tab.title ?? "", requestSync);
   });
-  browser.tabs?.onRemoved?.addListener((tabId) => {
+  extension.tabEvents?.onRemoved?.addListener((tabId) => {
     lastVisitUrlByTab.delete(tabId);
   });
 }
@@ -84,7 +85,7 @@ async function maybeInterceptMarker(tabId: number, url: string): Promise<boolean
     // No value yet → leave the tab as-is (do not redirect).
     if (live?.url) {
       try {
-        await browser.tabs.update(tabId, { url: live.url });
+        await runtime.navigation.update(tabId, { url: live.url });
       } catch {
         // tab gone; ignore
       }
@@ -92,7 +93,7 @@ async function maybeInterceptMarker(tabId: number, url: string): Promise<boolean
   } else {
     // Any other browserail.local bookmark (e.g. a Space marker) → the options page.
     try {
-      await browser.tabs.update(tabId, { url: browser.runtime.getURL("options.html") });
+      await runtime.navigation.update(tabId, { url: runtime.resourceUrl("options.html") });
     } catch {
       // ignore
     }

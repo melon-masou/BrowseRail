@@ -1,4 +1,5 @@
-import browser from "webextension-polyfill";
+import type { StorageChange } from "@browserail/runtime-adapter";
+import { runtime } from "../../runtime";
 import { t } from "@browserail/i18n";
 import {
   customBookmarkUid,
@@ -82,15 +83,15 @@ export function createCustomBookmarkSource(state: OptionsState) {
     for (const listener of listeners) listener("dynamic");
   }
 
-  const changed = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {
+  const changed = (changes: Record<string, StorageChange>, area: string): void => {
     if (area !== "local") return;
     if (changes.temporary_bookmark_values || changes.temporary_bookmark_notes)
       void refreshTemporaryValues();
     if (Object.keys(changes).some(key => key.startsWith(DYNAMIC_VALUE_STORAGE_PREFIX)))
       void refreshDynamicValues();
   };
-  browser.storage.onChanged.addListener(changed);
-  scope.add(() => browser.storage.onChanged.removeListener(changed));
+  runtime.storage.onChanged.addListener(changed);
+  scope.add(() => runtime.storage.onChanged.removeListener(changed));
   return {
     definitions: definitionsFor,
     name: customTargetName,

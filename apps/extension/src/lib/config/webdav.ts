@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import { t } from "@browserail/i18n";
 import { isExportedSettingsData, type ExportedSettingsData } from "@browserail/protocol";
 import type { WebDavSettings } from "./sync-settings";
@@ -15,7 +15,7 @@ function fileUrl(settings: WebDavSettings): URL {
 // Call directly from the transfer button's click handler, before any storage I/O.
 export async function authorizeWebDav(settings: WebDavSettings): Promise<void> {
   const url = fileUrl(settings);
-  if (!await browser.permissions.request({ origins: [`${url.protocol}//${url.hostname}/*`] }))
+  if (!await runtime.permissions.request({ origins: [`${url.protocol}//${url.hostname}/*`] }))
     throw new Error(t("sync.permissionDenied"));
 }
 

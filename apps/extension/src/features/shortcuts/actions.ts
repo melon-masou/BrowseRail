@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import { type ShortcutAction } from "@browserail/protocol";
 import { loadShortcutsEnabled, saveShortcutsEnabled, saveConfig, type ExtensionConfig } from "../../lib/config";
 import { runTabAction, toggleTargetMenus } from "../actions/menu-actions";
@@ -15,7 +15,7 @@ export async function executeShortcutAction(
   host: { changed(): void | Promise<void>; toggleFold(menuUid: string): Promise<void> },
 ): Promise<void> {
   if (action.type === "browserAction") {
-    await runTabAction(browser.tabs, windowUid, action.browserAction);
+    await runTabAction(runtime.navigation, windowUid, action.browserAction);
   } else if (action.type === "shortcutsToggle") {
     await saveShortcutsEnabled(!await loadShortcutsEnabled());
   } else if (action.type === "menusToggle") {

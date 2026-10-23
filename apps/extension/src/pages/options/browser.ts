@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime, extension } from "../../runtime";
 import { probeDesktopConnection } from "../../lib/desktop/connection";
 import {
   loadWidgetEnabled, saveWidgetEnabled, loadShortcutsEnabled, saveShortcutsEnabled,
@@ -27,13 +27,13 @@ export const browserActions = {
   runtimeState,
   setShortcutsEnabled: saveShortcutsEnabled,
   onRuntimeState(listener: (state: RuntimeState) => void): () => void {
-    const receive: Parameters<typeof browser.storage.onChanged.addListener>[0] = (changes, area) => {
+    const receive: Parameters<typeof runtime.storage.onChanged.addListener>[0] = (changes, area) => {
       if (area === "local" && (changes[WIDGET_ENABLED_STORAGE_KEY] || changes[SHORTCUTS_ENABLED_STORAGE_KEY])) {
         void runtimeState().then(listener).catch(error => console.error("BrowseRail runtime state:", error));
       }
     };
-    browser.storage.onChanged.addListener(receive);
-    return () => browser.storage.onChanged.removeListener(receive);
+    runtime.storage.onChanged.addListener(receive);
+    return () => runtime.storage.onChanged.removeListener(receive);
   },
   async setWidgetEnabled(enabled: boolean): Promise<void> {
     await saveWidgetEnabled(enabled);
@@ -48,23 +48,23 @@ export const browserActions = {
     const receive = (message: unknown): void => {
       if (isEditingStateChanged(message)) listener({ enabled: message.enabled, editing: message.editing });
     };
-    browser.runtime.onMessage.addListener(receive);
-    return () => browser.runtime.onMessage.removeListener(receive);
+    runtime.messaging.onMessage.addListener(receive);
+    return () => runtime.messaging.onMessage.removeListener(receive);
   },
-  commands: () => browser.commands.getAll(),
+  commands: () => extension.commands.getAll(),
   probeDesktop: probeDesktopConnection,
   resetMenuPosition: (menuUid: string) => request<MenuLayoutReset>({ type: MENU_LAYOUT_RESET, menuUid }),
   async openShortcutSettings(): Promise<void> {
     const kind = browserKind();
     if (kind === "firefox") {
       // Firefox blocks privileged about: URLs in tabs.create; use its dedicated API.
-      const commands = browser.commands as typeof browser.commands & {
+      const commands = extension.commands as typeof extension.commands & {
         openShortcutSettings(): Promise<void>;
       };
       await commands.openShortcutSettings();
       return;
     }
-    await browser.tabs.create({
+    await runtime.navigation.create({
       url: kind === "edge" ? "edge://extensions/shortcuts" : "chrome://extensions/shortcuts",
     });
   },
@@ -72,14 +72,14 @@ export const browserActions = {
     const receive = (message: unknown): void => {
       if (isDesktopStateChanged(message)) listener(message.state);
     };
-    browser.runtime.onMessage.addListener(receive);
-    return () => browser.runtime.onMessage.removeListener(receive);
+    runtime.messaging.onMessage.addListener(receive);
+    return () => runtime.messaging.onMessage.removeListener(receive);
   },
   async diagnosticsEnabled(): Promise<boolean> {
-    return Boolean((await browser.storage.local.get("debugLoggingEnabled")).debugLoggingEnabled);
+    return Boolean((await runtime.storage.local.get("debugLoggingEnabled")).debugLoggingEnabled);
   },
   async setDiagnosticsEnabled(enabled: boolean): Promise<void> {
-    await browser.storage.local.set({ debugLoggingEnabled: enabled });
+    await runtime.storage.local.set({ debugLoggingEnabled: enabled });
     await request<DebugLoggingSet>({ type: DEBUG_LOGGING_SET, enabled }).catch(() => {});
   },
   async debugInfo(): Promise<unknown> {

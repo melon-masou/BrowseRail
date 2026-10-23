@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import { activeUrlPatterns, type UrlRule } from "@browserail/protocol";
 
 export const ALL_WEBSITE_ORIGINS = ["http://*/*", "https://*/*"];
@@ -60,7 +60,7 @@ export function websiteOrigins(origins: string[] = []): string[] {
 }
 
 export async function loadWebsiteOrigins(): Promise<string[]> {
-  return websiteOrigins((await browser.permissions.getAll()).origins);
+  return websiteOrigins((await runtime.permissions.getAll()).origins);
 }
 
 export async function hasWebsitePermission(url: string | undefined): Promise<boolean> {
@@ -68,19 +68,19 @@ export async function hasWebsitePermission(url: string | undefined): Promise<boo
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-    return await browser.permissions.contains({ origins: [`${parsed.protocol}//${parsed.hostname}/*`] });
+    return await runtime.permissions.contains({ origins: [`${parsed.protocol}//${parsed.hostname}/*`] });
   } catch { return false; }
 }
 
 export async function incompleteRuleUids(rules: RuleSites[]): Promise<Set<string>> {
   const checks = await Promise.all(rules.map(async rule =>
-    rule.origins.length && !await browser.permissions.contains({ origins: rule.origins }) ? rule.uid : undefined,
+    rule.origins.length && !await runtime.permissions.contains({ origins: rule.origins }) ? rule.uid : undefined,
   ));
   return new Set(checks.filter((uid): uid is string => uid !== undefined));
 }
 
 export async function revokeWebsitePermissions(): Promise<void> {
   const origins = await loadWebsiteOrigins();
-  if (origins.length && !await browser.permissions.remove({ origins })) throw new Error("Website permissions could not be removed");
+  if (origins.length && !await runtime.permissions.remove({ origins })) throw new Error("Website permissions could not be removed");
   if ((await loadWebsiteOrigins()).length) throw new Error("Website permissions are still active");
 }

@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import { defaultBarSettings, defaultNativeBarSettings, normalizeBarConfigurations, normalizeMenuSpacing, isBarSettings, isNativeBarSettings, isMenuSpacing, type BarConfigurations, type BarConfiguration, type NativeBarConfiguration, type BarSettings, type NativeBarSettings, type MenuPlacement, type MenuSpacing } from "@browserail/protocol";
 import type { BrowserMenuPlacement } from "@browserail/protocol/content";
 import { defaultMenuPlacement, normalizeBrowserPlacement, type DisplayMode } from "./model";
@@ -8,7 +8,7 @@ import { storeMenuSpacing } from "../bookmarks/spacing";
 
 export const BAR_CONFIGURATIONS_STORAGE_KEY = "bar_configurations";
 export async function loadBarConfigurations(): Promise<BarConfigurations> {
-  const stored = await browser.storage.local.get(BAR_CONFIGURATIONS_STORAGE_KEY);
+  const stored = await runtime.storage.local.get(BAR_CONFIGURATIONS_STORAGE_KEY);
   return normalizeBarConfigurations(stored[BAR_CONFIGURATIONS_STORAGE_KEY]);
 }
 export function resolveBarConfiguration(configs: BarConfigurations, mode: "native", uid: string, index?: number): NativeBarConfiguration;
@@ -26,7 +26,7 @@ export async function saveBarLayout(uid: string, mode: DisplayMode, placement: M
     const { itemUid, bookmarkId } = menuEntryIdentity(key);
     return bookmarkId !== undefined && items.some(item => item.uid === itemUid && item.type === "flattenFolder");
   });
-  const [tree, rootPrefix] = hasSubitems ? await Promise.all([browser.bookmarks.getTree(), loadBookmarkRootPrefix()]) : [[], []];
+  const [tree, rootPrefix] = hasSubitems ? await Promise.all([runtime.bookmarks.getTree(), loadBookmarkRootPrefix()]) : [[], []];
   const storedSpacing = storeMenuSpacing(spacing, items, tree, rootPrefix);
   const current = await loadBarConfigurations();
   const updated = normalizeBarConfigurations({ [mode]: { [uid]: { ...settings, ...storedSpacing, placement } } });
@@ -34,7 +34,7 @@ export async function saveBarLayout(uid: string, mode: DisplayMode, placement: M
   if (mode === "native") current.native[uid] = updated.native[uid]!;
   else current.browser[uid] = updated.browser[uid]!;
   const clean = normalizeBarConfigurations(current);
-  await browser.storage.local.set({ [BAR_CONFIGURATIONS_STORAGE_KEY]: clean });
+  await runtime.storage.local.set({ [BAR_CONFIGURATIONS_STORAGE_KEY]: clean });
 }
 export async function importBarConfigurations(imported: BarConfigurations, menuUids: string[], replace = false): Promise<void> {
   const current: BarConfigurations = replace ? { native: {}, browser: {} } : await loadBarConfigurations();
@@ -42,7 +42,7 @@ export async function importBarConfigurations(imported: BarConfigurations, menuU
     if (imported.native[uid]) current.native[uid] = imported.native[uid]!;
     if (imported.browser[uid]) current.browser[uid] = imported.browser[uid]!;
   }
-  await browser.storage.local.set({ [BAR_CONFIGURATIONS_STORAGE_KEY]: current });
+  await runtime.storage.local.set({ [BAR_CONFIGURATIONS_STORAGE_KEY]: current });
 }
 export async function loadMenuPlacements(): Promise<Record<string, MenuPlacement>> {
   return Object.fromEntries(Object.entries((await loadBarConfigurations()).native).map(([uid, config]) => [uid, config.placement]));
@@ -62,5 +62,5 @@ async function resetBarPlacement(uid: string, mode: DisplayMode): Promise<void> 
     config.placement.boundPosition = defaultMenuPlacement().boundPosition;
     delete config.placement.freePosition;
   }
-  await browser.storage.local.set({ [BAR_CONFIGURATIONS_STORAGE_KEY]: current });
+  await runtime.storage.local.set({ [BAR_CONFIGURATIONS_STORAGE_KEY]: current });
 }

@@ -1,4 +1,4 @@
-import type browser from "webextension-polyfill";
+import type { BookmarkTreeNode } from "@browserail/runtime-adapter";
 import { t } from "@browserail/i18n";
 import {
   getFolderPath,
@@ -23,7 +23,7 @@ export interface BookmarkPickOptions {
   rootPrefix: readonly string[];
 }
 export interface BookmarkPickResult {
-  node: browser.Bookmarks.BookmarkTreeNode;
+  node: BookmarkTreeNode;
   rootPrefix: string[];
   relativePath: string[] | undefined;
   flattened: boolean;

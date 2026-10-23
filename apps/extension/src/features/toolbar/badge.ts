@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { extension } from "../../runtime";
 import { t } from "@browserail/i18n";
 import type { ExtensionConnectionState } from "../desktop/state-machine";
 
@@ -34,13 +34,13 @@ export function createToolbarBadge() {
           title = disabled ? t("action.iconTitleDisabled") : t("action.iconTitleEnabled");
           break;
       }
-      void browser.action.setBadgeText({ text: disabled ? "OFF" : "" });
+      void extension.action.setBadgeText({ text: disabled ? "OFF" : "" });
       if (disabled) {
         // Transparent background so only the two blue bars show, at the corner.
-        void browser.action.setBadgeTextColor?.({ color: "#2563eb" });
-        void browser.action.setBadgeBackgroundColor({ color: [0, 0, 0, 0] });
+        void extension.action.setBadgeTextColor?.({ color: "#2563eb" });
+        void extension.action.setBadgeBackgroundColor({ color: [0, 0, 0, 0] });
       }
-      void browser.action.setTitle({ title });
+      void extension.action.setTitle({ title });
     },
   };
 }

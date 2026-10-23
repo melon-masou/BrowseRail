@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import type { ItemIcon, LayoutEntry } from "@browserail/protocol";
 import { loadLucideCatalog, type IconCatalog } from "./lucide";
 import { loadPhosphorCatalog } from "./phosphor";
@@ -14,7 +14,7 @@ const tags = new Map<IconFamily, Promise<Record<string, readonly string[]>>>();
 export function loadIconTags(family: IconFamily): Promise<Record<string, readonly string[]>> {
   let loaded = tags.get(family);
   if (!loaded) {
-    loaded = fetch(browser.runtime.getURL(`icons/${family}/tags.json`)).then(async response => {
+    loaded = fetch(runtime.resourceUrl(`icons/${family}/tags.json`)).then(async response => {
       if (!response.ok) throw new Error(`Unable to load ${family} icon tags`);
       return await response.json() as Record<string, readonly string[]>;
     });

@@ -1,5 +1,5 @@
+import { runtime, extension } from "../../../runtime";
 import { createScope } from "../lifecycle";
-import browser from "webextension-polyfill";
 import { onLanguageChange, t } from "@browserail/i18n";
 import type { DisplayMode, UrlRule } from "../../../lib/config";
 import {
@@ -100,7 +100,7 @@ export function createSiteAuthorization(options: {
     const unsaved = options.hasUnsavedRules();
     const [origins, allGranted] = await Promise.all([
       loadWebsiteOrigins(),
-      browser.permissions.contains({ origins: ALL_WEBSITE_ORIGINS }),
+      runtime.permissions.contains({ origins: ALL_WEBSITE_ORIGINS }),
     ]);
     if (scope.signal.aborted || !active() || dialog.open) return;
     dialogOrigins = origins;
@@ -215,7 +215,7 @@ export function createSiteAuthorization(options: {
         confirm.disabled = cancel.disabled = close.disabled = true;
         authorize.disabled = revoke.disabled = true;
         const request = () =>
-          browser.permissions.request({ origins: chosen }).then((granted) => {
+          runtime.permissions.request({ origins: chosen }).then((granted) => {
             if (granted) dialog.close();
             else message.textContent = t("siteAuthorization.denied");
           });
@@ -293,11 +293,11 @@ export function createSiteAuthorization(options: {
       .catch(report);
     refreshSafely();
   };
-  browser.permissions.onAdded.addListener(permissionsChanged);
-  browser.permissions.onRemoved.addListener(permissionsChanged);
+  extension.permissionEvents.onAdded.addListener(permissionsChanged);
+  extension.permissionEvents.onRemoved.addListener(permissionsChanged);
   scope.add(onLanguageChange(render));
-  scope.add(() => browser.permissions.onAdded.removeListener(permissionsChanged));
-  scope.add(() => browser.permissions.onRemoved.removeListener(permissionsChanged));
+  scope.add(() => extension.permissionEvents.onAdded.removeListener(permissionsChanged));
+  scope.add(() => extension.permissionEvents.onRemoved.removeListener(permissionsChanged));
   return {
     destroy(): void {
       ++revision;

@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import type { TemporaryBookmark } from "@browserail/protocol";
 import { loadInstanceUid } from "./instance-identity";
 import { instanceLabelFromUid } from "./instance-label";
@@ -8,7 +8,7 @@ import { isRecord } from "../messaging";
 const STORAGE_KEY = "config";
 export async function loadConfig(): Promise<ExtensionConfig> {
   const [stored, instanceUid] = await Promise.all([
-    browser.storage.local.get(STORAGE_KEY),
+    runtime.storage.local.get(STORAGE_KEY),
     loadInstanceUid(),
   ]);
   return normalizeConfig(stored[STORAGE_KEY], instanceLabelFromUid(instanceUid));
@@ -17,7 +17,7 @@ export async function loadConfig(): Promise<ExtensionConfig> {
 export async function saveConfig(config: ExtensionConfig): Promise<void> {
   const instanceUid = await loadInstanceUid();
   const normalized = normalizeConfig(config, instanceLabelFromUid(instanceUid));
-  await browser.storage.local.set({ [STORAGE_KEY]: normalized });
+  await runtime.storage.local.set({ [STORAGE_KEY]: normalized });
 }
 
 export const DISPLAY_MODE_STORAGE_KEY = "display_mode";
@@ -25,28 +25,28 @@ export const BROWSER_COLLAPSED_STORAGE_KEY = "browser_menu_collapsed";
 export const BROWSER_EDITING_STORAGE_KEY = "browser_menu_editing";
 
 export async function loadBrowserEditing(): Promise<boolean> {
-  const stored = await browser.storage.local.get(BROWSER_EDITING_STORAGE_KEY);
+  const stored = await runtime.storage.local.get(BROWSER_EDITING_STORAGE_KEY);
   return stored[BROWSER_EDITING_STORAGE_KEY] === true;
 }
 
 export async function saveBrowserEditing(editing: boolean): Promise<void> {
-  await browser.storage.local.set({ [BROWSER_EDITING_STORAGE_KEY]: editing });
+  await runtime.storage.local.set({ [BROWSER_EDITING_STORAGE_KEY]: editing });
 }
 
 export async function loadDisplayMode(): Promise<DisplayMode> {
-  const stored = (await browser.storage.local.get(DISPLAY_MODE_STORAGE_KEY))[DISPLAY_MODE_STORAGE_KEY];
+  const stored = (await runtime.storage.local.get(DISPLAY_MODE_STORAGE_KEY))[DISPLAY_MODE_STORAGE_KEY];
   if (stored === "browser" || stored === "native") return stored;
   // The desktop app only exists for Windows. Some mobile Chromium builds lack or break getPlatformInfo.
-  const os = await Promise.resolve().then(() => browser.runtime.getPlatformInfo()).then(info => info.os, () => undefined);
+  const os = await Promise.resolve().then(() => runtime.platformInfo()).then(info => info.os, () => undefined);
   return os === "win" ? "native" : "browser";
 }
 
 export async function saveDisplayMode(mode: DisplayMode): Promise<void> {
-  await browser.storage.local.set({ [DISPLAY_MODE_STORAGE_KEY]: mode });
+  await runtime.storage.local.set({ [DISPLAY_MODE_STORAGE_KEY]: mode });
 }
 
 export async function loadBrowserCollapsed(): Promise<Record<string, boolean>> {
-  const stored = await browser.storage.local.get(BROWSER_COLLAPSED_STORAGE_KEY);
+  const stored = await runtime.storage.local.get(BROWSER_COLLAPSED_STORAGE_KEY);
   const raw = stored[BROWSER_COLLAPSED_STORAGE_KEY];
   if (!isRecord(raw)) return {};
   return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"));
@@ -55,7 +55,7 @@ export async function loadBrowserCollapsed(): Promise<Record<string, boolean>> {
 export async function toggleBrowserCollapsed(uid: string): Promise<void> {
   const current = await loadBrowserCollapsed();
   current[uid] = !current[uid];
-  await browser.storage.local.set({ [BROWSER_COLLAPSED_STORAGE_KEY]: current });
+  await runtime.storage.local.set({ [BROWSER_COLLAPSED_STORAGE_KEY]: current });
 }
 
 export const WIDGET_ENABLED_STORAGE_KEY = "widget_enabled";
@@ -63,16 +63,16 @@ export const WIDGET_ENABLED_STORAGE_KEY = "widget_enabled";
 export const SHORTCUTS_ENABLED_STORAGE_KEY = "shortcuts_enabled";
 
 export async function loadShortcutsEnabled(): Promise<boolean> {
-  const stored = await browser.storage.local.get(SHORTCUTS_ENABLED_STORAGE_KEY);
+  const stored = await runtime.storage.local.get(SHORTCUTS_ENABLED_STORAGE_KEY);
   return stored[SHORTCUTS_ENABLED_STORAGE_KEY] !== false;
 }
 
 export async function saveShortcutsEnabled(enabled: boolean): Promise<void> {
-  await browser.storage.local.set({ [SHORTCUTS_ENABLED_STORAGE_KEY]: enabled });
+  await runtime.storage.local.set({ [SHORTCUTS_ENABLED_STORAGE_KEY]: enabled });
 }
 
 export async function loadWidgetEnabled(): Promise<boolean> {
-  const stored = await browser.storage.local.get([WIDGET_ENABLED_STORAGE_KEY, "config"]);
+  const stored = await runtime.storage.local.get([WIDGET_ENABLED_STORAGE_KEY, "config"]);
   const raw = stored[WIDGET_ENABLED_STORAGE_KEY];
   if (typeof raw === "boolean") {
     return raw;
@@ -85,7 +85,7 @@ export async function loadWidgetEnabled(): Promise<boolean> {
 }
 
 export async function saveWidgetEnabled(enabled: boolean): Promise<void> {
-  await browser.storage.local.set({
+  await runtime.storage.local.set({
     [WIDGET_ENABLED_STORAGE_KEY]: enabled,
   });
 }
@@ -96,7 +96,7 @@ export const BOOKMARK_ROOT_PREFIX_KEY = "bookmark_root_prefix";
 export const DEFAULT_BOOKMARK_ROOT_PREFIX: string[] = [];
 
 export async function loadBookmarkRootPrefix(): Promise<string[]> {
-  const stored = await browser.storage.local.get(BOOKMARK_ROOT_PREFIX_KEY);
+  const stored = await runtime.storage.local.get(BOOKMARK_ROOT_PREFIX_KEY);
   const raw = stored[BOOKMARK_ROOT_PREFIX_KEY];
   if (Array.isArray(raw)) {
     return raw
@@ -108,7 +108,7 @@ export async function loadBookmarkRootPrefix(): Promise<string[]> {
 
 export async function saveBookmarkRootPrefix(prefix: string[]): Promise<void> {
   const segments = prefix.map((s) => s.trim()).filter(Boolean);
-  await browser.storage.local.set({ [BOOKMARK_ROOT_PREFIX_KEY]: segments });
+  await runtime.storage.local.set({ [BOOKMARK_ROOT_PREFIX_KEY]: segments });
 }
 
 export async function initBookmarkRootPrefix(): Promise<string[]> {
@@ -147,14 +147,14 @@ function normalizeDynamicValue(value: unknown): DynamicValue | undefined {
 
 export async function loadDynamicValue(uid: string): Promise<DynamicValue | undefined> {
   const key = DYNAMIC_VALUE_STORAGE_PREFIX + uid;
-  const stored = await browser.storage.local.get(key);
+  const stored = await runtime.storage.local.get(key);
   return normalizeDynamicValue(stored[key]);
 }
 
 export async function loadDynamicValues(uids?: readonly string[]): Promise<DynamicValuesMap> {
   const targets = uids ?? (await loadConfig()).dynamicBookmarks.map(bookmark => bookmark.uid);
   if (!targets.length) return {};
-  const stored = await browser.storage.local.get(targets.map(uid => DYNAMIC_VALUE_STORAGE_PREFIX + uid));
+  const stored = await runtime.storage.local.get(targets.map(uid => DYNAMIC_VALUE_STORAGE_PREFIX + uid));
   const result: DynamicValuesMap = {};
   for (const uid of targets) {
     const value = normalizeDynamicValue(stored[DYNAMIC_VALUE_STORAGE_PREFIX + uid]);
@@ -164,18 +164,18 @@ export async function loadDynamicValues(uids?: readonly string[]): Promise<Dynam
 }
 
 export function saveDynamicValue(uid: string, value: DynamicValue): Promise<void> {
-  return browser.storage.local.set({ [DYNAMIC_VALUE_STORAGE_PREFIX + uid]: value });
+  return runtime.storage.local.set({ [DYNAMIC_VALUE_STORAGE_PREFIX + uid]: value });
 }
 
 export function removeDynamicValues(uid: string): Promise<void> {
-  return browser.storage.local.remove(DYNAMIC_VALUE_STORAGE_PREFIX + uid);
+  return runtime.storage.local.remove(DYNAMIC_VALUE_STORAGE_PREFIX + uid);
 }
 
 const TEMPORARY_VALUES_STORAGE_KEY = "temporary_bookmark_values";
 const TEMPORARY_NOTES_STORAGE_KEY = "temporary_bookmark_notes";
 
 export async function loadTemporaryValues(): Promise<Record<string, string>> {
-  const stored = await browser.storage.local.get(TEMPORARY_VALUES_STORAGE_KEY);
+  const stored = await runtime.storage.local.get(TEMPORARY_VALUES_STORAGE_KEY);
   const raw = stored[TEMPORARY_VALUES_STORAGE_KEY];
   if (!isRecord(raw)) return {};
   return Object.fromEntries(
@@ -184,7 +184,7 @@ export async function loadTemporaryValues(): Promise<Record<string, string>> {
 }
 
 export async function loadTemporaryNotes(): Promise<Record<string, string>> {
-  const stored = await browser.storage.local.get(TEMPORARY_NOTES_STORAGE_KEY);
+  const stored = await runtime.storage.local.get(TEMPORARY_NOTES_STORAGE_KEY);
   const raw = stored[TEMPORARY_NOTES_STORAGE_KEY];
   if (!isRecord(raw)) return {};
   return Object.fromEntries(
@@ -201,7 +201,7 @@ export async function saveTemporaryValue(uid: string, url: string, note = ""): P
   } else {
     delete notes[uid];
   }
-  await browser.storage.local.set({
+  await runtime.storage.local.set({
     [TEMPORARY_VALUES_STORAGE_KEY]: values,
     [TEMPORARY_NOTES_STORAGE_KEY]: notes,
   });
@@ -212,7 +212,7 @@ export async function clearTemporaryValue(uid: string): Promise<void> {
   const notes = await loadTemporaryNotes();
   delete values[uid];
   delete notes[uid];
-  await browser.storage.local.set({ [TEMPORARY_VALUES_STORAGE_KEY]: values, [TEMPORARY_NOTES_STORAGE_KEY]: notes });
+  await runtime.storage.local.set({ [TEMPORARY_VALUES_STORAGE_KEY]: values, [TEMPORARY_NOTES_STORAGE_KEY]: notes });
 }
 
 export async function pruneTemporaryValues(definitions: TemporaryBookmark[]): Promise<void> {
@@ -222,7 +222,7 @@ export async function pruneTemporaryValues(definitions: TemporaryBookmark[]): Pr
   const retainedValues = Object.fromEntries(Object.entries(values).filter(([uid]) => retainedUids.has(uid)));
   const retainedNotes = Object.fromEntries(Object.entries(notes).filter(([uid]) => retainedUids.has(uid)));
   if (Object.keys(retainedValues).length !== Object.keys(values).length || Object.keys(retainedNotes).length !== Object.keys(notes).length) {
-    await browser.storage.local.set({
+    await runtime.storage.local.set({
       [TEMPORARY_VALUES_STORAGE_KEY]: retainedValues,
       [TEMPORARY_NOTES_STORAGE_KEY]: retainedNotes,
     });

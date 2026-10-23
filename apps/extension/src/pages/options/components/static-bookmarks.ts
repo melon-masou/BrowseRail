@@ -1,4 +1,5 @@
-import browser from "webextension-polyfill";
+import type { StorageChange } from "@browserail/runtime-adapter";
+import { runtime } from "../../../runtime";
 import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData } from "../../../lib/config/external-data";
 import { createScope } from "../lifecycle";
 import { staticBookmarkReferenceErrors, variableReference } from "../../../lib/bookmarks/variables";
@@ -52,12 +53,12 @@ export function createStaticBookmarksList(
       if (!scope.signal.aborted && revision === referenceRevision) showStatus(String(error));
     }
   }
-  const externalChanged = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {
+  const externalChanged = (changes: Record<string, StorageChange>, area: string): void => {
     if (area === "local" && Object.keys(changes).some(key => key.startsWith(EXTERNAL_DATA_STORAGE_PREFIX)))
       void refreshExternalKeys();
   };
-  browser.storage.onChanged.addListener(externalChanged);
-  scope.add(() => browser.storage.onChanged.removeListener(externalChanged));
+  runtime.storage.onChanged.addListener(externalChanged);
+  scope.add(() => runtime.storage.onChanged.removeListener(externalChanged));
   scope.add(state.subscribe(["variables", "bookmarks"], refreshReferenceWarnings));
   void refreshExternalKeys();
 

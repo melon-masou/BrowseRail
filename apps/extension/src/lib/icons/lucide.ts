@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 
 type LucideNode = [tag: string, attributes: Record<string, string>];
 
@@ -19,7 +19,7 @@ function escapeAttribute(value: string): string {
 }
 
 export function loadLucideCatalog(): Promise<IconCatalog> {
-  return catalog ??= fetch(browser.runtime.getURL("icons/lucide/icons.json")).then(async response => {
+  return catalog ??= fetch(runtime.resourceUrl("icons/lucide/icons.json")).then(async response => {
     if (!response.ok) throw new Error("Unable to load Lucide icons");
     const data = await response.json() as LucideData;
     const urls = new Map<string, string>();

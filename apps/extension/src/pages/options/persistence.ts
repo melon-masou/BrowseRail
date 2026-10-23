@@ -1,4 +1,5 @@
-import browser from "webextension-polyfill";
+import type { StorageChange } from "@browserail/runtime-adapter";
+import { runtime } from "../../runtime";
 import { t } from "@browserail/i18n";
 import {
   normalizeItemIcon,
@@ -55,7 +56,7 @@ export async function loadOptions() {
   const [config, enabled, tree, rootPrefix, displayMode, externalAuthorization] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
-    bookmarksAvailable ? browser.bookmarks.getTree() : [],
+    bookmarksAvailable ? runtime.bookmarks.getTree() : [],
     loadBookmarkRootPrefix(),
     loadDisplayMode(),
     loadExternalAuthorization(),
@@ -534,15 +535,15 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
     state.importSettings(imported, parsed.userVariables !== undefined || replacing && importsBookmarks);
   }
 
-  const changed = (changes: Record<string, browser.Storage.StorageChange>, area: string): void => {
+  const changed = (changes: Record<string, StorageChange>, area: string): void => {
     if (area !== "local" || !changes.config?.newValue) return;
     state.receiveStoredConfig(
       normalizeConfig(changes.config.newValue, state.instance.label),
       normalizeConfig(changes.config.oldValue, state.instance.label),
     );
   };
-  browser.storage.onChanged.addListener(changed);
-  scope.add(() => browser.storage.onChanged.removeListener(changed));
+  runtime.storage.onChanged.addListener(changed);
+  scope.add(() => runtime.storage.onChanged.removeListener(changed));
   return {
     saveInstance,
     saveSettings,

@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import { t } from "@browserail/i18n";
 import { ALL_URLS_RULE_UID, DEFAULT_EXTERNAL_EVENT_NAME, matchesUrlRule, type ExternalAction, type UrlRule } from "@browserail/protocol";
 import { loadExternalAuthorization } from "../../lib/config/external-authorization-store";
@@ -14,14 +14,14 @@ import { requestTab } from "../../lib/messaging";
 export async function runExternalAction(action: ExternalAction, urlRules: readonly UrlRule[], windowUid: string): Promise<void> {
   const windowId = Number(windowUid);
   if (!Number.isInteger(windowId)) return;
-  const [tab] = await browser.tabs.query({ active: true, windowId });
+  const [tab] = await runtime.navigation.query({ active: true, windowId });
   if (action.urlRuleUid !== ALL_URLS_RULE_UID) {
     const rule = urlRules.find(value => value.uid === action.urlRuleUid);
     if (!rule || !tab?.url || !matchesUrlRule(tab.url, rule)) throw new Error(t("externalAction.ruleMismatch"));
   }
   if (action.target === "extension") {
     // Saving validates the JSON, so a parse failure here means the stored config was edited by hand.
-    await browser.runtime.sendMessage(action.extensionId ?? "", action.data ? JSON.parse(action.data) as unknown : null);
+    await runtime.messaging.sendToExtension(action.extensionId ?? "", action.data ? JSON.parse(action.data) as unknown : null);
     return;
   }
   const authorization = await loadExternalAuthorization();

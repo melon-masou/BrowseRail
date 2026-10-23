@@ -1,0 +1,17 @@
+{
+  "name": "@browserail/runtime-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./extension": "./src/extension.ts"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/webextension-polyfill": "^0.12.6",
+    "typescript": "^7.0.2"
+  }
+}

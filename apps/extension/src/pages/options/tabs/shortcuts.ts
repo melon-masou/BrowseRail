@@ -1,3 +1,4 @@
+import { extension } from "../../../runtime";
 import {
   type TabMode,
   type CustomBookmarkType,
@@ -5,7 +6,6 @@ import {
   isCustomBookmarkType,
   isShortcutActionType,
 } from "@browserail/protocol";
-import browser from "webextension-polyfill";
 import { type StoredShortcut, type StoredNativeShortcut } from "../../../lib/config";
 import { type BookmarkNode, combineRootAndItemPath, findBookmarkNodeByPath } from "../../../lib/bookmarks";
 import { t } from "@browserail/i18n";
@@ -72,7 +72,7 @@ export function mountShortcutsTab(
 
   async function refreshBrowserCommands(): Promise<void> {
     try {
-      if (browser.commands && typeof browser.commands.getAll === "function") {
+      if (extension.commands && typeof extension.commands.getAll === "function") {
         const commands = await browserActions.commands();
         if (scope.signal.aborted) return;
         browserCommandsMap = {};

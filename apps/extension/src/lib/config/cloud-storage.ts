@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 import { isExportedSettingsData, type ExportedSettingsData } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 
@@ -16,12 +16,13 @@ interface Manifest {
 
 
 export function cloudStorageAvailable(): boolean {
-  return Boolean(browser.storage.sync);
+  return runtime.capabilities.browserSync;
 }
 
 function storage() {
-  if (!cloudStorageAvailable()) throw new Error(t("cloud.unavailable"));
-  return browser.storage.sync;
+  const area = runtime.storage.sync;
+  if (!area) throw new Error(t("cloud.unavailable"));
+  return area;
 }
 
 function split(value: string): string[] {

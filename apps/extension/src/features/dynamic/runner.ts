@@ -1,22 +1,15 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
+import { offscreenService } from "@browserail/runtime-adapter/extension";
 import { createRewriteHost } from "./rewrite-host";
 import { applyRewrite, type RewriteResult } from "../../lib/rewrite/rewrite";
 import { REWRITE_RUN, type RewriteRun } from "./messages";
 import { request } from "../../lib/messaging";
 
-interface ChromeHost {
-  offscreen?: {
-    hasDocument?(): Promise<boolean>;
-    closeDocument?(): Promise<void>;
-    createDocument(options: { url: string; reasons: string[]; justification: string }): Promise<void>;
-  };
-}
-const chromeApi = (globalThis as unknown as { chrome?: ChromeHost }).chrome;
 let offscreenReady: Promise<void> | undefined;
 let rewriteHost: ReturnType<typeof createRewriteHost> | undefined;
 
 async function ensureOffscreen(): Promise<void> {
-  const offscreen = chromeApi?.offscreen;
+  const offscreen = offscreenService();
   if (!offscreen) throw new Error("Dynamic bookmark host unavailable");
   if (await offscreen.hasDocument?.()) return;
   offscreenReady ??= offscreen.createDocument({
@@ -31,10 +24,10 @@ async function ensureOffscreen(): Promise<void> {
 export async function runRewrite(source: string, url: string): Promise<RewriteResult> {
   try {
     if (typeof document !== "undefined") {
-      rewriteHost ??= createRewriteHost(browser.runtime.getURL("rewrite-worker.js"));
+      rewriteHost ??= createRewriteHost(runtime.resourceUrl("rewrite-worker.js"));
       return await rewriteHost.run(source, url);
     }
-    if (typeof chromeApi?.offscreen?.createDocument !== "function") return applyRewrite(source, url);
+    if (typeof offscreenService()?.createDocument !== "function") return applyRewrite(source, url);
     await ensureOffscreen();
     // No reply arrives when the offscreen page has no listener yet.
     const result: RewriteResult | undefined = await request<RewriteRun>({ type: REWRITE_RUN, source, url });

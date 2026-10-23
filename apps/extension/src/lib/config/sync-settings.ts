@@ -1,11 +1,11 @@
-import browser from "webextension-polyfill";
+import { runtime } from "../../runtime";
 
 export interface WebDavSettings { url: string; username: string; password: string }
 export interface SyncSettings { provider: "chrome" | "webdav"; webdav: WebDavSettings }
 const KEY = "sync_settings";
 
 export async function loadSyncSettings(): Promise<SyncSettings> {
-  const stored = (await browser.storage.local.get(KEY))[KEY] as Partial<SyncSettings> | undefined;
+  const stored = (await runtime.storage.local.get(KEY))[KEY] as Partial<SyncSettings> | undefined;
   return {
     provider: stored?.provider === "webdav" ? "webdav" : "chrome",
     webdav: {
@@ -17,5 +17,5 @@ export async function loadSyncSettings(): Promise<SyncSettings> {
 }
 
 export async function saveSyncSettings(settings: SyncSettings): Promise<void> {
-  await browser.storage.local.set({ [KEY]: settings });
+  await runtime.storage.local.set({ [KEY]: settings });
 }

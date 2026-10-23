@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { runtime, extension } from "../../runtime";
 import {
   actionUid, customBookmarkUid, isCustomBookmarkType, isShortcutActionType, type ShortcutTarget,
 } from "@browserail/protocol";
@@ -34,7 +34,7 @@ export function createShortcuts(host: ShortcutsHost) {
       },
     });
     if (mode === "browser") {
-      const [tab] = await browser.tabs.query({ active: true, windowId: Number(windowUid) });
+      const [tab] = await runtime.navigation.query({ active: true, windowId: Number(windowUid) });
       if (tab?.id !== undefined) await requestBrowserMenuRefresh(tab.id);
     }
   }
@@ -54,21 +54,21 @@ export function createShortcuts(host: ShortcutsHost) {
     if (target.path) {
       const rootPrefix = await loadBookmarkRootPrefix();
       const effectivePath = combineRootAndItemPath(rootPrefix, target.path);
-      const tree = (await browser.bookmarks.getTree()) as BookmarkNode[];
+      const tree = (await runtime.bookmarks.getTree()) as BookmarkNode[];
       const node = findBookmarkNodeByPath(tree, effectivePath, target.url);
       if (node?.url) {
-        await navigateToUrl(browser, windowUid, node.url, tabMode);
+        await navigateToUrl({ bookmarks: runtime.bookmarks, tabs: runtime.navigation }, windowUid, node.url, tabMode);
       }
     } else if (target.url) {
-      await navigateToUrl(browser, windowUid, target.url, tabMode);
+      await navigateToUrl({ bookmarks: runtime.bookmarks, tabs: runtime.navigation }, windowUid, target.url, tabMode);
     }
   }
 
-  browser.commands.onCommand.addListener(async (command) => {
+  extension.commands.onCommand.addListener(async (command) => {
     const config = await loadConfig();
     const target = config.shortcuts.find((s) => s.slot === command);
     if (!target || !await canExecuteShortcut(target.type)) return;
-    const currentWindow = await browser.windows.getCurrent();
+    const currentWindow = await extension.windows.getCurrent();
     if (!currentWindow?.id) return;
     await runTarget(target, config, String(currentWindow.id));
   });
@@ -80,10 +80,10 @@ export function createShortcuts(host: ShortcutsHost) {
       const set = config.nativeShortcutSets.find(set => set.shortcuts.some(shortcut => shortcut.id === shortcutId));
       const target = set?.shortcuts.find(shortcut => shortcut.id === shortcutId);
       if (!set || !target || !await canExecuteShortcut(target.type)) return;
-      const targetWindow = targetWindowUid ?? host.focusedWindowUid() ?? (await browser.windows.getLastFocused())?.id;
+      const targetWindow = targetWindowUid ?? host.focusedWindowUid() ?? (await extension.windows.getLastFocused())?.id;
       if (!targetWindow) return;
       if (set.urlRuleUids?.length) {
-        const [tab] = await browser.tabs.query({ active: true, windowId: Number(targetWindow) });
+        const [tab] = await runtime.navigation.query({ active: true, windowId: Number(targetWindow) });
         if (!nativeShortcutSetMatches(set, config.urlRules, tab?.url)) return;
       }
       await runTarget(target, config, String(targetWindow));

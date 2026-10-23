@@ -1,5 +1,5 @@
+import { runtime, extension } from "../../runtime";
 import type { BrowserKind, BrowserWindowSnapshot } from "@browserail/protocol";
-import browser from "webextension-polyfill";
 
 export type BrowserWindowCandidate = BrowserWindowSnapshot & {
   focused: boolean;
@@ -10,7 +10,7 @@ export type BrowserWindowCandidate = BrowserWindowSnapshot & {
 // returned value is a plain string with a "chrome" fallback; it is never used
 // for matching, so callers must not switch on an enumerated set.
 export function browserKind(): BrowserKind {
-  if (browser.runtime.getURL("").startsWith("moz-extension:")) {
+  if (runtime.resourceUrl("").startsWith("moz-extension:")) {
     return "firefox";
   }
 
@@ -35,8 +35,8 @@ export function browserKind(): BrowserKind {
 
 export async function listBrowserWindows(): Promise<BrowserWindowCandidate[]> {
   const [windows, activeTabs] = await Promise.all([
-    browser.windows.getAll({ windowTypes: ["normal"], populate: true }),
-    browser.tabs.query({ active: true }).catch(() => []),
+    extension.windows.getAll({ windowTypes: ["normal"], populate: true }),
+    runtime.navigation.query({ active: true }).catch(() => []),
   ]);
 
   const activeTabMap = new Map<number, string>();

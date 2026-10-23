@@ -1,4 +1,4 @@
-import browser from "webextension-polyfill";
+import { extension } from "../../runtime";
 import { isNativeMessage, PROTOCOL_VERSION, type BrowserInstance, type ExtensionMessage } from "@browserail/protocol";
 import { saveBarLayout } from "../../lib/config";
 import { loadInstanceUid } from "../../lib/config/instance-identity";
@@ -234,7 +234,7 @@ export function createDesktopConnection(host: DesktopConnectionHost) {
         return;
       }
       try {
-        const window = await browser.windows.get(Number(value.windowUid));
+        const window = await extension.windows.get(Number(value.windowUid));
         log.log("Pairing", `browser.windows.get(${value.windowUid}) result: focused=${window.focused}, state=${window.state}, type=${window.type}`);
         if (window.focused === true) {
           log.log("Pairing", `confirming window pairing for req=${value.requestUid}, win=${value.windowUid}`);

@@ -1,4 +1,5 @@
-import browser, { type Runtime } from "webextension-polyfill";
+import type { MessageSender } from "@browserail/runtime-adapter";
+import { runtime, extension } from "../../runtime";
 import { matchesUrlRule } from "@browserail/protocol";
 import { loadConfig, loadDynamicValue, saveDynamicValue } from "../../lib/config";
 import { loadExternalAuthorization } from "../../lib/config/external-authorization-store";
@@ -15,8 +16,8 @@ import {
 import type { ReplyOf } from "@browserail/protocol/message";
 import { messageType } from "../../lib/messaging";
 
-function userscriptSource(sender: Runtime.MessageSender, token: string): ExternalSource | undefined {
-  if (sender.id !== browser.runtime.id || typeof sender.tab?.id !== "number" || sender.frameId !== 0 || typeof sender.url !== "string") return;
+function userscriptSource(sender: MessageSender, token: string): ExternalSource | undefined {
+  if (sender.id !== runtime.messaging.id || typeof sender.tab?.id !== "number" || sender.frameId !== 0 || typeof sender.url !== "string") return;
   return { kind: "userscript", token, url: sender.url };
 }
 
@@ -58,11 +59,11 @@ export function initExternalUpdates(requestSync: () => void): void {
     },
   });
 
-  browser.runtime.onMessageExternal.addListener((message: unknown, sender: Runtime.MessageSender) => {
+  extension.runtime.onMessageExternal.addListener((message: unknown, sender: MessageSender) => {
     if (!sender.id) return Promise.resolve({ ok: false, error: "unauthorized", errmsg: "API access is not authorized." } satisfies ExternalUpdateResult);
     return handler({ kind: "extension", id: sender.id }, message);
   });
-  browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
+  runtime.messaging.onMessage.addListener((message: unknown, sender: MessageSender) => {
     if (messageType(message) === EXTERNAL_RECEIVER_CONFIG) {
       const source = userscriptSource(sender, "");
       return (async () => {
@@ -86,16 +87,16 @@ export function initExternalUpdates(requestSync: () => void): void {
   };
   // Bridges cannot read extension storage, so open pages are told to fetch the token again.
   const refreshBridges = async (): Promise<void> => {
-    for (const tab of await browser.tabs.query({})) {
-      if (tab.id !== undefined) void browser.tabs.sendMessage(tab.id, { type: EXTERNAL_RECEIVER_REFRESH }, { frameId: 0 }).catch(() => {});
+    for (const tab of await runtime.navigation.query({})) {
+      if (tab.id !== undefined) void runtime.messaging.sendToTab(tab.id, { type: EXTERNAL_RECEIVER_REFRESH }, { frameId: 0 }).catch(() => {});
     }
   };
-  browser.storage.onChanged.addListener((changes, area) => {
+  runtime.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) return;
     reconcile();
     void refreshBridges().catch(error => console.error("BrowseRail external updates:", error));
   });
-  browser.permissions.onAdded.addListener(reconcile);
-  browser.permissions.onRemoved.addListener(reconcile);
+  extension.permissionEvents.onAdded.addListener(reconcile);
+  extension.permissionEvents.onRemoved.addListener(reconcile);
   reconcile();
 }

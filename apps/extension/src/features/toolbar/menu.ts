@@ -1,4 +1,5 @@
-import browser, { type Runtime } from "webextension-polyfill";
+import type { MessageSender } from "@browserail/runtime-adapter";
+import { runtime, extension } from "../../runtime";
 import { onLanguageChange, t } from "@browserail/i18n";
 import {
   BROWSER_EDITING_STORAGE_KEY, loadBrowserEditing, loadDisplayMode, loadWidgetEnabled,
@@ -21,26 +22,26 @@ const OPTIONS_MENU_ID = "browserail-open-options";
 export function createBrowserEditingMenu(host: { setNativeEditing(editing: boolean): void }) {
   let nativeEditing: boolean | undefined;
   let contextMenuAvailable = true;
-  const ready = Promise.resolve().then(() => browser.contextMenus.removeAll()).then(() => new Promise<void>((resolve, reject) => {
-    browser.contextMenus.create({
+  const ready = Promise.resolve().then(() => extension.contextMenus.removeAll()).then(() => new Promise<void>((resolve, reject) => {
+    extension.contextMenus.create({
       id: EDIT_MENU_ID, type: "checkbox", title: t("injection.editMenus"), contexts: ["action"],
       checked: false, enabled: false,
     }, () => {
-      const error = browser.runtime.lastError;
+      const error = extension.runtime.lastError;
       if (error) reject(new Error(error.message)); else resolve();
     });
   })).then(() => new Promise<void>((resolve, reject) => {
-    browser.contextMenus.create({
+    extension.contextMenus.create({
       id: ADD_STATIC_MENU_ID, title: t("static.addCurrentPage"), contexts: ["action"],
     }, () => {
-      const error = browser.runtime.lastError;
+      const error = extension.runtime.lastError;
       if (error) reject(new Error(error.message)); else resolve();
     });
   })).then(() => new Promise<void>((resolve, reject) => {
-    browser.contextMenus.create({
+    extension.contextMenus.create({
       id: OPTIONS_MENU_ID, title: t("action.openOptions"), contexts: ["action"],
     }, () => {
-      const error = browser.runtime.lastError;
+      const error = extension.runtime.lastError;
       if (error) reject(new Error(error.message)); else resolve();
     });
   })).catch(error => {
@@ -58,14 +59,14 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
   }
   async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
     const state = await stateFor(mode, enabled);
-    await browser.runtime.sendMessage({ type: EDITING_STATE_CHANGED, ...state } satisfies EditingStateChanged).catch(() => {});
+    await runtime.messaging.send({ type: EDITING_STATE_CHANGED, ...state } satisfies EditingStateChanged).catch(() => {});
     await ready;
     if (!contextMenuAvailable) return;
-    await browser.contextMenus.update(EDIT_MENU_ID, {
+    await extension.contextMenus.update(EDIT_MENU_ID, {
       title: t("injection.editMenus"), enabled: state.enabled, checked: state.editing,
     });
-    await browser.contextMenus.update(ADD_STATIC_MENU_ID, { title: t("static.addCurrentPage") });
-    await browser.contextMenus.update(OPTIONS_MENU_ID, { title: t("action.openOptions") });
+    await extension.contextMenus.update(ADD_STATIC_MENU_ID, { title: t("static.addCurrentPage") });
+    await extension.contextMenus.update(OPTIONS_MENU_ID, { title: t("action.openOptions") });
   }
   const refresh = async (): Promise<void> => {
     const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
@@ -80,13 +81,13 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
     }
     await saveBrowserEditing(editing);
     await refresh();
-    const tabs = tabId === undefined ? await browser.tabs.query({}) : [{ id: tabId }];
+    const tabs = tabId === undefined ? await runtime.navigation.query({}) : [{ id: tabId }];
     // Mobile browsers freeze background tabs, which then answer only once resumed; the toggle must not wait for them.
     for (const tab of tabs) if (tab.id !== undefined) void requestBrowserMenuRefresh(tab.id);
   }
-  browser.contextMenus?.onClicked?.addListener((info, tab) => {
+  extension.contextMenus?.onClicked?.addListener((info, tab) => {
     if (info.menuItemId === OPTIONS_MENU_ID) {
-      void browser.runtime.openOptionsPage().catch(error => console.error("BrowseRail options:", error));
+      void extension.runtime.openOptionsPage().catch(error => console.error("BrowseRail options:", error));
       return;
     }
     if (info.menuItemId === ADD_STATIC_MENU_ID) {
@@ -102,9 +103,9 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
       await refresh();
     });
   });
-  browser.runtime.onMessage.addListener((message: unknown, sender: Runtime.MessageSender) => {
+  runtime.messaging.onMessage.addListener((message: unknown, sender: MessageSender) => {
     if (isEditingRequest(message)) {
-      if (sender.id !== browser.runtime.id || sender.url?.split(/[?#]/)[0] !== browser.runtime.getURL("options.html")) return undefined;
+      if (sender.id !== runtime.messaging.id || sender.url?.split(/[?#]/)[0] !== runtime.resourceUrl("options.html")) return undefined;
       return dispatch<EditingRequest>({
         [EDITING_STATE_REQUEST]: () => getState(),
         [EDITING_SET]: ({ editing }) => setEditing(editing).then(getState),
@@ -116,7 +117,7 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
         .then((): CaptureResult => ({ saved: true }), (error): CaptureResult => ({ error: String(error) })),
     }, message);
   });
-  browser.storage.onChanged.addListener((changes, area) => {
+  runtime.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes[BROWSER_EDITING_STORAGE_KEY]) {
       void refresh().catch(error => console.error("BrowseRail editing:", error));
     }
@@ -131,10 +132,10 @@ export function createBrowserEditingMenu(host: { setNativeEditing(editing: boole
   };
 }
 
-async function saveStaticConfirmed({ name, url, tags }: StaticSaveConfirmed, sender: Runtime.MessageSender): Promise<void> {
+async function saveStaticConfirmed({ name, url, tags }: StaticSaveConfirmed, sender: MessageSender): Promise<void> {
   const source = staticConfirmationContext(sender);
   if (!url.trim()) throw new Error("Invalid static bookmark");
-  const tab = await browser.tabs.get(source.sourceTabId);
+  const tab = await runtime.navigation.get(source.sourceTabId);
   if (tab.windowId !== source.sourceWindowId) throw new Error("Source window is unavailable");
   const config = await loadConfig();
   const selectedTags = normalizeStaticBookmarkTags(tags);

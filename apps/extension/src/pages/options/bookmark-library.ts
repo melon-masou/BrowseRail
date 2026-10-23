@@ -1,4 +1,5 @@
-import browser from "webextension-polyfill";
+import type { BookmarkTreeNode, CreateBookmark } from "@browserail/runtime-adapter";
+import { runtime } from "../../runtime";
 import { isCustomBookmarkType } from "@browserail/protocol";
 import type { StoredMenuItem } from "../../lib/config";
 import type { ReadonlyData } from "./state";
@@ -13,15 +14,15 @@ import {
   type BookmarkNode,
 } from "../../lib/bookmarks";
 export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
-  let tree: browser.Bookmarks.BookmarkTreeNode[] = [];
+  let tree: BookmarkTreeNode[] = [];
   let available = false;
-  function getRootNode(): browser.Bookmarks.BookmarkTreeNode | undefined {
+  function getRootNode(): BookmarkTreeNode | undefined {
     const segments = getRootPrefix()
       .map((s) => s.trim())
       .filter(Boolean);
     if (segments.length === 0) return undefined;
     return findBookmarkNodeByPath(tree as BookmarkNode[], segments) as
-      browser.Bookmarks.BookmarkTreeNode | undefined;
+      BookmarkTreeNode | undefined;
   }
 
   function formatRootPrefixDisplay(segments: string[]): string {
@@ -34,8 +35,8 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
 
   function findBookmarkNode(
     id: string,
-    nodes: browser.Bookmarks.BookmarkTreeNode[],
-  ): browser.Bookmarks.BookmarkTreeNode | undefined {
+    nodes: BookmarkTreeNode[],
+  ): BookmarkTreeNode | undefined {
     for (const node of nodes) {
       if (node.id === id) return node;
       if (node.children) {
@@ -48,8 +49,8 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
 
   function getItemNode(
     item: ReadonlyData<StoredMenuItem>,
-  ): browser.Bookmarks.BookmarkTreeNode | undefined {
-    return getItemResolution(item).node as browser.Bookmarks.BookmarkTreeNode | undefined;
+  ): BookmarkTreeNode | undefined {
+    return getItemResolution(item).node as BookmarkTreeNode | undefined;
   }
 
   function getItemResolution(item: ReadonlyData<StoredMenuItem>) {
@@ -65,7 +66,7 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
 
   function enrichMenuItems(
     items: StoredMenuItem[],
-    nodes: browser.Bookmarks.BookmarkTreeNode[],
+    nodes: BookmarkTreeNode[],
   ): void {
     if (nodes.length === 0) return;
     for (const item of items) {
@@ -109,7 +110,7 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
   async function refreshBookmarkTree(): Promise<void> {
     if (!available) return;
     try {
-      tree = await browser.bookmarks.getTree();
+      tree = await runtime.bookmarks.getTree();
     } catch {
       // Keep the previous cache if the read fails.
     }
@@ -124,14 +125,14 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
     get available() {
       return available;
     },
-    initialize(value: browser.Bookmarks.BookmarkTreeNode[], bookmarksAvailable: boolean): void {
+    initialize(value: BookmarkTreeNode[], bookmarksAvailable: boolean): void {
       tree = value;
       available = bookmarksAvailable;
     },
     refresh: refreshBookmarkTree,
-    async createBookmark(details: browser.Bookmarks.CreateDetails): Promise<void> {
-      await browser.bookmarks.create(details);
-      tree = await browser.bookmarks.getTree();
+    async createBookmark(details: CreateBookmark): Promise<void> {
+      await runtime.bookmarks.create(details);
+      tree = await runtime.bookmarks.getTree();
     },
     root: getRootNode,
     formatRoot: formatRootPrefixDisplay,
