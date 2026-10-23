@@ -1,0 +1,34 @@
+{
+  "name": "@browserail/browserail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./settings": "./src/pages/options/page.ts",
+    "./settings-template": "./src/pages/options/index.html",
+    "./settings.css": "./src/pages/options/styles.css",
+    "./*": "./src/*.ts",
+    "./confirmation": "./src/pages/bookmark-confirm/page.ts",
+    "./extension": "./src/extension/index.ts"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@browserail/i18n": "workspace:*",
+    "@browserail/menu-ui": "workspace:*",
+    "@browserail/protocol": "workspace:*",
+    "@browserail/runtime-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "happy-dom": "^20.14.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0",
+    "webextension-polyfill": "^0.12.0",
+    "@types/webextension-polyfill": "^0.12.6"
+  }
+}

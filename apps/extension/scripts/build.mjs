@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,28 +26,33 @@ const define = {
   __BROWSERAIL_RELEASE_VERSION__: JSON.stringify(releaseVersion),
 };
 
+const settingsTemplate = await readFile(packageEntry("@browserail/browserail/settings-template"), "utf8");
+
 await build({
   configFile: false,
-  root,
+  root: resolve(root, "src"),
   define,
+  plugins: [{
+    name: "browserail-settings",
+    transformIndexHtml: {
+      order: "pre",
+      handler(html, context) {
+        if (resolve(context.filename) !== resolve(root, "src/options.html")) return;
+        return settingsTemplate.replace("</body>", `${html}</body>`);
+      },
+    },
+  }],
   build: {
     emptyOutDir: false,
     outDir,
     rollupOptions: {
       input: {
-        options: resolve(root, "src/pages/options/index.html"),
-        temporaryConfirm: resolve(root, "src/pages/bookmark-confirm/index.html"),
+        options: resolve(root, "src/options.html"),
+        temporaryConfirm: resolve(root, "src/temporary-confirm.html"),
       },
     },
   },
 });
-
-// Keep the extension's page URLs independent of the source directory layout.
-await rename(resolve(outDir, "src/pages/options/index.html"), resolve(outDir, "options.html"));
-await rename(resolve(outDir, "src/pages/bookmark-confirm/index.html"), resolve(outDir, "temporary-confirm.html"));
-for (const directory of ["src/pages/options", "src/pages/bookmark-confirm", "src/pages", "src"]) {
-  await rmdir(resolve(outDir, directory));
-}
 
 await build({
   configFile: false,
@@ -55,7 +60,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/background/index.ts"),
+      entry: resolve(root, "src/background.ts"),
       fileName: () => "background.js",
       formats: ["iife"],
       name: "BrowseRailBackground",
@@ -114,7 +119,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/background/offscreen.ts"),
+      entry: packageEntry("@browserail/browserail/extension/background/offscreen"),
       fileName: () => "offscreen.js",
       formats: ["iife"],
       name: "BrowseRailOffscreen",
@@ -128,7 +133,7 @@ await build({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, "src/background/rewrite-worker.ts"),
+      entry: packageEntry("@browserail/browserail/extension/background/rewrite-worker"),
       fileName: () => "rewrite-worker.js",
       formats: ["iife"],
       name: "BrowseRailRewrite",
@@ -162,7 +167,7 @@ if (target === "chrome") {
 await writeFile(resolve(outDir, "manifest.json"), JSON.stringify(manifestJson, null, 2), "utf8");
 
 await cp(resolve(root, "icons"), resolve(outDir, "icons"), { recursive: true });
-await cp(resolve(root, "src/background/offscreen.html"), resolve(outDir, "offscreen.html"));
+await cp(resolve(root, "src/offscreen.html"), resolve(outDir, "offscreen.html"));
 
 const lucide = resolve(root, "node_modules/lucide-static");
 const lucideOut = resolve(outDir, "icons/lucide");

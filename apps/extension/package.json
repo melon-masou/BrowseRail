@@ -7,25 +7,21 @@
     "build": "pnpm build:chrome && pnpm build:firefox",
     "build:chrome": "node scripts/build.mjs chrome",
     "build:firefox": "node scripts/build.mjs firefox",
-    "check": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "check": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@browserail/content": "workspace:*",
-    "@browserail/i18n": "workspace:*",
-    "@browserail/menu-ui": "workspace:*",
     "@browserail/protocol": "workspace:*",
     "@browserail/runtime-adapter": "workspace:*",
     "@phosphor-icons/core": "2.1.1",
     "lucide-static": "1.52.0",
-    "webextension-polyfill": "^0.12.0"
+    "webextension-polyfill": "^0.12.0",
+    "@browserail/browserail": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/webextension-polyfill": "^0.12.6",
-    "happy-dom": "^20.14.5",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.0"
+    "vite": "^8.3.0"
   }
 }

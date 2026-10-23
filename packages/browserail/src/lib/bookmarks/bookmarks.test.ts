@@ -1,0 +1,920 @@
+import "../../../tests/extension-runtime";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("webextension-polyfill", () => ({
+  default: {
+    bookmarks: {
+      getSubTree: vi.fn(),
+      getTree: vi.fn(),
+    },
+    storage: {
+      local: {
+        get: vi.fn(),
+        set: vi.fn(),
+      },
+    },
+  },
+}));
+
+import browser from "webextension-polyfill";
+import { defaultBarSettings, parseBookmarkAction, type BookmarkEntry, type FolderEntry } from "@browserail/protocol";
+import { barDimensions } from "@browserail/menu-ui";
+import { projectMenuSpacing, storeMenuSpacing } from "@browserail/browserail/lib/bookmarks/spacing";
+import {
+  buildTemporaryDirectiveUrl,
+  findBookmarkNodeByPath,
+  resolveBookmarkNodeByPath,
+  resolveMenuItems,
+} from "@browserail/browserail/lib/bookmarks/index";
+
+describe("resolveMenuItems", () => {
+  it("restores flattened folder spacing across browsers with different bookmark IDs", async () => {
+    const items = [{ uid: "flat", path: ["${bookmarks-bar}", "Tools"], type: "flattenFolder" as const, includeFolders: true }];
+    const context = (rootId: string, folderId: string, childIds: string[]) => ({ tree: [{
+      id: rootId, title: "Toolbar", children: [{ id: folderId, title: "Tools", children: [
+        { id: childIds[0]!, title: "Docs/API", url: "https://docs.example" },
+        { id: childIds[1]!, title: "Daily", children: [] },
+        { id: childIds[2]!, title: "Search", url: "https://search.example" },
+      ] }],
+    }] });
+    const chrome = await resolveMenuItems(items, undefined, undefined, undefined, context("1", "10", ["11", "12", "13"]));
+    const firefox = await resolveMenuItems(items, undefined, undefined, undefined, context("toolbar_____", "folder-uuid", ["docs-uuid", "daily-uuid", "search-uuid"]));
+    const spacing = storeMenuSpacing({ gapRatio: 0.1, extraGaps: { [chrome[0]!.uid]: 0.5, [chrome[1]!.uid]: 0.25 } }, items, context("1", "10", ["11", "12", "13"]).tree, []);
+    const layout = { ...defaultBarSettings(), uid: "bar", ...spacing };
+    const imported = JSON.parse(JSON.stringify(layout)) as typeof layout;
+    expect(barDimensions({ ...imported, ...projectMenuSpacing(imported, items, firefox, context("toolbar_____", "folder-uuid", ["docs-uuid", "daily-uuid", "search-uuid"]).tree, []), items: firefox }, { width: 80, height: 40 }))
+      .toEqual(barDimensions({ ...layout, ...projectMenuSpacing(layout, items, chrome, context("1", "10", ["11", "12", "13"]).tree, []), items: chrome }, { width: 80, height: 40 }));
+    expect(firefox[0]!.uid).not.toBe(chrome[0]!.uid);
+  });
+
+  it("keeps separate spacing identities for duplicate and flattened buttons when their actions or order change", async () => {
+    const tree = [{ id: "folder", title: "Folder", children: [
+      { id: "a", title: "A", url: "https://a.example" },
+      { id: "b", title: "B", url: "https://b.example" },
+    ] }];
+    const items = [
+      { uid: "copy-one", path: ["Folder", "A"] },
+      { uid: "copy-two", path: ["Folder", "A"] },
+      { uid: "flatten-one", path: ["Folder"], type: "flattenFolder" as const },
+      { uid: "flatten-two", path: ["Folder"], type: "flattenFolder" as const },
+    ];
+    const first = await resolveMenuItems(items, undefined, undefined, undefined, { tree });
+    expect(new Set(first.map(entry => entry.uid)).size).toBe(first.length);
+    tree[0]!.children.reverse();
+    const next = await resolveMenuItems(items, undefined, undefined, undefined, { tree });
+    expect(next.map(entry => entry.uid).sort()).toEqual(first.map(entry => entry.uid).sort());
+    expect(next[0]!.uid).toBe(first[0]!.uid);
+    expect(next[2]!.uid).toBe(first[3]!.uid);
+
+  });
+
+  it("keeps dynamic names and aliases stable when page titles change despite an obsolete title setting", async () => {
+    const { normalizeStoredMenuItem } = await import("@browserail/browserail/lib/config/index");
+    const items = [
+      normalizeStoredMenuItem({ uid: "recent", type: "dynamic", dynamicUid: "definition", showPageTitle: true })!,
+      normalizeStoredMenuItem({ uid: "alias", type: "dynamic", dynamicUid: "definition", rename: "My recent", showPageTitle: true })!,
+    ];
+    const info = { name: "Recent", title: "First page", url: "https://example.com/first" };
+    const context = { dynamicResolve: () => info };
+    const first = await resolveMenuItems(items, undefined, undefined, undefined, context);
+    expect(first.map(entry => entry.label)).toEqual(["Recent", "My recent"]);
+    info.title = "Second page";
+    info.url = "https://example.com/second";
+    const next = await resolveMenuItems(items, undefined, undefined, undefined, context);
+    expect(next.map(entry => entry.label)).toEqual(["Recent", "My recent"]);
+  });
+
+  it("uses the sync bookmark snapshot and makes a configured bookmark clickable without a generated mapping", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockClear();
+    const entries = await resolveMenuItems(
+      [{ uid: "item-docs", path: ["Docs"], url: "https://docs.example" }], undefined, undefined, undefined,
+      { tree: [{ id: "browser-bookmark-id", title: "Docs", url: "https://docs.example" }] },
+    );
+    expect(browser.bookmarks.getTree).not.toHaveBeenCalled();
+    expect(parseBookmarkAction(entries[0]!.uid).uid).toBe("item-docs");
+  });
+
+  it("resolves a folder with expandOnHover set to false", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-1",
+            title: "Dev Tools",
+            children: [
+              { id: "bm-1", title: "GitHub", url: "https://github.com" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems([
+      { uid: "item-dev-tools", path: ["Dev Tools"], type: "folder", expandOnHover: false },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    const folder = entries[0] as FolderEntry;
+    expect(folder.kind).toBe("folder");
+    expect(folder.expandOnHover).toBe(false);
+    expect(folder.children).toHaveLength(1);
+  });
+
+  it("resolves a folder with default hover expansion", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-2",
+            title: "Docs",
+            children: [
+              { id: "bm-2", title: "MDN", url: "https://developer.mozilla.org" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems([
+      { uid: "item-docs", path: ["Docs"], type: "folder" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    const folder = entries[0] as FolderEntry;
+    expect(folder.kind).toBe("folder");
+    expect(folder.expandOnHover).toBe(true);
+  });
+
+  it("flattens a folder into individual bookmark entries when type is flattenFolder", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-3",
+            title: "Quick Links",
+            children: [
+              { id: "bm-3", title: "GitHub", url: "https://github.com" },
+              { id: "bm-4", title: "Vite", url: "https://vitejs.dev" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems([
+      { uid: "item-quick-links", path: ["Quick Links"], type: "flattenFolder" },
+    ]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.kind).toBe("bookmark");
+    expect(entries[1]?.kind).toBe("bookmark");
+  });
+
+  it("resolves a configured menu toggle entry", async () => {
+    const entries = await resolveMenuItems([
+      { uid: "menu-toggle-main", type: "menuFold" },
+    ]);
+
+    expect(entries).toMatchObject([
+      {
+        kind: "menuFold",
+        uid: "menu-toggle-main",
+        label: "Fold",
+      },
+    ]);
+  });
+
+  it("uses a menu toggle rename as its button text", async () => {
+    const entries = await resolveMenuItems([
+      { uid: "menu-toggle-main", type: "menuFold", rename: "收起" },
+    ]);
+
+    expect(entries).toMatchObject([
+      {
+        kind: "menuFold",
+        uid: "menu-toggle-main",
+        label: "收起",
+      },
+    ]);
+  });
+
+  it("renders browser actions and menu visibility controls without resolving browser bookmarks", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockClear();
+    const entries = await resolveMenuItems([
+      { uid: "back-button", type: "browserAction", browserAction: "back", rename: "←", color: "#123456" },
+      { uid: "menus-button", type: "menusToggle", targetMenuUids: ["other-menu"] },
+    ], undefined, undefined, undefined, { tree: [] });
+    expect(entries).toMatchObject([
+      { kind: "browserAction", uid: "browserAction:back-button", label: "←", color: "#123456" },
+      { kind: "menusToggle", uid: "menusToggle:menus-button", label: "Menu Toggle" },
+    ]);
+    expect(browser.bookmarks.getTree).not.toHaveBeenCalled();
+  });
+
+
+
+  it("creates Temporary bookmarks that flatten back into the configured temporary bookmark entry", async () => {
+    const url = buildTemporaryDirectiveUrl({ id: "slot-temp", color: "#12345680" });
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-temps",
+            title: "Temps",
+            children: [
+              { id: "temp-url", title: "My Custom Slot", url },
+              { id: "temp-title", title: "BrowseRailTemporary:id=slot-two:name=SecondSlot", url: "https://example.com/dummy" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-temps", path: ["Temps"], type: "flattenFolder" }],
+      undefined,
+      undefined,
+      undefined,
+      {
+        temporaryNotes: { "slot-temp": "Note for slot 1" },
+        temporaryBookmarks: [{ uid: "slot-temp", name: "First" }, { uid: "slot-two", name: "Second" }],
+      },
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      kind: "bookmark",
+      uid: "temporary:item-temps%23temp-url",
+      label: "Note for slot 1",
+      color: "#12345680",
+    });
+    expect(entries[1]).toMatchObject({
+      kind: "bookmark",
+      uid: "temporary:item-temps%23temp-title",
+      label: "SecondSlot",
+    });
+  });
+
+  it("flatten skips sub-folders by default and includes them when includeFolders is set", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-mix",
+            title: "Mixed",
+            children: [
+              { id: "bm-a", title: "GitHub", url: "https://github.com" },
+              {
+                id: "sub-1",
+                title: "Sub",
+                children: [{ id: "bm-b", title: "Vite", url: "https://vitejs.dev" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const withoutFolders = await resolveMenuItems([
+      { uid: "item-mixed", path: ["Mixed"], type: "flattenFolder" },
+    ]);
+    expect(withoutFolders).toHaveLength(1);
+    expect(withoutFolders[0]?.kind).toBe("bookmark");
+
+    const withFolders = await resolveMenuItems([
+      {
+        uid: "item-mixed",
+        path: ["Mixed"],
+        type: "flattenFolder",
+        includeFolders: true,
+        cycleColors: ["#22c55e"],
+      },
+    ]);
+    expect(withFolders).toHaveLength(2);
+    expect(withFolders.map((e) => e.kind).sort()).toEqual(["bookmark", "folder"]);
+    // Both the flattened bookmark and the included folder take the item's cycle color.
+    for (const entry of withFolders) {
+      expect((entry as BookmarkEntry).color).toBe("#22c55e");
+    }
+    const folderEntry = withFolders.find((e) => e.kind === "folder");
+    // Inside the expanded menu, children are not changed
+    expect(
+      folderEntry?.kind === "folder" && (folderEntry.children[0] as BookmarkEntry | undefined)?.color,
+    ).toBeUndefined();
+  });
+
+  it("cycles through cycleColors for flattened items and ignores the old color field", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-cycle",
+            title: "CycleTest",
+            children: [
+              { id: "bm-1", title: "Item 1", url: "https://item1.com" },
+              { id: "bm-2", title: "Item 2", url: "https://item2.com" },
+              { id: "bm-3", title: "Item 3", url: "https://item3.com" },
+              { id: "bm-4", title: "Item 4", url: "https://item4.com" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const result = await resolveMenuItems([
+      {
+        uid: "item-cycle",
+        path: ["CycleTest"],
+        type: "flattenFolder",
+        color: "#000000", // Old color field should be completely ignored
+        cycleColors: ["#ff000080", "#00ff0000"],
+      },
+    ]);
+
+    expect(result).toHaveLength(4);
+    expect((result[0] as BookmarkEntry).color).toBe("#ff000080");
+    expect((result[1] as BookmarkEntry).color).toBe("#00ff0000");
+    expect((result[2] as BookmarkEntry).color).toBe("#ff000080");
+    expect((result[3] as BookmarkEntry).color).toBe("#00ff0000");
+  });
+
+  it("resolves a folder whose title contains a slash (path segment not re-split)", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "slash-folder",
+            title: "A/B",
+            children: [{ id: "bm-slash", title: "GitHub", url: "https://github.com" }],
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems([
+      { uid: "item-slash", path: ["A/B"], type: "flattenFolder" },
+    ]);
+
+    // Must emit the folder's actual child, not a single fallback entry labelled "A/B".
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.kind).toBe("bookmark");
+    expect((entries[0] as BookmarkEntry).label).toBe("GitHub");
+  });
+
+  it("applies menuColor as default color to items without custom color", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          { id: "bm-color-1", title: "GitHub", url: "https://github.com" },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-github", path: ["GitHub"], url: "https://github.com" }],
+      "#10b981",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect((entries[0] as BookmarkEntry).color).toBe("#10b981");
+  });
+
+  it("preserves item custom color when menuColor is also provided", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          { id: "bm-color-2", title: "GitHub", url: "https://github.com" },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-github", path: ["GitHub"], url: "https://github.com", color: "#f59e0b" }],
+      "#10b981",
+    );
+
+    expect(entries).toHaveLength(1);
+    expect((entries[0] as BookmarkEntry).color).toBe("#f59e0b");
+  });
+
+  it("applies menuColor to flattened folder children when no custom color is specified", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "folder-color-flat",
+            title: "Links",
+            children: [
+              { id: "bm-cf-1", title: "Site A", url: "https://a.com" },
+              { id: "bm-cf-2", title: "Site B", url: "https://b.com" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-links", path: ["Links"], type: "flattenFolder" }],
+      "#8b5cf6",
+    );
+
+    expect(entries).toHaveLength(2);
+    expect((entries[0] as BookmarkEntry).color).toBe("#8b5cf6");
+    expect((entries[1] as BookmarkEntry).color).toBe("#8b5cf6");
+  });
+});
+
+describe("findBookmarkNodeByPath", () => {
+  const tree = [
+    {
+      id: "root-1",
+      title: "Bookmarks Toolbar",
+      children: [
+        {
+          id: "folder-dev",
+          title: "Dev",
+          children: [
+            { id: "bm-gh", title: "GitHub", url: "https://github.com" },
+            { id: "bm-vt", title: "Vite", url: "https://vitejs.dev" },
+          ],
+        },
+        {
+          id: "bm-ddg",
+          title: "DuckDuckGo",
+          url: "https://duckduckgo.com",
+        },
+      ],
+    },
+    {
+      id: "root-2",
+      title: "Other Bookmarks",
+      children: [
+        { id: "bm-rd", title: "Reddit", url: "https://reddit.com" },
+      ],
+    },
+  ];
+
+  it("finds bookmark by cross-browser root alias (Chrome '书签栏' -> Firefox 'Bookmarks Toolbar')", () => {
+    const found = findBookmarkNodeByPath(tree, ["书签栏", "Dev", "GitHub"], "https://github.com");
+    expect(found).toBeDefined();
+    expect(found?.id).toBe("bm-gh");
+  });
+
+  it("finds bookmark by English Chrome alias 'Bookmarks bar' to 'Bookmarks Toolbar'", () => {
+    const found = findBookmarkNodeByPath(tree, ["Bookmarks bar", "DuckDuckGo"], "https://duckduckgo.com");
+    expect(found).toBeDefined();
+    expect(found?.id).toBe("bm-ddg");
+  });
+
+  it("finds folder node by path", () => {
+    const found = findBookmarkNodeByPath(tree, ["Bookmarks Toolbar", "Dev"]);
+    expect(found).toBeDefined();
+    expect(found?.id).toBe("folder-dev");
+  });
+
+  it("falls back to URL search when path has diverged", () => {
+    const found = findBookmarkNodeByPath(tree, ["Nonexistent Folder", "GitHub"], "https://github.com");
+    expect(found).toBeDefined();
+    expect(found?.id).toBe("bm-gh");
+  });
+
+  it("uses the saved URL to disambiguate duplicate bookmark paths and reports the duplicate", () => {
+    const duplicateTree = [
+      {
+        id: "root",
+        title: "Bookmarks Toolbar",
+        children: [
+          { id: "first", title: "Docs", url: "https://first.example" },
+          { id: "second", title: "Docs", url: "https://second.example" },
+        ],
+      },
+    ];
+
+    expect(
+      resolveBookmarkNodeByPath(
+        duplicateTree,
+        ["Bookmarks Toolbar", "Docs"],
+        "https://second.example",
+      ),
+    ).toEqual({ node: duplicateTree[0]?.children?.[1], duplicatePath: true });
+    expect(
+      resolveBookmarkNodeByPath(duplicateTree, ["Bookmarks Toolbar", "Docs"]),
+    ).toEqual({ duplicatePath: true });
+  });
+
+  it("strictly rejects folder path that does not exist without fuzzy searching other folders", () => {
+    const found = findBookmarkNodeByPath(tree, ["Bookmarks Toolbar", "RandomFolder", "Dev"]);
+    expect(found).toBeUndefined();
+  });
+});
+
+describe("rename and emoji support", () => {
+  it("uses custom rename when configured on StoredMenuItem", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-custom-rename",
+            title: "Very Long GitHub Bookmark Title",
+            url: "https://github.com",
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems([
+      { uid: "item-rename", path: ["Very Long GitHub Bookmark Title"], url: "https://github.com", rename: "GH" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect((entries[0] as BookmarkEntry).rename).toBe("GH");
+    expect((entries[0] as BookmarkEntry).label).toBe("Very Long GitHub Bookmark Title");
+  });
+
+  it("does not automatically extract leading emoji when no custom rename is configured", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-title-emoji",
+            title: "📁工作台",
+            url: "https://prod.example.com",
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems([
+      { uid: "item-title-emoji", path: ["📁工作台"], url: "https://prod.example.com" },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect((entries[0] as BookmarkEntry).rename).toBeUndefined();
+    expect((entries[0] as BookmarkEntry).label).toBe("📁工作台");
+  });
+});
+
+describe("portable bookmark resolution", () => {
+  it("opens resolved bookmarks in the current tab", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "bm-replace",
+            title: "Example",
+            url: "https://example.com",
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-replace", path: ["Example"], url: "https://example.com" }],
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.uid).toBe("bookmark:item-replace");
+  });
+
+  it("preserves invalid items as noop entries when rootPrefix is /书签栏 and item path is 书签栏", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              { id: "bm-gbf", title: "gbfsync", url: "https://gbf.wiki" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    // /书签栏 + /书签栏 = /书签栏/书签栏 -> does not exist under 书签栏
+    const entries = await resolveMenuItems(
+      [{ uid: "item-root", path: ["书签栏"], rename: "我的书签栏" }],
+      "#ff0000",
+      undefined,
+      ["书签栏"],
+    );
+
+    expect(entries).toHaveLength(1);
+    expect((entries[0] as BookmarkEntry).label).toBe("书签栏");
+    expect((entries[0] as BookmarkEntry).rename).toBe("我的书签栏");
+    expect((entries[0] as BookmarkEntry).color).toBe("#ff0000");
+    expect(entries[0]?.uid).toMatch(/^noop:/);
+  });
+
+  it("resolves /书签栏/gbfsync when rootPrefix is /书签栏 and item is gbfsync", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              { id: "bm-gbf", title: "gbfsync", url: "https://gbf.wiki" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-gbfsync", path: ["gbfsync"] }],
+      undefined,
+      undefined,
+      ["书签栏"],
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(parseBookmarkAction(entries[0]?.uid ?? "").tabMode).toBe("replace");
+  });
+});
+
+describe("normalizeStoredMenuItem and normalizeMenu portable support", () => {
+  it("normalizes a portable item from its path, type, and settings", async () => {
+    const { normalizeStoredMenuItem } = await import("@browserail/browserail/lib/config/index");
+    const item = normalizeStoredMenuItem({
+      type: "flattenFolder",
+      path: ["Bookmarks Toolbar", "Dev"],
+      rename: "Devs",
+      color: "#2563eb",
+    });
+
+    expect(item).toBeDefined();
+    expect(item?.type).toBe("flattenFolder");
+    expect(item?.path).toEqual(["Bookmarks Toolbar", "Dev"]);
+    expect(item?.rename).toBe("Devs");
+    expect(item?.color).toBe("#2563eb");
+  });
+
+
+  it("keeps only the first menu toggle when normalizing a menu", async () => {
+    const { normalizeMenu } = await import("@browserail/browserail/lib/config/index");
+    const menu = normalizeMenu({
+      uid: "menu-toggle-menu",
+      items: [
+        { uid: "toggle-1", type: "menuFold" },
+        { uid: "toggle-2", type: "menuFold" },
+      ],
+    });
+
+    expect(menu?.items).toHaveLength(1);
+    expect(menu?.items[0]?.type).toBe("menuFold");
+  });
+
+  it("loads the new action configuration and discards the removed fold type", async () => {
+    const { normalizeMenu } = await import("@browserail/browserail/lib/config/index");
+    const menu = normalizeMenu({
+      uid: "source",
+      items: [
+        { uid: "old-fold", type: "menuToggle" },
+        { uid: "fold", type: "menuFold", rename: "折叠" },
+        { uid: "next", type: "browserAction", browserAction: "forward" },
+        { uid: "invalid", type: "browserAction", browserAction: "invalid" },
+        { uid: "visibility", type: "menusToggle", targetMenuUids: ["a", "b"] },
+      ],
+    });
+    expect(menu?.items.map((item) => item.uid)).toEqual(["fold", "next", "visibility"]);
+    expect(menu?.items.find((item) => item.uid === "next")?.browserAction).toBe("forward");
+    expect(menu?.items.find((item) => item.uid === "visibility")?.targetMenuUids).toEqual(["a", "b"]);
+  });
+
+  it("preserves a menu toggle rename while normalizing settings", async () => {
+    const { normalizeStoredMenuItem } = await import("@browserail/browserail/lib/config/index");
+    const item = normalizeStoredMenuItem({
+      uid: "toggle-1",
+      type: "menuFold",
+      rename: "收起",
+    });
+
+    expect(item).toEqual({
+      uid: "toggle-1",
+      type: "menuFold",
+      rename: "收起",
+    });
+  });
+});
+
+describe("combineRootAndItemPath", () => {
+  it("combines root prefix with item path strictly without deduplication", async () => {
+    const { combineRootAndItemPath } = await import("@browserail/browserail/lib/bookmarks/index");
+
+    // Root prefix combined with relative item path
+    expect(combineRootAndItemPath(["书签栏"], ["gbfsync"])).toEqual(["书签栏", "gbfsync"]);
+    expect(combineRootAndItemPath(["书签栏"], ["Work", "Docs"])).toEqual(["书签栏", "Work", "Docs"]);
+
+    // Strictly concatenate without deduplicating prefix
+    expect(combineRootAndItemPath(["书签栏"], ["书签栏", "gbfsync"])).toEqual(["书签栏", "书签栏", "gbfsync"]);
+    expect(combineRootAndItemPath(["书签栏"], ["Bookmarks bar", "gbfsync"])).toEqual(["书签栏", "Bookmarks bar", "gbfsync"]);
+  });
+
+
+  it("calculates item relative path correctly based on root prefix", async () => {
+    const { getFolderPath, getItemRelativePath, findBookmarkNodeByPath, combineRootAndItemPath } = await import("@browserail/browserail/lib/bookmarks/index");
+
+    const tree = [
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              {
+                id: "10",
+                title: "Dev",
+                children: [
+                  { id: "100", title: "Tool", url: "https://tool.internal" },
+                ],
+              },
+              { id: "11", title: "GitHub", url: "https://github.com" },
+            ],
+          },
+          {
+            id: "2",
+            title: "其他书签",
+            children: [{ id: "20", title: "Read Later", url: "https://read.it" }],
+          },
+        ],
+      },
+    ];
+
+    // getFolderPath returns full chain
+    const folderPath = getFolderPath("100", tree);
+    expect(folderPath.map((n) => n.id)).toEqual(["0", "1", "10", "100"]);
+
+    // Relative path with no root prefix -> full path using special root placeholder
+    expect(getItemRelativePath("100", tree, [])).toEqual(["${bookmarks-bar}", "Dev", "Tool"]);
+    expect(getItemRelativePath("11", tree, undefined)).toEqual(["${bookmarks-bar}", "GitHub"]);
+    expect(getItemRelativePath("20", tree, [])).toEqual(["${other}", "Read Later"]);
+
+    // Relative path with root prefix ["书签栏"] or ["${bookmarks-bar}"]
+    expect(getItemRelativePath("100", tree, ["书签栏"])).toEqual(["Dev", "Tool"]);
+    expect(getItemRelativePath("100", tree, ["${bookmarks-bar}"])).toEqual(["Dev", "Tool"]);
+    expect(getItemRelativePath("10", tree, ["书签栏"])).toEqual(["Dev"]);
+    expect(getItemRelativePath("11", tree, ["书签栏"])).toEqual(["GitHub"]);
+
+    // Relative path with nested root prefix ["书签栏", "Dev"]
+    expect(getItemRelativePath("100", tree, ["书签栏", "Dev"])).toEqual(["Tool"]);
+
+    // Relative path when selecting the root folder itself -> empty path []
+    expect(getItemRelativePath("1", tree, ["书签栏"])).toEqual([]);
+    expect(getItemRelativePath("1", tree, ["${bookmarks-bar}"])).toEqual([]);
+    expect(combineRootAndItemPath(["书签栏"], [])).toEqual(["书签栏"]);
+    const rootMatch = findBookmarkNodeByPath(tree, combineRootAndItemPath(["书签栏"], []));
+    expect(rootMatch?.id).toBe("1");
+
+    // Resolving via special root placeholder
+    expect(findBookmarkNodeByPath(tree, ["${bookmarks-bar}", "Dev", "Tool"])?.id).toBe("100");
+    expect(findBookmarkNodeByPath(tree, ["${other}", "Read Later"])?.id).toBe("20");
+
+    // Combined relative path with root prefix resolves the exact node
+    const relPath = getItemRelativePath("100", tree, ["书签栏"])!;
+    const combined = combineRootAndItemPath(["书签栏"], relPath);
+    expect(combined).toEqual(["书签栏", "Dev", "Tool"]);
+    const foundNode = findBookmarkNodeByPath(tree, combined);
+    expect(foundNode?.id).toBe("100");
+  });
+
+  it("resolves an item with empty path [] as the root directory folder", async () => {
+    vi.mocked(browser.bookmarks.getTree).mockResolvedValue([
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [
+              { id: "100", title: "GitHub", url: "https://github.com" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const { normalizeStoredMenuItem } = await import("@browserail/browserail/lib/config/index");
+    const normalized = normalizeStoredMenuItem({
+      path: [],
+      type: "folder",
+    });
+    expect(normalized).toBeDefined();
+    expect(normalized?.path).toEqual([]);
+
+    const entries = await resolveMenuItems(
+      [{ uid: "item-root-empty", path: [], type: "folder" }],
+      undefined,
+      undefined,
+      ["书签栏"],
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.kind).toBe("folder");
+    expect((entries[0] as FolderEntry).label).toBe("书签栏");
+  });
+
+  it("handles Chrome special root folder set: bookmarks-bar, other, mobile, managed", async () => {
+    const {
+      getItemRelativePath,
+      findBookmarkNodeByPath,
+      formatSpecialRootForDisplay,
+    } = await import("@browserail/browserail/lib/bookmarks/index");
+    const { DEFAULT_BOOKMARK_ROOT_PREFIX, loadBookmarkRootPrefix } = await import("@browserail/browserail/lib/config/index");
+
+    expect(DEFAULT_BOOKMARK_ROOT_PREFIX).toEqual([]);
+
+    const chromeTree = [
+      {
+        id: "0",
+        title: "",
+        children: [
+          {
+            id: "1",
+            title: "书签栏",
+            children: [{ id: "10", title: "GitHub", url: "https://github.com" }],
+          },
+          {
+            id: "2",
+            title: "其他书签",
+            children: [{ id: "20", title: "Docs", url: "https://docs.com" }],
+          },
+          {
+            id: "3",
+            title: "移动设备书签",
+            children: [{ id: "30", title: "Article", url: "https://article.com" }],
+          },
+          {
+            id: "managed",
+            title: "受管理书签",
+            children: [{ id: "40", title: "Intranet", url: "https://corp.internal" }],
+          },
+        ],
+      },
+    ];
+
+    // Empty root prefix generates special root placeholders
+    expect(getItemRelativePath("10", chromeTree, [])).toEqual(["${bookmarks-bar}", "GitHub"]);
+    expect(getItemRelativePath("20", chromeTree, [])).toEqual(["${other}", "Docs"]);
+    expect(getItemRelativePath("30", chromeTree, [])).toEqual(["${mobile}", "Article"]);
+    expect(getItemRelativePath("40", chromeTree, [])).toEqual(["${managed}", "Intranet"]);
+
+    // Resolving via special root placeholder
+    expect(findBookmarkNodeByPath(chromeTree, ["${bookmarks-bar}", "GitHub"])?.id).toBe("10");
+    expect(findBookmarkNodeByPath(chromeTree, ["${other}", "Docs"])?.id).toBe("20");
+    expect(findBookmarkNodeByPath(chromeTree, ["${mobile}", "Article"])?.id).toBe("30");
+    expect(findBookmarkNodeByPath(chromeTree, ["${managed}", "Intranet"])?.id).toBe("40");
+
+    // UI display formatting retrieves title from Chrome tree
+    expect(formatSpecialRootForDisplay("${bookmarks-bar}", chromeTree)).toBe("书签栏");
+    expect(formatSpecialRootForDisplay("${other}", chromeTree)).toBe("其他书签");
+    expect(formatSpecialRootForDisplay("${mobile}", chromeTree)).toBe("移动设备书签");
+    expect(formatSpecialRootForDisplay("${managed}", chromeTree)).toBe("受管理书签");
+
+    // A stored string (non-array) is ignored, falling back to the whole tree
+    vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
+      bookmark_root_prefix: "/Work/Docs",
+    });
+    expect(await loadBookmarkRootPrefix()).toEqual([]);
+    // A stored array is used as-is, so a title containing "/" stays one segment
+    vi.mocked(browser.storage.local.get).mockResolvedValueOnce({
+      bookmark_root_prefix: ["Work", "A/B"],
+    });
+    expect(await loadBookmarkRootPrefix()).toEqual(["Work", "A/B"]);
+  });
+});
