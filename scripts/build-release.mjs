@@ -46,7 +46,10 @@ run("pnpm", ["--filter", "@browserail/protocol", "build"]);
 // 3. Build extension
 run("pnpm", ["--filter", "@browserail/extension", "build"]);
 
-// 4. Build desktop
+// 4. Build userscript
+run("pnpm", ["build:userscript"]);
+
+// 5. Build desktop
 if (process.platform === "win32" || process.env.BUILD_WINDOWS_DESKTOP === "1") {
   run("pnpm", ["build:windows"]);
 } else {

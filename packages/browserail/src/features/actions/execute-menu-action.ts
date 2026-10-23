@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { t } from "@browserail/i18n";
 import { actionUid as formatActionUid, isDynamicAction, parseBookmarkAction, parseDynamicAction, parseTemporaryAction, parseStaticAction, type CustomBookmarkType } from "@browserail/protocol";
 import { loadConfig, saveConfig, loadDynamicValue, loadTemporaryValues, loadShortcutsEnabled, saveShortcutsEnabled } from "../../lib/config/index";
@@ -34,7 +34,7 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
         changed();
       }
     } else if (action?.type === "browserAction" && action.browserAction) {
-      await runTabAction(runtime.navigation, targetWindowUid, action.browserAction);
+      await runTabAction(getRuntimeAdapter().navigation, targetWindowUid, action.browserAction);
     }
   } else if (actionUid.startsWith("externalAction:")) {
     const identity = decodeURIComponent(actionUid.slice("externalAction:".length).split("?")[0]!);
@@ -45,19 +45,19 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     const { uid, tabMode } = parseStaticAction(actionUid);
     const target = await targetUid(uid, "static");
     const definition = config.staticBookmarks.find(entry => entry.uid === target);
-    if (definition?.url) await navigateToUrl({ bookmarks: runtime.bookmarks, tabs: runtime.navigation }, targetWindowUid, await resolveStaticBookmarkUrl(definition.url, config.userVariables), tabMode);
+    if (definition?.url) await navigateToUrl({ bookmarks: getRuntimeAdapter().bookmarks, tabs: getRuntimeAdapter().navigation }, targetWindowUid, await resolveStaticBookmarkUrl(definition.url, config.userVariables), tabMode);
   } else if (isDynamicAction(actionUid)) {
     const { dynamicUid, tabMode } = parseDynamicAction(actionUid);
     const live = await loadDynamicValue(await targetUid(dynamicUid, "dynamic"));
     if (!live?.url) throw new Error(t("customBookmarks.noSavedUrl"));
-    await navigateToUrl({ bookmarks: runtime.bookmarks, tabs: runtime.navigation }, targetWindowUid, live.url, tabMode);
+    await navigateToUrl({ bookmarks: getRuntimeAdapter().bookmarks, tabs: getRuntimeAdapter().navigation }, targetWindowUid, live.url, tabMode);
   } else if (actionUid.startsWith("temporarySave:")) {
     const raw = actionUid.slice("temporarySave:".length);
     const queryIndex = raw.indexOf("?");
     const uid = decodeURIComponent(queryIndex < 0 ? raw : raw.slice(0, queryIndex));
     const params = new URLSearchParams(queryIndex < 0 ? "" : raw.slice(queryIndex + 1));
     const result = await captureTemporaryUrl(
-      runtime.navigation,
+      getRuntimeAdapter().navigation,
       config.temporaryBookmarks,
       await targetUid(uid, "temporary"),
       targetWindowUid,
@@ -71,9 +71,9 @@ export async function executeMenuAction(actionUid: string, menuUid: string | und
     if (!config.temporaryBookmarks.some(entry => entry.uid === target)) return;
     const url = (await loadTemporaryValues())[target];
     if (!url) throw new Error(t("customBookmarks.noSavedUrl"));
-    await navigateToUrl({ bookmarks: runtime.bookmarks, tabs: runtime.navigation }, targetWindowUid, url, tabMode);
+    await navigateToUrl({ bookmarks: getRuntimeAdapter().bookmarks, tabs: getRuntimeAdapter().navigation }, targetWindowUid, url, tabMode);
   } else {
     const { uid, tabMode } = parseBookmarkAction(actionUid);
-    await navigateBookmark({ bookmarks: runtime.bookmarks, tabs: runtime.navigation }, targetWindowUid, formatActionUid("bookmark", await targetUid(uid, "bookmark"), tabMode));
+    await navigateBookmark({ bookmarks: getRuntimeAdapter().bookmarks, tabs: getRuntimeAdapter().navigation }, targetWindowUid, formatActionUid("bookmark", await targetUid(uid, "bookmark"), tabMode));
   }
 }

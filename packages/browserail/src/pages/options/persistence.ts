@@ -1,5 +1,5 @@
 import type { StorageChange } from "@browserail/runtime-adapter";
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { t } from "@browserail/i18n";
 import {
   normalizeItemIcon,
@@ -56,7 +56,7 @@ export async function loadOptions() {
   const [config, enabled, tree, rootPrefix, displayMode, externalAuthorization] = await Promise.all([
     loadConfig(),
     loadWidgetEnabled(),
-    bookmarksAvailable ? runtime.bookmarks.getTree() : [],
+    bookmarksAvailable ? getRuntimeAdapter().bookmarks.getTree() : [],
     loadBookmarkRootPrefix(),
     loadDisplayMode(),
     loadExternalAuthorization(),
@@ -89,7 +89,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       },
       instanceLabel: savingSettings.label.trim(),
     });
-    await saveDisplayMode(savingSettings.displayMode);
+    if (getRuntimeAdapter().capabilities.desktopConnection) await saveDisplayMode(savingSettings.displayMode);
     await saveExternalAuthorization(structuredClone(savingSettings.externalAuthorization));
     await request<ConfigSaved>({ type: CONFIG_SAVED });
     state.acceptInstanceSave(savingSettings);
@@ -542,8 +542,8 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
       normalizeConfig(changes.config.oldValue, state.instance.label),
     );
   };
-  runtime.storage.onChanged.addListener(changed);
-  scope.add(() => runtime.storage.onChanged.removeListener(changed));
+  getRuntimeAdapter().storage.onChanged.addListener(changed);
+  scope.add(() => getRuntimeAdapter().storage.onChanged.removeListener(changed));
   return {
     saveInstance,
     saveSettings,

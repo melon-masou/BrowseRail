@@ -33,6 +33,7 @@ import { element } from "./dom";
 import { createScope } from "./lifecycle";
 import type { UrlRule } from "../../lib/config/index";
 import { createSyncPopup } from "./components/sync-popup";
+import { getRuntimeAdapter, type RuntimeCapabilities } from "@browserail/runtime-adapter";
 
 export async function mountOptionsPage() {
   const scope = createScope();
@@ -44,6 +45,14 @@ export async function mountOptionsPage() {
     { signal: scope.signal },
   );
   applyStaticI18n();
+  for (const section of document.querySelectorAll<HTMLElement>("[data-runtime-capability]")) {
+    const capability = section.dataset.runtimeCapability as keyof RuntimeCapabilities;
+    if (getRuntimeAdapter().capabilities[capability]) continue;
+    section.inert = true;
+    section.setAttribute("aria-disabled", "true");
+    section.classList.add("runtime-unavailable");
+    section.title = t("runtime.unavailable");
+  }
   const status = element<HTMLOutputElement>("status");
   const connectionForm = element<HTMLFormElement>("connection-form");
   const menusForm = element<HTMLFormElement>("menus-form");
@@ -73,7 +82,6 @@ export async function mountOptionsPage() {
   const state = createOptionsState(loaded.instance, loaded.settings);
   const library = createBookmarkLibrary(() => state.instance.rootPrefix);
   library.initialize(loaded.tree, loaded.bookmarksAvailable);
-  element("bookmarks-unsupported-notice").hidden = loaded.bookmarksAvailable;
   const source = createCustomBookmarkSource(state);
   scope.add(source.destroy);
   const persistence = createPersistence(state, library);
@@ -129,7 +137,7 @@ export async function mountOptionsPage() {
       hint.hidden = state.savedDisplayMode !== "browser";
   }
   function updateSave(): void {
-    saveBar.hidden = activePanel === "start-panel";
+    saveBar.hidden = activePanel === "start-panel" || (activePanel === "shortcuts-panel" && !shortcuts.available);
     const instancePanel = activePanel === "connection-form";
     const key = instancePanel ? "btn.saveInstance" : "btn.saveSettings";
     save.dataset.i18n = key;

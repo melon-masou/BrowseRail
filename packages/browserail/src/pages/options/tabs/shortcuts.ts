@@ -1,4 +1,4 @@
-import { runtime } from "../../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import {
   type TabMode,
   type CustomBookmarkType,
@@ -32,6 +32,16 @@ export function mountShortcutsTab(
   overlays: Overlays,
   showStatus: (message: string) => void,
 ) {
+  const { browserShortcuts, desktopConnection } = getRuntimeAdapter().capabilities;
+  const available = browserShortcuts || desktopConnection;
+  if (!available) {
+    const notice = document.createElement("p");
+    notice.className = "url-rule-empty-hint";
+    const render = (): void => { notice.textContent = t("shortcuts.unavailable"); };
+    element("shortcuts-panel").replaceChildren(notice);
+    render();
+    return { available, render, destroy() {} };
+  }
   const scope = createScope();
   const actionPicker = createShortcutActionPicker();
   scope.add(() => actionPicker.destroy());
@@ -72,7 +82,7 @@ export function mountShortcutsTab(
 
   async function refreshBrowserCommands(): Promise<void> {
     try {
-      if (runtime.capabilities.browserShortcuts) {
+      if (getRuntimeAdapter().capabilities.browserShortcuts) {
         const commands = await browserActions.commands();
         if (scope.signal.aborted) return;
         browserCommandsMap = {};
@@ -730,6 +740,7 @@ export function mountShortcutsTab(
   render();
   void refreshBrowserCommands();
   return {
+    available,
     render,
     destroy(): void {
       activeRecordingKeyId = null;

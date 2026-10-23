@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import type { CustomBookmarkType } from "@browserail/protocol";
 import { loadBookmarkRootPrefix, type ExtensionConfig } from "../../lib/config/index";
 import { combineRootAndItemPath, findBookmarkNodeByPath, parseDynamicMarkerUrl, parseFlattenTemporaryDirective, type BookmarkNode } from "../../lib/bookmarks/index";
@@ -13,7 +13,7 @@ export async function resolveMenuBookmarkTarget(config: ExtensionConfig, menuUid
     if (bookmarkId !== undefined) {
       return bookmarkId;
     }
-    const [tree, rootPrefix] = await Promise.all([runtime.bookmarks.getTree(), loadBookmarkRootPrefix()]);
+    const [tree, rootPrefix] = await Promise.all([getRuntimeAdapter().bookmarks.getTree(), loadBookmarkRootPrefix()]);
     const node = findBookmarkNodeByPath(tree as BookmarkNode[], combineRootAndItemPath(rootPrefix, item.path), item.url);
     if (!node?.url) throw new Error("The bookmark no longer exists");
     return node.id;
@@ -25,7 +25,7 @@ export async function resolveMenuBookmarkTarget(config: ExtensionConfig, menuUid
   }
   if (bookmarkId !== undefined) {
     if (item.type !== "flattenFolder") throw new Error("Invalid bookmark action");
-    const [node] = await runtime.bookmarks.get(bookmarkId);
+    const [node] = await getRuntimeAdapter().bookmarks.get(bookmarkId);
     const target = node && (type === "temporary" ? parseFlattenTemporaryDirective(node)?.uid
       : type === "dynamic" ? parseDynamicMarkerUrl(node.url) : undefined);
     if (!target) throw new Error("The bookmark no longer exists");

@@ -60,7 +60,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build exe and extensions
+      - name: Build exe, extensions and userscript
         shell: pwsh
         env:
           # Extension public key (base64 DER) kept as a repo secret so the
@@ -77,9 +77,10 @@ jobs:
         run: |
           $v = "${{ steps.version.outputs.version }}"
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          Compress-Archive -Path build/desktop/BrowseRail.exe -DestinationPath "release-assets/BrowseRail-$v.zip"
+          Compress-Archive -Path build/desktop/BrowseRail.exe -DestinationPath "release-assets/BrowseRail-windows-$v.zip"
           Compress-Archive -Path build/extension/chrome/* -DestinationPath "release-assets/BrowseRail-chrome-$v.zip"
           Compress-Archive -Path build/extension/firefox/* -DestinationPath "release-assets/BrowseRail-firefox-$v.zip"
+          Copy-Item -Path build/userscript/browserail.user.js -Destination "release-assets/BrowseRail-$v.user.js"
 
       - name: Create draft prerelease
         uses: softprops/action-gh-release@v2
@@ -89,6 +90,7 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: BrowseRail ${{ steps.version.outputs.version }}
           files: |
-            release-assets/BrowseRail-${{ steps.version.outputs.version }}.zip
+            release-assets/BrowseRail-windows-${{ steps.version.outputs.version }}.zip
             release-assets/BrowseRail-chrome-${{ steps.version.outputs.version }}.zip
             release-assets/BrowseRail-firefox-${{ steps.version.outputs.version }}.zip
+            release-assets/BrowseRail-${{ steps.version.outputs.version }}.user.js

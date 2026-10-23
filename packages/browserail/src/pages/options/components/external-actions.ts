@@ -1,4 +1,5 @@
 import { t } from "@browserail/i18n";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { ALL_URLS_RULE_UID, DEFAULT_EXTERNAL_EVENT_NAME, type ExternalAction } from "@browserail/protocol";
 import type { OptionsState, ReadonlyData } from "../state";
 import { filterCustomBookmarks } from "../custom-bookmark-search";
@@ -128,6 +129,7 @@ export function createExternalActionsList(
       radio.type = "radio";
       radio.name = `external-action-target-${action.uid}`;
       radio.checked = action.target === target;
+      radio.disabled = target === "extension" && !getRuntimeAdapter().capabilities.externalExtensions;
       radio.addEventListener("change", () => {
         if (!radio.checked || action.target === target) return;
         // A new event action starts with the default name, matching a freshly added action.

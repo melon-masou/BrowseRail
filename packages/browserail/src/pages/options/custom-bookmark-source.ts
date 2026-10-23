@@ -1,5 +1,5 @@
 import type { StorageChange } from "@browserail/runtime-adapter";
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { t } from "@browserail/i18n";
 import {
   customBookmarkUid,
@@ -90,8 +90,8 @@ export function createCustomBookmarkSource(state: OptionsState) {
     if (Object.keys(changes).some(key => key.startsWith(DYNAMIC_VALUE_STORAGE_PREFIX)))
       void refreshDynamicValues();
   };
-  runtime.storage.onChanged.addListener(changed);
-  scope.add(() => runtime.storage.onChanged.removeListener(changed));
+  getRuntimeAdapter().storage.onChanged.addListener(changed);
+  scope.add(() => getRuntimeAdapter().storage.onChanged.removeListener(changed));
   return {
     definitions: definitionsFor,
     name: customTargetName,

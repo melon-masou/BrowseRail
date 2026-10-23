@@ -62,10 +62,9 @@
             data-i18n="section.shortcuts">Shortcuts</button>
         </nav>
         <div id="settings-content" class="settings-content">
-          <p id="bookmarks-unsupported-notice" class="bookmarks-unsupported-notice" data-i18n="picker.bookmarksUnsupported" hidden></p>
           <section id="start-panel" class="settings-panel start-panel" role="tabpanel" aria-labelledby="start-tab"></section>
           <form id="connection-form" class="settings-panel connection-card" role="tabpanel" aria-labelledby="instance-tab" hidden>
-            <div id="state-card" class="state-bar state-card" data-state="disconnected">
+            <div id="state-card" data-runtime-capability="desktopConnection" class="state-bar state-card" data-state="disconnected">
               <div class="state-indicator"></div>
               <div class="state-info">
                 <div class="state-header">
@@ -89,7 +88,7 @@
                   <button id="random-instance-label" type="button" data-i18n="btn.random">Random</button>
                 </span>
               </label>
-              <label id="desktop-url-field">
+              <label id="desktop-url-field" data-runtime-capability="desktopConnection">
                 <span class="label-row">
                   <span data-i18n="form.desktopAddress">Desktop Widget address</span>
                   <span class="native-mode-hint" data-native-only data-i18n="form.nativeOnly" hidden>Only applies in Native mode</span>
@@ -109,7 +108,7 @@
             </div>
 
             <div class="fields-row connection-preferences-row">
-              <label id="bookmark-root-field">
+              <label id="bookmark-root-field" data-runtime-capability="browserBookmarks">
                 <span class="label-row">
                   <span data-i18n="form.bookmarkRoot">Bookmark root folder</span>
                 </span>
@@ -121,7 +120,7 @@
             </div>
 
             <div class="instance-access-controls">
-              <div id="site-authorization-controls" class="site-authorization">
+              <div id="site-authorization-controls" data-runtime-capability="websitePermissions" class="site-authorization">
                 <span id="site-authorization-warning"></span>
               </div>
               <div class="instance-access-row">
@@ -131,7 +130,7 @@
                   <option value="browser" data-i18n="form.displayMode.browser">Browser mode</option>
                 </select>
               </div>
-              <div class="instance-access-row">
+              <div class="instance-access-row" data-runtime-capability="externalExtensions">
                 <span id="external-extensions-label" data-i18n="externalAuthorization.allowExtensions">Allow other extensions to update data</span>
                 <label class="switch-toggle">
                   <input type="checkbox" id="external-extensions-enabled" aria-labelledby="external-extensions-label" />
@@ -149,7 +148,7 @@
               </div>
             </div>
 
-            <section class="instance-diagnostics">
+            <section class="instance-diagnostics" data-runtime-capability="desktopConnection">
               <div class="debug-card-row">
                 <h2 class="debug-card-title" data-i18n="section.diagnostics">debug</h2>
                 <label class="switch-toggle" data-i18n-title="diagnostics.enableLogging" title="debug">
@@ -261,7 +260,7 @@
               </div>
 
               <!-- Browser Shortcuts Sub-panel -->
-              <div id="shortcuts-browser-panel" class="shortcuts-subpanel is-active">
+              <div id="shortcuts-browser-panel" data-runtime-capability="browserShortcuts" class="shortcuts-subpanel is-active">
                 <div class="shortcuts-toolbar">
                   <span class="url-rules-hint" data-i18n="shortcuts.browserHint">Assign browser shortcut slots to bookmarks.</span>
                   <button id="configure-browser-shortcuts-btn" class="menu-action-btn" type="button" data-i18n="shortcuts.configureKeys">Configure keys…</button>
@@ -270,7 +269,7 @@
               </div>
 
               <!-- Native Shortcuts Sub-panel -->
-              <div id="shortcuts-native-panel" class="shortcuts-subpanel" hidden>
+              <div id="shortcuts-native-panel" data-runtime-capability="desktopConnection" class="shortcuts-subpanel" hidden>
                 <div class="shortcuts-toolbar">
                   <span class="url-rules-hint" data-i18n="shortcuts.nativeHint">Only applies in Native mode; requires the desktop client. Supports more key combinations (including single letter keys).</span>
                   <button id="add-native-shortcut-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="shortcuts.addSet">+ Add set</button>

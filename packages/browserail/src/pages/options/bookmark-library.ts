@@ -1,5 +1,5 @@
 import type { BookmarkTreeNode, CreateBookmark } from "@browserail/runtime-adapter";
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { isCustomBookmarkType } from "@browserail/protocol";
 import type { StoredMenuItem } from "../../lib/config/index";
 import type { ReadonlyData } from "./state";
@@ -110,7 +110,7 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
   async function refreshBookmarkTree(): Promise<void> {
     if (!available) return;
     try {
-      tree = await runtime.bookmarks.getTree();
+      tree = await getRuntimeAdapter().bookmarks.getTree();
     } catch {
       // Keep the previous cache if the read fails.
     }
@@ -131,8 +131,8 @@ export function createBookmarkLibrary(getRootPrefix: () => readonly string[]) {
     },
     refresh: refreshBookmarkTree,
     async createBookmark(details: CreateBookmark): Promise<void> {
-      await runtime.bookmarks.create(details);
-      tree = await runtime.bookmarks.getTree();
+      await getRuntimeAdapter().bookmarks.create(details);
+      tree = await getRuntimeAdapter().bookmarks.getTree();
     },
     root: getRootNode,
     formatRoot: formatRootPrefixDisplay,

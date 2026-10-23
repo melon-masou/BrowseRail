@@ -1,24 +1,19 @@
-import "../../../tests/extension-runtime";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 
-vi.mock("webextension-polyfill", () => ({ default: {
-  runtime: { getURL: (path: string) => `https://extension.local/${path}` },
-} }));
-beforeEach(async () => { vi.resetModules(); await import("../../../tests/extension-runtime"); });
-afterEach(() => vi.unstubAllGlobals());
+const resourceJson = vi.hoisted(() => vi.fn<(path: string) => Promise<unknown>>());
+vi.mock("@browserail/runtime-adapter", () => ({ getRuntimeAdapter: () => ({ resourceJson }) }));
+beforeEach(() => { vi.resetModules(); resourceJson.mockReset(); });
 
 const lucideData = { icons: { bookmark: [["path", { d: "M6 3h12v18l-6-4-6 4z" }]] }, aliases: {} };
 const phosphorData = { icons: { house: '<path d="M224 120v96H32z"/>' } };
 
-function stubIconFetch() {
-  const fetch = vi.fn(async (url: string) => Response.json(url.includes("/phosphor/") ? phosphorData : lucideData));
-  vi.stubGlobal("fetch", fetch);
-  return fetch;
+function stubIconResources() {
+  resourceJson.mockImplementation(async path => path.includes("/phosphor/") ? phosphorData : lucideData);
 }
 
 it("gives Lucide and Phosphor icons a shared, cached SVG mask while preserving text icons", async () => {
   const { resolveItemIcons } = await import("@browserail/browserail/lib/icons/item-icons");
-  const fetch = stubIconFetch();
+  stubIconResources();
   const items = [
     { kind: "bookmark", uid: "a", label: "A", icon: { type: "lucide", name: "bookmark" } },
     { kind: "bookmark", uid: "b", label: "B", icon: { type: "phosphor", name: "house" } },
@@ -31,24 +26,22 @@ it("gives Lucide and Phosphor icons a shared, cached SVG mask while preserving t
   expect(other.map(item => item.iconMask)).toEqual(first.map(item => item.iconMask));
   expect(first[2]).toEqual(items[2]);
   await resolveItemIcons([...items]);
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(resourceJson).toHaveBeenCalledTimes(2);
 });
 
 it("rejects Phosphor names missing from the bundled set", async () => {
   const { resolveItemIcons } = await import("@browserail/browserail/lib/icons/item-icons");
-  stubIconFetch();
+  stubIconResources();
   await expect(resolveItemIcons([{ kind: "bookmark", uid: "a", label: "A", icon: { type: "phosphor", name: "missing" } }]))
     .rejects.toThrow("Unknown Phosphor icon");
 });
 
 it("does not load icon data for bars with only text icons", async () => {
   const { resolveItemIcons } = await import("@browserail/browserail/lib/icons/item-icons");
-  const fetch = vi.fn();
-  vi.stubGlobal("fetch", fetch);
   const items = [
     { kind: "bookmark", uid: "a", label: "A", icon: { type: "initial" } },
     { kind: "bookmark", uid: "b", label: "B", icon: { type: "text", text: "中" } },
   ] as const;
   expect(await resolveItemIcons([...items])).toEqual(items);
-  expect(fetch).not.toHaveBeenCalled();
+  expect(resourceJson).not.toHaveBeenCalled();
 });

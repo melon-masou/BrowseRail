@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { isExportedSettingsData, type ExportedSettingsData } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 
@@ -16,11 +16,11 @@ interface Manifest {
 
 
 export function cloudStorageAvailable(): boolean {
-  return runtime.capabilities.browserSync;
+  return getRuntimeAdapter().capabilities.browserSync;
 }
 
 function storage() {
-  const area = runtime.storage.sync;
+  const area = getRuntimeAdapter().storage.sync;
   if (!area) throw new Error(t("cloud.unavailable"));
   return area;
 }

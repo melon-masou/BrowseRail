@@ -1,0 +1,26 @@
+{
+  "name": "@browserail/userscript",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@browserail/browserail": "workspace:*",
+    "@browserail/content": "workspace:*",
+    "@browserail/i18n": "workspace:*",
+    "@browserail/menu-ui": "workspace:*",
+    "@browserail/protocol": "workspace:*",
+    "@browserail/runtime-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "happy-dom": "^20.14.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}

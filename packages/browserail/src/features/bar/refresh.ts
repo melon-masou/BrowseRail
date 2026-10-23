@@ -1,7 +1,7 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { BAR_REFRESH_MESSAGE } from "@browserail/protocol/content";
 
 export async function requestBrowserMenuRefresh(tabId: number): Promise<void> {
   // A toolbar action can originate from a page without an injected menu.
-  await runtime.messaging.sendToTab(tabId, { type: BAR_REFRESH_MESSAGE }, { frameId: 0 }).catch(() => {});
+  await getRuntimeAdapter().messaging.sendToTab(tabId, { type: BAR_REFRESH_MESSAGE }, { frameId: 0 }).catch(() => {});
 }

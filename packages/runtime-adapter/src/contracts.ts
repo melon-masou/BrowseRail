@@ -110,5 +110,38 @@ export interface RuntimeAdapter {
   readonly permissions: PermissionService;
   readonly capabilities: RuntimeCapabilities;
   resourceUrl(path: string): string;
+  resourceJson(path: string): Promise<unknown>;
   platformInfo(): Promise<{ os: string }>;
+}
+
+export interface BrowserWindowCandidate {
+  uid: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  focused: boolean;
+  activeTabUrl?: string;
+}
+
+export interface ShortcutCommand {
+  name?: string;
+  description?: string;
+  shortcut?: string;
+}
+
+export interface ConfirmationSource {
+  sourceTabId: number;
+  sourceWindowId: number;
+}
+
+export type RewriteResult = { ok: true; url: string | null; line?: number } | { ok: false; error: string };
+
+export interface RuntimeHost {
+  browserKind(): string;
+  listWindows(): Promise<BrowserWindowCandidate[]>;
+  commands(): Promise<ShortcutCommand[]>;
+  openShortcutSettings(): Promise<void>;
+  onPermissionsChanged(listener: () => void): () => void;
+  onTabRemoved(listener: (tabId: number) => void): () => void;
+  onTabUpdated(listener: (tabId: number, change: { url?: string; status?: string }, tab: TabInfo) => void): () => void;
+  openConfirmation(source: ConfirmationSource, fields: Record<string, string>): Promise<"opened" | "prompt">;
+  runRewrite(source: string, url: string): Promise<RewriteResult>;
 }

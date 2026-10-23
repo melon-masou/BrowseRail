@@ -1,5 +1,5 @@
 import type { StorageChange } from "@browserail/runtime-adapter";
-import { runtime } from "../../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData } from "../../../lib/config/external-data";
 import { createScope } from "../lifecycle";
 import { staticBookmarkReferenceErrors, variableReference } from "../../../lib/bookmarks/variables";
@@ -57,8 +57,8 @@ export function createStaticBookmarksList(
     if (area === "local" && Object.keys(changes).some(key => key.startsWith(EXTERNAL_DATA_STORAGE_PREFIX)))
       void refreshExternalKeys();
   };
-  runtime.storage.onChanged.addListener(externalChanged);
-  scope.add(() => runtime.storage.onChanged.removeListener(externalChanged));
+  getRuntimeAdapter().storage.onChanged.addListener(externalChanged);
+  scope.add(() => getRuntimeAdapter().storage.onChanged.removeListener(externalChanged));
   scope.add(state.subscribe(["variables", "bookmarks"], refreshReferenceWarnings));
   void refreshExternalKeys();
 

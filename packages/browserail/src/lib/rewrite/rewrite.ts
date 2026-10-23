@@ -22,7 +22,8 @@ interface RewriteCommand {
   replacement: string;
   line: number;
 }
-export type RewriteResult = { ok: true; url: string | null; line?: number } | { ok: false; error: string };
+export type { RewriteResult } from "@browserail/runtime-adapter";
+import type { RewriteResult } from "@browserail/runtime-adapter";
 
 function parse(source: string): RewriteCommand[] {
   const commands: RewriteCommand[] = [];

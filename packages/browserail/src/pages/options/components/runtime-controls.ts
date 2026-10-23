@@ -1,12 +1,16 @@
 import { browserActions } from "../browser";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 
 export function mountRuntimeControls(initialEnabled: boolean) {
   const scope = createScope();
   const enabledToggle = element<HTMLInputElement>("widget-enabled-toggle");
   const editingToggle = element<HTMLInputElement>("edit-menus-toggle");
   const shortcutsToggle = element<HTMLInputElement>("shortcuts-enabled-toggle");
+  const { browserShortcuts, desktopConnection } = getRuntimeAdapter().capabilities;
+  const shortcutsAvailable = browserShortcuts || desktopConnection;
+  shortcutsToggle.closest<HTMLElement>(".runtime-switch-control")!.hidden = !shortcutsAvailable;
   let enabled = initialEnabled;
   let shortcutsEnabled = true;
   let editingAvailable = false;
@@ -23,7 +27,7 @@ export function mountRuntimeControls(initialEnabled: boolean) {
     editingToggle.checked = enabled && editing;
     editingToggle.disabled = !enabled || !editingAvailable || changingEnabled || changingEditing;
     shortcutsToggle.checked = shortcutsEnabled;
-    shortcutsToggle.disabled = loading || changingShortcuts;
+    shortcutsToggle.disabled = loading || changingShortcuts || !shortcutsAvailable;
   }
 
   function renderEditingState(state: { enabled: boolean; editing: boolean }): void {

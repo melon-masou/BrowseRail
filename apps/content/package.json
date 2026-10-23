@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     "./bar": "./src/bar/entry.ts",
-    "./bridge": "./src/bridge/entry.ts"
+    "./bridge": "./src/bridge/entry.ts",
+    "./surface": "./src/bar/surface.ts",
+    "./styles.css": "./src/bar/styles.css"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json",

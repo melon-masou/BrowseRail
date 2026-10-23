@@ -8,9 +8,11 @@
     "./settings": "./src/pages/options/page.ts",
     "./settings-template": "./src/pages/options/index.html",
     "./settings.css": "./src/pages/options/styles.css",
+    "./close-button.css": "./src/pages/options/close-button.css",
     "./*": "./src/*.ts",
     "./confirmation": "./src/pages/bookmark-confirm/page.ts",
-    "./extension": "./src/extension/index.ts"
+    "./build-icons": "./build-icons.mjs",
+    "./icons": "./assets/icons"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json",
@@ -28,7 +30,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.0",
-    "webextension-polyfill": "^0.12.0",
-    "@types/webextension-polyfill": "^0.12.6"
+    "lucide-static": "1.52.0",
+    "@phosphor-icons/core": "2.1.1"
   }
 }

@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { type ShortcutAction } from "@browserail/protocol";
 import { loadShortcutsEnabled, saveShortcutsEnabled, saveConfig, type ExtensionConfig } from "../../lib/config/index";
 import { runTabAction, toggleTargetMenus } from "../actions/menu-actions";
@@ -15,7 +15,7 @@ export async function executeShortcutAction(
   host: { changed(): void | Promise<void>; toggleFold(menuUid: string): Promise<void> },
 ): Promise<void> {
   if (action.type === "browserAction") {
-    await runTabAction(runtime.navigation, windowUid, action.browserAction);
+    await runTabAction(getRuntimeAdapter().navigation, windowUid, action.browserAction);
   } else if (action.type === "shortcutsToggle") {
     await saveShortcutsEnabled(!await loadShortcutsEnabled());
   } else if (action.type === "menusToggle") {

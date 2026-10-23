@@ -1,6 +1,6 @@
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { matchesUrlRule } from "@browserail/protocol";
 import type { DynamicBookmark, UrlRule } from "../../lib/config/index";
-import { host } from "../../runtime";
 import type { DynamicEvaluation } from "./messages";
 
 export interface DynamicUpdate {
@@ -18,7 +18,7 @@ export async function evaluateDynamicBookmark(
   if (!/^https?:\/\//i.test(url) || !matchesUrlRule(url, rule)) return { ok: true, skipped: "inputRule" };
   let newUrl = url;
   if (bookmark.type === "rewrite") {
-    const result = await host.runRewrite(bookmark.rewrite ?? "", url);
+    const result = await getRuntimeAdapter().host.runRewrite(bookmark.rewrite ?? "", url);
     if (!result.ok) return result;
     if (result.url === null) return { ok: true, skipped: result.line ? "filtered" : "noUpdate", ...(result.line ? { line: result.line } : {}) };
     newUrl = result.url;

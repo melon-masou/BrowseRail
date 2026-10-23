@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { RuntimeAdapter, StorageArea } from "@browserail/runtime-adapter";
-import { initializeBrowserail, type BrowserailHost } from "./runtime";
+import { registerRuntimeAdapter, type RuntimeHost } from "@browserail/runtime-adapter";
 import { loadConfig, saveConfig } from "./lib/config/index";
 import { createBrowserMenus } from "./features/bar/menus";
 import { createMenuSync } from "./features/sync/index";
@@ -37,16 +37,16 @@ it("renders and opens saved links with an injected host while retaining unavaila
     messaging: { id: "test-host", send: unsupported, sendToTab: unsupported, sendToExtension: unsupported, onMessage: events },
     permissions: { getAll: async () => ({ origins: ["https://example.com/*"] }), contains: async () => true, request: unsupported, remove: unsupported },
     capabilities: { browserBookmarks: false, browserSync: false, websitePermissions: false, browserShortcuts: false, externalExtensions: false, desktopConnection: false },
-    resourceUrl: unsupported, platformInfo: async () => ({ os: "linux" }),
+    resourceUrl: unsupported, resourceJson: unsupported, platformInfo: async () => ({ os: "linux" }),
   };
-  const host: BrowserailHost = {
+  const host: RuntimeHost = {
     browserKind: () => "test-host",
     listWindows: async () => [{ uid: "1", focused: true, activeTabUrl: currentUrl, bounds: { x: 0, y: 0, width: 1024, height: 768 } }],
     commands: unsupported, openShortcutSettings: unsupported,
     onPermissionsChanged: () => () => {}, onTabRemoved: () => () => {}, onTabUpdated: () => () => {},
     openConfirmation: unsupported, runRewrite: unsupported,
   };
-  initializeBrowserail(adapter, host);
+  registerRuntimeAdapter(adapter, host);
   const config = await loadConfig();
   config.staticBookmarks = [{ uid: "docs", name: "Docs", url: "https://example.com/docs" }];
   config.panel.menus = [{ uid: "bar", items: [

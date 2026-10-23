@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { barSettingsFromView, normalizeMenuSpacing, type MenuView, type SyncedMenu, type ExtensionMessage } from "@browserail/protocol";
 import { resolveMenuItems, type BookmarkNode } from "../../lib/bookmarks/index";
 import { projectMenuSpacing } from "../../lib/bookmarks/spacing";
@@ -67,7 +67,7 @@ export function createMenuSync(host: MenuSyncHost) {
       configTask,
       listBrowserWindows(),
       loadBookmarkRootPrefix(),
-      bookmarksAvailable ? runtime.bookmarks.getTree().catch(() => []) : [],
+      bookmarksAvailable ? getRuntimeAdapter().bookmarks.getTree().catch(() => []) : [],
       configTask.then(config => loadDynamicValues(config.dynamicBookmarks.map(bookmark => bookmark.uid))),
       loadTemporaryNotes(),
       loadDisplayMode(),

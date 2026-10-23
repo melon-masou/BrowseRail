@@ -1,0 +1,16 @@
+.picker-close-btn {
+  min-height: 28px;
+  width: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.picker-close-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}

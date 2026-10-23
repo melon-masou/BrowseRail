@@ -5,13 +5,17 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./extension": "./src/extension.ts"
+    "./extension": "./src/extension.ts",
+    "./userscript": "./src/userscript.ts",
+    "./rewrite": "./src/rewrite.ts"
   },
   "scripts": {
-    "check": "tsc -p tsconfig.json"
+    "check": "tsc -p tsconfig.json",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/webextension-polyfill": "^0.12.6",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }

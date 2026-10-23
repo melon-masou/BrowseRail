@@ -8,6 +8,7 @@ import { type OptionsState } from "../state";
 import { type BookmarkLibrary } from "../bookmark-library";
 import { type BookmarkPicker } from "../components/bookmark-picker";
 import { browserActions } from "../browser";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 
 export function mountInstanceTab(
   state: OptionsState,
@@ -385,6 +386,7 @@ export function mountInstanceTab(
     instanceLabel.value = current.label;
     desktopUrl.value = current.desktopUrl;
     displayMode.value = current.displayMode;
+    displayMode.disabled = !getRuntimeAdapter().capabilities.desktopConnection;
     if (bookmarkRootInput) {
       bookmarkRootInput.readOnly = true;
       bookmarkRootInput.value = library.formatRoot([...current.rootPrefix]);
@@ -405,6 +407,7 @@ export function mountInstanceTab(
       state.discardInstance();
     },
     validate(): boolean {
+      if (!getRuntimeAdapter().capabilities.desktopConnection) return true;
       if (!isLocalDesktopUrl(state.instance.desktopUrl)) {
         desktopUrl.setCustomValidity(t("validation.localWsAddress"));
         desktopUrl.reportValidity();

@@ -1,4 +1,4 @@
-import { runtime, host } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { probeDesktopConnection } from "../../lib/desktop/connection";
 import {
   loadWidgetEnabled, saveWidgetEnabled, loadShortcutsEnabled, saveShortcutsEnabled,
@@ -26,13 +26,13 @@ export const browserActions = {
   runtimeState,
   setShortcutsEnabled: saveShortcutsEnabled,
   onRuntimeState(listener: (state: RuntimeState) => void): () => void {
-    const receive: Parameters<typeof runtime.storage.onChanged.addListener>[0] = (changes, area) => {
+    const receive: Parameters<ReturnType<typeof getRuntimeAdapter>["storage"]["onChanged"]["addListener"]>[0] = (changes, area) => {
       if (area === "local" && (changes[WIDGET_ENABLED_STORAGE_KEY] || changes[SHORTCUTS_ENABLED_STORAGE_KEY])) {
         void runtimeState().then(listener).catch(error => console.error("BrowseRail runtime state:", error));
       }
     };
-    runtime.storage.onChanged.addListener(receive);
-    return () => runtime.storage.onChanged.removeListener(receive);
+    getRuntimeAdapter().storage.onChanged.addListener(receive);
+    return () => getRuntimeAdapter().storage.onChanged.removeListener(receive);
   },
   async setWidgetEnabled(enabled: boolean): Promise<void> {
     await saveWidgetEnabled(enabled);
@@ -47,25 +47,25 @@ export const browserActions = {
     const receive = (message: unknown): void => {
       if (isEditingStateChanged(message)) listener({ enabled: message.enabled, editing: message.editing });
     };
-    runtime.messaging.onMessage.addListener(receive);
-    return () => runtime.messaging.onMessage.removeListener(receive);
+    getRuntimeAdapter().messaging.onMessage.addListener(receive);
+    return () => getRuntimeAdapter().messaging.onMessage.removeListener(receive);
   },
-  commands: () => host.commands(),
+  commands: () => getRuntimeAdapter().host.commands(),
   probeDesktop: probeDesktopConnection,
   resetMenuPosition: (menuUid: string) => request<MenuLayoutReset>({ type: MENU_LAYOUT_RESET, menuUid }),
-  openShortcutSettings: () => host.openShortcutSettings(),
+  openShortcutSettings: () => getRuntimeAdapter().host.openShortcutSettings(),
   onDesktopState(listener: (state: string) => void): () => void {
     const receive = (message: unknown): void => {
       if (isDesktopStateChanged(message)) listener(message.state);
     };
-    runtime.messaging.onMessage.addListener(receive);
-    return () => runtime.messaging.onMessage.removeListener(receive);
+    getRuntimeAdapter().messaging.onMessage.addListener(receive);
+    return () => getRuntimeAdapter().messaging.onMessage.removeListener(receive);
   },
   async diagnosticsEnabled(): Promise<boolean> {
-    return Boolean((await runtime.storage.local.get("debugLoggingEnabled")).debugLoggingEnabled);
+    return Boolean((await getRuntimeAdapter().storage.local.get("debugLoggingEnabled")).debugLoggingEnabled);
   },
   async setDiagnosticsEnabled(enabled: boolean): Promise<void> {
-    await runtime.storage.local.set({ debugLoggingEnabled: enabled });
+    await getRuntimeAdapter().storage.local.set({ debugLoggingEnabled: enabled });
     await request<DebugLoggingSet>({ type: DEBUG_LOGGING_SET, enabled }).catch(() => {});
   },
   async debugInfo(): Promise<unknown> {

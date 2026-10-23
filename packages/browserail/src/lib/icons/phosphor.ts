@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import type { IconCatalog } from "./lucide";
 
 interface PhosphorData {
@@ -8,9 +8,8 @@ interface PhosphorData {
 let catalog: Promise<IconCatalog> | undefined;
 
 export function loadPhosphorCatalog(): Promise<IconCatalog> {
-  return catalog ??= fetch(runtime.resourceUrl("icons/phosphor/icons.json")).then(async response => {
-    if (!response.ok) throw new Error("Unable to load Phosphor icons");
-    const data = await response.json() as PhosphorData;
+  return catalog ??= getRuntimeAdapter().resourceJson("icons/phosphor/icons.json").then(value => {
+    const data = value as PhosphorData;
     const urls = new Map<string, string>();
     return {
       names: Object.keys(data.icons).sort(),

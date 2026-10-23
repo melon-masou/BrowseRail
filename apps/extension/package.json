@@ -5,23 +5,26 @@
   "type": "module",
   "scripts": {
     "build": "pnpm build:chrome && pnpm build:firefox",
-    "build:chrome": "node scripts/build.mjs chrome",
-    "build:firefox": "node scripts/build.mjs firefox",
-    "check": "tsc -p tsconfig.json"
+    "build:chrome": "node build.mjs chrome",
+    "build:firefox": "node build.mjs firefox",
+    "check": "tsc -p tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@browserail/content": "workspace:*",
     "@browserail/protocol": "workspace:*",
     "@browserail/runtime-adapter": "workspace:*",
-    "@phosphor-icons/core": "2.1.1",
-    "lucide-static": "1.52.0",
     "webextension-polyfill": "^0.12.0",
-    "@browserail/browserail": "workspace:*"
+    "@browserail/browserail": "workspace:*",
+    "@browserail/i18n": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/webextension-polyfill": "^0.12.6",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "happy-dom": "^20.14.5",
+    "vitest": "^5.0.0",
+    "@browserail/menu-ui": "workspace:*"
   }
 }

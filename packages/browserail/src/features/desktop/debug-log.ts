@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 
 export interface ExtensionDebugLogEntry {
   time: string;
@@ -30,11 +30,11 @@ export function createDebugLog() {
     else log("Debug", "Debug logging enabled");
   }
 
-  void runtime.storage.local
+  void getRuntimeAdapter().storage.local
     .get("debugLoggingEnabled")
     .then((res) => { enabled = Boolean(res.debugLoggingEnabled); })
     .catch(() => {});
-  runtime.storage.onChanged.addListener((changes, areaName) => {
+  getRuntimeAdapter().storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && changes.debugLoggingEnabled) apply(Boolean(changes.debugLoggingEnabled.newValue));
   });
 
@@ -44,7 +44,7 @@ export function createDebugLog() {
     entries: entries as readonly ExtensionDebugLogEntry[],
     async setEnabled(next: boolean): Promise<{ ok: true; debugLoggingEnabled: boolean }> {
       apply(next);
-      await runtime.storage.local.set({ debugLoggingEnabled: next });
+      await getRuntimeAdapter().storage.local.set({ debugLoggingEnabled: next });
       return { ok: true, debugLoggingEnabled: enabled };
     },
     forwardTo(sink: (entry: ExtensionDebugLogEntry) => void): void { forward = sink; },

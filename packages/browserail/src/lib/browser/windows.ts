@@ -1,6 +1,6 @@
-import { host } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 
-export type { BrowserWindowCandidate } from "../../runtime";
+export type { BrowserWindowCandidate } from "@browserail/runtime-adapter";
 
-export const browserKind = () => host.browserKind();
-export const listBrowserWindows = () => host.listWindows();
+export const browserKind = () => getRuntimeAdapter().host.browserKind();
+export const listBrowserWindows = () => getRuntimeAdapter().host.listWindows();

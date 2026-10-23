@@ -1,5 +1,5 @@
 import type { MessageSender } from "@browserail/runtime-adapter";
-import { runtime, host } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import type { TemporaryConfirmationResult } from "@browserail/protocol/content";
 
 interface ConfirmationSource {
@@ -13,19 +13,19 @@ interface ConfirmationContext extends ConfirmationSource {
 }
 
 export async function openTemporaryConfirmation(context: ConfirmationContext): Promise<TemporaryConfirmationResult> {
-  return host.openConfirmation(context, { menuUid: context.menuUid, uid: context.uid });
+  return getRuntimeAdapter().host.openConfirmation(context, { menuUid: context.menuUid, uid: context.uid });
 }
 
 export async function openStaticConfirmation(source: ConfirmationSource, bookmark: { name: string; url: string }): Promise<void> {
-  const result = await host.openConfirmation(source, { kind: "static", name: bookmark.name, url: bookmark.url });
+  const result = await getRuntimeAdapter().host.openConfirmation(source, { kind: "static", name: bookmark.name, url: bookmark.url });
   if (result !== "opened") throw new Error("Bookmark confirmation popup is unavailable");
 }
 
 
 function confirmationPage(sender: MessageSender): URL {
-  if (sender.id !== runtime.messaging.id || (sender.frameId !== undefined && sender.frameId !== 0) || !sender.url) throw new Error("Invalid confirmation page");
+  if (sender.id !== getRuntimeAdapter().messaging.id || (sender.frameId !== undefined && sender.frameId !== 0) || !sender.url) throw new Error("Invalid confirmation page");
   const url = new URL(sender.url);
-  const page = new URL(runtime.resourceUrl("temporary-confirm.html"));
+  const page = new URL(getRuntimeAdapter().resourceUrl("temporary-confirm.html"));
   if (url.protocol !== page.protocol || url.host !== page.host || url.pathname !== page.pathname) throw new Error("Invalid confirmation page");
   return url;
 }

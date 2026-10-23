@@ -1,4 +1,4 @@
-import { runtime } from "../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import type { ReplyOf } from "@browserail/protocol/message";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -12,9 +12,9 @@ export function messageType(value: unknown): unknown {
 
 /** Sends a request; name its type explicitly so the reply type follows from it. */
 export function request<Message extends { type: string }>(message: NoInfer<Message>): Promise<ReplyOf<Message>> {
-  return runtime.messaging.send(message) as Promise<ReplyOf<Message>>;
+  return getRuntimeAdapter().messaging.send(message) as Promise<ReplyOf<Message>>;
 }
 
 export function requestTab<Message extends { type: string }>(tabId: number, message: NoInfer<Message>, options?: { frameId?: number }): Promise<ReplyOf<Message>> {
-  return runtime.messaging.sendToTab(tabId, message, options) as Promise<ReplyOf<Message>>;
+  return getRuntimeAdapter().messaging.sendToTab(tabId, message, options) as Promise<ReplyOf<Message>>;
 }

@@ -1,3 +1,5 @@
+@import "./close-button.css";
+
 :root {
   color: #172033;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
@@ -801,6 +803,8 @@ output[data-state="error"] {
   gap: 6px;
   flex-shrink: 0;
 }
+
+.runtime-switch-control[hidden] { display: none; }
 
 .add-toolbar-action {
   margin-left: auto;
@@ -2122,23 +2126,6 @@ output[data-state="error"] {
   font-weight: 700;
 }
 
-.picker-close-btn {
-  min-height: 28px;
-  width: 28px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  color: #64748b;
-  cursor: pointer;
-  border-radius: 4px;
-}
-
-.picker-close-btn:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
 .picker-nav {
   display: flex;
   align-items: center;
@@ -3420,14 +3407,6 @@ button.item-tag {
   min-height: 15px;
   margin: 0;
 }
-.bookmarks-unsupported-notice {
-  margin: 0;
-  padding: 10px 20px;
-  border-bottom: 1px solid #f1d3a8;
-  background: #fff7eb;
-  color: #a55f0e;
-  font-size: 12px;
-}
 .dynamic-rewrite-warning {
   color: #d98220;
   margin: 0 0 10px;
@@ -3868,3 +3847,5 @@ span.icon-picker-preview {
     max-width: none;
   }
 }
+
+.runtime-unavailable { opacity: 0.45; }

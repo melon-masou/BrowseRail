@@ -1,4 +1,4 @@
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 
 type LucideNode = [tag: string, attributes: Record<string, string>];
 
@@ -19,9 +19,8 @@ function escapeAttribute(value: string): string {
 }
 
 export function loadLucideCatalog(): Promise<IconCatalog> {
-  return catalog ??= fetch(runtime.resourceUrl("icons/lucide/icons.json")).then(async response => {
-    if (!response.ok) throw new Error("Unable to load Lucide icons");
-    const data = await response.json() as LucideData;
+  return catalog ??= getRuntimeAdapter().resourceJson("icons/lucide/icons.json").then(value => {
+    const data = value as LucideData;
     const urls = new Map<string, string>();
     return {
       names: [...Object.keys(data.icons), ...Object.keys(data.aliases)].sort(),

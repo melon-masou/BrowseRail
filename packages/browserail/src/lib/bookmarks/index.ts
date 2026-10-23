@@ -1,5 +1,5 @@
 import type { BookmarkTreeNode } from "@browserail/runtime-adapter";
-import { runtime } from "../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { t } from "@browserail/i18n";
 import {
   actionUid,
@@ -608,7 +608,7 @@ export async function resolveMenuItems(
       if (effectivePath.length > 0 || url) {
         if (!treeCache) {
           try {
-            treeCache = (await runtime.bookmarks.getTree()) as BookmarkNode[];
+            treeCache = (await getRuntimeAdapter().bookmarks.getTree()) as BookmarkNode[];
           } catch {
             treeCache = [];
           }

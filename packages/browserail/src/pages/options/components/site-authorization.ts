@@ -1,4 +1,4 @@
-import { runtime, host } from "../../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { createScope } from "../lifecycle";
 import { onLanguageChange, t } from "@browserail/i18n";
 import type { DisplayMode, UrlRule } from "../../../lib/config/index";
@@ -100,7 +100,7 @@ export function createSiteAuthorization(options: {
     const unsaved = options.hasUnsavedRules();
     const [origins, allGranted] = await Promise.all([
       loadWebsiteOrigins(),
-      runtime.permissions.contains({ origins: ALL_WEBSITE_ORIGINS }),
+      getRuntimeAdapter().permissions.contains({ origins: ALL_WEBSITE_ORIGINS }),
     ]);
     if (scope.signal.aborted || !active() || dialog.open) return;
     dialogOrigins = origins;
@@ -215,7 +215,7 @@ export function createSiteAuthorization(options: {
         confirm.disabled = cancel.disabled = close.disabled = true;
         authorize.disabled = revoke.disabled = true;
         const request = () =>
-          runtime.permissions.request({ origins: chosen }).then((granted) => {
+          getRuntimeAdapter().permissions.request({ origins: chosen }).then((granted) => {
             if (granted) dialog.close();
             else message.textContent = t("siteAuthorization.denied");
           });
@@ -229,10 +229,7 @@ export function createSiteAuthorization(options: {
               confirm.textContent = t("siteAuthorization.grant");
               currentSites.replaceChildren();
               list(currentSites, []);
-              if (
-                typeof __BROWSERAIL_TARGET__ === "undefined" ||
-                __BROWSERAIL_TARGET__ !== "firefox"
-              )
+              if (getRuntimeAdapter().host.browserKind() !== "firefox")
                 return request();
               message.textContent = t("siteAuthorization.ready");
             })
@@ -293,7 +290,7 @@ export function createSiteAuthorization(options: {
       .catch(report);
     refreshSafely();
   };
-  scope.add(host.onPermissionsChanged(permissionsChanged));
+  scope.add(getRuntimeAdapter().host.onPermissionsChanged(permissionsChanged));
   scope.add(onLanguageChange(render));
   return {
     destroy(): void {

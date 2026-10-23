@@ -1,5 +1,5 @@
 import type { StorageChange } from "@browserail/runtime-adapter";
-import { runtime } from "../../../runtime";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { t } from "@browserail/i18n";
 import { EXTERNAL_DATA_STORAGE_PREFIX, listExternalData, removeExternalData } from "../../../lib/config/external-data";
 import { element } from "../dom";
@@ -102,8 +102,8 @@ export function mountVariables(state: OptionsState, showStatus: (message: string
     if (area === "local" && !panel.hidden && Object.keys(changes).some(key => key.startsWith(EXTERNAL_DATA_STORAGE_PREFIX)))
       void refreshExternal();
   };
-  runtime.storage.onChanged.addListener(changed);
-  scope.add(() => runtime.storage.onChanged.removeListener(changed));
+  getRuntimeAdapter().storage.onChanged.addListener(changed);
+  scope.add(() => getRuntimeAdapter().storage.onChanged.removeListener(changed));
   scope.add(state.subscribe(["variables"], change => { if (change.structural) renderUser(); }));
   renderUser();
   return {
