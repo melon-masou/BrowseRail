@@ -46,6 +46,7 @@ export interface StoredMenuItem {
   // ExtensionConfig.dynamicBookmarks). Its live URL/title come from local state.
   dynamicUid?: string;
   staticUid?: string;
+  // Historical storage name: tag groups now include all custom bookmark types.
   staticTag?: string;
   temporaryUid?: string;
   externalActionUid?: string;
@@ -308,6 +309,7 @@ export interface ExportedDynamicBookmark {
   urlRuleUid?: string;
   uid: string;
   name: string;
+  tags?: string[];
   rewrite?: string;
 }
 
@@ -321,6 +323,7 @@ export interface StaticBookmark {
 export interface TemporaryBookmark {
   uid: string;
   name: string;
+  tags?: string[];
 }
 
 /** Binds an external action to every URL instead of one URL rule. */
@@ -334,6 +337,7 @@ export const DEFAULT_EXTERNAL_EVENT_NAME = "browserail:run:${token}";
 export interface ExternalAction {
   uid: string;
   name: string;
+  tags?: string[];
   /** A URL rule uid or ALL_URLS_RULE_UID; an unbound action cannot be saved. */
   urlRuleUid?: string;
   target: "extension" | "event";

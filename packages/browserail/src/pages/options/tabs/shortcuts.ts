@@ -710,6 +710,7 @@ export function mountShortcutsTab(
       definitions.map((value) => ({
         uid: value.uid,
         name: value.name,
+        ...(value.tags ? { tags: value.tags } : {}),
         ...(source.url(type, value.uid) ? { url: source.url(type, value.uid)! } : {}),
       })),
     );

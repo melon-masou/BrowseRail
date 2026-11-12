@@ -9,7 +9,7 @@ import {
 } from "@browserail/browserail/lib/config/index";
 import { openStaticConfirmation, staticConfirmationContext } from "@browserail/browserail/features/capture/confirmation";
 import { requestBrowserMenuRefresh } from "@browserail/browserail/features/bar/refresh";
-import { normalizeStaticBookmarkTags } from "@browserail/browserail/lib/config/static-bookmark-tags";
+import { normalizeBookmarkTags } from "@browserail/browserail/lib/config/bookmark-tags";
 import { dispatch } from "@browserail/protocol/message";
 import {
   EDITING_SET, EDITING_STATE_CHANGED, EDITING_STATE_REQUEST, isEditingRequest, type EditingRequest, type EditingState,
@@ -140,7 +140,7 @@ async function saveStaticConfirmed({ name, url, tags }: StaticSaveConfirmed, sen
   const tab = await getRuntimeAdapter().navigation.get(source.sourceTabId);
   if (tab.windowId !== source.sourceWindowId) throw new Error("Source window is unavailable");
   const config = await loadConfig();
-  const selectedTags = normalizeStaticBookmarkTags(tags);
+  const selectedTags = normalizeBookmarkTags(tags);
   config.staticBookmarks.push({ uid: crypto.randomUUID(), name: name.trim(), url: url.trim(), ...(selectedTags.length ? { tags: selectedTags } : {}) });
   await saveConfig(config);
 }

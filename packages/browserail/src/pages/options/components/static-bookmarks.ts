@@ -7,16 +7,16 @@ import { t } from "@browserail/i18n";
 import type { StaticBookmark } from "../../../lib/config/index";
 import type { OptionsState, ReadonlyData } from "../state";
 import { renderPreservingFocus } from "./render-focus";
-import { addIcon, removeIcon, setIconContent } from "./icons";
+import { removeIcon, setIconContent } from "./icons";
 import { filterCustomBookmarks } from "../custom-bookmark-search";
 import { createVariablePicker } from "./variable-picker";
 import { createMoveButtons } from "./move-buttons";
+import type { BookmarkTags } from "./bookmark-tags";
 
 export function createStaticBookmarksList(
   state: OptionsState,
   list: HTMLElement,
-  filters: HTMLElement,
-  suggestions: HTMLDataListElement,
+  tags: BookmarkTags,
   removeBookmark: (uid: string) => void,
   showStatus: (message: string) => void,
   getSearchQuery?: () => string,
@@ -25,8 +25,6 @@ export function createStaticBookmarksList(
   let externalKeys: ReadonlySet<string> | undefined;
   let referenceRevision = 0;
   const variablePicker = createVariablePicker(state, showStatus);
-  const selectedTags = new Set<string>();
-  const tagDrafts = new Map<string, string>();
   const expandedUids = new Set<string>();
 
   function refreshReferenceWarnings(): void {
@@ -62,36 +60,6 @@ export function createStaticBookmarksList(
   scope.add(state.subscribe(["variables", "bookmarks"], refreshReferenceWarnings));
   void refreshExternalKeys();
 
-  function renderFilters(tags: readonly string[]): void {
-    filters.ariaLabel = t("static.tags");
-    filters.hidden = tags.length === 0;
-    filters.replaceChildren();
-    const all = document.createElement("button");
-    all.type = "button";
-    all.className = "static-tag-filter";
-    all.textContent = t("static.allTags");
-    all.setAttribute("aria-pressed", String(selectedTags.size === 0));
-    all.addEventListener("click", () => { selectedTags.clear(); render(); });
-    filters.append(all);
-    for (const tag of tags) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "static-tag-filter";
-      button.textContent = tag;
-      button.setAttribute("aria-pressed", String(selectedTags.has(tag)));
-      button.addEventListener("click", () => {
-        if (!selectedTags.delete(tag)) selectedTags.add(tag);
-        render();
-      });
-      filters.append(button);
-    }
-    suggestions.replaceChildren(...tags.map(tag => {
-      const option = document.createElement("option");
-      option.value = tag;
-      return option;
-    }));
-  }
-
   function renderCard(bookmark: ReadonlyData<StaticBookmark>, index: number, visible: readonly ReadonlyData<StaticBookmark>[]): HTMLElement {
     const expanded = expandedUids.has(bookmark.uid);
     const card = document.createElement("article");
@@ -126,7 +94,7 @@ export function createStaticBookmarksList(
     setIconContent(remove, removeIcon());
     remove.addEventListener("click", () => removeBookmark(bookmark.uid));
     const summary = document.createElement("span");
-    summary.className = "static-tag-summary";
+    summary.className = "bookmark-tag-summary";
     summary.textContent = (bookmark.tags ?? []).join(" · ");
     summary.title = summary.textContent;
     summary.hidden = expanded || !bookmark.tags?.length;
@@ -145,50 +113,6 @@ export function createStaticBookmarksList(
     url.ariaLabel = t("customBookmarks.url");
     url.addEventListener("input", () => state.setStaticUrl(bookmark.uid, url.value));
 
-    const tags = document.createElement("div");
-    tags.className = "static-bookmark-tags";
-    const chips = document.createElement("div");
-    chips.className = "static-tag-chips";
-    for (const tag of bookmark.tags ?? []) {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "static-tag-chip";
-      chip.textContent = `${tag} ×`;
-      chip.title = chip.ariaLabel = t("static.removeTag", { tag });
-      chip.addEventListener("click", () => {
-        state.setStaticTags(bookmark.uid, (bookmark.tags ?? []).filter(value => value !== tag));
-      });
-      chips.append(chip);
-    }
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "static-tag-input";
-    input.placeholder = input.ariaLabel = t("static.addTag");
-    input.setAttribute("list", suggestions.id);
-    input.value = tagDrafts.get(bookmark.uid) ?? "";
-    input.addEventListener("input", () => tagDrafts.set(bookmark.uid, input.value));
-    const commit = () => {
-      const tag = input.value.trim();
-      if (!input.isConnected || !tag) return;
-      input.value = "";
-      tagDrafts.delete(bookmark.uid);
-      state.setStaticTags(bookmark.uid, [...(bookmark.tags ?? []), tag]);
-    };
-    input.addEventListener("keydown", event => {
-      if (event.key !== "Enter" || event.isComposing) return;
-      event.preventDefault();
-      commit();
-    });
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "action-btn static-tag-add";
-    add.title = add.ariaLabel = t("static.addTag");
-    setIconContent(add, addIcon());
-    add.addEventListener("click", commit);
-    const editor = document.createElement("div");
-    editor.className = "static-tag-editor";
-    editor.append(input, add);
-    tags.append(chips, editor);
     const urlEditor = document.createElement("div");
     urlEditor.className = "static-url-editor";
     urlEditor.append(url);
@@ -209,21 +133,17 @@ export function createStaticBookmarksList(
       });
     });
     urlEditor.append(addVariable);
-    body.append(urlEditor, tags);
+    body.append(urlEditor, tags.editor("static", bookmark));
     card.append(header, body);
     return card;
   }
 
   function render(): void {
     const bookmarks = state.settings.staticBookmarks;
-    const tags = [...new Set(bookmarks.flatMap(bookmark => bookmark.tags ?? []))].sort();
-    for (const tag of selectedTags) if (!tags.includes(tag)) selectedTags.delete(tag);
-    for (const uid of tagDrafts.keys()) if (!bookmarks.some(bookmark => bookmark.uid === uid)) tagDrafts.delete(uid);
     for (const uid of expandedUids) if (!bookmarks.some(bookmark => bookmark.uid === uid)) expandedUids.delete(uid);
-    renderPreservingFocus(filters, () => renderFilters(tags));
     renderPreservingFocus(list, () => {
       list.replaceChildren();
-      const tagMatched = bookmarks.filter(bookmark => selectedTags.size === 0 || bookmark.tags?.some(tag => selectedTags.has(tag)));
+      const tagMatched = tags.filter(bookmarks);
       const query = getSearchQuery ? getSearchQuery() : "";
       const visible = filterCustomBookmarks("static", tagMatched, query);
       if (!visible.length) {
@@ -241,18 +161,15 @@ export function createStaticBookmarksList(
     render,
     addBookmark(): void {
       const uid = crypto.randomUUID();
-      selectedTags.clear();
+      tags.clearFilter();
       expandedUids.add(uid);
       state.addBookmark("static", { uid, name: t("static.defaultName"), url: "" });
     },
     destroy(): void {
       scope.destroy();
       variablePicker.destroy();
-      tagDrafts.clear();
       expandedUids.clear();
       list.replaceChildren();
-      filters.replaceChildren();
-      suggestions.replaceChildren();
     },
   };
 }

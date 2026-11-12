@@ -5,8 +5,18 @@ import {
 } from "./custom-bookmark-search";
 import type { StaticBookmark, TemporaryBookmark, DynamicBookmark, ExternalAction, UrlRule } from "../../lib/config/index";
 import type { CustomBookmarkSource } from "./custom-bookmark-source";
+import type { CustomBookmarkType } from "@browserail/protocol";
 
 describe("custom-bookmark-search", () => {
+  it.each<CustomBookmarkType>(["static", "temporary", "dynamic", "externalAction"])("searches tags on %s definitions without matching an untagged name", type => {
+    const bookmarks = [
+      { uid: "tagged", name: "Notes", tags: ["work"] },
+      { uid: "name-only", name: "work" },
+    ];
+    expect(filterCustomBookmarks(type, bookmarks, "#WORK").map(bookmark => bookmark.uid)).toEqual(["tagged"]);
+    expect(filterCustomBookmarks(type, bookmarks, "work").map(bookmark => bookmark.uid)).toEqual(["tagged", "name-only"]);
+    expect(filterCustomBookmarks(type, bookmarks, "#work notes").map(bookmark => bookmark.uid)).toEqual(["tagged"]);
+  });
   it("matches search query case-insensitively and supports multiple terms", () => {
     expect(matchesSearchQuery("GitHub Personal Project", "")).toBe(true);
     expect(matchesSearchQuery("GitHub Personal Project", "  ")).toBe(true);

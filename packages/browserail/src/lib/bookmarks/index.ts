@@ -3,6 +3,9 @@ import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { t } from "@browserail/i18n";
 import {
   actionUid,
+  customBookmarkUid,
+  isCustomBookmarkType,
+  type CustomBookmarkType,
   type BookmarkEntry,
   type ExpandDirection,
   type FolderEntry,
@@ -12,6 +15,7 @@ import {
 } from "@browserail/protocol";
 
 import type { StoredMenuItem } from "../config/model";
+import { customBookmarkTagDefinitions, type BookmarkTagSources } from "../config/bookmark-tags";
 import { menuItemIdentity } from "./identity";
 
 export { actionUid, SPECIAL_ROOT_PLACEHOLDERS, type SpecialRootType };
@@ -492,13 +496,10 @@ export async function resolveMenuItems(
   menuColor?: string,
   menuExpandDirection?: ExpandDirection,
   rootPrefix?: string[],
-  context: {
+  context: BookmarkTagSources & {
     tree?: BookmarkNode[];
     dynamicResolve?: DynamicResolver;
     temporaryNotes?: Record<string, string>;
-    staticBookmarks?: Array<{ uid: string; name: string; tags?: string[] }>;
-    temporaryBookmarks?: Array<{ uid: string; name: string }>;
-    externalActions?: Array<{ uid: string; name: string }>;
     shortcutsEnabled?: boolean;
     autoHideEnabled?: boolean;
     // False when the browser exposes no bookmarks API: items backed by the
@@ -511,8 +512,24 @@ export async function resolveMenuItems(
   const staticByUid = new Map(context.staticBookmarks?.map(entry => [entry.uid, entry]));
   const temporaryByUid = new Map(context.temporaryBookmarks?.map(entry => [entry.uid, entry]));
   const externalActionByUid = new Map(context.externalActions?.map(entry => [entry.uid, entry]));
+  function customEntry(type: CustomBookmarkType, target: string, identity: string, color?: string, rename?: string): LayoutEntry | undefined {
+    if (type === "dynamic") {
+      const info = dynamicResolve(target);
+      return info ? dynamicBookmarkEntry(identity, info, color, rename) : undefined;
+    }
+    const definition = type === "static" ? staticByUid.get(target)
+      : type === "temporary" ? temporaryByUid.get(target) : externalActionByUid.get(target);
+    if (!definition) return undefined;
+    return {
+      kind: type === "externalAction" ? "browserAction" : "bookmark",
+      uid: actionUid(type, identity),
+      label: (type === "temporary" ? context.temporaryNotes?.[target] : undefined) || rename || definition.name || t(`${type}.defaultName`),
+      ...(color ? { color } : {}),
+    };
+  }
   const entryGroups = await Promise.all(
-    items.map(async ({ uid, path, url, color, cycleColors, rename, type, dynamicUid, staticUid, staticTag, temporaryUid, externalActionUid, expandOnHover, includeFolders, browserAction }): Promise<LayoutEntry[]> => {
+    items.map(async (item): Promise<LayoutEntry[]> => {
+      const { uid, path, url, color, cycleColors, rename, type, staticTag, expandOnHover, includeFolders, browserAction } = item;
       if (type === "menuFold") {
         const entry: LayoutEntry = {
           kind: "menuFold",
@@ -548,20 +565,13 @@ export async function resolveMenuItems(
         }];
       }
 
-      if (type === "dynamic") {
-        if (!dynamicUid) return [];
-        const info = dynamicResolve(dynamicUid);
-        if (!info) return []; // orphan (definition removed): omit
-        return [dynamicBookmarkEntry(menuItemIdentity(uid), info, color || menuColor, rename)];
-      }
-
       if (type === "staticTag" || type === "flattenStaticTag") {
-        const children: BookmarkEntry[] = (context.staticBookmarks ?? []).filter(definition => staticTag && definition.tags?.includes(staticTag)).map(definition => ({
-          kind: "bookmark",
-          uid: actionUid("static", menuItemIdentity(uid, definition.uid)),
-          label: definition.name || t("static.defaultName"),
-          ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
-        }));
+        const children = customBookmarkTagDefinitions(context)
+          .filter(definition => staticTag && definition.tags?.includes(staticTag))
+          .flatMap(definition => {
+            const entry = customEntry(definition.type, definition.uid, menuItemIdentity(uid, definition.uid), color || menuColor);
+            return entry ? [entry] : [];
+          });
         if (type === "flattenStaticTag") return children;
         return [{
           kind: "folder",
@@ -575,30 +585,10 @@ export async function resolveMenuItems(
         }];
       }
 
-      if (type === "static") {
-        const definition = staticUid ? staticByUid.get(staticUid) : undefined;
-        if (!definition) return [];
-        return [{ kind: "bookmark", uid: actionUid("static", menuItemIdentity(uid)),
-          label: rename || definition.name || t("static.defaultName"), ...(color || menuColor ? { color: (color || menuColor) as string } : {}) }];
-      }
-
-      if (type === "externalAction") {
-        const definition = externalActionUid ? externalActionByUid.get(externalActionUid) : undefined;
-        if (!definition) return [];
-        // An action button: it has no URL, so the bar offers no new-tab alternative.
-        return [{ kind: "browserAction", uid: actionUid("externalAction", menuItemIdentity(uid)),
-          label: rename || definition.name || t("externalAction.defaultName"), ...(color || menuColor ? { color: (color || menuColor) as string } : {}) }];
-      }
-
-      if (type === "temporary") {
-        const definition = temporaryUid ? temporaryByUid.get(temporaryUid) : undefined;
-        if (!definition) return [];
-        return [{
-          kind: "bookmark",
-          uid: actionUid("temporary", menuItemIdentity(uid)),
-          label: context.temporaryNotes?.[definition.uid] || rename || definition.name || t("temporary.defaultName"),
-          ...(color || menuColor ? { color: (color || menuColor) as string } : {}),
-        }];
+      if (isCustomBookmarkType(type)) {
+        const target = customBookmarkUid(item);
+        const entry = target ? customEntry(type, target, menuItemIdentity(uid), color || menuColor, rename) : undefined;
+        return entry ? [entry] : [];
       }
 
       if (context.bookmarksAvailable === false) return [];

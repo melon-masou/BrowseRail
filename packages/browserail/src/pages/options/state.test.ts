@@ -113,10 +113,10 @@ it("removes a bookmark and its menu and shortcut references before notifying rea
 it("normalizes static tags and removes the last tag without leaving an empty tag value", () => {
   const state = createState();
   const tags = [" work ", "", "work", "reading"];
-  state.setStaticTags("static", tags);
+  state.setBookmarkTags("static", "static", tags);
   tags.push("changed outside");
   expect(state.settings.staticBookmarks[0]!.tags).toEqual(["work", "reading"]);
-  state.setStaticTags("static", []);
+  state.setBookmarkTags("static", "static", []);
   expect(state.settings.staticBookmarks[0]!.tags ?? []).toEqual([]);
 });
 
@@ -147,7 +147,7 @@ it("ignores unchanged static order and rejects missing reorder targets without r
   state.moveStaticBookmark("static", "static", "before");
   state.moveStaticBookmark("next", "static", "after");
   expect(() => state.moveStaticBookmark("static", "missing", "before")).toThrow();
-  expect(() => state.setStaticTags("missing", ["work"])).toThrow();
+  expect(() => state.setBookmarkTags("static", "missing", ["work"])).toThrow();
   expect(state.settings.staticBookmarks.map(bookmark => bookmark.uid)).toEqual(["static", "next"]);
   expect(state.dirty.settings).toBe(false);
 });
@@ -215,9 +215,9 @@ it.each(["staticTag", "flattenStaticTag"])("changes the tag source of %s without
   input.staticBookmarks[0]!.tags = ["new"];
   input.menus[0]!.items = [{ uid: "group", type, staticTag: "old", rename: "Links", color: "#123456ff", expandOnHover: false }];
   const state = createState(input);
-  state.setStaticTagSource("menu", "group", "new");
+  state.setTagSource("menu", "group", "new");
   expect(state.settings.menus[0]!.items[0]).toEqual({ uid: "group", type, staticTag: "new", rename: "Links", color: "#123456ff", expandOnHover: false });
-  expect(() => state.setStaticTagSource("menu", "group", "absent")).toThrow("unavailable");
+  expect(() => state.setTagSource("menu", "group", "absent")).toThrow("unavailable");
   expect(state.settings.menus[0]!.items[0]!.staticTag).toBe("new");
   expect(state.dirty.settings).toBe(true);
 });

@@ -219,9 +219,9 @@ it("saves and imports independent shortcut actions without a bar action button",
 
 it("preserves static bookmark tags and order through save, reload, export and import", async () => {
   const { state, persistence } = await fixture();
-  state.setStaticTags("link", [" work ", "reading", "work"]);
+  state.setBookmarkTags("static", "link", [" work ", "reading", "work"]);
   state.addBookmark("static", { uid: "another", name: "Another", url: "https://another.example" });
-  state.setStaticTags("another", ["reading"]);
+  state.setBookmarkTags("static", "another", ["reading"]);
   state.moveStaticBookmark("another", "link", "before");
   await persistence.saveSettings();
   const expected = [
@@ -232,10 +232,37 @@ it("preserves static bookmark tags and order through save, reload, export and im
   const exported = await persistence.exportSettings();
   expect(exported.staticBookmarks).toEqual(expected);
   state.removeBookmark("static", "another");
-  state.setStaticTags("link", []);
+  state.setBookmarkTags("static", "link", []);
   await persistence.importSettings(JSON.stringify(exported));
   await persistence.saveSettings();
   expect((await loadConfig()).staticBookmarks).toEqual(expected);
+  persistence.destroy();
+});
+
+it("shares tags across custom bookmark types and preserves them through live value changes and portable round trips", async () => {
+  const { state, persistence } = await fixture();
+  state.addBookmark("temporary", { uid: "later", name: "Later" });
+  state.addBookmark("dynamic", { uid: "live", name: "Live", type: "external" });
+  state.addBookmark("externalAction", { uid: "run", name: "Run", target: "event", eventName: "run", urlRuleUid: "*" });
+  for (const [type, uid] of [["static", "link"], ["temporary", "later"], ["dynamic", "live"], ["externalAction", "run"]] as const)
+    state.setBookmarkTags(type, uid, [" work ", "", "work", "reading"]);
+  await persistence.saveSettings();
+  const { saveTemporaryValue, clearTemporaryValue, saveDynamicValue } = await import("@browserail/browserail/lib/config/index");
+  await saveTemporaryValue("later", "https://example.com/first", "First");
+  await saveTemporaryValue("later", "https://example.com/next", "Next");
+  await clearTemporaryValue("later");
+  await saveDynamicValue("live", { url: "https://example.com/live", updatedAt: 1 });
+  const saved = await loadConfig();
+  for (const definitions of [saved.staticBookmarks, saved.temporaryBookmarks, saved.dynamicBookmarks, saved.externalActions])
+    expect(definitions[0]!.tags).toEqual(["work", "reading"]);
+  const exported = await persistence.exportSettings();
+  for (const [type, uid] of [["static", "link"], ["temporary", "later"], ["dynamic", "live"], ["externalAction", "run"]] as const)
+    state.setBookmarkTags(type, uid, []);
+  await persistence.importSettings(JSON.stringify(exported));
+  await persistence.saveSettings();
+  const imported = await loadConfig();
+  for (const definitions of [imported.staticBookmarks, imported.temporaryBookmarks, imported.dynamicBookmarks, imported.externalActions])
+    expect(definitions[0]!.tags).toEqual(["work", "reading"]);
   persistence.destroy();
 });
 

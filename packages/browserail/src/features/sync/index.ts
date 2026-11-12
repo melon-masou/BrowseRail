@@ -98,7 +98,7 @@ export function createMenuSync(host: MenuSyncHost) {
           const hideEnabled = await autoHideEnabled(menu.uid, mode, settings);
           const items = await resolveMenuItems(menu.items, menu.color, settings.expandDirection, rootPrefix, {
             tree: bookmarkTree as BookmarkNode[],
-            dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks, externalActions: config.externalActions,
+            dynamicResolve, temporaryNotes, staticBookmarks: config.staticBookmarks, temporaryBookmarks: config.temporaryBookmarks, dynamicBookmarks: config.dynamicBookmarks, externalActions: config.externalActions,
             bookmarksAvailable, shortcutsEnabled, autoHideEnabled: hideEnabled,
           });
           return { uid: menu.uid, items: await resolveItemIcons(items), ...barSettingsFromView(settings), autoHideEnabled: hideEnabled, ...projectMenuSpacing(normalizeMenuSpacing(settings), menu.items, items, bookmarkTree as BookmarkNode[], rootPrefix),

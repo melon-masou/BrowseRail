@@ -15,6 +15,7 @@ import { DEFAULT_REWRITE } from "../../../lib/rewrite/rewrite";
 import { mountVariables } from "../components/variables";
 import { createStaticBookmarksList } from "../components/static-bookmarks";
 import { createExternalAction, createExternalActionsList } from "../components/external-actions";
+import { createBookmarkTags } from "../components/bookmark-tags";
 
 import { filterCustomBookmarks } from "../custom-bookmark-search";
 
@@ -30,6 +31,8 @@ export function mountCustomBookmarksTab(
   searchInput.value = "";
   searchInput.autocomplete = "off";
   const getSearchQuery = () => searchInput.value;
+  const tags = createBookmarkTags(state, element("bookmark-tag-filters"), element<HTMLDataListElement>("bookmark-tag-options"), () => render());
+  scope.add(tags.destroy);
   const variables = mountVariables(state, showStatus);
   scope.add(variables.destroy);
   const tester = createDynamicTester(state);
@@ -39,8 +42,7 @@ export function mountCustomBookmarksTab(
   const staticBookmarks = createStaticBookmarksList(
     state,
     staticList,
-    element("static-tag-filters"),
-    element<HTMLDataListElement>("static-tag-options"),
+    tags,
     uid => removeCustomDefinition("static", uid),
     showStatus,
     getSearchQuery,
@@ -50,6 +52,7 @@ export function mountCustomBookmarksTab(
   const externalActions = createExternalActionsList(
     state,
     externalActionList,
+    tags,
     uid => removeCustomDefinition("externalAction", uid),
     getSearchQuery,
   );
@@ -65,7 +68,7 @@ export function mountCustomBookmarksTab(
   function renderSimpleBookmarks(): void {
     staticBookmarks.render();
     temporaryList.replaceChildren();
-    const allDefinitions = source.definitions("temporary");
+    const allDefinitions = tags.filter(source.definitions("temporary"));
     const definitions = filterCustomBookmarks("temporary", allDefinitions, getSearchQuery(), { source });
     if (!definitions.length) {
       const empty = document.createElement("p");
@@ -76,7 +79,7 @@ export function mountCustomBookmarksTab(
     for (const definition of definitions) temporaryList.append(renderTemporaryCard(definition));
   }
 
-  function renderTemporaryCard(definition: TemporaryBookmark): HTMLElement {
+  function renderTemporaryCard(definition: ReadonlyData<TemporaryBookmark>): HTMLElement {
     const card = document.createElement("article");
     card.className = "menu-card dynamic-card temporary-bookmark-card";
     card.dataset.recordId = definition.uid;
@@ -136,6 +139,7 @@ export function mountCustomBookmarksTab(
     subtitle.append(current, actions);
     header.append(titleRow, headerActions, subtitle);
     card.append(header);
+    card.append(tags.editor("temporary", definition));
     if (note) {
       const row = document.createElement("div");
       row.className = "custom-bookmark-note";
@@ -157,6 +161,7 @@ export function mountCustomBookmarksTab(
       tab.addEventListener(
         "click",
         () => {
+          element("bookmark-tag-controls").hidden = tab.id === "variables-tab";
           for (const candidate of tabs) {
             const selected = candidate === tab;
             candidate.classList.toggle("is-active", selected);
@@ -186,6 +191,7 @@ export function mountCustomBookmarksTab(
     element<HTMLButtonElement>("add-temporary-btn").addEventListener(
       "click",
       () => {
+        tags.clearFilter();
         state.addBookmark("temporary", {
           uid: crypto.randomUUID(),
           name: t("temporary.defaultName"),
@@ -211,7 +217,7 @@ export function mountCustomBookmarksTab(
 
   function renderDynamicList(): void {
     dynamicList.replaceChildren();
-    const allBookmarks = state.settings.dynamicBookmarks;
+    const allBookmarks = tags.filter(state.settings.dynamicBookmarks);
     const dynamicBookmarks = filterCustomBookmarks("dynamic", allBookmarks, getSearchQuery(), {
       source,
       urlRules: state.settings.urlRules,
@@ -351,6 +357,7 @@ export function mountCustomBookmarksTab(
     // All update methods share the selected URL rule; switching keeps editor content.
     const body = document.createElement("div");
     body.className = "dynamic-card-body";
+    body.append(tags.editor("dynamic", db));
 
     if (db.type === "external" && live?.source) {
       const status = document.createElement("div");
@@ -480,6 +487,7 @@ export function mountCustomBookmarksTab(
     addDynamicBtn.addEventListener(
       "click",
       () => {
+        tags.clearFilter();
         const newDb = createDynamicBookmark();
         collapsedDynamicUids.delete(newDb.uid);
         state.addBookmark("dynamic", newDb);
@@ -501,6 +509,7 @@ export function mountCustomBookmarksTab(
   const renderDynamic = () => renderPreservingFocus(dynamicList, renderDynamicList);
   const renderExternalActions = () => renderPreservingFocus(externalActionList, externalActions.render);
   const render = () => {
+    tags.update();
     variables.render();
     renderSimple();
     renderDynamic();

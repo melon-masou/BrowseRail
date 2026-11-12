@@ -3,6 +3,7 @@ import type { CustomBookmarkType } from "@browserail/protocol";
 import { loadBookmarkRootPrefix, type ExtensionConfig } from "../../lib/config/index";
 import { combineRootAndItemPath, findBookmarkNodeByPath, parseDynamicMarkerUrl, parseFlattenTemporaryDirective, type BookmarkNode } from "../../lib/bookmarks/index";
 import { parseMenuItemIdentity } from "../../lib/bookmarks/identity";
+import { customBookmarkTagDefinitions } from "../../lib/config/bookmark-tags";
 
 export async function resolveMenuBookmarkTarget(config: ExtensionConfig, menuUid: string, identity: string, type: "bookmark" | CustomBookmarkType): Promise<string> {
   const { itemUid, bookmarkId } = parseMenuItemIdentity(identity);
@@ -18,8 +19,8 @@ export async function resolveMenuBookmarkTarget(config: ExtensionConfig, menuUid
     if (!node?.url) throw new Error("The bookmark no longer exists");
     return node.id;
   }
-  if (type === "static" && (item.type === "staticTag" || item.type === "flattenStaticTag")) {
-    const definition = config.staticBookmarks.find(bookmark => bookmark.uid === bookmarkId && item.staticTag && bookmark.tags?.includes(item.staticTag));
+  if (item.type === "staticTag" || item.type === "flattenStaticTag") {
+    const definition = customBookmarkTagDefinitions(config).find(bookmark => bookmark.type === type && bookmark.uid === bookmarkId && item.staticTag && bookmark.tags?.includes(item.staticTag));
     if (!definition) throw new Error("The bookmark no longer belongs to this tag group");
     return definition.uid;
   }

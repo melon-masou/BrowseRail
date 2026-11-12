@@ -61,6 +61,27 @@ it("renders a tag as a folder with the same child actions as its flattened form"
   expect(empty).toMatchObject({ kind: "folder", children: [] });
 });
 
+it("groups all custom bookmark types under one tag while retaining temporary notes and external action behavior", async () => {
+  const config = await loadConfig();
+  config.staticBookmarks = [{ uid: "same/#", name: "Static", url: "https://example.com/static", tags: ["work"] }];
+  config.temporaryBookmarks = [{ uid: "same/#", name: "Temporary", tags: ["work"] }];
+  config.dynamicBookmarks = [{ uid: "same/#", name: "Dynamic", type: "external", tags: ["work"] }];
+  config.externalActions = [{ uid: "same/#", name: "External", target: "event", eventName: "run", tags: ["work"] }];
+  const context = {
+    ...config, temporaryNotes: { "same/#": "Saved note" },
+    dynamicResolve: () => ({ name: "Dynamic", url: "https://example.com/live" }), bookmarksAvailable: false,
+  };
+  const item = { uid: "group/#", type: "staticTag", staticTag: "work" };
+  const [folder] = await resolveMenuItems([item], undefined, undefined, undefined, context);
+  const children = (folder as FolderEntry).children;
+  expect(children.map(entry => entry.label)).toEqual(["Static", "Saved note", "Dynamic", "External"]);
+  expect(children.map(entry => entry.kind)).toEqual(["bookmark", "bookmark", "bookmark", "browserAction"]);
+  expect(new Set(children.map(entry => entry.uid)).size).toBe(4);
+  const flattened = await resolveMenuItems([{ ...item, type: "flattenStaticTag" }], undefined, undefined, undefined, context);
+  expect(flattened).toEqual(children);
+  expect(JSON.stringify(children)).not.toContain("https://");
+});
+
 it("flattens a tag in static bookmark order and follows membership changes without browser bookmarks", async () => {
   const items = [{ uid: "work/group", type: "flattenStaticTag", staticTag: "work" }];
   const a = { uid: "a", name: "A", tags: ["work"] };

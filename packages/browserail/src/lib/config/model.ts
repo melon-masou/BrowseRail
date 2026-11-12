@@ -3,7 +3,7 @@ import type { JsonValue } from "@browserail/protocol/api";
 import type { BrowserMenuPlacement } from "@browserail/protocol/content";
 import { normalizeUserVariables } from "./user-variables";
 export { normalizeUserVariables } from "./user-variables";
-import { normalizeStaticBookmarkTags } from "./static-bookmark-tags";
+import { normalizeBookmarkTags } from "./bookmark-tags";
 import type {
   MenuAnchor,
   MenuFontSize,
@@ -124,10 +124,12 @@ export function normalizeDynamicBookmarks(value: unknown): DynamicBookmark[] {
   return (Array.isArray(value) ? value : []).flatMap((db): DynamicBookmark[] => {
     if (!isRecord(db) || typeof db.uid !== "string" || !db.uid) return [];
     if (db.type !== "rule" && db.type !== "rewrite" && db.type !== "external") return [];
+    const tags = normalizeBookmarkTags(db.tags);
     return [{
       uid: db.uid,
       name: typeof db.name === "string" && db.name.trim() ? db.name.trim() : "Dynamic bookmark",
       type: db.type,
+      ...(tags.length ? { tags } : {}),
       ...(typeof db.rewrite === "string" ? { rewrite: db.rewrite } : {}),
       ...(typeof db.urlRuleUid === "string" && db.urlRuleUid ? { urlRuleUid: db.urlRuleUid } : {}),
     }];
@@ -367,7 +369,7 @@ export function normalizeConfig(value: unknown, defaultInstanceLabel: string): E
 export function normalizeStaticBookmarks(value: unknown): StaticBookmark[] {
   return (Array.isArray(value) ? value : []).flatMap((entry): StaticBookmark[] => {
     if (!isRecord(entry) || typeof entry.uid !== "string" || !entry.uid) return [];
-    const tags = normalizeStaticBookmarkTags(entry.tags);
+    const tags = normalizeBookmarkTags(entry.tags);
     return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "", url: typeof entry.url === "string" ? entry.url.trim() : "", ...(tags.length ? { tags } : {}) }];
   });
 }
@@ -375,7 +377,8 @@ export function normalizeStaticBookmarks(value: unknown): StaticBookmark[] {
 export function normalizeTemporaryBookmarks(value: unknown): TemporaryBookmark[] {
   return (Array.isArray(value) ? value : []).flatMap((entry): TemporaryBookmark[] => {
     if (!isRecord(entry) || typeof entry.uid !== "string" || !entry.uid) return [];
-    return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "" }];
+    const tags = normalizeBookmarkTags(entry.tags);
+    return [{ uid: entry.uid, name: typeof entry.name === "string" ? entry.name.trim() : "", ...(tags.length ? { tags } : {}) }];
   });
 }
 
@@ -387,9 +390,11 @@ export function normalizeExternalActions(value: unknown): ExternalAction[] {
     const extensionId = text(entry.extensionId);
     const eventName = text(entry.eventName);
     const data = text(entry.data);
+    const tags = normalizeBookmarkTags(entry.tags);
     return [{
       uid: entry.uid,
       name: typeof entry.name === "string" ? entry.name.trim() : "",
+      ...(tags.length ? { tags } : {}),
       ...(urlRuleUid ? { urlRuleUid } : {}),
       target: entry.target === "extension" ? "extension" : "event",
       ...(extensionId ? { extensionId } : {}),

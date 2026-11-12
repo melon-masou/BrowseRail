@@ -7,10 +7,10 @@ const mocks = vi.hoisted(() => ({
   storage: {} as Record<string, unknown>,
   session: {} as Record<string, unknown>,
   tree: [] as Array<{ id: string; title: string; children: Array<{ id: string; title: string; url: string }> }>,
-  update: vi.fn(), create: vi.fn(),
+  update: vi.fn(), create: vi.fn(), sendMessage: vi.fn(),
 }));
 vi.mock("webextension-polyfill", () => ({ default: {
-  runtime: { getPlatformInfo: async () => ({ os: "win" }), },
+  runtime: { getPlatformInfo: async () => ({ os: "win" }), sendMessage: mocks.sendMessage },
   storage: { session: {
     get: async (key: string | null) => key === null ? { ...mocks.session } : { [key]: mocks.session[key] },
     set: async (values: Record<string, unknown>) => { Object.assign(mocks.session, values); },
@@ -35,7 +35,7 @@ import { executeMenuAction } from "@browserail/browserail/features/actions/execu
 import { autoHideEnabled, reconcileAutoHideOverrides } from "@browserail/browserail/lib/config/auto-hide";
 
 beforeEach(async () => {
-  mocks.storage = {}; mocks.session = {}; mocks.tree = []; mocks.update.mockClear(); mocks.create.mockClear();
+  mocks.storage = {}; mocks.session = {}; mocks.tree = []; mocks.update.mockClear(); mocks.create.mockClear(); mocks.sendMessage.mockClear();
 });
 
 it("toggles auto-hide live without changing saved settings, isolates modes and clears overrides when hide settings change", async () => {
@@ -133,6 +133,38 @@ it("opens current tagged static definitions with variables and rejects buttons w
   mocks.update.mockClear();
   await expect(executeMenuAction(entries[0]!.uid, "menu", "42", () => {})).rejects.toThrow("tag group");
   expect(mocks.update).not.toHaveBeenCalled();
+});
+
+it("uses each tagged bookmark's current target and rejects stale tag actions across all custom types", async () => {
+  const config = await loadConfig();
+  config.staticBookmarks = [{ uid: "shared/#", name: "Static", url: "https://example.com/static", tags: ["work"] }];
+  config.temporaryBookmarks = [{ uid: "shared/#", name: "Temporary", tags: ["work"] }];
+  config.dynamicBookmarks = [{ uid: "shared/#", name: "Dynamic", type: "external", tags: ["work"] }];
+  config.externalActions = [{ uid: "shared/#", name: "External", target: "extension", extensionId: "provider", urlRuleUid: "*", data: '{"run":true}', tags: ["work"] }];
+  config.panel.menus = [{ uid: "menu", items: [{ uid: "group/#", type: "flattenStaticTag", staticTag: "work" }] }];
+  await saveConfig(config);
+  await saveDynamicValue("shared/#", { url: "https://example.com/live", updatedAt: 1 });
+  const entries = await resolveMenuItems(config.panel.menus[0]!.items, undefined, undefined, undefined, {
+    ...config, dynamicResolve: () => ({ name: "Dynamic" }),
+  });
+  await executeMenuAction(entries[0]!.uid, "menu", "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://example.com/static" });
+  const temporaryIdentity = parseTemporaryAction(entries[1]!.uid).uid;
+  await executeMenuAction(`temporarySave:${encodeURIComponent(temporaryIdentity)}?confirmed=1&note=Saved`, "menu", "42", () => {});
+  expect((await loadTemporaryValues())["shared/#"]).toBe("https://current.example");
+  await executeMenuAction(entries[1]!.uid, "menu", "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://current.example" });
+  await executeMenuAction(entries[2]!.uid, "menu", "42", () => {});
+  expect(mocks.update).toHaveBeenLastCalledWith(17, { url: "https://example.com/live" });
+  await executeMenuAction(entries[3]!.uid, "menu", "42", () => {});
+  expect(mocks.sendMessage).toHaveBeenLastCalledWith("provider", { run: true });
+  config.staticBookmarks[0]!.tags = [];
+  config.temporaryBookmarks[0]!.tags = [];
+  config.dynamicBookmarks[0]!.tags = [];
+  config.externalActions[0]!.tags = [];
+  await saveConfig(config);
+  for (const entry of entries)
+    await expect(executeMenuAction(entry.uid, "menu", "42", () => {})).rejects.toThrow("tag group");
 });
 
 it("restores distinct tag-group gaps after reorder and import without reading the browser bookmark tree", async () => {

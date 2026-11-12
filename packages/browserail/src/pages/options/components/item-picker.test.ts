@@ -72,7 +72,7 @@ it("keeps a tag query across bookmark categories and clears it in a new page's p
     { uid: "tagged", name: "Raids", tags: ["gbf_list"] },
     { uid: "name", name: "gbf_list" },
   ];
-  const pending = control.pickStaticForMenu(bookmarks);
+  const pending = control.pickForMenu("static", bookmarks, bookmarks);
   search("#gbf_list");
   expect(dialog().querySelectorAll(".pick-menu-item")).toHaveLength(1);
   expect(dialog().querySelector(".pick-menu-item")!.textContent).toContain("Raids");
@@ -91,4 +91,16 @@ it("keeps a tag query across bookmark categories and clears it in a new page's p
   expect(dialog().querySelector<HTMLInputElement>("input")!.value).toBe("");
   fresh.destroy();
   await expect(reloaded).resolves.toBeNull();
+});
+
+it.each(["temporary", "dynamic", "externalAction"] as const)("offers shared tags and tag searches when adding %s items to a menu", async type => {
+  const control = picker();
+  const bookmarks = [{ uid: "local", name: "Tagged", tags: ["work"] }, { uid: "other", name: "work" }];
+  const pending = control.pickForMenu(type, bookmarks, [...bookmarks, { uid: "another-type", name: "Reading", tags: ["reading"] }]);
+  search("#work");
+  expect([...dialog().querySelectorAll(".pick-menu-item")].map(item => item.textContent)).toEqual([expect.stringContaining("Tagged")]);
+  dialog().querySelectorAll<HTMLButtonElement>(".item-picker-tabs button")[1]!.click();
+  search("reading");
+  dialog().querySelector<HTMLButtonElement>(".pick-menu-item")!.click();
+  await expect(pending).resolves.toEqual({ type: "staticTag", staticTag: "reading" });
 });

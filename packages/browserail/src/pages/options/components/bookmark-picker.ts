@@ -8,7 +8,7 @@ import {
   type BookmarkNode,
 } from "../../../lib/bookmarks/index";
 import { type BookmarkLibrary } from "../bookmark-library";
-import { normalizeStaticBookmarkTags } from "../../../lib/config/static-bookmark-tags";
+import { normalizeBookmarkTags } from "../../../lib/config/bookmark-tags";
 import { element } from "../dom";
 import { createScope } from "../lifecycle";
 export interface BookmarkPickOptions {
@@ -128,7 +128,7 @@ export function createBookmarkPicker(library: BookmarkLibrary) {
         expandOnHover: pickerHoverExpandCheckbox.checked,
         includeFolders: pickerIncludeFoldersCheckbox.checked,
         subfolders: options.mode === "import" && node.url === undefined && pickerSubfoldersCheckbox.checked,
-        tags: options.mode === "import" ? normalizeStaticBookmarkTags(pickerImportTag.value.split(/[,，]/)) : [],
+        tags: options.mode === "import" ? normalizeBookmarkTags(pickerImportTag.value.split(/[,，]/)) : [],
       });
       finish = undefined;
       pickerDialog.close();

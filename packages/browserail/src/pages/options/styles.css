@@ -1703,32 +1703,32 @@ output[data-state="error"] {
   padding: 0;
 }
 
-.static-tag-filters,
-.static-bookmark-tags,
-.static-tag-chips,
-.static-tag-editor {
+.bookmark-tag-filters,
+.bookmark-tags,
+.bookmark-tag-chips,
+.bookmark-tag-editor {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.static-tag-filters {
+.bookmark-tag-filters {
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
 
-.static-bookmark-tags,
-.static-tag-chips {
+.bookmark-tags,
+.bookmark-tag-chips {
   flex-wrap: wrap;
   min-width: 0;
 }
 
-.static-tag-chips:empty {
+.bookmark-tag-chips:empty {
   display: none;
 }
 
-.static-tag-filter,
-.static-tag-chip {
+.bookmark-tag-filter,
+.bookmark-tag-chip {
   min-height: 28px;
   max-width: 100%;
   padding: 3px 9px;
@@ -1740,22 +1740,22 @@ output[data-state="error"] {
   overflow-wrap: anywhere;
 }
 
-.static-tag-filter[aria-pressed="true"] {
+.bookmark-tag-filter[aria-pressed="true"] {
   background: #eff6ff;
   color: #1d4ed8;
   border-color: #93c5fd;
 }
 
-.static-tag-chip:hover {
+.bookmark-tag-chip:hover {
   color: #b91c1c;
   border-color: #fca5a5;
 }
 
-.static-tag-editor {
+.bookmark-tag-editor {
   max-width: 100%;
 }
 
-.static-tag-input {
+.bookmark-tag-input {
   width: 140px;
   min-width: 0;
   min-height: 28px;
@@ -1763,7 +1763,7 @@ output[data-state="error"] {
   font-size: 12px;
 }
 
-.static-tag-add {
+.bookmark-tag-add {
   min-height: 28px;
   padding: 6px;
 }
@@ -1794,7 +1794,7 @@ output[data-state="error"] {
   margin-left: auto;
 }
 
-.static-tag-summary {
+.bookmark-tag-summary {
   flex: 0 1 auto;
   max-width: max(0px, calc((100% - 360px) / 2));
   min-width: 0;
@@ -1807,7 +1807,7 @@ output[data-state="error"] {
   font-size: 12px;
 }
 
-.static-tag-summary:not([hidden]) + .move-item-buttons {
+.bookmark-tag-summary:not([hidden]) + .move-item-buttons {
   margin-left: 0;
 }
 
@@ -3766,7 +3766,7 @@ span.icon-picker-preview {
     padding-left: 0;
   }
 
-  .static-tag-summary {
+  .bookmark-tag-summary {
     display: none;
   }
 
@@ -3776,7 +3776,7 @@ span.icon-picker-preview {
     max-width: none;
   }
 
-  .static-tag-summary + .move-item-buttons {
+  .bookmark-tag-summary + .move-item-buttons {
     margin-left: auto;
   }
 

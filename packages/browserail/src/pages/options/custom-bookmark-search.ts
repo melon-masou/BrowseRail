@@ -15,11 +15,11 @@ export function getCustomBookmarkSearchableText(
   context?: CustomBookmarkSearchContext,
 ): string {
   const parts: string[] = [item.name];
+  if (item.tags?.length) parts.push(...item.tags);
   switch (type) {
     case "static": {
       const b = item as ReadonlyData<StaticBookmark>;
       if (b.url) parts.push(b.url);
-      if (b.tags?.length) parts.push(...b.tags);
       break;
     }
     case "temporary": {
@@ -73,17 +73,16 @@ export function matchesSearchQuery(searchableText: string, query: string, tags: 
 /**
  * Filters a collection of custom bookmarks based on a search query.
  */
-export function filterCustomBookmarks<T extends StaticBookmark | TemporaryBookmark | DynamicBookmark | ExternalAction>(
+export function filterCustomBookmarks<T extends ReadonlyData<StaticBookmark | TemporaryBookmark | DynamicBookmark | ExternalAction>>(
   type: CustomBookmarkType,
-  items: readonly ReadonlyData<T>[],
+  items: readonly T[],
   query: string,
   context?: CustomBookmarkSearchContext,
-): readonly ReadonlyData<T>[] {
+): readonly T[] {
   const trimmed = query.trim();
   if (!trimmed) return items;
   return items.filter(item => {
     const text = getCustomBookmarkSearchableText(type, item, context);
-    const tags = type === "static" ? (item as ReadonlyData<StaticBookmark>).tags ?? [] : [];
-    return matchesSearchQuery(text, trimmed, tags);
+    return matchesSearchQuery(text, trimmed, item.tags ?? []);
   });
 }

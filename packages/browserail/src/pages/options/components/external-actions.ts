@@ -4,6 +4,7 @@ import { ALL_URLS_RULE_UID, DEFAULT_EXTERNAL_EVENT_NAME, type ExternalAction } f
 import type { OptionsState, ReadonlyData } from "../state";
 import { filterCustomBookmarks } from "../custom-bookmark-search";
 import { removeIcon, setIconContent } from "./icons";
+import type { BookmarkTags } from "./bookmark-tags";
 
 /** Extensions receive parsed JSON; empty data is valid and sends null. */
 export function isValidExternalActionData(data: string | undefined): boolean {
@@ -28,6 +29,7 @@ export function createExternalAction(): ExternalAction {
 export function createExternalActionsList(
   state: OptionsState,
   list: HTMLElement,
+  tags: BookmarkTags,
   remove: (uid: string) => void,
   getSearchQuery?: () => string,
 ) {
@@ -99,6 +101,7 @@ export function createExternalActionsList(
 
     const body = document.createElement("div");
     body.className = "dynamic-card-body";
+    body.append(tags.editor("externalAction", action));
 
     const rule = document.createElement("select");
     const options: Array<[string, string]> = [
@@ -173,7 +176,7 @@ export function createExternalActionsList(
 
   function render(): void {
     list.replaceChildren();
-    const allActions = state.settings.externalActions;
+    const allActions = tags.filter(state.settings.externalActions);
     const query = getSearchQuery ? getSearchQuery() : "";
     const actions = filterCustomBookmarks("externalAction", allActions, query, { urlRules: state.settings.urlRules });
     if (!actions.length) {
@@ -190,6 +193,7 @@ export function createExternalActionsList(
     render,
     /** Adds an action whose card opens for editing. */
     add(action: ExternalAction): void {
+      tags.clearFilter();
       added = action.uid;
       state.addBookmark("externalAction", action);
     },

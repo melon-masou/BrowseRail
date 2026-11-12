@@ -4,7 +4,6 @@ import {
   type BrowserActionKind,
   type CustomBookmarkType,
   customBookmarkUid,
-  customBookmarkReference,
   isCustomBookmarkType,
 } from "@browserail/protocol";
 import {
@@ -14,6 +13,7 @@ import {
 } from "../../../lib/config/index";
 import { formatSpecialRootForDisplay } from "../../../lib/bookmarks/index";
 import { t } from "@browserail/i18n";
+import { customBookmarkTagDefinitions } from "../../../lib/config/bookmark-tags";
 import { positionPopover } from "../components/popover-position";
 import { DEFAULT_COLOR } from "../components/color-picker";
 import { type ReadonlyData, type ColorId, type OptionsState } from "../state";
@@ -396,10 +396,10 @@ export function mountMenusTab(
         const item = menu?.items[itemIndex];
         closeItemSettingsPopover();
         if (menu && item && (item.type === "staticTag" || item.type === "flattenStaticTag")) {
-          void customBookmarkPicker.pickStaticTag(state.settings.staticBookmarks).then(tag => {
+          void customBookmarkPicker.pickTag(customBookmarkTagDefinitions(state.settings)).then(tag => {
             if (tag !== null && !scope.signal.aborted
               && state.settings.menus.some(value => value.uid === menu.uid && value.items.some(value => value.uid === item.uid)))
-              state.setStaticTagSource(menu.uid, item.uid, tag);
+              state.setTagSource(menu.uid, item.uid, tag);
           }).catch(error => { if (!scope.signal.aborted) showStatus(String(error)); });
         } else void pickMenuBookmark(menuIndex, itemIndex);
       },
@@ -986,7 +986,7 @@ export function mountMenusTab(
                 const flattened = item.type === "flattenStaticTag";
                 dynamicTag.className = `item-tag ${flattened ? "item-tag-flatten" : "item-tag-folder"}`;
                 dynamicTag.textContent = flattened
-                  ? t("item.flattenBadge", { count: state.settings.staticBookmarks.filter(bookmark => bookmark.tags?.includes(rawLabel)).length })
+                  ? t("item.flattenBadge", { count: customBookmarkTagDefinitions(state.settings).filter(bookmark => bookmark.tags?.includes(rawLabel)).length })
                   : t("item.folderBadge");
               } else {
                 dynamicTag.className = "item-tag item-tag-dynamic";
@@ -1004,9 +1004,9 @@ export function mountMenusTab(
               if (isTagGroup) {
                 const warning = document.createElement("span");
                 warning.className = "reference-warning";
-                if (!state.settings.staticBookmarks.some(bookmark => bookmark.tags?.includes(rawLabel))) {
+                if (!customBookmarkTagDefinitions(state.settings).some(bookmark => bookmark.tags?.includes(rawLabel))) {
                   warning.textContent = "!";
-                  warning.title = warning.ariaLabel = t("static.tagMissing", { tag: rawLabel });
+                  warning.title = warning.ariaLabel = t("tags.missing", { tag: rawLabel });
                 }
                 label.append(warning);
               }
@@ -1302,7 +1302,8 @@ export function mountMenusTab(
     const menu = state.settings.menus[menuIndex];
     if (!menu) return;
     const definitions = source.definitions(type);
-    if (!definitions.length) {
+    const taggedDefinitions = customBookmarkTagDefinitions(state.settings);
+    if (!definitions.length && !taggedDefinitions.some(value => value.tags?.length)) {
       showStatus(t("customBookmarks.noneCreated"));
       return;
     }
@@ -1310,10 +1311,9 @@ export function mountMenusTab(
       uid: value.uid,
       name: value.name,
       ...(source.url(type, value.uid) ? { url: source.url(type, value.uid)! } : {}),
-      ...(type === "static" && "tags" in value ? { tags: value.tags } : {}),
+      ...(value.tags ? { tags: value.tags } : {}),
     }));
-    const reference = type === "static" ? await customBookmarkPicker.pickStaticForMenu(choices) :
-      await customBookmarkPicker.pick(type, choices).then(uid => uid ? customBookmarkReference(type, uid) : null);
+    const reference = await customBookmarkPicker.pickForMenu(type, choices, taggedDefinitions);
     if (reference) {
       state.addMenuItem(menu.uid, {
         uid: crypto.randomUUID(),

@@ -26,7 +26,7 @@ import type {
   TemporaryBookmark,
   ExternalAction,
 } from "../../lib/config/index";
-import { normalizeStaticBookmarkTags } from "../../lib/config/static-bookmark-tags";
+import { customBookmarkTagDefinitions, normalizeBookmarkTags } from "../../lib/config/bookmark-tags";
 import { createExternalToken, type ExternalAuthorization } from "../../lib/config/external-authorization";
 
 export type ReadonlyData<T> = T extends string | number | boolean | null | undefined
@@ -480,12 +480,12 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       setOptional(target, source);
       publish(["menus"], true);
     },
-    setStaticTagSource(menuUid: string, uid: string, tag: string): void {
+    setTagSource(menuUid: string, uid: string, tag: string): void {
       const target = item(menuUid, uid);
       if (target.type !== "staticTag" && target.type !== "flattenStaticTag")
-        throw new Error("The item is not a static tag group");
-      if (!settingsDraft.staticBookmarks.some(bookmark => bookmark.tags?.includes(tag)))
-        throw new Error("The static tag is unavailable");
+        throw new Error("The item is not a tag group");
+      if (!customBookmarkTagDefinitions(settingsDraft).some(bookmark => bookmark.tags?.includes(tag)))
+        throw new Error("The tag is unavailable");
       if (target.staticTag === tag) return;
       target.staticTag = tag;
       publish(["menus"], true);
@@ -561,9 +561,9 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
       target.url = url;
       publish(["bookmarks"]);
     },
-    setStaticTags(uid: string, tags: readonly string[]): void {
-      const target = requireTarget(settingsDraft.staticBookmarks.find(value => value.uid === uid), `static bookmark ${uid}`);
-      const next = normalizeStaticBookmarkTags(tags);
+    setBookmarkTags(type: CustomBookmarkType, uid: string, tags: readonly string[]): void {
+      const target = definition(type, uid);
+      const next = normalizeBookmarkTags(tags);
       if (next.length === (target.tags?.length ?? 0) && next.every((tag, index) => tag === target.tags?.[index])) return;
       setOptional(target, { tags: next.length ? next : undefined });
       publish(["bookmarks"], true);

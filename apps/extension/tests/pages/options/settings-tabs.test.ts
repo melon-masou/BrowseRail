@@ -326,14 +326,14 @@ it("moves static bookmarks up and down under tag filters in the complete saved o
     nameInput.value = name;
     nameInput.dispatchEvent(new Event("input", { bubbles: true }));
     for (const tag of tags) {
-      const tagInput = document.querySelector<HTMLInputElement>("#static-list article:last-child .static-tag-input")!;
+      const tagInput = document.querySelector<HTMLInputElement>("#static-list article:last-child .bookmark-tag-input")!;
       tagInput.value = tag;
       tagInput.dispatchEvent(new Event("input", { bubbles: true }));
       tagInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     }
   }
   function filter(tag: string): void {
-    const control = [...document.querySelectorAll<HTMLButtonElement>("#static-tag-filters button")].find(value => value.textContent === tag)!;
+    const control = [...document.querySelectorAll<HTMLButtonElement>("#bookmark-tag-filters button")].find(value => value.textContent === tag)!;
     control.click();
   }
   function visibleNames(): string[] {
@@ -661,7 +661,7 @@ it("binds a picked bookmark, cancels without editing, and remembers the shared p
 it("adds a tag folder and switches flattening both ways while preserving its reference and hover setting", async () => {
   button("custom-bookmarks-tab").click();
   button("add-static-btn").click();
-  const tagInput = document.querySelector<HTMLInputElement>("#static-list .static-tag-input")!;
+  const tagInput = document.querySelector<HTMLInputElement>("#static-list .bookmark-tag-input")!;
   tagInput.value = "work";
   tagInput.dispatchEvent(new Event("input", { bubbles: true }));
   tagInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
@@ -700,6 +700,54 @@ it("adds a tag folder and switches flattening both ways while preserving its ref
   expect((await savedConfig()).panel.menus[0]!.items).toEqual([
     expect.objectContaining({ uid, type: "staticTag", staticTag: "work", expandOnHover: false }),
   ]);
+});
+
+it("edits and saves tags for every custom bookmark type and filters them together", async () => {
+  button("url-rules-tab").click();
+  button("add-url-rule-btn").click();
+  button("custom-bookmarks-tab").click();
+  const addTag = (listId: string, value: string) => {
+    const editor = document.querySelector<HTMLInputElement>(`#${listId} .bookmark-tag-input`)!;
+    editor.value = value;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  };
+  button("add-static-btn").click();
+  addTag("static-list", "work");
+  button("temporary-tab").click();
+  button("add-temporary-btn").click();
+  addTag("temporary-list", "work");
+  addTag("temporary-list", "later");
+  button("dynamic-tab").click();
+  button("add-dynamic-btn").click();
+  const dynamicRule = document.querySelector<HTMLSelectElement>("#dynamic-list select")!;
+  dynamicRule.value = dynamicRule.options[1]!.value;
+  dynamicRule.dispatchEvent(new Event("change", { bubbles: true }));
+  addTag("dynamic-list", "work");
+  button("external-actions-tab").click();
+  button("add-external-action-btn").click();
+  const rule = document.querySelector<HTMLSelectElement>("#external-action-list select")!;
+  rule.value = "*";
+  rule.dispatchEvent(new Event("change", { bubbles: true }));
+  addTag("external-action-list", "work");
+  expect([...document.querySelectorAll<HTMLOptionElement>("#bookmark-tag-options option")].map(option => option.value)).toEqual(["later", "work"]);
+  await save();
+  const saved = await savedConfig();
+  expect(saved.staticBookmarks[0]!.tags).toEqual(["work"]);
+  expect(saved.temporaryBookmarks[0]!.tags).toEqual(["work", "later"]);
+  expect(saved.dynamicBookmarks[0]!.tags).toEqual(["work"]);
+  expect(saved.externalActions[0]!.tags).toEqual(["work"]);
+
+  input("custom-bookmarks-search").value = "#work";
+  input("custom-bookmarks-search").dispatchEvent(new Event("input", { bubbles: true }));
+  const lists = ["static-list", "temporary-list", "dynamic-list", "external-action-list"];
+  expect(lists.map(id => document.querySelectorAll(`#${id} article`).length)).toEqual([1, 1, 1, 1]);
+  [...document.querySelectorAll<HTMLButtonElement>("#bookmark-tag-filters button")].find(button => button.textContent === "later")!.click();
+  expect(lists.map(id => document.querySelectorAll(`#${id} article`).length)).toEqual([0, 1, 0, 0]);
+  button("temporary-tab").click();
+  [...document.querySelectorAll<HTMLButtonElement>("#temporary-list .bookmark-tag-chip")].find(button => button.textContent === "later ×")!.click();
+  await save();
+  expect((await savedConfig()).temporaryBookmarks[0]!.tags).toEqual(["work"]);
 });
 
 it("retains the instance draft when notifying the background after saving fails", async () => {

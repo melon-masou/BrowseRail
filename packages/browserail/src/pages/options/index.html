@@ -204,14 +204,16 @@
                   <input type="search" id="custom-bookmarks-search" class="custom-bookmarks-search-input custom-bookmark-search" data-i18n-ph="common.search" data-i18n-aria="common.search" placeholder="Search" aria-label="Search" />
                 </div>
               </div>
+              <div id="bookmark-tag-controls">
+                <div id="bookmark-tag-filters" class="bookmark-tag-filters" role="group"></div>
+                <datalist id="bookmark-tag-options"></datalist>
+              </div>
               <section id="static-panel" role="tabpanel" aria-labelledby="static-tab">
                 <div class="dynamic-toolbar">
                   <span class="url-rules-hint" data-i18n="static.hint">Set a URL, then add it to menus or assign a shortcut.</span>
                   <button id="import-static-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="static.importFromBookmarks">Import from bookmarks</button>
                   <button id="add-static-btn" class="menu-action-btn add-toolbar-action" type="button" data-i18n="customBookmarks.add">+ Add</button>
                 </div>
-                <div id="static-tag-filters" class="static-tag-filters" role="group"></div>
-                <datalist id="static-tag-options"></datalist>
                 <div id="static-list" class="dynamic-list"></div>
               </section>
               <section id="temporary-panel" role="tabpanel" aria-labelledby="temporary-tab" hidden>
@@ -580,7 +582,7 @@ The temporary bookmark is stored as a bookmark whose URL is https://browserail.l
                     <input type="checkbox" id="picker-subfolders-checkbox" />
                     <span data-i18n="picker.includeSubfolders">Include subfolders</span>
                   </label>
-                  <input id="picker-import-tag" class="picker-import-tag" type="text" list="static-tag-options" data-i18n-ph="static.importTags" data-i18n-aria="static.importTags" placeholder="Tags, comma separated" aria-label="Tags, comma separated" style="display: none;" />
+                  <input id="picker-import-tag" class="picker-import-tag" type="text" list="bookmark-tag-options" data-i18n-ph="tags.input" data-i18n-aria="tags.input" placeholder="Tags, comma separated" aria-label="Tags, comma separated" style="display: none;" />
                   <label id="picker-flatten-label" class="picker-flatten-check" style="display: none;">
                     <input type="checkbox" id="picker-flatten-checkbox" />
                     <span data-i18n="itemSettings.flatten">Flatten folder contents</span>
