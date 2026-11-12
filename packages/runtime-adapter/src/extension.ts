@@ -2,6 +2,10 @@ import type browser from "webextension-polyfill";
 import type { RuntimeAdapter, RuntimeHost, ConfirmationSource, BrowserWindowCandidate, RewriteResult } from "./contracts";
 import { createRewriteHost } from "./rewrite";
 
+export const BROWSER_WINDOW_FILTER: browser.Windows.GetAllGetInfoType = {
+  windowTypes: ["normal", "app"], populate: true,
+};
+
 export function createExtensionRuntimeAdapter(api: typeof browser): RuntimeAdapter {
   let bookmarksAvailable: Promise<boolean> | undefined;
   async function detectBookmarks(): Promise<boolean> {
@@ -233,7 +237,7 @@ function browserKind(runtime: RuntimeAdapter): string {
 
 async function listBrowserWindows(runtime: RuntimeAdapter, extension: ExtensionServices): Promise<BrowserWindowCandidate[]> {
   const [windows, activeTabs] = await Promise.all([
-    extension.windows.getAll({ windowTypes: ["normal"], populate: true }),
+    extension.windows.getAll(BROWSER_WINDOW_FILTER),
     runtime.navigation.query({ active: true }).catch(() => []),
   ]);
 

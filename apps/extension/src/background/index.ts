@@ -1,5 +1,6 @@
 import "../runtime";
 import { getRuntimeAdapter } from "@browserail/runtime-adapter";
+import { BROWSER_WINDOW_FILTER } from "@browserail/runtime-adapter/extension";
 import { extension } from "../runtime";
 import { normalizeBarConfigurations } from "@browserail/protocol";
 import { listBrowserWindows } from "@browserail/browserail/lib/browser/windows";
@@ -104,9 +105,9 @@ async function applyWidgetEnabled(enabled: boolean): Promise<void> {
 void reconcileConnection();
 
 extension.windows
-  .getLastFocused()
+  .getLastFocused(BROWSER_WINDOW_FILTER)
   .then((w) => {
-    if (w && w.id !== undefined && (w.type === "normal" || w.type === undefined)) {
+    if (w && w.id !== undefined) {
       focus.set(String(w.id));
       log.log("Window", `Initial lastFocusedWindowUid=${focus.get()}`);
       void requestSync();
