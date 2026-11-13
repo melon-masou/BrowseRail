@@ -29,7 +29,7 @@ vi.mock("webextension-polyfill", () => ({ default: {
     removeAll: mocks.removeMenus,
     create: (menu: Menus.CreateCreatePropertiesType, done: () => void) => {
       mocks.menus.set(String(menu.id), menu);
-      if (menu.type === "checkbox") mocks.menu = menu;
+      if (menu.id === "browserail-edit-menus") mocks.menu = menu;
       done();
     },
     update: async (id: string, changes: Menus.UpdateUpdatePropertiesType) => { Object.assign(mocks.menus.get(id)!, changes); },
@@ -58,7 +58,7 @@ beforeEach(() => {
 it("provides a checked editing switch on the extension icon in browser mode", async () => {
   await saveDisplayMode("browser");
   const menu = createExtensionIconMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("browser", true);
-  expect(mocks.menu).toMatchObject({ contexts: ["action"], type: "checkbox", enabled: true, checked: false });
+  expect(mocks.menu).toMatchObject({ contexts: ["action", "page"], type: "checkbox", enabled: true, checked: false });
   mocks.clicked!({ menuItemId: mocks.menu.id!, checked: true, editable: false, modifiers: [] }, {
     id: 7, windowId: 1, index: 0, active: true, pinned: false, highlighted: false, incognito: false,
   });
@@ -165,7 +165,7 @@ it("confirms edited name, URL and tags before adding a persistent static bookmar
   await saveConfig(config);
   const menu = createExtensionIconMenu({ setNativeEditing: mocks.setNativeEditing }); await menu.update("native", false);
   const add = [...mocks.menus.values()].find(entry => entry.type !== "checkbox")!;
-  expect(add).toMatchObject({ contexts: ["action"] });
+  expect(add).toMatchObject({ contexts: ["action", "page"] });
   expect(add.enabled).not.toBe(false);
   mocks.clicked!({ menuItemId: add.id!, editable: false, modifiers: [] }, {
     id: 7, windowId: 1, index: 0, active: true, pinned: false, highlighted: false, incognito: false,

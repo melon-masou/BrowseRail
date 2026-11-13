@@ -4,8 +4,9 @@ import { extension } from "../runtime";
 import type { ExtensionConnectionState } from "@browserail/browserail/features/desktop/state-machine";
 import { onLanguageChange, t } from "@browserail/i18n";
 import {
-  BROWSER_EDITING_STORAGE_KEY, loadBrowserEditing, loadDisplayMode, loadWidgetEnabled,
-  loadConfig, saveConfig, saveBrowserEditing, type DisplayMode,
+  BROWSER_EDITING_STORAGE_KEY, WIDGET_ENABLED_STORAGE_KEY, SHORTCUTS_ENABLED_STORAGE_KEY,
+  loadBrowserEditing, loadDisplayMode, loadWidgetEnabled, loadShortcutsEnabled,
+  loadConfig, saveConfig, saveBrowserEditing, saveWidgetEnabled, saveShortcutsEnabled, type DisplayMode,
 } from "@browserail/browserail/lib/config/index";
 import { openStaticConfirmation, staticConfirmationContext } from "@browserail/browserail/features/capture/confirmation";
 import { requestBrowserMenuRefresh } from "@browserail/browserail/features/bar/refresh";
@@ -20,33 +21,31 @@ import { STATIC_SAVE_CONFIRMED, isStaticSaveConfirmed, type CaptureResult, type 
 const EDIT_MENU_ID = "browserail-edit-menus";
 const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
 const OPTIONS_MENU_ID = "browserail-open-options";
+const ENABLE_MENU_ID = "browserail-enable";
+const SHORTCUTS_MENU_ID = "browserail-shortcuts";
+const MENU_ITEMS = [
+  { id: ENABLE_MENU_ID, title: "action.enabled", type: "checkbox" },
+  { id: EDIT_MENU_ID, title: "injection.editMenus", type: "checkbox" },
+  { id: SHORTCUTS_MENU_ID, title: "section.shortcuts", type: "checkbox" },
+  { id: ADD_STATIC_MENU_ID, title: "static.addCurrentPage", type: "normal" },
+  { id: OPTIONS_MENU_ID, title: "action.openOptions", type: "normal" },
+] as const;
 
 export function createExtensionIconMenu(host: { setNativeEditing(editing: boolean): void }) {
   let nativeEditing: boolean | undefined;
   let contextMenuAvailable = true;
-  const ready = Promise.resolve().then(() => extension.contextMenus.removeAll()).then(() => new Promise<void>((resolve, reject) => {
-    extension.contextMenus.create({
-      id: EDIT_MENU_ID, type: "checkbox", title: t("injection.editMenus"), contexts: ["action"],
-      checked: false, enabled: false,
-    }, () => {
-      const error = extension.runtime.lastError;
-      if (error) reject(new Error(error.message)); else resolve();
+  const ready = Promise.resolve().then(() => extension.contextMenus.removeAll()).then(async () => {
+    for (const item of MENU_ITEMS) await new Promise<void>((resolve, reject) => {
+      extension.contextMenus.create({
+        ...item, title: t(item.title), contexts: ["action", "page"],
+        ...(item.type === "checkbox" ? { checked: false } : {}),
+        ...(item.id === EDIT_MENU_ID ? { enabled: false } : {}),
+      }, () => {
+        const error = extension.runtime.lastError;
+        if (error) reject(new Error(error.message)); else resolve();
+      });
     });
-  })).then(() => new Promise<void>((resolve, reject) => {
-    extension.contextMenus.create({
-      id: ADD_STATIC_MENU_ID, title: t("static.addCurrentPage"), contexts: ["action"],
-    }, () => {
-      const error = extension.runtime.lastError;
-      if (error) reject(new Error(error.message)); else resolve();
-    });
-  })).then(() => new Promise<void>((resolve, reject) => {
-    extension.contextMenus.create({
-      id: OPTIONS_MENU_ID, title: t("action.openOptions"), contexts: ["action"],
-    }, () => {
-      const error = extension.runtime.lastError;
-      if (error) reject(new Error(error.message)); else resolve();
-    });
-  })).catch(error => {
+  }).catch(error => {
     contextMenuAvailable = false;
     console.error("BrowseRail context menu:", error);
   });
@@ -60,15 +59,17 @@ export function createExtensionIconMenu(host: { setNativeEditing(editing: boolea
     return { enabled: available, editing: available && editing === true };
   }
   async function update(mode: DisplayMode, enabled: boolean): Promise<void> {
-    const state = await stateFor(mode, enabled);
+    const [state, shortcutsEnabled] = await Promise.all([stateFor(mode, enabled), loadShortcutsEnabled()]);
     await getRuntimeAdapter().messaging.send({ type: EDITING_STATE_CHANGED, ...state } satisfies EditingStateChanged).catch(() => {});
     await ready;
     if (!contextMenuAvailable) return;
-    await extension.contextMenus.update(EDIT_MENU_ID, {
-      title: t("injection.editMenus"), enabled: state.enabled, checked: state.editing,
-    });
-    await extension.contextMenus.update(ADD_STATIC_MENU_ID, { title: t("static.addCurrentPage") });
-    await extension.contextMenus.update(OPTIONS_MENU_ID, { title: t("action.openOptions") });
+    const checkboxStates: Record<string, { checked: boolean; enabled?: boolean }> = {
+      [ENABLE_MENU_ID]: { checked: enabled },
+      [SHORTCUTS_MENU_ID]: { checked: shortcutsEnabled },
+      [EDIT_MENU_ID]: { enabled: state.enabled, checked: state.editing },
+    };
+    for (const item of MENU_ITEMS)
+      await extension.contextMenus.update(item.id, { title: t(item.title), ...checkboxStates[item.id] });
   }
   const refresh = async (): Promise<void> => {
     const [mode, enabled] = await Promise.all([loadDisplayMode(), loadWidgetEnabled()]);
@@ -88,14 +89,26 @@ export function createExtensionIconMenu(host: { setNativeEditing(editing: boolea
     for (const tab of tabs) if (tab.id !== undefined) void requestBrowserMenuRefresh(tab.id);
   }
   extension.contextMenus?.onClicked?.addListener((info, tab) => {
+    if (info.menuItemId === ENABLE_MENU_ID || info.menuItemId === SHORTCUTS_MENU_ID) {
+      const save = info.menuItemId === ENABLE_MENU_ID ? saveWidgetEnabled : saveShortcutsEnabled;
+      void save(info.checked === true).then(async () => {
+        await refresh();
+        if (tab?.id !== undefined) await requestBrowserMenuRefresh(tab.id);
+      }).catch(async error => {
+        console.error("BrowseRail context menu:", error);
+        await refresh();
+      });
+      return;
+    }
     if (info.menuItemId === OPTIONS_MENU_ID) {
       void extension.runtime.openOptionsPage().catch(error => console.error("BrowseRail options:", error));
       return;
     }
     if (info.menuItemId === ADD_STATIC_MENU_ID) {
-      if (!tab?.url || tab.id === undefined || tab.windowId === undefined) return;
+      const url = info.pageUrl ?? tab?.url;
+      if (!url || tab?.id === undefined || tab.windowId === undefined) return;
       void openStaticConfirmation({ sourceTabId: tab.id, sourceWindowId: tab.windowId }, {
-        name: tab.title || tab.url, url: tab.url,
+        name: tab.title || url, url,
       }).catch(error => console.error("BrowseRail static bookmark:", error));
       return;
     }
@@ -120,7 +133,7 @@ export function createExtensionIconMenu(host: { setNativeEditing(editing: boolea
     }, message);
   });
   getRuntimeAdapter().storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes[BROWSER_EDITING_STORAGE_KEY]) {
+    if (area === "local" && (changes[BROWSER_EDITING_STORAGE_KEY] || changes[WIDGET_ENABLED_STORAGE_KEY] || changes[SHORTCUTS_ENABLED_STORAGE_KEY])) {
       void refresh().catch(error => console.error("BrowseRail editing:", error));
     }
   });
