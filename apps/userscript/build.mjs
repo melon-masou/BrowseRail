@@ -9,6 +9,7 @@ const rawVersion = (process.env.BROWSERAIL_RELEASE_VERSION || process.env.RELEAS
 const isRelease = Boolean(rawVersion && rawVersion !== "0.1.0");
 const releaseVersion = isRelease ? rawVersion.replace(/^v/, "") : "0.1.0";
 const releaseTag = isRelease ? (process.env.BROWSERAIL_RELEASE_TAG || `v${releaseVersion}`) : "";
+const updateBase = "https://github.com/melon-masou/BrowseRail/releases/latest/download";
 const releaseDefines = {
   __BROWSERAIL_IS_RELEASE__: JSON.stringify(isRelease), __BROWSERAIL_RELEASE_TAG__: JSON.stringify(releaseTag),
   __BROWSERAIL_RELEASE_VERSION__: JSON.stringify(releaseVersion),
@@ -26,6 +27,10 @@ const grants = ["getValue", "setValue", "deleteValue", "listValues", "addValueCh
 const metadata = [
   "// ==UserScript==", "// @name BrowseRail", "// @namespace https://github.com/melon-masou/BrowseRail",
   `// @version ${releaseVersion}`, "// @description Configurable bookmark menus on web pages",
+  ...(isRelease ? [
+    `// @updateURL ${updateBase}/BrowseRail.meta.js`,
+    `// @downloadURL ${updateBase}/BrowseRail.user.js`,
+  ] : []),
   "// @match http://*/*", "// @match https://*/*", "// @run-at document-idle", "// @noframes", "// @sandbox DOM",
   ...grants.map(grant => `// @grant GM.${grant}`),
   "// Downloads icon resources when requested from settings.",
@@ -47,3 +52,4 @@ const outDir = resolve(root, "../../build/userscript");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 await writeFile(resolve(outDir, "browserail.user.js"), `${metadata}\n${code}\n${licenses}\n`);
+await writeFile(resolve(outDir, "browserail.meta.js"), `${metadata}\n`);
