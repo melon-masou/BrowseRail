@@ -116,6 +116,7 @@ export interface RuntimeAdapter {
 
 export interface BrowserWindowCandidate {
   uid: string;
+  type?: "normal" | "app";
   bounds: { x: number; y: number; width: number; height: number };
   focused: boolean;
   activeTabUrl?: string;
@@ -137,6 +138,7 @@ export type RewriteResult = { ok: true; url: string | null; line?: number } | { 
 export interface RuntimeHost {
   browserKind(): string;
   listWindows(): Promise<BrowserWindowCandidate[]>;
+  getWindowType?(windowUid: string): Promise<BrowserWindowCandidate["type"]>;
   commands(): Promise<ShortcutCommand[]>;
   openShortcutSettings(): Promise<void>;
   onPermissionsChanged(listener: () => void): () => void;

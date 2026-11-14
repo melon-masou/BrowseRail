@@ -13,6 +13,7 @@ import {
 } from "../../../lib/config/index";
 import { formatSpecialRootForDisplay } from "../../../lib/bookmarks/index";
 import { t } from "@browserail/i18n";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { customBookmarkTagDefinitions } from "../../../lib/config/bookmark-tags";
 import { positionPopover } from "../components/popover-position";
 import { DEFAULT_COLOR } from "../components/color-picker";
@@ -72,6 +73,15 @@ export function mountMenusTab(
   }, { signal: scope.signal });
   const menuSettingCssClass = element<HTMLInputElement>("menu-setting-css-class");
   const menuSettingStyle = element<HTMLSelectElement>("menu-setting-style");
+  const menuSettingWindowType = element<HTMLSelectElement>("menu-setting-window-type");
+  if (!getRuntimeAdapter().host.getWindowType) {
+    menuSettingWindowType.title = t("runtime.unavailable");
+    for (const option of menuSettingWindowType.options) option.disabled = option.value !== "all";
+  }
+  menuSettingWindowType.addEventListener("change", () => {
+    const menu = state.settings.menus[activeMenuSettingsIndex];
+    if (menu) state.setMenuWindowType(menu.uid, menuSettingWindowType.value as NonNullable<StoredMenu["windowType"]>);
+  }, { signal: scope.signal });
   menuSettingStyle.addEventListener("change", () => {
     const menu = state.settings.menus[activeMenuSettingsIndex];
     if (menu) state.setMenuStyle(menu.uid, menuSettingStyle.value as NonNullable<StoredMenu["style"]>);
@@ -199,6 +209,7 @@ export function mountMenusTab(
     menuSettingName.placeholder = t("menu.title", { n: menuIndex + 1 });
     menuSettingCssClass.value = menu.cssClass ?? "";
     menuSettingStyle.value = menu.style ?? "text";
+    menuSettingWindowType.value = menu.windowType ?? "all";
     renderMenuUrlRulesContent(menu);
 
     menuSettingsDialog.style.marginTop = "";

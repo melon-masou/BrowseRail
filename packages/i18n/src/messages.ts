@@ -392,6 +392,10 @@ export const en = {
   // Menu card
   "menu.title": "Menu {n}",
   "menu.name": "Name",
+  "menu.windowType": "Window type",
+  "menu.windowTypeAll": "All",
+  "menu.windowTypeNormal": "Normal windows only",
+  "menu.windowTypeApp": "App windows only",
   "menu.expand": "Expand menu",
   "menu.collapse": "Collapse menu",
   "menu.foldButton": "Fold",
@@ -954,6 +958,10 @@ export const zhCN: Record<MessageKey, string> = {
   // Menu card
   "menu.title": "菜单 {n}",
   "menu.name": "名称",
+  "menu.windowType": "窗口类型",
+  "menu.windowTypeAll": "全部",
+  "menu.windowTypeNormal": "仅普通窗口",
+  "menu.windowTypeApp": "仅 app 窗口",
   "menu.expand": "展开菜单",
   "menu.collapse": "收起菜单",
   "menu.foldButton": "折叠",

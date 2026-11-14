@@ -3,7 +3,7 @@ import { barSettingsFromView, normalizeMenuSpacing, type MenuView, type SyncedMe
 import { resolveMenuItems, type BookmarkNode } from "../../lib/bookmarks/index";
 import { projectMenuSpacing } from "../../lib/bookmarks/spacing";
 import { canUseBookmarks } from "../../lib/browser/bookmarks-capability";
-import { listBrowserWindows } from "../../lib/browser/windows";
+import { listBrowserWindows, type BrowserWindowCandidate } from "../../lib/browser/windows";
 import {
   loadBarConfigurations, loadBookmarkRootPrefix, loadBrowserCollapsed, loadBrowserEditing, loadBrowserPlacements,
   loadConfig, loadDisplayMode, loadDynamicValues, loadShortcutsEnabled, loadTemporaryNotes, loadWidgetEnabled,
@@ -119,7 +119,7 @@ export function createMenuSync(host: MenuSyncHost) {
     );
     focus.updateFrom(windows);
 
-    const menuVisibleForUrl = (uid: string, url: string | undefined): boolean => isMenuVisibleForUrl(config, uid, url);
+    const menuVisibleForUrl = (uid: string, url: string | undefined, windowType?: BrowserWindowCandidate["type"]): boolean => isMenuVisibleForUrl(config, uid, url, windowType);
 
     await host.browserMenus.publish(config, menuStates.map(menu => menu.view), browserPlacements, browserCollapsed, enabled && mode === "browser", browserEditing);
     await host.browserInjection.reconcile(enabled && mode === "browser");
@@ -143,7 +143,7 @@ export function createMenuSync(host: MenuSyncHost) {
         native: {
           attachmentMode: menu.attachmentMode,
           onTopMode: menu.onTopMode,
-          visible: menuVisibleForUrl(menu.uid, window.activeTabUrl),
+          visible: menuVisibleForUrl(menu.uid, window.activeTabUrl, window.type),
         },
         target: { kind: "window" as const, window: windowSnapshot },
       }));
@@ -165,7 +165,7 @@ export function createMenuSync(host: MenuSyncHost) {
               native: {
                 attachmentMode: "free" as const,
                 onTopMode: menu.onTopMode,
-                visible: menuVisibleForUrl(menu.uid, lastFocusedWindow?.activeTabUrl),
+                visible: menuVisibleForUrl(menu.uid, lastFocusedWindow?.activeTabUrl, lastFocusedWindow?.type),
               },
               target: {
                 kind: "free" as const,

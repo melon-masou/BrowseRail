@@ -134,6 +134,8 @@ export interface UrlRule {
   patterns: string[];
 }
 
+export type MenuWindowType = "all" | "normal" | "app";
+
 export interface StoredMenu {
   name?: string;
   style?: BarStyle;
@@ -144,6 +146,7 @@ export interface StoredMenu {
   items: StoredMenuItem[];
   uid: string;
   urlRuleUids?: string[];
+  windowType?: MenuWindowType;
 }
 
 // Special Root Placeholders
@@ -357,6 +360,7 @@ export interface ExportedMenu {
   dockColor?: MenuColor;
   items: ExportedMenuItem[];
   urlRuleUids?: string[];
+  windowType?: MenuWindowType;
 }
 
 export interface ExportedSettingsData {

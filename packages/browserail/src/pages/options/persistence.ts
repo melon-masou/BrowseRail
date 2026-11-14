@@ -209,6 +209,7 @@ export function createPersistence(state: OptionsState, library: BookmarkLibrary)
         uid: menu.uid,
         ...(menu.style ? { style: menu.style } : {}),
         ...(menu.name ? { name: menu.name } : {}),
+        ...(menu.windowType ? { windowType: menu.windowType } : {}),
         ...(menu.urlRuleUids && menu.urlRuleUids.length > 0
           ? { urlRuleUids: menu.urlRuleUids }
           : {}),

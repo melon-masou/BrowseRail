@@ -1,4 +1,4 @@
-import type { MessageSender } from "@browserail/runtime-adapter";
+import type { BrowserWindowCandidate, MessageSender, TabInfo } from "@browserail/runtime-adapter";
 import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import { isBarSettings, isMenuSpacing, matchesUrlRule, parseTemporaryAction, invertNavigationActionUid, type LayoutEntry, type MenuView } from "@browserail/protocol";
 import {
@@ -19,9 +19,10 @@ import { createBrowserEditSession } from "./edit-session";
 import { resolveMenuBookmarkTarget } from "../actions/menu-target";
 import { TEMPORARY_SAVE_CONFIRMED, isTemporarySaveConfirmed, type CaptureResult, type TemporarySaveConfirmed } from "../capture/messages";
 
-export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined): boolean {
+export function menuVisibleForUrl(config: ExtensionConfig, uid: string, url: string | undefined, windowType?: BrowserWindowCandidate["type"]): boolean {
   const menu = config.panel.menus.find(menu => menu.uid === uid);
   if (!menu || menu.enabled === false) return false;
+  if (menu.windowType && menu.windowType !== "all" && menu.windowType !== windowType) return false;
   const rules = menuUrlRules(menu, config);
   return !rules.length || Boolean(url && rules.some(rule => matchesUrlRule(url, rule)));
 }
@@ -39,13 +40,18 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
   let snapshot: { config: ExtensionConfig; menus: BrowserMenu[]; active: boolean };
   let ready!: () => void;
   const firstSnapshot = new Promise<void>(resolve => { ready = resolve; });
+  async function windowTypeForTab(tab: TabInfo): Promise<BrowserWindowCandidate["type"]> {
+    if (tab.windowId === undefined || !snapshot.config.panel.menus.some(menu => menu.windowType && menu.windowType !== "all")) return undefined;
+    return getRuntimeAdapter().host.getWindowType?.(String(tab.windowId));
+  }
   async function forTab(tabId: number): Promise<BrowserMenu[]> {
     await firstSnapshot;
     const [tab, mode, enabled, placements, collapsed, editing] = await Promise.all([
       getRuntimeAdapter().navigation.get(tabId), loadDisplayMode(), loadWidgetEnabled(), loadBrowserPlacements(), loadBrowserCollapsed(), loadBrowserEditing(),
     ]);
     if (!snapshot.active || mode !== "browser" || !enabled || !await hasWebsitePermission(tab.url)) return [];
-    return snapshot.menus.filter(menu => menuVisibleForUrl(snapshot.config, menu.view.uid, tab.url)
+    const windowType = await windowTypeForTab(tab);
+    return snapshot.menus.filter(menu => menuVisibleForUrl(snapshot.config, menu.view.uid, tab.url, windowType)
       && (collapsed[menu.view.uid] !== true || menu.view.items.some(entry => entry.kind === "menuFold"))).map(menu => ({
       ...menu, placement: placements[menu.view.uid] ?? menu.placement,
       collapsed: collapsed[menu.view.uid] === true,
@@ -93,7 +99,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     await changed();
     const [menus, config, tab] = await Promise.all([forTab(context.sourceTabId), loadConfig(), getRuntimeAdapter().navigation.get(context.sourceTabId)]);
     const menu = menus.find(menu => menu.view.uid === context.menuUid);
-    if (!menu || tab.windowId !== context.sourceWindowId || !menuVisibleForUrl(config, context.menuUid, tab.url)) throw new Error("Menu is unavailable");
+    if (!menu || tab.windowId !== context.sourceWindowId || !menuVisibleForUrl(config, context.menuUid, tab.url, await windowTypeForTab(tab))) throw new Error("Menu is unavailable");
     requireTemporaryBookmark(menu, context.uid);
     await saveTemporary(config, context.menuUid, context.uid, context.sourceWindowId, note);
     await requestBrowserMenuRefresh(context.sourceTabId);
@@ -106,7 +112,7 @@ export function createBrowserMenus(changed: () => void | Promise<void>) {
     }
     const [mode, enabled, config, tab, menus] = await Promise.all([loadDisplayMode(), loadWidgetEnabled(), loadConfig(), getRuntimeAdapter().navigation.get(tabId), forTab(tabId)]);
     const menu = menus.find(menu => menu.view.uid === request.menuUid);
-    if (!menu || mode !== "browser" || !enabled || !menuVisibleForUrl(config, request.menuUid, tab.url) || !await hasWebsitePermission(tab.url)) throw new Error("Menu is unavailable");
+    if (!menu || mode !== "browser" || !enabled || !menuVisibleForUrl(config, request.menuUid, tab.url, await windowTypeForTab(tab)) || !await hasWebsitePermission(tab.url)) throw new Error("Menu is unavailable");
     if (tab.windowId === undefined) throw new Error("Source window is unavailable");
     const entries = leaves(menu.view.items);
     switch (request.type) {

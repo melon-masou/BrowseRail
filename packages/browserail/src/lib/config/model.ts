@@ -436,6 +436,7 @@ export function normalizeMenu(value: unknown): StoredMenu | undefined {
     ...(value.style === "text" || value.style === "textIcon" || value.style === "textColorIcon" || value.style === "icons" || value.style === "tiles" ? { style: value.style } : {}),
     ...(typeof value.cssClass === "string" && value.cssClass.trim() ? { cssClass: value.cssClass.trim() } : {}),
     ...(urlRuleUids && urlRuleUids.length > 0 ? { urlRuleUids } : {}),
+    ...(value.windowType === "normal" || value.windowType === "app" ? { windowType: value.windowType } : {}),
   };
 }
 

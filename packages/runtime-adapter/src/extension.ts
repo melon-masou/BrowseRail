@@ -177,6 +177,7 @@ export function createExtensionHost(runtime: RuntimeAdapter, extension: Extensio
   return {
     browserKind: () => browserKind(runtime),
     listWindows: () => listBrowserWindows(runtime, extension),
+    getWindowType: async windowUid => browserWindowType((await extension.windows.get(Number(windowUid))).type),
     commands: () => extension.commands.getAll(),
     async openShortcutSettings(): Promise<void> {
       const kind = browserKind(runtime);
@@ -235,6 +236,10 @@ function browserKind(runtime: RuntimeAdapter): string {
   return "chrome";
 }
 
+function browserWindowType(type: browser.Windows.WindowType | undefined): BrowserWindowCandidate["type"] {
+  return type === "normal" || type === "app" ? type : undefined;
+}
+
 async function listBrowserWindows(runtime: RuntimeAdapter, extension: ExtensionServices): Promise<BrowserWindowCandidate[]> {
   const [windows, activeTabs] = await Promise.all([
     extension.windows.getAll(BROWSER_WINDOW_FILTER),
@@ -263,6 +268,7 @@ async function listBrowserWindows(runtime: RuntimeAdapter, extension: ExtensionS
     }
 
     const activeTab = window.tabs?.find((tab) => tab.active);
+    const type = browserWindowType(window.type);
     const activeTabUrl =
       (window.id !== undefined ? activeTabMap.get(window.id) : undefined) ||
       activeTab?.url ||
@@ -271,6 +277,7 @@ async function listBrowserWindows(runtime: RuntimeAdapter, extension: ExtensionS
     return [
       {
         uid: String(window.id),
+        ...(type ? { type } : {}),
         focused: window.focused ?? false,
         ...(activeTabUrl !== undefined ? { activeTabUrl } : {}),
         bounds: {

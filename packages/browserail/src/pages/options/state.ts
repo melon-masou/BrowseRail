@@ -10,6 +10,7 @@ import {
   type JsonValue,
   type ShortcutAction,
   type ItemIcon,
+  type MenuWindowType,
 } from "@browserail/protocol";
 import { t } from "@browserail/i18n";
 import type {
@@ -422,6 +423,10 @@ export function createOptionsState(instance: InstanceSettings, settings: Setting
     },
     setMenuRules(uid: string, uids: readonly string[]): void {
       setOptional(menu(uid), { urlRuleUids: ruleUids(uids) });
+      publish(["menus"]);
+    },
+    setMenuWindowType(uid: string, windowType: MenuWindowType): void {
+      setOptional(menu(uid), { windowType: windowType === "all" ? undefined : windowType });
       publish(["menus"]);
     },
     addMenuItem(menuUid: string, value: StoredMenuItem): void {
