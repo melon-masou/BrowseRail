@@ -23,6 +23,7 @@ export async function saveConfig(config: ExtensionConfig): Promise<void> {
 export const DISPLAY_MODE_STORAGE_KEY = "display_mode";
 export const BROWSER_COLLAPSED_STORAGE_KEY = "browser_menu_collapsed";
 export const BROWSER_EDITING_STORAGE_KEY = "browser_menu_editing";
+export const ICON_USED_STORAGE_KEY = "icon_used";
 
 export async function loadBrowserEditing(): Promise<boolean> {
   const stored = await getRuntimeAdapter().storage.local.get(BROWSER_EDITING_STORAGE_KEY);

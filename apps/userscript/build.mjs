@@ -16,25 +16,24 @@ const releaseDefines = {
 const entry = specifier => fileURLToPath(import.meta.resolve(specifier));
 const icons = await loadIconAssets();
 const resources = { "icons/48.png": `data:image/png;base64,${Buffer.from(icons["icons/48.png"]).toString("base64")}` };
-const resourceData = Object.fromEntries(Object.entries(icons).filter(([path]) => path.endsWith(".json"))
-  .map(([path, content]) => [path, JSON.parse(content.toString())]));
 const [worker] = await build({ configFile: false, logLevel: "silent", build: {
   write: false, lib: { entry: entry("@browserail/browserail/lib/rewrite/worker"), formats: ["iife"], name: "BrowseRailRewrite" },
 } });
 const workerSource = worker.output.find(file => file.type === "chunk").code;
 const [settings] = await build({ configFile: resolve(root, "settings.vite.config.ts"), logLevel: "silent", define: releaseDefines });
 const settingsFactory = settings.output.find(file => file.type === "chunk").code;
-const grants = ["getValue", "setValue", "deleteValue", "listValues", "addValueChangeListener", "removeValueChangeListener", "openInTab", "registerMenuCommand"];
+const grants = ["getValue", "setValue", "deleteValue", "listValues", "addValueChangeListener", "removeValueChangeListener", "openInTab", "registerMenuCommand", "xmlHttpRequest"];
 const metadata = [
   "// ==UserScript==", "// @name BrowseRail", "// @namespace https://github.com/melon-masou/BrowseRail",
   `// @version ${releaseVersion}`, "// @description Configurable bookmark menus on web pages",
   "// @match http://*/*", "// @match https://*/*", "// @run-at document-idle", "// @noframes", "// @sandbox DOM",
-  ...grants.map(grant => `// @grant GM.${grant}`), "// ==/UserScript==",
+  ...grants.map(grant => `// @grant GM.${grant}`),
+  "// Downloads icon resources when requested from settings.",
+  "// @connect cdn.jsdelivr.net", "// ==/UserScript==",
 ].join("\n");
 const [bundle] = await build({
   configFile: false,
   define: { __BROWSERAIL_RESOURCES__: JSON.stringify(resources), __BROWSERAIL_REWRITE_WORKER__: JSON.stringify(workerSource),
-    __BROWSERAIL_RESOURCE_DATA__: JSON.stringify(resourceData),
     __BROWSERAIL_SETTINGS__: settingsFactory, ...releaseDefines },
   build: {
     write: false,

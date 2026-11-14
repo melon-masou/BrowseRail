@@ -8,6 +8,7 @@ import {
 } from "@browserail/protocol";
 import {
   createMenu,
+  ICON_USED_STORAGE_KEY,
   type StoredMenu,
   type StoredMenuItem,
 } from "../../../lib/config/index";
@@ -52,6 +53,63 @@ export function mountMenusTab(
   let colorOpen = false;
   const menusContainer = element<HTMLDivElement>("menus");
   const addMenu = element<HTMLButtonElement>("add-menu");
+  const iconResources = getRuntimeAdapter().iconResources;
+  const iconNotice = document.createElement("div");
+  iconNotice.className = "menus-toolbar";
+  iconNotice.hidden = true;
+  const iconHint = document.createElement("span");
+  iconHint.className = "url-rules-hint";
+  const downloadIcons = document.createElement("button");
+  downloadIcons.type = "button";
+  downloadIcons.className = "menu-action-btn";
+  downloadIcons.textContent = t("item.iconDownload");
+  iconNotice.append(iconHint, downloadIcons);
+  if (iconResources) menusContainer.before(iconNotice);
+  scope.add(() => iconNotice.remove());
+  let iconNoticeRevision = 0;
+  let downloadingIcons = false;
+  async function missingIcons() {
+    const referenced = new Map<string, { type: "lucide" | "phosphor"; name: string }>();
+    for (const menu of state.settings.menus) for (const item of menu.items) {
+      const icon = item.icon;
+      if (icon?.type === "lucide" || icon?.type === "phosphor") referenced.set(`${icon.type}:${icon.name}`, icon);
+    }
+    const missing = await Promise.all([...referenced.values()].map(async icon =>
+      await iconResources!.usedUrl(icon.type, icon.name) ? undefined : icon));
+    return missing.filter(icon => icon !== undefined);
+  }
+  async function refreshIconNotice(): Promise<void> {
+    if (!iconResources) return;
+    const revision = ++iconNoticeRevision;
+    const missing = await missingIcons();
+    if (scope.signal.aborted || revision !== iconNoticeRevision) return;
+    iconNotice.hidden = !missing.length;
+    iconHint.textContent = t("menus.iconsMissing", { count: missing.length });
+    downloadIcons.disabled = downloadingIcons;
+    downloadIcons.textContent = t(downloadingIcons ? "item.iconDownloading" : "item.iconDownload");
+  }
+  downloadIcons.addEventListener("click", () => {
+    if (!iconResources || downloadingIcons) return;
+    downloadingIcons = true;
+    downloadIcons.disabled = true;
+    downloadIcons.textContent = t("item.iconDownloading");
+    void (async () => {
+      const missing = await missingIcons();
+      for (const family of new Set(missing.map(icon => icon.type))) await iconResources.download(family);
+      if (scope.signal.aborted) return;
+      for (const icon of missing) await iconResources.remember(icon.type, icon.name);
+    })().catch(error => { if (!scope.signal.aborted) showStatus(String(error)); }).finally(() => {
+      downloadingIcons = false;
+      if (!scope.signal.aborted) render();
+    });
+  }, { signal: scope.signal });
+  if (iconResources) {
+    const changed = (changes: Record<string, unknown>, area: string) => {
+      if (area === "local" && changes[ICON_USED_STORAGE_KEY]) render();
+    };
+    getRuntimeAdapter().storage.onChanged.addListener(changed);
+    scope.add(() => getRuntimeAdapter().storage.onChanged.removeListener(changed));
+  }
   const cssEditor = createCssEditor(() => renderMenus());
   scope.add(() => cssEditor.destroy());
   element<HTMLButtonElement>("global-css-button").addEventListener("click", () => {
@@ -1338,7 +1396,10 @@ export function mountMenusTab(
   scope.add(overlays.register("itemSettings", closeItemSettingsPopover));
   scope.add(overlays.register("itemIcon", itemIconPicker.close));
   scope.add(overlays.register("addItem", closeAddItemDropdown));
-  const render = () => renderPreservingFocus(menusContainer, renderMenus);
+  const render = () => {
+    renderPreservingFocus(menusContainer, renderMenus);
+    void refreshIconNotice();
+  };
   scope.add(
     state.subscribe(["menus", "rules", "bookmarks", "instance"], (change) => {
       if (!colorOpen && !menuSettingsDialog.open && !cssEditor.isOpen) render();

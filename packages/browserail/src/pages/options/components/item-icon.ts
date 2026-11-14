@@ -1,7 +1,8 @@
 import { t } from "@browserail/i18n";
+import { getRuntimeAdapter } from "@browserail/runtime-adapter";
 import type { ItemIcon } from "@browserail/protocol";
 import type { IconCatalog } from "../../../lib/icons/lucide";
-import { loadIconCatalog, loadIconTags, loadIconUrl, type IconFamily } from "../../../lib/icons/item-icons";
+import { DEFAULT_ICON_URL, loadIconCatalog, loadIconTags, loadIconUrl, type IconFamily } from "../../../lib/icons/item-icons";
 
 type IconTab = "default" | IconFamily | "text" | "initial";
 
@@ -97,8 +98,7 @@ export function createItemIconPicker(showError: (error: string) => void) {
       panel.replaceChildren();
       if (tab === "text") renderTextPanel();
       else if (tab === "initial") renderInitialPanel();
-      else if (tab === "default") renderDefaultPanel();
-      else void renderLibraryPanel(tab, revision);
+      else if (tab === "lucide" || tab === "phosphor") void renderLibraryPanel(tab, revision);
     }
     for (const tab of tabs) {
       const button = document.createElement("button");
@@ -111,6 +111,36 @@ export function createItemIconPicker(showError: (error: string) => void) {
     }
 
     async function renderLibraryPanel(family: IconFamily, revision: number): Promise<void> {
+      const resources = getRuntimeAdapter().iconResources;
+      if (resources && !resources.library(family)) {
+        const hint = document.createElement("p");
+        hint.className = "icon-picker-hint";
+        hint.hidden = true;
+        const download = document.createElement("button");
+        download.type = "button";
+        download.className = "action-btn";
+        download.textContent = t("item.iconDownload");
+        download.addEventListener("click", () => {
+          hint.hidden = true;
+          download.disabled = true;
+          download.textContent = t("item.iconDownloading");
+          void resources.download(family).then(() => {
+            if (!destroyed && !settled && revision === panelRevision) {
+              panel.replaceChildren();
+              return renderLibraryPanel(family, revision);
+            }
+          }).catch(error => {
+            if (!destroyed && !settled && revision === panelRevision) {
+              hint.textContent = String(error);
+              hint.hidden = false;
+              download.disabled = false;
+              download.textContent = t("item.iconDownload");
+            }
+          });
+        });
+        panel.append(hint, download);
+        return;
+      }
       let catalog: IconCatalog;
       let tags: Record<string, readonly string[]>;
       try {
@@ -158,7 +188,13 @@ export function createItemIconPicker(showError: (error: string) => void) {
           image.alt = "";
           image.loading = "lazy";
           button.append(image);
-          button.addEventListener("click", () => finish({ type: family, name }));
+          button.addEventListener("click", () => {
+            if (!resources) { finish({ type: family, name }); return; }
+            button.disabled = true;
+            void resources.remember(family, name).then(() => finish({ type: family, name })).catch(error => {
+              if (!destroyed && !settled) { button.disabled = false; showError(String(error)); }
+            });
+          });
           return button;
         }));
         if (!names.length) {
@@ -202,13 +238,6 @@ export function createItemIconPicker(showError: (error: string) => void) {
       input.focus();
     }
 
-    function renderDefaultPanel(): void {
-      const hint = document.createElement("p");
-      hint.className = "icon-picker-hint";
-      hint.textContent = t("item.iconDefaultHint");
-      panel.append(hint);
-    }
-
     function renderInitialPanel(): void {
       const row = document.createElement("div");
       row.className = "icon-picker-text-row";
@@ -249,8 +278,11 @@ export function createItemIconPicker(showError: (error: string) => void) {
         const image = document.createElement("img");
         image.alt = "";
         button.append(image);
-        void loadIconUrl(family, name).then(url => {
-          if (!destroyed) image.src = url;
+        if (!icon && getRuntimeAdapter().iconResources) image.src = DEFAULT_ICON_URL;
+        else void loadIconUrl(family, name).then(url => {
+          if (destroyed) return;
+          image.src = url ?? DEFAULT_ICON_URL;
+          if (!url) button.title += `\n${t("item.iconNotDownloaded")}`;
         }).catch(error => {
           if (!destroyed) showError(String(error));
         });

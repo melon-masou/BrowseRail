@@ -9,6 +9,7 @@ export interface UserscriptApi {
   removeValueChangeListener(id: number): Promise<void>;
   openInTab(url: string, options: { active: boolean }): unknown;
   registerMenuCommand(label: string, action: () => void, options?: { id: string }): unknown;
+  xmlHttpRequest(options: { url: string; method: "GET"; anonymous: boolean; timeout: number }): Promise<{ status: number; responseText: string }> & { abort?(): void };
 }
 
 const PREFIX = "browserail.local:";
@@ -20,9 +21,8 @@ export async function createUserscriptRuntimeAdapter(api: UserscriptApi, options
   page: Window;
   openSettings(): Promise<void>;
   resources: Record<string, string>;
-  resourceData: Record<string, unknown>;
 }): Promise<RuntimeAdapter & { destroy(): Promise<void> }> {
-  const { page, resources, resourceData } = options;
+  const { page, resources } = options;
   const storageListeners = new Set<(changes: Changes, area: string) => void>();
   const messageListeners = new Set<MessageListener>();
   const sessionValues: Record<string, unknown> = {};
@@ -129,10 +129,7 @@ export async function createUserscriptRuntimeAdapter(api: UserscriptApi, options
       if (!Object.hasOwn(resources, path)) throw new Error(`Resource is unavailable: ${path}`);
       return resources[path]!;
     },
-    async resourceJson(path) {
-      if (!Object.hasOwn(resourceData, path)) throw new Error(`Resource is unavailable: ${path}`);
-      return structuredClone(resourceData[path]);
-    },
+    resourceJson: unsupported,
     platformInfo: async () => ({ os: /Win/.test(page.navigator.platform) ? "win" : /Mac/.test(page.navigator.platform) ? "mac" : "linux" }),
     async destroy() { storageListeners.clear(); messageListeners.clear(); await api.removeValueChangeListener(listenerId); },
   };

@@ -22,6 +22,7 @@ function storageHub() {
       async addValueChangeListener(key, receive) { const id = ++next; listeners.set(id, { owner, key, receive }); return id; },
       async removeValueChangeListener(id) { listeners.delete(id); },
       openInTab: vi.fn(), registerMenuCommand: vi.fn(),
+      xmlHttpRequest: vi.fn(async () => { throw new Error("Unexpected icon download"); }),
     };
   }
   return { client };
@@ -51,12 +52,6 @@ beforeEach(() => {
   document.head.replaceChildren(); document.body.replaceChildren();
   window.location.href = "https://example.com/";
   vi.stubGlobal("__BROWSERAIL_RESOURCES__", { "icons/48.png": "data:image/png;base64," });
-  vi.stubGlobal("__BROWSERAIL_RESOURCE_DATA__", {
-    "icons/lucide/icons.json": { icons: { bookmark: [["path", { d: "M6 3h12v18l-6-4-6 4z" }]] }, aliases: {} },
-    "icons/phosphor/icons.json": { icons: { house: '<path d="M224 120v96H32z"/>' } },
-    "icons/lucide/tags.json": { bookmark: ["reading"] },
-    "icons/phosphor/tags.json": { house: ["home"] },
-  });
   vi.stubGlobal("__BROWSERAIL_REWRITE_WORKER__", "");
   vi.stubGlobal("__BROWSERAIL_SETTINGS__", settingsFactory);
   // happy-dom's child windows omit browser APIs used by the shared settings UI.
@@ -77,8 +72,8 @@ afterEach(async () => {
 
 it("keeps settings across sites, notifies other script instances, and isolates transient session data", async () => {
   const hub = storageHub();
-  const first = await createUserscriptRuntimeAdapter(hub.client(), { page: window, openSettings: vi.fn(), resources: {}, resourceData: {} });
-  const second = await createUserscriptRuntimeAdapter(hub.client(), { page: window, openSettings: vi.fn(), resources: {}, resourceData: {} });
+  const first = await createUserscriptRuntimeAdapter(hub.client(), { page: window, openSettings: vi.fn(), resources: {} });
+  const second = await createUserscriptRuntimeAdapter(hub.client(), { page: window, openSettings: vi.fn(), resources: {} });
   live.push(first, second);
   const changed = vi.fn();
   second.storage.onChanged.addListener(changed);
@@ -131,7 +126,7 @@ it("keeps one editing menu entry showing the current state after menu clicks, se
   expect(await loadBrowserEditing()).toBe(true);
   await saveBrowserEditing(false);
   await vi.waitFor(() => expect(editing().map(command => command.label)).toEqual([prefix + "OFF"]));
-  const remote = await createUserscriptRuntimeAdapter(hub.client(), { page: window, openSettings: vi.fn(), resources: {}, resourceData: {} });
+  const remote = await createUserscriptRuntimeAdapter(hub.client(), { page: window, openSettings: vi.fn(), resources: {} });
   live.push(remote);
   await remote.storage.local.set({ [BROWSER_EDITING_STORAGE_KEY]: true });
   await vi.waitFor(() => expect(editing().map(command => command.label)).toEqual([prefix + "ON"]));
@@ -234,21 +229,47 @@ it("displays the actual initialization error as text and keeps the host page int
   expect(panels[1]!.querySelector("iframe")!.contentDocument!.getElementById("save-btn")).toBeTruthy();
 });
 
-it("loads both icon families and search tags with network access blocked", async () => {
+it("downloads missing configured icons on request and renders them without page network access", async () => {
   const panels = settingsPanels();
   const blockedFetch = vi.fn(async () => { throw new TypeError("connect-src blocked"); });
   vi.stubGlobal("fetch", blockedFetch);
-  vi.stubGlobal("GM", storageHub().client());
+  const api = storageHub().client();
+  api.xmlHttpRequest = vi.fn(async ({ url }) => {
+    let data: string;
+    if (url.includes("/lucide@")) data = JSON.stringify({ width: 24, height: 24, icons: { bookmark: { body: '<path d="M6 3h12v18l-6-4-6 4z"/>' } } });
+    else if (url.includes("/ph@")) data = JSON.stringify({ width: 256, height: 256, icons: { "house-fill": { body: '<path d="M224 120v96H32z"/>' } } });
+    else if (url.endsWith("tags.json")) data = JSON.stringify({ bookmark: ["reading"] });
+    else data = 'name: "house", tags: ["home"]';
+    return { status: 200, responseText: data };
+  });
+  const { normalizeConfig } = await import("@browserail/browserail/lib/config/index");
+  const config = normalizeConfig(undefined, "Userscript");
+  config.panel.menus = [{ uid: "bar", items: [
+    { uid: "a", type: "browserAction", browserAction: "back", icon: { type: "lucide", name: "bookmark" } },
+    { uid: "b", type: "browserAction", browserAction: "reload", icon: { type: "phosphor", name: "house" } },
+  ] }];
+  await api.setValue("browserail.local:config", config);
+  vi.stubGlobal("GM", api);
   const { startup } = await import("./index");
   const app = await startup; live.push(app);
   await app.openSettings();
   const { resolveItemIcons, loadIconTags } = await import("@browserail/browserail/lib/icons/item-icons");
-  const items = await resolveItemIcons([
-    { kind: "bookmark", uid: "a", label: "Reading", icon: { type: "lucide", name: "bookmark" } },
-    { kind: "bookmark", uid: "b", label: "Home", icon: { type: "phosphor", name: "house" } },
-  ]);
-  expect(decodeURIComponent(items[0]!.iconMask!)).toContain('d="M6 3h12v18l-6-4-6 4z"');
-  expect(decodeURIComponent(items[1]!.iconMask!)).toContain('d="M224 120v96H32z"');
+  const { t } = await import("@browserail/i18n");
+  const settings = panels[0]!.querySelector("iframe")!.contentDocument!;
+  settings.getElementById("menus-tab")!.click();
+  const download = [...settings.querySelectorAll<HTMLButtonElement>("#menus-panel button")]
+    .find(button => button.textContent === t("item.iconDownload"))!;
+  await vi.waitFor(() => expect(settings.getElementById("menus-panel")!.textContent).toContain(t("menus.iconsMissing", { count: 2 })));
+  expect(api.xmlHttpRequest).not.toHaveBeenCalled();
+  download.click();
+  await vi.waitFor(async () => {
+    const icons = await resolveItemIcons([
+      { kind: "bookmark", uid: "a", label: "Reading", icon: { type: "lucide", name: "bookmark" } },
+      { kind: "bookmark", uid: "b", label: "Home", icon: { type: "phosphor", name: "house" } },
+    ]);
+    expect(decodeURIComponent(icons[0]!.iconMask!)).toContain('d="M6 3h12v18l-6-4-6 4z"');
+    expect(decodeURIComponent(icons[1]!.iconMask!)).toContain('d="M224 120v96H32z"');
+  });
   expect((await loadIconTags("lucide")).bookmark).toContain("reading");
   expect((await loadIconTags("phosphor")).house).toContain("home");
   expect(panels[0]!.querySelector("iframe")!.contentDocument!.getElementById("save-btn")).toBeTruthy();
@@ -258,7 +279,7 @@ it("loads both icon families and search tags with network access blocked", async
 it("routes settings navigation to the local panel and keeps rejecting non-web bookmark URLs", async () => {
   const openSettings = vi.fn();
   const api = storageHub().client();
-  const adapter = await createUserscriptRuntimeAdapter(api, { page: window, openSettings, resources: {}, resourceData: {} });
+  const adapter = await createUserscriptRuntimeAdapter(api, { page: window, openSettings, resources: {} });
   live.push(adapter);
   const current = location.href;
   await adapter.navigation.update(1, { url: adapter.resourceUrl("options.html") });

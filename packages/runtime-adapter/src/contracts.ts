@@ -102,6 +102,21 @@ export interface RuntimeCapabilities {
   readonly desktopConnection: boolean;
 }
 
+export type IconFamily = "lucide" | "phosphor";
+
+export interface DownloadedIconLibrary {
+  names: readonly string[];
+  tags: Record<string, readonly string[]>;
+  iconUrl(name: string): string;
+}
+
+export interface IconResources {
+  library(family: IconFamily): DownloadedIconLibrary | undefined;
+  download(family: IconFamily): Promise<void>;
+  usedUrl(family: IconFamily, name: string): Promise<string | undefined>;
+  remember(family: IconFamily, name: string): Promise<void>;
+}
+
 export interface RuntimeAdapter {
   readonly storage: StorageService;
   readonly bookmarks: BookmarkService;
@@ -109,6 +124,7 @@ export interface RuntimeAdapter {
   readonly messaging: MessagingService;
   readonly permissions: PermissionService;
   readonly capabilities: RuntimeCapabilities;
+  iconResources?: IconResources;
   resourceUrl(path: string): string;
   resourceJson(path: string): Promise<unknown>;
   platformInfo(): Promise<{ os: string }>;

@@ -29,14 +29,16 @@ import { MAX_EXTERNAL_MESSAGE_BYTES } from "@browserail/protocol/api";
 import { createExternalUpdates } from "@browserail/browserail/features/api/updates";
 import { loadExternalAuthorization } from "@browserail/browserail/lib/config/external-authorization-store";
 import { EXTERNAL_AUTHORIZATION_STORAGE_KEY } from "@browserail/browserail/lib/config/external-authorization";
+import { createUserscriptIcons } from "./icons";
 
 declare const GM: UserscriptApi;
 declare const __BROWSERAIL_RESOURCES__: Record<string, string>;
-declare const __BROWSERAIL_RESOURCE_DATA__: Record<string, unknown>;
 declare const __BROWSERAIL_REWRITE_WORKER__: string;
 declare const __BROWSERAIL_SETTINGS__: (view: Window) => typeof import("./settings");
 
 export async function startUserscript(adapter: RuntimeAdapter & { destroy(): Promise<void> }, api: UserscriptApi, workerSource: string) {
+  const icons = await createUserscriptIcons(api, adapter.storage);
+  adapter.iconResources = icons;
   const lifetime = new AbortController();
   const tabUpdates = new Set<(id: number, change: { url?: string }, tab: TabInfo) => void>();
   const tabRemovals = new Set<(id: number) => void>();
@@ -273,7 +275,7 @@ export async function startUserscript(adapter: RuntimeAdapter & { destroy(): Pro
   const timer = window.setInterval(() => { if (document.visibilityState !== "hidden") void navigationChanged().catch(report); }, 500);
   async function destroy(): Promise<void> {
     if (lifetime.signal.aborted) return;
-    lifetime.abort(); window.clearInterval(timer); clearMenus(); closeSettings(); stopUserMenuLanguage();
+    lifetime.abort(); window.clearInterval(timer); clearMenus(); closeSettings(); stopUserMenuLanguage(); icons.destroy();
     if (externalEvent) document.removeEventListener(externalEvent, receiveExternal);
     rewrite?.destroy(); if (workerUrl) URL.revokeObjectURL(workerUrl);
     for (const listener of tabRemovals) listener(1);
@@ -287,7 +289,6 @@ export async function startUserscript(adapter: RuntimeAdapter & { destroy(): Pro
 
 export const startup: Promise<Awaited<ReturnType<typeof startUserscript>>> = createUserscriptRuntimeAdapter(GM, {
   page: window, openSettings: () => startup.then(app => app.openSettings()), resources: __BROWSERAIL_RESOURCES__,
-  resourceData: __BROWSERAIL_RESOURCE_DATA__,
 })
   .then(adapter => startUserscript(adapter, GM, __BROWSERAIL_REWRITE_WORKER__));
 void startup.catch(error => console.error("BrowseRail userscript:", error));
