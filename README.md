@@ -7,7 +7,7 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
 ## Modes
 
 - **Native mode:** displays bars in separate desktop windows, attached to a browser window or floating freely. Requires the desktop app. Currently supports Windows only.
-- **Browser mode:** injects bars into web pages. Works without the desktop app. Grant website permissions in the extension’s **Instance** tab before using it.
+- **Browser mode:** injects bars into web pages through the extension or a standalone userscript. Works without the desktop app. When using the extension, grant website permissions in its **Instance** tab before using it.
 
 ## Bookmarks
 
@@ -24,16 +24,25 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
 
 ## Installation
 
+### Extension
+
 - Download and install the extension for Chrome or Firefox from [Releases](https://github.com/melon-masou/BrowseRail/releases).
 - For Native mode, download and run the Windows desktop app.
 - Open the extension settings, create a menu, and add bookmarks or folders.
+
+### Userscript
+
+- Install a userscript manager and `BrowseRail-<version>.user.js` from [Releases](https://github.com/melon-masou/BrowseRail/releases).
+- Open a web page and select **Open settings** from BrowseRail’s menu in the userscript manager. Create a menu and add custom bookmarks.
+
+The userscript runs independently of the extension and desktop app, storing settings separately. Browser bookmarks and browser/desktop shortcuts are unavailable in userscript version.
 
 ## Usage
 
 - Left-click a bookmark to open it in the current tab; right-click to open it in a new tab.
 - Hover over a folder to expand it.
 - Hold a temporary bookmark button to save the current page.
-- Enable **Edit mode** in the extension settings or from the extension icon’s context menu to adjust bar positions, sizes, spacing, and settings.
+- Enable **Edit mode** in the settings or from context menu to adjust bar positions, sizes, spacing.
 
 ## Development
 
@@ -42,8 +51,9 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
     pnpm test
     pnpm build
 
-    # Rebuild the extension and its workspace dependencies:
+    # Build only the extension and its workspace dependencies:
     pnpm build:extension
-
-    # Build the Windows executable from WSL:
+    # Build only the standalone userscript:
+    pnpm build:userscript
+    # Build only the Windows executable:
     pnpm build:windows
