@@ -316,7 +316,7 @@ it("cancels a pending WebDAV download when the popup closes", async () => {
   expect(await savedConfig()).toEqual(saved);
 });
 
-it("moves static bookmarks up and down under tag filters in the complete saved order", async () => {
+it("drags static bookmarks under tag filters in the complete saved order", async () => {
   button("custom-bookmarks-tab").click();
   button("static-tab").click();
   function add(name: string, tags: string[]): void {
@@ -345,17 +345,20 @@ it("moves static bookmarks up and down under tag filters in the complete saved o
   add("C", ["personal"]);
   filter("work");
   expect(visibleNames()).toEqual(["A", "B"]);
-  function move(index: number, direction: string): HTMLButtonElement {
-    return [...document.querySelectorAll<HTMLElement>("#static-list article")][index]!
-      .querySelector<HTMLButtonElement>(`button[title="Move ${direction}"]`)!;
+  function drag(sourceIndex: number, targetIndex: number, after = false): void {
+    const cards = document.querySelectorAll<HTMLElement>("#static-list article");
+    const handle = cards[sourceIndex]!.querySelector<HTMLButtonElement>(".drag-handle-btn")!;
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setDragImage = vi.fn();
+    handle.dispatchEvent(Object.assign(new MouseEvent("dragstart", { bubbles: true }), { dataTransfer }));
+    cards[targetIndex]!.dispatchEvent(Object.assign(new MouseEvent("drop", { bubbles: true, cancelable: true, clientY: after ? 1 : 0 }), { dataTransfer }));
+    handle.dispatchEvent(new Event("dragend", { bubbles: true }));
   }
-  expect(move(0, "up").disabled).toBe(true);
-  expect(move(1, "down").disabled).toBe(true);
-  move(1, "up").click();
+  drag(1, 0);
   expect(visibleNames()).toEqual(["B", "A"]);
-  move(0, "down").click();
+  drag(0, 1, true);
   expect(visibleNames()).toEqual(["A", "B"]);
-  move(1, "up").click();
+  drag(1, 0);
   expect(visibleNames()).toEqual(["B", "A"]);
   filter("personal");
   expect(visibleNames()).toEqual(["B", "A", "C"]);
@@ -363,7 +366,7 @@ it("moves static bookmarks up and down under tag filters in the complete saved o
   expect((await savedConfig()).staticBookmarks.map(value => value.name)).toEqual(["B", "A", "Hidden", "C"]);
 });
 
-it("moves menu items up and down without affecting another menu and saves their order", async () => {
+it("drags menu items without affecting another menu and saves their order", async () => {
   button("menus-tab").click(); button("add-menu").click();
   async function addAction(menuIndex: number, label: string): Promise<void> {
     document.querySelectorAll<HTMLButtonElement>(".menu-add-btn")[menuIndex]!.click();
@@ -375,17 +378,20 @@ it("moves menu items up and down without affecting another menu and saves their 
   }
   await addAction(0, "Back"); await addAction(0, "Reload");
   button("add-menu").click(); await addAction(1, "Forward");
-  const move = (index: number, direction: string) => document.querySelectorAll<HTMLElement>("#menus .menu-item-row")[index]!
-    .querySelector<HTMLButtonElement>(`button[title="Move ${direction}"]`)!;
-  expect(move(0, "up").disabled).toBe(true);
-  expect(move(1, "down").disabled).toBe(true);
-  expect(move(2, "up").disabled).toBe(true);
-  expect(move(2, "down").disabled).toBe(true);
-  move(0, "down").click();
+  function drag(sourceIndex: number, targetIndex: number, after = false): void {
+    const rows = document.querySelectorAll<HTMLElement>("#menus .menu-item-row");
+    const handle = rows[sourceIndex]!.querySelector<HTMLButtonElement>(".drag-handle-btn")!;
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setDragImage = vi.fn();
+    handle.dispatchEvent(Object.assign(new MouseEvent("dragstart", { bubbles: true }), { dataTransfer }));
+    rows[targetIndex]!.dispatchEvent(Object.assign(new MouseEvent("drop", { bubbles: true, cancelable: true, clientY: after ? 1 : 0 }), { dataTransfer }));
+    handle.dispatchEvent(new Event("dragend", { bubbles: true }));
+  }
+  drag(0, 1, true);
   await save();
   expect((await savedConfig()).panel.menus.map(menu => menu.items.map(item => item.browserAction)))
     .toEqual([["reload", "back"], ["forward"]]);
-  move(1, "up").click();
+  drag(1, 0);
   await save();
   expect((await savedConfig()).panel.menus.map(menu => menu.items.map(item => item.browserAction)))
     .toEqual([["back", "reload"], ["forward"]]);

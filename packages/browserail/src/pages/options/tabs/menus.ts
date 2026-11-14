@@ -30,7 +30,7 @@ import { createItemPicker } from "../components/item-picker";
 import { actionChoices } from "../components/action-picker";
 import { createCssEditor } from "../components/css-editor";
 import { createItemIconPicker } from "../components/item-icon";
-import { createMoveButtons } from "../components/move-buttons";
+import { createDragSort } from "../components/drag-sort";
 
 import { type Overlays } from "../components/overlays";
 import { removeIcon, setIconContent, settingsIcon } from "../components/icons";
@@ -890,6 +890,13 @@ export function mountMenusTab(
         header.append(titleRow, headerActions);
 
         const items = document.createElement("ol");
+        const dragSort = createDragSort((sourceUid, targetUid, position) => {
+          const sourceIndex = menu.items.findIndex(item => item.uid === sourceUid);
+          const targetIndex = menu.items.findIndex(item => item.uid === targetUid);
+          let destination = targetIndex + (position === "after" ? 1 : 0);
+          if (sourceIndex < destination) destination--;
+          if (sourceIndex !== destination) state.moveMenuItem(menu.uid, sourceIndex, destination);
+        });
         items.replaceChildren(
           ...menu.items.map((item, itemIndex) => {
             const row = document.createElement("li");
@@ -925,9 +932,7 @@ export function mountMenusTab(
               const controls = document.createElement("div");
               controls.className = "item-color-controls";
 
-              const moveButtons = createMoveButtons(itemIndex, menu.items.length, step => {
-                state.moveMenuItem(menu.uid, itemIndex, itemIndex + step);
-              });
+              const dragHandle = dragSort.handle(row);
 
               const settingsBtn = document.createElement("button");
               settingsBtn.type = "button";
@@ -963,7 +968,7 @@ export function mountMenusTab(
               const iconBtn = itemIconPicker.button(item.icon, item.rename || (item.type === "menuFold" ? t("menu.foldButton") : actionLabel),
                 icon => state.setItemIcon(menu.uid, item.uid, icon), () => overlays.closeExcept());
               label.prepend(iconBtn);
-              controls.append(moveButtons, settingsBtn, swatch, removeBtn);
+              controls.append(dragHandle, settingsBtn, swatch, removeBtn);
               row.append(label, controls);
               return row;
             }
@@ -1025,9 +1030,7 @@ export function mountMenusTab(
               const controls = document.createElement("div");
               controls.className = "item-color-controls";
 
-              const moveButtons = createMoveButtons(itemIndex, menu.items.length, step => {
-                state.moveMenuItem(menu.uid, itemIndex, itemIndex + step);
-              });
+              const dragHandle = dragSort.handle(row);
 
               const settingsBtn = document.createElement("button");
               settingsBtn.type = "button";
@@ -1071,7 +1074,7 @@ export function mountMenusTab(
               const iconBtn = itemIconPicker.button(item.icon, item.rename || rawLabel,
                 icon => state.setItemIcon(menu.uid, item.uid, icon), () => overlays.closeExcept());
               label.prepend(iconBtn);
-              controls.append(moveButtons, settingsBtn, swatch, removeBtn);
+              controls.append(dragHandle, settingsBtn, swatch, removeBtn);
               row.append(label, controls);
               return row;
             }
@@ -1136,9 +1139,7 @@ export function mountMenusTab(
             const controls = document.createElement("div");
             controls.className = "item-color-controls";
 
-            const moveButtons = createMoveButtons(itemIndex, menu.items.length, step => {
-              state.moveMenuItem(menu.uid, itemIndex, itemIndex + step);
-            });
+            const dragHandle = dragSort.handle(row);
 
             // Settings button for item
             const settingsBtn = document.createElement("button");
@@ -1209,7 +1210,7 @@ export function mountMenusTab(
             const iconBtn = itemIconPicker.button(item.icon, item.rename || rawLabel,
               icon => state.setItemIcon(menu.uid, item.uid, icon), () => overlays.closeExcept());
             label.prepend(iconBtn);
-            controls.append(moveButtons, settingsBtn, swatch, removeBtn);
+            controls.append(dragHandle, settingsBtn, swatch, removeBtn);
             row.append(label, controls);
             if (pathResolution.duplicatePath) {
               const warning = document.createElement("div");

@@ -1036,47 +1036,52 @@ output[data-state="error"] {
   pointer-events: none;
 }
 
-/* Compact up/down controls for list ordering. */
-.move-item-buttons {
-  display: inline-grid;
-  grid-template-rows: repeat(2, 1fr);
-  gap: 1px;
+/* Drag handles keep text fields and other row controls independently usable. */
+.drag-handle-btn {
   width: 26px;
-  height: 32px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
   flex-shrink: 0;
 }
 
-.move-item-btn {
-  min-height: 0;
-  padding: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  background: #f8fafc;
-  color: #64748b;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.move-item-btn:hover:not(:disabled) {
+.drag-handle-btn:hover {
   background: #eff6ff;
   border-color: #93c5fd;
   color: #1d4ed8;
 }
 
-.move-item-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
+.drag-handle-btn:active {
+  cursor: grabbing;
 }
 
-.move-item-btn svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.drag-handle-btn svg {
+  display: block;
   pointer-events: none;
+}
+
+.menu-item-row.is-dragging,
+.static-bookmark-card.is-dragging {
+  opacity: 0.4;
+}
+
+.menu-item-row.drag-over-top,
+.static-bookmark-card.drag-over-top {
+  box-shadow: 0 -2px 0 #2563eb;
+}
+
+.menu-item-row.drag-over-bottom,
+.static-bookmark-card.drag-over-bottom {
+  box-shadow: 0 2px 0 #2563eb;
 }
 
 /* Item type badges */
@@ -1790,7 +1795,7 @@ output[data-state="error"] {
   min-height: 28px;
 }
 
-.static-bookmark-card > header > .move-item-buttons {
+.static-bookmark-card > header > .drag-handle-btn {
   margin-left: auto;
 }
 
@@ -1807,7 +1812,7 @@ output[data-state="error"] {
   font-size: 12px;
 }
 
-.bookmark-tag-summary:not([hidden]) + .move-item-buttons {
+.bookmark-tag-summary:not([hidden]) + .drag-handle-btn {
   margin-left: 0;
 }
 
@@ -3776,7 +3781,7 @@ span.icon-picker-preview {
     max-width: none;
   }
 
-  .bookmark-tag-summary + .move-item-buttons {
+  .bookmark-tag-summary + .drag-handle-btn {
     margin-left: auto;
   }
 

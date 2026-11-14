@@ -10,7 +10,7 @@ import { renderPreservingFocus } from "./render-focus";
 import { removeIcon, setIconContent } from "./icons";
 import { filterCustomBookmarks } from "../custom-bookmark-search";
 import { createVariablePicker } from "./variable-picker";
-import { createMoveButtons } from "./move-buttons";
+import { createDragSort } from "./drag-sort";
 import type { BookmarkTags } from "./bookmark-tags";
 
 export function createStaticBookmarksList(
@@ -26,6 +26,9 @@ export function createStaticBookmarksList(
   let referenceRevision = 0;
   const variablePicker = createVariablePicker(state, showStatus);
   const expandedUids = new Set<string>();
+  const dragSort = createDragSort((sourceUid, targetUid, position) => {
+    state.moveStaticBookmark(sourceUid, targetUid, position);
+  });
 
   function refreshReferenceWarnings(): void {
     const bookmarks = new Map(state.settings.staticBookmarks.map(bookmark => [bookmark.uid, bookmark]));
@@ -60,15 +63,13 @@ export function createStaticBookmarksList(
   scope.add(state.subscribe(["variables", "bookmarks"], refreshReferenceWarnings));
   void refreshExternalKeys();
 
-  function renderCard(bookmark: ReadonlyData<StaticBookmark>, index: number, visible: readonly ReadonlyData<StaticBookmark>[]): HTMLElement {
+  function renderCard(bookmark: ReadonlyData<StaticBookmark>): HTMLElement {
     const expanded = expandedUids.has(bookmark.uid);
     const card = document.createElement("article");
     card.className = `menu-card custom-bookmark-card static-bookmark-card${expanded ? "" : " is-collapsed"}`;
     card.dataset.recordId = bookmark.uid;
     const header = document.createElement("header");
-    const moveButtons = createMoveButtons(index, visible.length, step => {
-      state.moveStaticBookmark(bookmark.uid, visible[index + step]!.uid, step === -1 ? "before" : "after");
-    });
+    const dragHandle = dragSort.handle(card);
 
     const collapse = document.createElement("button");
     collapse.type = "button";
@@ -100,7 +101,7 @@ export function createStaticBookmarksList(
     summary.hidden = expanded || !bookmark.tags?.length;
     const warning = document.createElement("span");
     warning.className = "reference-warning";
-    header.append(collapse, name, warning, summary, moveButtons, remove);
+    header.append(collapse, name, warning, summary, dragHandle, remove);
 
     const body = document.createElement("div");
     body.className = "custom-bookmark-body";
@@ -139,6 +140,7 @@ export function createStaticBookmarksList(
   }
 
   function render(): void {
+    dragSort.clear();
     const bookmarks = state.settings.staticBookmarks;
     for (const uid of expandedUids) if (!bookmarks.some(bookmark => bookmark.uid === uid)) expandedUids.delete(uid);
     renderPreservingFocus(list, () => {
@@ -152,7 +154,7 @@ export function createStaticBookmarksList(
         empty.textContent = t(bookmarks.length ? "static.noMatches" : "customBookmarks.empty");
         list.append(empty);
       }
-      visible.forEach((bookmark, index) => list.append(renderCard(bookmark, index, visible)));
+      visible.forEach(bookmark => list.append(renderCard(bookmark)));
     });
     refreshReferenceWarnings();
   }
@@ -166,6 +168,7 @@ export function createStaticBookmarksList(
       state.addBookmark("static", { uid, name: t("static.defaultName"), url: "" });
     },
     destroy(): void {
+      dragSort.clear();
       scope.destroy();
       variablePicker.destroy();
       expandedUids.clear();
