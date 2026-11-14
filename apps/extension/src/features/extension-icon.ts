@@ -17,19 +17,9 @@ import {
   type EditingStateChanged,
 } from "@browserail/browserail/features/toolbar/messages";
 import { STATIC_SAVE_CONFIRMED, isStaticSaveConfirmed, type CaptureResult, type StaticSaveConfirmed } from "@browserail/browserail/features/capture/messages";
-
-const EDIT_MENU_ID = "browserail-edit-menus";
-const ADD_STATIC_MENU_ID = "browserail-add-static-bookmark";
-const OPTIONS_MENU_ID = "browserail-open-options";
-const ENABLE_MENU_ID = "browserail-enable";
-const SHORTCUTS_MENU_ID = "browserail-shortcuts";
-const MENU_ITEMS = [
-  { id: ENABLE_MENU_ID, title: "action.enabled", type: "checkbox" },
-  { id: EDIT_MENU_ID, title: "injection.editMenus", type: "checkbox" },
-  { id: SHORTCUTS_MENU_ID, title: "section.shortcuts", type: "checkbox" },
-  { id: ADD_STATIC_MENU_ID, title: "static.addCurrentPage", type: "normal" },
-  { id: OPTIONS_MENU_ID, title: "action.openOptions", type: "normal" },
-] as const;
+import {
+  USER_MENU_ITEMS as MENU_ITEMS, EDIT_MENU_ID, ADD_STATIC_MENU_ID, OPTIONS_MENU_ID, ENABLE_MENU_ID, SHORTCUTS_MENU_ID,
+} from "@browserail/browserail/features/toolbar/user-menu";
 
 export function createExtensionIconMenu(host: { setNativeEditing(editing: boolean): void }) {
   let nativeEditing: boolean | undefined;

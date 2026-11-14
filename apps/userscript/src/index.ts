@@ -1,7 +1,7 @@
 import { registerRuntimeAdapter, type RuntimeHost } from "@browserail/runtime-adapter";
 import type { RuntimeAdapter, TabInfo } from "@browserail/runtime-adapter";
 import { createUserscriptRuntimeAdapter, type UserscriptApi } from "@browserail/runtime-adapter/userscript";
-import { t } from "@browserail/i18n";
+import { onLanguageChange, t } from "@browserail/i18n";
 import { mountBrowserMenu } from "@browserail/content/surface";
 import menuStyles from "@browserail/menu-ui/styles.css?inline";
 import hostStyles from "@browserail/content/styles.css?inline";
@@ -15,12 +15,15 @@ import { createRewriteHost } from "@browserail/runtime-adapter/rewrite";
 import {
   loadBrowserEditing, saveBrowserEditing, loadWidgetEnabled, saveWidgetEnabled,
   removeBrowserPlacement, loadConfig, saveConfig,
-  BROWSER_EDITING_STORAGE_KEY,
+  BROWSER_EDITING_STORAGE_KEY, WIDGET_ENABLED_STORAGE_KEY,
 } from "@browserail/browserail/lib/config/index";
 import { CONFIG_SAVED, isConfigSaved } from "@browserail/browserail/lib/config/messages";
 import { MENU_LAYOUT_RESET, isMenuLayoutReset } from "@browserail/browserail/features/bar/messages";
 import { DESKTOP_STATE_REQUEST, WIDGET_ENABLED_SET, isDesktopRequest } from "@browserail/browserail/features/desktop/messages";
 import { EDITING_SET, EDITING_STATE_CHANGED, isEditingRequest } from "@browserail/browserail/features/toolbar/messages";
+import {
+  USER_MENU_ITEMS, ENABLE_MENU_ID, EDIT_MENU_ID, ADD_STATIC_MENU_ID, OPTIONS_MENU_ID, type UserMenuId,
+} from "@browserail/browserail/features/toolbar/user-menu";
 import { BAR_COMMAND_MESSAGE, EXTERNAL_RUN_MESSAGE, isExternalRun, isBarRefresh, userscriptUpdateEvent, type BarCommand } from "@browserail/protocol/content";
 import { MAX_EXTERNAL_MESSAGE_BYTES } from "@browserail/protocol/api";
 import { createExternalUpdates } from "@browserail/browserail/features/api/updates";
@@ -157,7 +160,7 @@ export async function startUserscript(adapter: RuntimeAdapter & { destroy(): Pro
   initDynamicBookmarks(() => { void requestSync().catch(report); });
   adapter.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
-    if (changes[BROWSER_EDITING_STORAGE_KEY]) renderEditingMenu(changes[BROWSER_EDITING_STORAGE_KEY].newValue === true);
+    if (changes[BROWSER_EDITING_STORAGE_KEY] || changes[WIDGET_ENABLED_STORAGE_KEY]) void renderUserMenu().catch(report);
     if (changes[EXTERNAL_AUTHORIZATION_STORAGE_KEY]) void refreshExternalAuthorization().catch(report);
     void requestSync().catch(report);
     void editingState().then(state => adapter.messaging.send({ type: EDITING_STATE_CHANGED, ...state })).catch(report);
@@ -222,22 +225,35 @@ export async function startUserscript(adapter: RuntimeAdapter & { destroy(): Pro
       throw error;
     }
   }
-  api.registerMenuCommand(t("action.openOptions"), () => { void openSettings().catch(report); });
-  function renderEditingMenu(editing: boolean): void {
-    if (lifetime.signal.aborted) return;
-    api.registerMenuCommand(`${t("injection.editMenus")}: ${editing ? "ON" : "OFF"}`, () => {
-      void loadBrowserEditing().then(current => saveBrowserEditing(!current)).catch(report);
-    }, { id: "browserail-editing" });
-  }
-  renderEditingMenu(await loadBrowserEditing());
-  api.registerMenuCommand(t("static.addCurrentPage"), () => {
-    const name = window.prompt(t("customBookmarks.name"), document.title);
-    if (name === null) return;
-    void loadConfig().then(config => {
+  const userMenuActions: Partial<Record<UserMenuId, () => Promise<void>>> = {
+    [ENABLE_MENU_ID]: async () => { await saveWidgetEnabled(!await loadWidgetEnabled()); },
+    [EDIT_MENU_ID]: async () => {
+      if (await loadWidgetEnabled()) await saveBrowserEditing(!await loadBrowserEditing());
+    },
+    [OPTIONS_MENU_ID]: openSettings,
+    [ADD_STATIC_MENU_ID]: async () => {
+      const name = window.prompt(t("customBookmarks.name"), document.title);
+      if (name === null) return;
+      const config = await loadConfig();
       config.staticBookmarks.push({ uid: crypto.randomUUID(), name: name.trim(), url: location.href });
-      return saveConfig(config);
-    }).catch(report);
-  });
+      await saveConfig(config);
+    },
+  };
+  let userMenuRevision = 0;
+  async function renderUserMenu(): Promise<void> {
+    const revision = ++userMenuRevision;
+    const [enabled, editing] = await Promise.all([loadWidgetEnabled(), loadBrowserEditing()]);
+    if (lifetime.signal.aborted || revision !== userMenuRevision) return;
+    for (const item of USER_MENU_ITEMS) {
+      const action = userMenuActions[item.id];
+      if (!action) continue;
+      const checked = item.id === ENABLE_MENU_ID ? enabled : enabled && editing;
+      const label = t(item.title) + (item.type === "checkbox" ? `: ${checked ? "ON" : "OFF"}` : "");
+      api.registerMenuCommand(label, () => { void action().catch(report); }, { id: item.id });
+    }
+  }
+  const stopUserMenuLanguage = onLanguageChange(() => { void renderUserMenu().catch(report); });
+  await renderUserMenu();
 
   let lastUrl = "";
   async function navigationChanged(): Promise<void> {
@@ -257,7 +273,7 @@ export async function startUserscript(adapter: RuntimeAdapter & { destroy(): Pro
   const timer = window.setInterval(() => { if (document.visibilityState !== "hidden") void navigationChanged().catch(report); }, 500);
   async function destroy(): Promise<void> {
     if (lifetime.signal.aborted) return;
-    lifetime.abort(); window.clearInterval(timer); clearMenus(); closeSettings();
+    lifetime.abort(); window.clearInterval(timer); clearMenus(); closeSettings(); stopUserMenuLanguage();
     if (externalEvent) document.removeEventListener(externalEvent, receiveExternal);
     rewrite?.destroy(); if (workerUrl) URL.revokeObjectURL(workerUrl);
     for (const listener of tabRemovals) listener(1);

@@ -130,11 +130,11 @@ it("keeps one editing menu entry showing the current state after menu clicks, se
   const { loadBrowserEditing, saveBrowserEditing, BROWSER_EDITING_STORAGE_KEY } = await import("@browserail/browserail/lib/config/index");
   expect(await loadBrowserEditing()).toBe(true);
   await saveBrowserEditing(false);
-  expect(editing().map(command => command.label)).toEqual([prefix + "OFF"]);
+  await vi.waitFor(() => expect(editing().map(command => command.label)).toEqual([prefix + "OFF"]));
   const remote = await createUserscriptRuntimeAdapter(hub.client(), { page: window, openSettings: vi.fn(), resources: {}, resourceData: {} });
   live.push(remote);
   await remote.storage.local.set({ [BROWSER_EDITING_STORAGE_KEY]: true });
-  expect(editing().map(command => command.label)).toEqual([prefix + "ON"]);
+  await vi.waitFor(() => expect(editing().map(command => command.label)).toEqual([prefix + "ON"]));
 });
 
 it("opens the shared settings UI, disables unavailable controls, and retains imported native and browser-bookmark settings when saving", async () => {
