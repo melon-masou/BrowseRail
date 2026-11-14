@@ -32,7 +32,7 @@ BrowseRail puts your bookmarks in customizable bars, with configurable colors, l
 
 ### Userscript
 
-- Install a userscript manager and `BrowseRail-<version>.user.js` from [Releases](https://github.com/melon-masou/BrowseRail/releases).
+- Install a userscript manager and `BrowseRail.user.js` from [Releases](https://github.com/melon-masou/BrowseRail/releases).
 - Open a web page and select **Open settings** from BrowseRail’s menu in the userscript manager. Create a menu and add custom bookmarks.
 
 The userscript runs independently of the extension and desktop app, storing settings separately. Browser bookmarks and browser/desktop shortcuts are unavailable in userscript version.

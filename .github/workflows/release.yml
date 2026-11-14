@@ -80,7 +80,6 @@ jobs:
           Compress-Archive -Path build/desktop/BrowseRail.exe -DestinationPath "release-assets/BrowseRail-windows-$v.zip"
           Compress-Archive -Path build/extension/chrome/* -DestinationPath "release-assets/BrowseRail-chrome-$v.zip"
           Compress-Archive -Path build/extension/firefox/* -DestinationPath "release-assets/BrowseRail-firefox-$v.zip"
-          Copy-Item -Path build/userscript/browserail.user.js -Destination "release-assets/BrowseRail-$v.user.js"
           Copy-Item -Path build/userscript/browserail.user.js -Destination release-assets/BrowseRail.user.js
           Copy-Item -Path build/userscript/browserail.meta.js -Destination release-assets/BrowseRail.meta.js
 
@@ -95,6 +94,5 @@ jobs:
             release-assets/BrowseRail-windows-${{ steps.version.outputs.version }}.zip
             release-assets/BrowseRail-chrome-${{ steps.version.outputs.version }}.zip
             release-assets/BrowseRail-firefox-${{ steps.version.outputs.version }}.zip
-            release-assets/BrowseRail-${{ steps.version.outputs.version }}.user.js
             release-assets/BrowseRail.user.js
             release-assets/BrowseRail.meta.js
